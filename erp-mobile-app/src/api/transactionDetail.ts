@@ -41,7 +41,28 @@ export async function fetchReferenceAttachments(
       const ru = String((data as { receipt_url?: string | null } | null)?.receipt_url ?? '').trim();
       return ru ? [{ url: ru, name: 'Receipt' }] : [];
     }
-    if (rt === 'payment' || rt === 'expense_payment') {
+    if (rt === 'expense_payment') {
+      const { data: expData } = await supabase
+        .from('expenses')
+        .select('receipt_url')
+        .eq('id', referenceId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      const receiptUrl = String(
+        (expData as { receipt_url?: string | null } | null)?.receipt_url ?? '',
+      ).trim();
+      if (receiptUrl) return [{ url: receiptUrl, name: 'Receipt' }];
+      const { data: payData } = await supabase
+        .from('payments')
+        .select('attachments')
+        .eq('id', referenceId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      return payData
+        ? normalizeAttachments((payData as { attachments?: unknown }).attachments)
+        : [];
+    }
+    if (rt === 'payment') {
       const { data } = await supabase
         .from('payments')
         .select('attachments')

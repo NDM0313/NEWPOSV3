@@ -7,6 +7,7 @@ export type EntrySourceKind =
   | 'payment_supplier'
   | 'payment_worker'
   | 'payment_customer'
+  | 'payment_courier'
   | 'studio_stage'
   | 'studio_stage_reversal'
   | 'rental'
@@ -30,6 +31,7 @@ export function sourceLabel(kind: EntrySourceKind): string {
     payment_supplier: 'Supplier payment',
     payment_worker: 'Worker payment',
     payment_customer: 'Customer receipt',
+    payment_courier: 'Courier Payment',
     studio_stage: 'Studio stage',
     studio_stage_reversal: 'Studio reversal',
     rental: 'Rental',
@@ -75,6 +77,7 @@ export function classifyJournalSource(input: ClassifyJournalSourceInput): EntryS
   if (r === 'purchase' || r === 'purchase_order') return 'purchase';
   if (r === 'purchase_reversal' || r === 'purchase_cancel') return 'purchase_reversal';
   if (r === 'worker_payment') return 'payment_worker';
+  if (r === 'courier_payment') return 'payment_courier';
   if (r === 'customer_payment' || r === 'receipt' || r === 'sale_payment') return 'payment_customer';
   if (r === 'studio_production_stage') return 'studio_stage';
   if (r === 'studio_production_stage_reversal') return 'studio_stage_reversal';
@@ -115,7 +118,7 @@ export function resolveCashFlowDirection(input: ResolveCashFlowInput): CashFlowD
     return 'neutral';
   }
   if (k === 'payment_customer' || k === 'sale') return 'in';
-  if (k === 'payment_supplier' || k === 'payment_worker' || k === 'expense' || k === 'purchase') {
+  if (k === 'payment_supplier' || k === 'payment_worker' || k === 'payment_courier' || k === 'expense' || k === 'purchase') {
     return 'out';
   }
   if (k === 'transfer' || k === 'opening_balance' || k === 'journal_manual' || k === 'general') {

@@ -1,0 +1,18 @@
+{
+  "phase": "2.9",
+  "checklist": "section-10-after-enablement",
+  "stage": null,
+  "timestampUtc": null,
+  "tester": null,
+  "checks": {
+    "bannerMode": null,
+    "mainTableVsPreFlag": "identical",
+    "previewToggleManual": true,
+    "mrJalil216300": null,
+    "staffNoToggles": null,
+    "otherCompaniesUnaffected": null,
+    "otherScreenFlagsOff": null,
+    "adminPilotBatch9of9": null
+  },
+  "overall": null
+}

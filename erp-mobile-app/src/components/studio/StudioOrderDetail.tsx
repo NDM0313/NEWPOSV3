@@ -3,12 +3,15 @@ import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, 
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 import { getPaymentAccounts } from '../../api/accounts';
 import type { AccountRow } from '../../api/accounts';
+import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import { useLoading } from '../../contexts/LoadingContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { getTotalInternalProductionCost } from './studioPricing';
 import { getStudioDetailStatusLabel } from '../../lib/studioOrderDisplay';
 import { todayDateInputValue } from '../../lib/studioWorkflowDates';
 import { StudioStageTimeline } from './StudioStageTimeline';
+import { DateInputField } from '../shared/DateTimePicker';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -70,6 +73,8 @@ export function StudioOrderDetail({
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
   const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
   const [paymentAccountsError, setPaymentAccountsError] = useState<string | null>(null);
+  const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
+  const [preferredPaymentAccountId, setPreferredPaymentAccountId] = useState<string | null>(null);
   const [paymentRemarks, setPaymentRemarks] = useState('');
   const [paymentCustomerCharge, setPaymentCustomerCharge] = useState('');
   const [stageDetailSheet, setStageDetailSheet] = useState<StudioStage | null>(null);
@@ -87,17 +92,23 @@ export function StudioOrderDetail({
       setPaymentAccounts([]);
       setPaymentAccountsLoading(false);
       setPaymentAccountsError(null);
+      setPreferredPaymentAccountId(null);
       return;
     }
     let cancelled = false;
     setPaymentAccountsLoading(true);
     setPaymentAccountsError(null);
-    getPaymentAccounts(companyId).then(({ data, error }) => {
+    void (async () => {
+      const [{ data, error }, defaultsRes] = await Promise.all([
+        getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+      ]);
       if (cancelled) return;
       setPaymentAccountsLoading(false);
       if (error) setPaymentAccountsError(error);
       else setPaymentAccounts(data || []);
-    });
+      setDefaultAccounts(defaultsRes.data);
+    })();
     return () => {
       cancelled = true;
     };
@@ -106,8 +117,38 @@ export function StudioOrderDetail({
   const accountsForMethod = useMemo(() => {
     if (!paymentPayMethod) return [];
     const types = STUDIO_METHOD_TO_TYPE[paymentPayMethod].map((t) => t.toLowerCase());
-    return paymentAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
-  }, [paymentAccounts, paymentPayMethod]);
+    const filtered = paymentAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+    if (!preferredPaymentAccountId) return filtered;
+    return [
+      ...filtered.filter((a) => a.id === preferredPaymentAccountId),
+      ...filtered.filter((a) => a.id !== preferredPaymentAccountId),
+    ];
+  }, [paymentAccounts, paymentPayMethod, preferredPaymentAccountId]);
+
+  useEffect(() => {
+    if (!paymentPayMethod || paymentAccounts.length === 0) {
+      setPreferredPaymentAccountId(null);
+      return;
+    }
+    const types = STUDIO_METHOD_TO_TYPE[paymentPayMethod].map((t) => t.toLowerCase());
+    const filtered = paymentAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+    const picks = filtered.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance ?? 0,
+      code: a.code ?? '',
+      isDefaultCash: a.isDefaultCash,
+      isDefaultBank: a.isDefaultBank,
+    }));
+    const resolved = resolveDefaultPaymentAccountId(
+      paymentPayMethod,
+      picks,
+      defaultAccounts,
+      null,
+    );
+    setPreferredPaymentAccountId(resolved);
+  }, [paymentPayMethod, paymentAccounts, defaultAccounts]);
 
   const paymentBusy = paymentSubmitting || isConfirmPaymentRunning;
 
@@ -754,9 +795,18 @@ export function StudioOrderDetail({
                           });
                         }}
                         disabled={paymentBusy}
-                        className="w-full text-left rounded-lg border border-[#374151] bg-[#111827] px-4 py-3 hover:border-[#8B5CF6] disabled:opacity-50"
+                        className={`w-full text-left rounded-lg border px-4 py-3 disabled:opacity-50 ${
+                          a.id === preferredPaymentAccountId
+                            ? 'border-[#10B981] bg-[#064E3B]/40 hover:border-[#34D399]'
+                            : 'border-[#374151] bg-[#111827] hover:border-[#8B5CF6]'
+                        }`}
                       >
-                        <p className="text-white font-medium">{a.name}</p>
+                        <p className="text-white font-medium">
+                          {a.name}
+                          {a.id === preferredPaymentAccountId ? (
+                            <span className="ml-2 text-[10px] uppercase tracking-wide text-[#6EE7B7]">Default</span>
+                          ) : null}
+                        </p>
                         <p className="text-xs text-[#9CA3AF]">
                           {a.code} · Rs. {(a.balance ?? 0).toLocaleString()}
                         </p>
@@ -902,14 +952,11 @@ export function StudioOrderDetail({
             <p className="text-xs text-[#9CA3AF] mb-4">
               {workflowDateSheet.stage.name} — pick date (default today). Add a note if there are issues to record for the next user.
             </p>
-            <label className="block text-sm text-[#9CA3AF] mb-2">
-              {workflowDateSheet.type === 'send' ? 'Send date' : 'Receive date'}
-            </label>
-            <input
-              type="date"
+            <DateInputField
+              label={workflowDateSheet.type === 'send' ? 'Send date' : 'Receive date'}
               value={workflowDate}
-              onChange={(e) => setWorkflowDate(e.target.value)}
-              className="w-full bg-[#111827] border border-[#374151] rounded-lg px-4 py-3 text-white mb-3"
+              onChange={setWorkflowDate}
+              required
             />
             <label className="block text-sm text-[#9CA3AF] mb-2">
               {workflowDateSheet.type === 'send' ? 'Send note (optional)' : 'Receive note (optional)'}

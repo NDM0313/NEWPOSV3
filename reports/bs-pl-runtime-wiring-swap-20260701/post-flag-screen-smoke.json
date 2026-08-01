@@ -1,0 +1,15 @@
+{
+  "run": "BS_PL_RUNTIME_WIRING_SWAP",
+  "phase": "post-flag-screen-smoke",
+  "status": "PASS",
+  "source": "run-phase-3d-bs-pl-golden-capture.mjs post-flag",
+  "screens": {
+    "din-china-bs": { "pass": true, "totalAssets": 89754087.52 },
+    "din-china-pl": { "pass": true, "netProfit": 8465730.87 },
+    "din-bridal-bs": { "pass": true, "totalAssets": 13521792 },
+    "din-bridal-pl": { "pass": true, "netProfit": 119992 },
+    "din-couture-bs": { "pass": true, "totalAssets": 22667273 },
+    "din-couture-pl": { "pass": true, "netProfit": -16750 }
+  },
+  "screenFlagEnabled": true
+}

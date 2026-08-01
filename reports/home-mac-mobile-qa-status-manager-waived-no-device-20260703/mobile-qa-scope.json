@@ -1,0 +1,16 @@
+{
+  "runLocalDateTime": "2026-07-03T02:47:21+05:00",
+  "operatorDecision": "manager_qa_waived",
+  "managerQa": "NA_WAIVED",
+  "managerQaReason": "company uses Admin and Salesman only",
+  "adminQa": "PASS_21_21",
+  "salesmanQa": "PENDING",
+  "salesmanBlockers": ["salesman_password", "pixel_device"],
+  "deviceBlocker": "pixel_not_available_home_mac",
+  "playStore": "NOT_RELEASED",
+  "mobileReleaseGate": "BLOCKED_SALESMAN_DEVICE_QA_PENDING",
+  "r8": "BLOCKED",
+  "managerUserCreated": false,
+  "glMutations": false,
+  "migrationsRun": false
+}

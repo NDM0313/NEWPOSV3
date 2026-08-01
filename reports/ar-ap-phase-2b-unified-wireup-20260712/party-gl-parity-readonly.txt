@@ -1,0 +1,15 @@
+# AR/AP Phase 2b party GL parity (read-only)
+Generated: 2026-07-11T21:01:54.873Z
+
+Unified RPC deployed: NO (legacy fallback expected in UI)
+
+## DIN CHINA: SKIP
+- Legacy sums AR/AP/WP: 14189222.98 / 1140286.4 / 0
+
+## DIN BRIDAL: SKIP
+- Legacy sums AR/AP/WP: 2025800 / -547191 / 0
+
+## DIN COUTURE: SKIP
+- Legacy sums AR/AP/WP: 22625273 / 26908831 / 0
+
+Overall: SKIP_RPC_NOT_DEPLOYED

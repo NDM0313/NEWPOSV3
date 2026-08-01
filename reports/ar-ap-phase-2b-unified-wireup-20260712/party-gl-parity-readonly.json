@@ -1,0 +1,32 @@
+{
+  "overall": "SKIP_RPC_NOT_DEPLOYED",
+  "results": [
+    {
+      "company": "DIN CHINA",
+      "result": "SKIP",
+      "legacy": {
+        "ar": 14189222.98,
+        "ap": 1140286.4,
+        "wp": 0
+      }
+    },
+    {
+      "company": "DIN BRIDAL",
+      "result": "SKIP",
+      "legacy": {
+        "ar": 2025800,
+        "ap": -547191,
+        "wp": 0
+      }
+    },
+    {
+      "company": "DIN COUTURE",
+      "result": "SKIP",
+      "legacy": {
+        "ar": 22625273,
+        "ap": 26908831,
+        "wp": 0
+      }
+    }
+  ]
+}

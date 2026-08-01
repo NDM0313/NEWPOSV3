@@ -1,0 +1,25 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "docs-update",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "files_updated": [
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md",
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md",
+    "docs/MOBILE_RELEASE_PLAN.md"
+  ],
+  "recorded_status": {
+    "admin_mobile_device_qa": "PASS_21_21",
+    "manager_qa": "PENDING_CREDENTIALS",
+    "salesman_qa": "PENDING_CREDENTIALS",
+    "mobile_release_gate": "BLOCKED",
+    "din_bridal_monitoring": "FAIL_NEW_UNAPPROVED_DATA_DRIFT",
+    "apk_public_release": false,
+    "apk_in_git": false,
+    "migrations_run": false,
+    "gl_mutations": false,
+    "feature_flag_changes": false,
+    "supplier_party_discount_pkr1": "separate_approval",
+    "r8": "blocked"
+  }
+}

@@ -40,7 +40,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import { SearchableSelect } from "../ui/searchable-select";
 import {
   Select,
@@ -77,6 +77,16 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import {
+    basePkrToForeign,
+    foreignToBasePkr,
+    isForeignImportCurrency,
+    labelForImportCurrency,
+    normalizeImportDocCurrency,
+    resolveActiveImportCurrencies,
+    type ImportDocCurrency,
+} from '@/app/lib/importFxHelpers';
+import { rankProductSearchHit, preferExactSkuHits, PRODUCT_SEARCH_RESULT_CAP } from '@/app/utils/productSearchRank';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
@@ -98,8 +108,9 @@ import {
     AlertDialogCancel,
 } from "@/app/components/ui/alert-dialog";
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
-import { uploadPurchaseAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
+import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
+import { uploadPurchaseAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
 
 interface PurchaseItem {
     id: number;
@@ -107,6 +118,8 @@ interface PurchaseItem {
     name: string;
     sku: string;
     price: number;
+    /** Foreign unit price when document currency is FC (currency-first entry). */
+    foreignUnitPrice?: number;
     qty: number;
     receivedQty?: number;
     // Standard Variation Fields
@@ -160,7 +173,12 @@ const purchaseFormBootstrapCache = new Map<
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, supabaseClient, requiresBranchSelection } = useSupabase();
-    const { inventorySettings, company } = useSettings();
+    const { inventorySettings, company, accountingSettings } = useSettings();
+    const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
+    const activeCurrencies = useMemo(
+      () => resolveActiveImportCurrencies(accountingSettings),
+      [accountingSettings]
+    );
     const { canManageSettings } = useCheckPermission();
     const enablePacking = inventorySettings.enablePacking;
     // Permission-based: settings access allows branch selection (was role === 'admin')
@@ -205,6 +223,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [editModeProductVariations, setEditModeProductVariations] = useState<Record<string, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const submitInProgressRef = useRef(false);
     
     // Header State
     const [supplierId, setSupplierId] = useState("");
@@ -213,6 +232,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState(""); // Reference number (optional, user-entered)
     const [poNumber, setPoNumber] = useState<string>(""); // Auto-generated PO number (read-only)
+    /** Phase 0 import FX: document currency + rate → PKR line prices (no new DB columns). */
+    const [documentCurrency, setDocumentCurrency] = useState<ImportDocCurrency>('PKR');
+    const [fxRateToBase, setFxRateToBase] = useState<number>(1);
     
     // Add Supplier Modal State - REMOVED (using GlobalDrawer contact form instead)
     
@@ -299,10 +321,25 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Calculate total after discount and expenses
     const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
     const totalAmount = afterDiscountTotal;
-    
+
+    const fxMode = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+    const currencyLabel = labelForImportCurrency(documentCurrency, activeCurrencies);
+    const foreignSubtotal = fxMode
+        ? items.reduce((sum, item) => sum + (Number(item.foreignUnitPrice) || 0) * item.qty, 0)
+        : null;
+    const foreignTotalEstimate = foreignSubtotal; // goods FC only; expenses stay PKR
+    const foreignGrandDisplay = foreignTotalEstimate;
+
     // Automatic Payment Status Detection
     const totalPaid = partialPayments.reduce((sum, p) => sum + p.amount, 0);
     const balanceDue = totalAmount - totalPaid;
+    const foreignDueDisplay =
+        fxMode && fxRateToBase > 0
+            ? Math.max(
+                  0,
+                  (foreignTotalEstimate ?? 0) - (basePkrToForeign(totalPaid, fxRateToBase) ?? 0)
+              )
+            : null;
     
     // Auto-detect payment status
     // CRITICAL FIX: Use 'unpaid' instead of 'credit' to match database enum (paid, partial, unpaid)
@@ -333,29 +370,29 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         return formatCurrency(due, currency);
     };
     const getDueBalanceColor = (due: number) => {
-        if (due < 0) return 'text-green-400'; // Supplier owes us (credit)
+        if (due < 0) return 'text-[var(--erp-money-positive)]'; // Supplier owes us (credit)
         if (due > 0) return 'text-red-400';   // We owe supplier
-        return 'text-gray-500';
+        return 'text-muted-foreground';
     };
 
 
     // Status helper functions
     const getStatusColor = () => {
         switch(purchaseStatus) {
-            case 'draft': return 'text-gray-500 bg-gray-900/50 border-gray-700';
+            case 'draft': return 'text-muted-foreground bg-muted/30 border-border';
             case 'ordered': return 'text-yellow-500 bg-yellow-900/20 border-yellow-600/50';
             case 'received': return 'text-blue-500 bg-blue-900/20 border-blue-600/50';
             case 'final': return 'text-green-500 bg-green-900/20 border-green-600/50';
-            default: return 'text-gray-500 bg-gray-900/50 border-gray-700';
+            default: return 'text-muted-foreground bg-muted/30 border-border';
         }
     };
     const getStatusChipColor = () => {
         switch(purchaseStatus) {
-            case 'draft': return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+            case 'draft': return 'bg-gray-500/20 text-muted-foreground border-gray-600/50';
             case 'ordered': return 'bg-yellow-500/20 text-yellow-400 border-yellow-600/50';
             case 'received': return 'bg-blue-500/20 text-blue-400 border-blue-600/50';
-            case 'final': return 'bg-green-500/20 text-green-400 border-green-600/50';
-            default: return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+            case 'final': return 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-600/50';
+            default: return 'bg-gray-500/20 text-muted-foreground border-gray-600/50';
         }
     };
 
@@ -384,78 +421,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     }, [initialPurchase?.po_no, initialPurchase?.purchaseNo, initialPurchase?.poNo, poNumber, generateDocumentNumber]);
 
     // --- Workflow Handlers ---
-
-    // Helper: Extract numeric part from SKU (keep leading zeros for matching)
-    const extractNumericPart = (sku: string): string => {
-        // Extract numeric part (keep leading zeros)
-        return sku.replace(/\D/g, '');
-    };
-
-    // Helper: Normalize numeric part (remove leading zeros for comparison)
-    const normalizeNumeric = (numStr: string): string => {
-        return numStr.replace(/^0+/, '') || '0';
-    };
-
-    // Helper: Check if search term matches SKU (including numeric-only search)
-    const matchesSku = (sku: string, searchTerm: string): boolean => {
-        if (!sku || !searchTerm) return false;
-        
-        const lowerSku = sku.toLowerCase();
-        const lowerSearch = searchTerm.toLowerCase();
-        
-        // 1. Direct text match (full SKU or partial)
-        if (lowerSku.includes(lowerSearch)) {
-            return true;
-        }
-        
-        // 2. Numeric matching (handle leading zeros)
-        const skuNumeric = extractNumericPart(sku);
-        const searchNumeric = extractNumericPart(searchTerm);
-        
-        // If search term has numbers, check numeric matching
-        if (searchNumeric.length > 0) {
-            // If SKU has no numeric part, skip numeric matching
-            if (skuNumeric.length === 0) {
-                return false;
-            }
-            
-            // Match with leading zeros preserved (e.g., "0001" matches "REG-0001")
-            // Special handling for "0" - only match if SKU numeric part starts with "0" or contains "0" as a digit
-            if (searchNumeric === '0') {
-                // "0" should match SKUs that have "0" in their numeric part
-                // But be more precise: match if SKU starts with "0" (like "0001", "001", "002")
-                if (skuNumeric.startsWith('0')) {
-                    return true;
-                }
-            } else {
-                // For other numeric searches, use includes check
-                if (skuNumeric.includes(searchNumeric) || searchNumeric.includes(skuNumeric)) {
-                    return true;
-                }
-            }
-            
-            // Match normalized (without leading zeros) - e.g., "1" matches "0001"
-            const normalizedSku = normalizeNumeric(skuNumeric);
-            const normalizedSearch = normalizeNumeric(searchNumeric);
-            
-            // Special case: if search is "0" after normalization, it should match any SKU with leading zeros
-            // But we already handled this above with includes() check
-            // So only do normalized matching if both are non-zero
-            if (normalizedSearch !== '0' && normalizedSku !== '0') {
-                // Check if normalized values match (exact or partial)
-                if (normalizedSku === normalizedSearch) {
-                    return true;
-                }
-                
-                // Check if one contains the other (for partial matches)
-                if (normalizedSku.includes(normalizedSearch) || normalizedSearch.includes(normalizedSku)) {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    };
 
     // Helper to normalize a single variation (shared by products list and edit-mode fetch)
     const normalizeVariation = (v: any) => {
@@ -505,6 +470,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // 1. Select Product -> Add to items, show variation strip if needed
     const handleSelectProduct = (product: any) => {
         const newItemId = Date.now();
+        const catalogPkr = Number(product.price) || 0;
+        const inFx = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+        const seededFc =
+            inFx && fxRateToBase > 0 ? (basePkrToForeign(catalogPkr, fxRateToBase) ?? 0) : inFx ? 0 : undefined;
+        const pkrPrice = inFx
+            ? foreignToBasePkr(Number(seededFc) || 0, fxRateToBase)
+            : catalogPkr;
         
         // Check if product has variations
         if (product.hasVariations && product.variations && product.variations.length > 0) {
@@ -514,7 +486,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 productId: product.id,
                 name: product.name,
                 sku: product.sku,
-                price: product.price,
+                price: pkrPrice,
+                foreignUnitPrice: seededFc,
                 qty: 1,
                 size: undefined,
                 color: undefined,
@@ -535,7 +508,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 productId: product.id,
                 name: product.name,
                 sku: product.sku,
-                price: product.price,
+                price: pkrPrice,
+                foreignUnitPrice: seededFc,
                 qty: 1,
                 size: undefined,
                 color: undefined,
@@ -559,19 +533,73 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     useEffect(() => {
         if (!createdProduct || !setCreatedProduct) return;
         const p = createdProduct;
+        const costPrice = Number(
+            p.cost_price ?? p.purchasePrice ?? p.costPrice ?? p.price ?? 0,
+        );
+        const variationsRaw = Array.isArray(p.variations) ? p.variations : [];
+        const variations = variationsRaw.map((v: any) => ({
+            id: String(v.id ?? ''),
+            sku: v.sku != null ? String(v.sku) : undefined,
+            attributes: v.attributes ?? v.combination ?? undefined,
+            size: v.size ?? v.attributes?.size ?? v.combination?.size,
+            color: v.color ?? v.attributes?.color ?? v.combination?.color,
+            price: v.price != null ? Number(v.price) : v.cost_price != null ? Number(v.cost_price) : costPrice,
+            stock: Number(v.stock ?? 0),
+        })).filter((v: { id: string }) => v.id);
+
         const mapped = {
             id: p.id ?? p.uuid,
             name: p.name ?? '',
             sku: p.sku ?? '',
-            price: Number(p.cost_price ?? p.retail_price ?? p.price ?? 0),
-            hasVariations: Array.isArray(p.variations) && p.variations.length > 0,
+            price: costPrice,
+            hasVariations: variations.length > 0 || Boolean(p.has_variations),
             stock: 0,
-            lastPurchasePrice: p.cost_price != null ? Number(p.cost_price) : undefined,
+            lastPurchasePrice: costPrice || undefined,
             needsPacking: false,
+            variations,
+            unitAllowDecimal: p.unitAllowDecimal ?? false,
         };
+
+        const catalogEntry = {
+            id: mapped.id,
+            name: mapped.name,
+            sku: mapped.sku,
+            price: mapped.price,
+            stock: 0,
+            lastPurchasePrice: mapped.lastPurchasePrice,
+            lastSupplier: undefined as string | undefined,
+            hasVariations: mapped.hasVariations,
+            needsPacking: false,
+            variations,
+            unitId: p.unit_id ?? p.unitId ?? null,
+            unitAllowDecimal: mapped.unitAllowDecimal,
+        };
+
+        setProducts((prev) => {
+            const idStr = String(catalogEntry.id);
+            const without = prev.filter((x) => String(x.id) !== idStr);
+            const next = [catalogEntry, ...without];
+            const branchForBalances =
+                branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                    ? branchId
+                    : contextBranchId && contextBranchId !== 'all'
+                      ? contextBranchId
+                      : null;
+            if (companyId) {
+                const cacheKey = `${companyId}:${branchForBalances ?? 'all'}`;
+                const cached = purchaseFormBootstrapCache.get(cacheKey);
+                purchaseFormBootstrapCache.set(cacheKey, {
+                    ts: Date.now(),
+                    suppliers: cached?.suppliers ?? [],
+                    products: next,
+                });
+            }
+            return next;
+        });
+
         setCreatedProduct(null);
         handleSelectProduct(mapped);
-    }, [createdProduct, setCreatedProduct]);
+    }, [createdProduct, setCreatedProduct, companyId, branchId, contextBranchId]);
 
     // Handle variation selection from inline strip
     const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => {
@@ -580,13 +608,22 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 const size = variation.size || variation.attributes?.size as string;
                 const color = variation.color || variation.attributes?.color as string;
                 const variationSku = variation.sku || `${item.sku}-${size}-${color}`.replace(/\s+/g, '-').toUpperCase();
+                const catalogPkr = Number(variation.price ?? item.price) || 0;
+                const inFx = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+                const seededFc =
+                    inFx && fxRateToBase > 0
+                        ? (basePkrToForeign(catalogPkr, fxRateToBase) ?? 0)
+                        : inFx
+                          ? Number(item.foreignUnitPrice) || 0
+                          : undefined;
                 
                 return {
                     ...item,
                     size: size,
                     color: color,
                     sku: variationSku, // Update SKU to variation-specific SKU
-                    price: variation.price || item.price,
+                    price: inFx ? foreignToBasePkr(Number(seededFc) || 0, fxRateToBase) : catalogPkr,
+                    foreignUnitPrice: seededFc,
                     variationId: variation.id,
                     stock: variation.stock ?? item.stock,
                     showVariations: false, // Hide variation selector
@@ -626,10 +663,36 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         // Kept for compatibility but does nothing
     };
 
-    // Items List Handlers
-    const updateItem = (id: number, field: keyof PurchaseItem, value: number) => {
-        setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+    // Items List Handlers — in FC mode, price edits bind to foreignUnitPrice and recompute PKR
+    const updateItem = (id: number, field: keyof PurchaseItem | 'foreignUnitPrice', value: number) => {
+        setItems((prev) =>
+            prev.map((item) => {
+                if (item.id !== id) return item;
+                const inFx = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
+                if (field === 'foreignUnitPrice' || (field === 'price' && inFx)) {
+                    const foreignUnitPrice = value;
+                    return {
+                        ...item,
+                        foreignUnitPrice,
+                        price: foreignToBasePkr(foreignUnitPrice, fxRateToBase),
+                    };
+                }
+                return { ...item, [field]: value } as PurchaseItem;
+            })
+        );
     };
+
+    // When FX rate changes, recompute PKR line prices from FC inputs (do not wipe FC)
+    useEffect(() => {
+        if (!(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency))) return;
+        setItems((prev) =>
+            prev.map((item) => ({
+                ...item,
+                price: foreignToBasePkr(Number(item.foreignUnitPrice) || 0, fxRateToBase),
+            }))
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only recompute when rate/currency mode changes
+    }, [fxRateToBase, documentCurrency, multiCurrencyEnabled]);
 
     const removeItem = (id: number) => {
         setItems(prev => prev.filter(item => item.id !== id));
@@ -746,44 +809,24 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         toast.success("Expense added!");
     };
 
-    // Enhanced search with SKU numeric matching (parent products only, no variations in results)
+    // Enhanced search with shared SKU/name ranker (narrow numeric matches)
     const filteredProducts = useMemo(() => {
         if (!productSearchTerm.trim()) return products;
-        
+
         const searchTerm = productSearchTerm.trim();
-        const searchLower = searchTerm.toLowerCase();
-        const isNumericOnly = /^\d+$/.test(searchTerm);
-        
-        const results = products.filter(p => {
-            // Match product name
-            const nameMatch = p.name.toLowerCase().includes(searchLower);
-            
-            // Match SKU (full or numeric part)
-            const skuMatch = matchesSku(p.sku, searchTerm);
-            
-            // Debug for "0" search
-            if (isNumericOnly && searchTerm === '0' && skuMatch) {
-                console.log(`[FILTER DEBUG] Product: ${p.name}, SKU: ${p.sku}, nameMatch: ${nameMatch}, skuMatch: ${skuMatch}, Will include: ${nameMatch || skuMatch}`);
-            }
-            
-            return nameMatch || skuMatch;
+        let results = products.filter((p) => rankProductSearchHit(p, searchTerm) < 99);
+
+        results.sort((a, b) => {
+            const ra = rankProductSearchHit(a, searchTerm);
+            const rb = rankProductSearchHit(b, searchTerm);
+            if (ra !== rb) return ra - rb;
+            return String(a.name).localeCompare(String(b.name));
         });
-        
-        // Debug: Log results for numeric search
-        if (isNumericOnly) {
-            console.log(`[SKU SEARCH] Search: "${searchTerm}", Results: ${results.length}, Total Products: ${products.length}`);
-            if (results.length === 0) {
-                console.log(`[SKU SEARCH] No matches. Available products:`, products.map(p => ({ 
-                    name: p.name, 
-                    sku: p.sku, 
-                    numeric: extractNumericPart(p.sku),
-                    normalized: normalizeNumeric(extractNumericPart(p.sku))
-                })));
-            } else {
-                console.log(`[SKU SEARCH] Matched products:`, results.map(p => ({ name: p.name, sku: p.sku })));
-            }
+
+        results = preferExactSkuHits(results, searchTerm);
+        if (results.length > PRODUCT_SEARCH_RESULT_CAP) {
+            results = results.slice(0, PRODUCT_SEARCH_RESULT_CAP);
         }
-        
         return results;
     }, [products, productSearchTerm]);
     
@@ -810,12 +853,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             
             try {
                 setLoading(true);
-                
-                const contactsData = await contactService.getAllContacts(companyId);
-                const { map: payableMap, error: balanceErr } = await contactService.getContactBalancesSummary(
-                    companyId,
-                    branchForBalances
-                );
+
+                const branchForBalancesLocal = branchForBalances;
+                const [contactsData, balanceResult, productsData, unitsData] = await Promise.all([
+                    contactService.getAllContacts(companyId),
+                    contactService.getContactBalancesSummary(companyId, branchForBalancesLocal),
+                    productService.getProductsForPurchaseCatalog(companyId),
+                    import('@/app/services/unitService').then(({ unitService }) =>
+                        unitService.getAll(companyId),
+                    ),
+                ]);
+
+                const { map: payableMap, error: balanceErr } = balanceResult;
                 if (balanceErr && import.meta.env?.DEV) {
                     console.warn('[PURCHASE FORM] getContactBalancesSummary:', balanceErr);
                 }
@@ -832,14 +881,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         };
                     });
                 setSuppliers(supplierContacts);
-                
-                // Load products
-                const productsData = await productService.getAllProducts(companyId);
-                // Load units for decimal validation
-                const { unitService } = await import('@/app/services/unitService');
-                const unitsData = await unitService.getAll(companyId);
+
                 const unitsMap = new Map(unitsData.map(u => [u.id, u]));
-                
+
                 const productsList = productsData.map(p => {
                     const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
                     return {
@@ -849,12 +893,12 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         price: (p.cost_price ?? p.costPrice ?? p.price) || 0,
                         stock: Number(p.stock) ?? 0,
                         lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
-                        lastSupplier: undefined, // Can be enhanced later
-                        hasVariations: (p.variations && p.variations.length > 0) || false,
-                        needsPacking: false, // Can be enhanced based on product type
+                        lastSupplier: undefined,
+                        hasVariations: (p.variations && p.variations.length > 0) || Boolean(p.has_variations),
+                        needsPacking: false,
                         variations: p.variations || [],
                         unitId: p.unit_id || null,
-                        unitAllowDecimal: unit?.allow_decimal ?? false // Default to false if no unit
+                        unitAllowDecimal: unit?.allow_decimal ?? false,
                     };
                 });
                 setProducts(productsList);
@@ -933,45 +977,50 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         loadBranches();
     }, [companyId, branchId, contextBranchId]);
 
-    // Merge live stock from inventory overview (same source as Inventory page) into products for search dropdown
+    // Merge live stock from inventory overview after form is interactive (not on critical path)
     useEffect(() => {
         if (!companyId || !products.length) return;
         const branchToUse = branchId && branchId !== 'all' ? branchId : null;
         let cancelled = false;
-        (async () => {
-            try {
-                const overview = await inventoryService.getInventoryOverview(companyId, branchToUse);
-                if (cancelled || !overview?.length) return;
-                const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
-                overview.forEach((row: any) => {
-                    const key = String(row.id ?? row.productId);
-                    overviewByProductId[key] = {
-                        stock: row.stock ?? 0,
-                        hasVariations: row.hasVariations,
-                        variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
-                    };
-                });
-                setProducts(prev => prev.map(p => {
-                    const key = String(p.id);
-                    const row = overviewByProductId[key];
-                    if (!row) return p;
-                    if (row.hasVariations && row.variations?.length) {
-                        return {
-                            ...p,
-                            stock: row.stock,
-                            variations: (p.variations || []).map(v => {
-                                const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
-                                return { ...v, stock: vStock?.stock ?? (v as any).stock };
-                            }),
+        const runId = window.setTimeout(() => {
+            (async () => {
+                try {
+                    const overview = await inventoryService.getInventoryOverview(companyId, branchToUse);
+                    if (cancelled || !overview?.length) return;
+                    const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
+                    overview.forEach((row: any) => {
+                        const key = String(row.id ?? row.productId);
+                        overviewByProductId[key] = {
+                            stock: row.stock ?? 0,
+                            hasVariations: row.hasVariations,
+                            variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
                         };
-                    }
-                    return { ...p, stock: row.stock };
-                }));
-            } catch {
-                if (!cancelled) { /* keep existing product stock on error */ }
-            }
-        })();
-        return () => { cancelled = true; };
+                    });
+                    setProducts(prev => prev.map(p => {
+                        const key = String(p.id);
+                        const row = overviewByProductId[key];
+                        if (!row) return p;
+                        if (row.hasVariations && row.variations?.length) {
+                            return {
+                                ...p,
+                                stock: row.stock,
+                                variations: (p.variations || []).map(v => {
+                                    const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
+                                    return { ...v, stock: vStock?.stock ?? (v as any).stock };
+                                }),
+                            };
+                        }
+                        return { ...p, stock: row.stock };
+                    }));
+                } catch {
+                    if (!cancelled) { /* keep existing product stock on error */ }
+                }
+            })();
+        }, 0);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(runId);
+        };
     }, [companyId, branchId, products.length]);
 
     // Reload suppliers when contact drawer closes (in case a new contact was added)
@@ -1297,6 +1346,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             
             // STEP 1 FIX: Load reference number from reference field or notes field
             setRefNumber(purchaseData.reference || purchaseData.reference_no || purchaseData.notes || '');
+
+            // Import FX metadata (Phase 1) — only meaningful when multiCurrencyEnabled
+            const loadedCurrency = normalizeImportDocCurrency(
+              purchaseData.document_currency || purchaseData.documentCurrency
+            );
+            setDocumentCurrency(loadedCurrency);
+            const loadedRate = Number(purchaseData.fx_rate_to_base ?? purchaseData.fxRateToBase ?? 0);
+            setFxRateToBase(loadedRate > 0 ? loadedRate : loadedCurrency === 'PKR' ? 1 : 0);
             
             // STEP 4: Pre-fill branch if available (RULE 2 - Branch locked in edit mode)
             if (purchaseData.branch_id) {
@@ -1371,6 +1428,21 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         name: product.name || item.product_name || item.productName || '',
                         sku: product.sku || item.sku || '',
                         price: item.unit_price || item.price || 0,
+                        foreignUnitPrice: (() => {
+                            const stored = Number(item.foreign_unit_price ?? item.foreignUnitPrice);
+                            if (Number.isFinite(stored) && stored > 0) return stored;
+                            const pkr = Number(item.unit_price || item.price) || 0;
+                            const rate = Number(
+                                purchaseData.fx_rate_to_base ?? purchaseData.fxRateToBase ?? 0
+                            );
+                            const docCur = normalizeImportDocCurrency(
+                                purchaseData.document_currency || purchaseData.documentCurrency
+                            );
+                            if (isForeignImportCurrency(docCur) && rate > 0 && pkr > 0) {
+                                return basePkrToForeign(pkr, rate) ?? 0;
+                            }
+                            return undefined;
+                        })(),
                         qty: item.quantity || item.qty || 0,
                         receivedQty: item.received_quantity || item.receivedQty || item.quantity || item.qty || 0,
                         size: item.size || variationAttrs.size || variation?.size,
@@ -1526,6 +1598,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
     // Handle Save
     const handleSave = async (print: boolean = false) => {
+        if (saving || submitInProgressRef.current) return;
         // RULE 2 FIX: Branch validation - Required for Admin/Owner
         if (isAdmin && (!branchId || branchId === '' || branchId === 'all')) {
             toast.error('Please select a branch before saving purchase');
@@ -1580,14 +1653,24 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     };
 
     const proceedWithSave = async (print: boolean, openPaymentDialogAfter: boolean): Promise<string | null> => {
+        if (saving || submitInProgressRef.current) return null;
         try {
+            submitInProgressRef.current = true;
             setSaving(true);
+
+            if (multiCurrencyEnabled && isForeignImportCurrency(documentCurrency) && !(fxRateToBase > 0)) {
+                toast.error('Enter FX rate (→ PKR) before saving a foreign-currency purchase.');
+                setSaving(false);
+                submitInProgressRef.current = false;
+                return null;
+            }
             
             const selectedSupplier = suppliers.find(s => s.id.toString() === supplierId);
             const supplierName = selectedSupplier?.name || '';
             const supplierUuid = supplierId.toString();
             
             // Convert items to PurchaseItem format (packing only when Enable Packing is ON)
+            const inFxSave = multiCurrencyEnabled && isForeignImportCurrency(documentCurrency);
             const purchaseItems = items.map(item => ({
                 id: item.id.toString(),
                 productId: item.productId.toString(),
@@ -1600,6 +1683,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 discount: 0, // Can be enhanced later
                 tax: 0, // Can be enhanced later
                 total: item.price * item.qty,
+                foreignUnitPrice: inFxSave ? (Number(item.foreignUnitPrice) || 0) : null,
+                foreignLineTotal: inFxSave
+                    ? Math.round(((Number(item.foreignUnitPrice) || 0) * item.qty) * 100) / 100
+                    : null,
                 size: item.size,
                 color: item.color,
                 ...(enablePacking ? {
@@ -1612,6 +1699,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 } : { packing_details: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
             }));
             
+            const foreignSubtotalSave = inFxSave
+                ? Math.round(
+                    items.reduce(
+                      (sum, item) => sum + (Number(item.foreignUnitPrice) || 0) * item.qty,
+                      0
+                    ) * 100
+                  ) / 100
+                : null;
             // CRITICAL FIX: Branch validation (MANDATORY)
             // Admin must select branch, normal user uses auto-selected branch
             const finalBranchId = isAdmin 
@@ -1650,7 +1745,27 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 due: dueToUse,
                 paymentStatus: paymentStatusToUse as 'paid' | 'partial' | 'unpaid',
                 paymentMethod: partialPayments.length > 0 ? partialPayments[0].method : 'cash',
-                notes: refNumber || undefined
+                notes: refNumber || undefined,
+                ...(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency)
+                  ? {
+                      documentCurrency,
+                      fxRateToBase: fxRateToBase > 0 ? fxRateToBase : null,
+                      foreignSubtotal: foreignSubtotalSave,
+                      foreignTotal: foreignSubtotalSave,
+                    }
+                  : multiCurrencyEnabled
+                    ? {
+                        documentCurrency: 'PKR',
+                        fxRateToBase: null,
+                        foreignSubtotal: null,
+                        foreignTotal: null,
+                      }
+                    : {
+                        documentCurrency: null,
+                        fxRateToBase: null,
+                        foreignSubtotal: null,
+                        foreignTotal: null,
+                      }),
             };
             
             // STEP 5: Handle edit vs create mode
@@ -1677,6 +1792,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         items: purchaseItems,
                         expenses: extraExpenses,
                         discount: discountAmount,
+                        ...(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency)
+                          ? {
+                              documentCurrency,
+                              fxRateToBase: fxRateToBase > 0 ? fxRateToBase : null,
+                              foreignSubtotal: foreignSubtotalSave,
+                              foreignTotal: foreignSubtotalSave,
+                            }
+                          : {
+                              documentCurrency: multiCurrencyEnabled ? 'PKR' : null,
+                              fxRateToBase: null,
+                              foreignSubtotal: null,
+                              foreignTotal: null,
+                            }),
                     });
                     if (purchaseAttachmentFiles.length > 0 && companyId) {
                         try {
@@ -1708,7 +1836,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             toast.error('Final PO created but some payments failed: ' + (paymentError.message || ''));
                         }
                     }
-                    await refreshPurchases();
+                    // List refresh via updatePurchase → emitPurchaseInvalidation (avoid double load)
                     window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId } }));
                     toast.success(`Purchase finalized as ${nextPo} (same row).`);
                     if (openPaymentDialogAfter) {
@@ -1734,6 +1862,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     // Line-level extra expenses: so purchase_charges are replaced on edit
                     expenses: extraExpenses,
                     discount: discountAmount,
+                    ...(multiCurrencyEnabled && isForeignImportCurrency(documentCurrency)
+                      ? {
+                          documentCurrency,
+                          fxRateToBase: fxRateToBase > 0 ? fxRateToBase : null,
+                          foreignSubtotal: foreignSubtotalSave,
+                          foreignTotal: foreignSubtotalSave,
+                        }
+                      : {
+                          documentCurrency: multiCurrencyEnabled ? 'PKR' : null,
+                          fxRateToBase: null,
+                          foreignSubtotal: null,
+                          foreignTotal: null,
+                        }),
                 });
                 if (purchaseAttachmentFiles.length > 0 && companyId) {
                     try {
@@ -1774,24 +1915,32 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             } else {
                 // CREATE MODE: Create new purchase
                 const newPurchase = await createPurchase(purchaseData);
+                toast.success('Purchase order created successfully!');
+                console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (CREATE MODE), purchaseId:', newPurchase?.id);
+                window.dispatchEvent(new CustomEvent('purchaseSaved', { 
+                    detail: { purchaseId: newPurchase?.id } 
+                }));
                 if (newPurchase?.id && purchaseAttachmentFiles.length > 0 && companyId) {
-                    try {
-                        const uploaded = await uploadPurchaseAttachments(companyId, newPurchase.id, purchaseAttachmentFiles);
-                        if (uploaded.length > 0) {
-                            await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
-                            if (uploaded.length < purchaseAttachmentFiles.length) {
-                                toast.warning(`Purchase saved. ${uploaded.length}/${purchaseAttachmentFiles.length} attachments uploaded.`);
+                    const filesToUpload = purchaseAttachmentFiles;
+                    void uploadPurchaseAttachments(companyId, newPurchase.id, filesToUpload)
+                        .then(async (uploaded) => {
+                            if (uploaded.length > 0) {
+                                await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                                if (uploaded.length < filesToUpload.length) {
+                                    toast.warning(`Purchase saved. ${uploaded.length}/${filesToUpload.length} attachments uploaded.`);
+                                } else {
+                                    toast.success(`Purchase saved with ${uploaded.length} attachment(s).`);
+                                }
                             } else {
-                                toast.success(`Purchase saved with ${uploaded.length} attachment(s).`);
+                                toast.warning('Purchase saved but attachments could not be uploaded. Check if storage bucket exists.');
                             }
-                        } else {
-                            toast.warning('Purchase saved but attachments could not be uploaded. Check if storage bucket exists.');
-                        }
-                        setPurchaseAttachmentFiles([]);
-                    } catch (e: any) {
-                        console.error('[PURCHASE FORM] Attachment upload failed:', e);
-                        toast.error(`Purchase saved but attachments failed: ${e?.message || 'Unknown error'}`);
-                    }
+                            setPurchaseAttachmentFiles([]);
+                        })
+                        .catch((e: unknown) => {
+                            const msg = e instanceof Error ? e.message : String(e);
+                            console.error('[PURCHASE FORM] Attachment upload failed:', e);
+                            toast.error(`Purchase saved but attachments failed: ${msg || 'Unknown error'}`);
+                        });
                 }
                 // Save payments only when NOT opening payment dialog (user already added in form or chose Credit)
                 if (!openPaymentDialogAfter && partialPayments.length > 0 && newPurchase?.id && companyId) {
@@ -1817,13 +1966,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         toast.error('Purchase created but failed to save payments: ' + (paymentError.message || 'Unknown error'));
                     }
                 }
-                
-                toast.success('Purchase order created successfully!');
-                
-                console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (CREATE MODE), purchaseId:', newPurchase?.id);
-                window.dispatchEvent(new CustomEvent('purchaseSaved', { 
-                    detail: { purchaseId: newPurchase?.id } 
-                }));
                 if (openPaymentDialogAfter && newPurchase?.id) {
                     setSavedPurchaseIdForPayment(newPurchase.id);
                     setUnifiedPaymentDialogOpen(true);
@@ -1838,6 +1980,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             toast.error(`Failed to save purchase: ${error.message || 'Unknown error'}`);
             return null;
         } finally {
+            submitInProgressRef.current = false;
             setSaving(false);
         }
     };
@@ -1883,27 +2026,27 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Show loader while loading data
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-screen bg-[#111827]">
+            <div className="flex items-center justify-center h-screen bg-background">
                 <Loader2 size={48} className="text-blue-500 animate-spin" />
             </div>
         );
     }
     
     return (
-        <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
+        <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
             {/* ============ LAYER 1: FIXED HEADER (Same as Purchase Header Test / Sale) ============ */}
-            <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
+            <div className="shrink-0 bg-popover border-b border-border z-20">
                 {/* Top Bar – PO # left, Status + Branch right */}
-                <div className="h-12 flex items-center justify-between px-6 border-b border-gray-800/50">
+                <div className="h-12 flex items-center justify-between px-6 border-b border-border/50">
                     <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white h-8 w-8">
+                        <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground h-8 w-8">
                             <X size={18} />
                         </Button>
                         <div>
-                            <h2 className="text-sm font-bold text-white">New Purchase Order</h2>
-                            <p className="text-[10px] text-gray-500">Standard Entry</p>
+                            <h2 className="text-sm font-bold text-foreground">New Purchase Order</h2>
+                            <p className="text-[10px] text-muted-foreground">Standard Entry</p>
                         </div>
-                        <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
+                        <div className="flex items-center gap-2 ml-4 pl-4 border-l border-border">
                             <Hash size={14} className="text-cyan-500" />
                             <span className="text-sm font-mono text-cyan-400">
                                 {displayPurchaseNumber || 'PO-0001'}
@@ -1925,7 +2068,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     {purchaseStatus.charAt(0).toUpperCase() + purchaseStatus.slice(1)}
                                 </button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
+                            <PopoverContent className="w-48 bg-popover border-border text-foreground p-2" align="start">
                                 <Command className="bg-transparent border-0">
                                     <CommandList>
                                         <CommandGroup>
@@ -1935,7 +2078,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                     onSelect={() => { setPurchaseStatus(s); setStatusOpen(false); }}
                                                     className={cn(
                                                         'cursor-pointer px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
-                                                        purchaseStatus === s ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                                        purchaseStatus === s ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                                                     )}
                                                 >
                                                     <span
@@ -1964,7 +2107,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 disabled={isEditMode} // STEP 4: Lock branch in edit mode
                             />
                         ) : (
-                            <div className="px-3 py-1.5 rounded-lg bg-gray-800/50 border border-gray-700 text-xs text-gray-400">
+                            <div className="px-3 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-muted-foreground">
                                 Branch: {branches.find(b => b.id === branchId)?.name || 'Auto-selected'}
                             </div>
                         )}
@@ -1972,9 +2115,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 </div>
 
                 {/* Form Row – Supplier, Date, Ref # only (no Invoice #, Status in top bar) */}
-                <div className="px-6 py-4 bg-[#0F1419]">
+                <div className="px-6 py-4 bg-secondary">
                     <div className="invoice-container mx-auto w-full max-w-[1151px]">
-                        <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3 min-h-[85px] w-full">
+                        <div className="bg-muted/30 border border-border/50 rounded-lg p-3 min-h-[85px] w-full">
                             <div className="flex items-end gap-3 w-full flex-wrap">
                                 <div className="flex flex-col flex-1 min-w-0 min-w-[200px]">
                                     <div className="flex items-center justify-between mb-1.5">
@@ -1992,7 +2135,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         options={suppliers.map(s => ({ id: s.id.toString(), name: s.name, dueBalance: s.dueBalance }))}
                                         placeholder="Select Supplier"
                                         searchPlaceholder="Search supplier..."
-                                        icon={<User size={14} className="text-gray-400 shrink-0" />}
+                                        icon={<User size={14} className="text-muted-foreground shrink-0" />}
                                         enableAddNew={true}
                                         addNewLabel="Add New Supplier"
                                         onAddNew={(searchText) => {
@@ -2006,9 +2149,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                 <span className="flex-1 font-medium">{option.name}</span>
                                                 <span className={cn(
                                                     "text-xs font-semibold tabular-nums ml-2",
-                                                    option.dueBalance < 0 && "text-green-400",
+                                                    option.dueBalance < 0 && "text-[var(--erp-money-positive)]",
                                                     option.dueBalance > 0 && "text-red-400",
-                                                    option.dueBalance === 0 && "text-gray-500"
+                                                    option.dueBalance === 0 && "text-muted-foreground"
                                                 )}>
                                                     {formatDueBalanceCompact(option.dueBalance)}
                                                 </span>
@@ -2017,29 +2160,108 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     />
                                 </div>
                                 <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
-                                    <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start">
-                                        <CalendarDatePicker
-                                            value={purchaseDate}
-                                            onChange={(date) => setPurchaseDate(date || new Date())}
-                                            showTime={true}
+                                    <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
+                                    <div className="[&>div>button]:bg-muted/30 [&>div>button]:border-border [&>div>button]:text-foreground [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-accent [&>div>button]:w-full [&>div>button]:justify-start">
+                                        <DateTimePicker
+                                            value={dateToDateTimePickerValue(purchaseDate)}
+                                            onChange={(v) => setPurchaseDate(dateTimePickerValueToDate(v) || new Date())}
                                             required
                                         />
                                     </div>
                                 </div>
                                 <div className="flex flex-col absolute left-[987px] w-[132px]">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref #</Label>
+                                    <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref #</Label>
                                     <div className="relative">
-                                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                                         <Input 
                                             value={refNumber}
                                             onChange={(e) => setRefNumber(e.target.value)}
-                                            className="pl-9 bg-gray-950 border-gray-700 h-10 text-sm"
+                                            className="pl-9 bg-input-background border-border h-10 text-sm"
                                             placeholder="Optional"
                                         />
                                     </div>
                                 </div>
                             </div>
+                            {multiCurrencyEnabled && (
+                                <div className="mt-3 pt-3 border-t border-border/50 flex flex-wrap items-end gap-3">
+                                    <div className="flex flex-col min-w-[120px]">
+                                        <Label className="text-muted-foreground font-medium text-[10px] uppercase tracking-wide mb-1">
+                                            Doc currency
+                                        </Label>
+                                        <Select
+                                            value={documentCurrency}
+                                            onValueChange={(v) => {
+                                                const next = normalizeImportDocCurrency(v);
+                                                const prev = documentCurrency;
+                                                setDocumentCurrency(next);
+                                                if (next === 'PKR') {
+                                                    setFxRateToBase(1);
+                                                    setItems((rows) =>
+                                                        rows.map((row) => ({
+                                                            ...row,
+                                                            foreignUnitPrice: undefined,
+                                                        }))
+                                                    );
+                                                } else {
+                                                    if (!(fxRateToBase > 1) && prev === 'PKR') {
+                                                        setFxRateToBase(0);
+                                                    }
+                                                    setItems((rows) =>
+                                                        rows.map((row) => {
+                                                            const rate = fxRateToBase > 0 ? fxRateToBase : 0;
+                                                            const fc =
+                                                                rate > 0
+                                                                    ? (basePkrToForeign(row.price, rate) ?? 0)
+                                                                    : Number(row.foreignUnitPrice) || 0;
+                                                            return {
+                                                                ...row,
+                                                                foreignUnitPrice: fc,
+                                                                price:
+                                                                    rate > 0
+                                                                        ? foreignToBasePkr(fc, rate)
+                                                                        : row.price,
+                                                            };
+                                                        })
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger className="h-9 bg-input-background border-border text-foreground text-sm">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-popover border-border text-foreground">
+                                                <SelectItem value="PKR">PKR</SelectItem>
+                                                {activeCurrencies.map((c) => (
+                                                    <SelectItem key={c.code} value={c.code}>
+                                                        {c.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    {isForeignImportCurrency(documentCurrency) && (
+                                        <>
+                                            <div className="flex flex-col w-[110px]">
+                                                <Label className="text-muted-foreground font-medium text-[10px] uppercase tracking-wide mb-1">
+                                                    Rate → PKR
+                                                </Label>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    step="0.01"
+                                                    className="h-9 bg-input-background border-border text-sm text-right"
+                                                    value={fxRateToBase > 0 ? fxRateToBase : ''}
+                                                    placeholder="e.g. 42.8"
+                                                    onChange={(e) => setFxRateToBase(parseFloat(e.target.value) || 0)}
+                                                />
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground max-w-[320px] pb-1">
+                                                Grid prices are in {currencyLabel}. Books / GL use PKR (price × rate).
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -2109,6 +2331,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 itemPriceRefs={itemPriceRefs}
                                 handleQtyKeyDown={handleQtyKeyDown}
                                 handlePriceKeyDown={handlePriceKeyDown}
+                                fxMode={fxMode}
+                                currencyLabel={currencyLabel}
+                                fxRateToBase={fxRateToBase}
                             />
                             </div>
                         </div>
@@ -2116,16 +2341,16 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         {/* RIGHT PANEL - Extra Expenses first, then Summary (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-y-auto space-y-3 pb-3">
                             {/* Extra Expenses Card – above Summary */}
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0">
-                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Extra Expenses</h3>
+                            <div className="bg-card border border-border rounded-lg p-4 space-y-3 shrink-0">
+                                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Extra Expenses</h3>
                                 
                                 {/* Add Expense Form */}
                                 <div className="grid grid-cols-3 gap-2">
                                     <Select value={newExpenseType} onValueChange={(v: any) => setNewExpenseType(v)}>
-                                        <SelectTrigger className="h-9 bg-gray-950 border-gray-700 text-white text-xs">
+                                        <SelectTrigger className="h-9 bg-input-background border-border text-foreground text-xs">
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                                        <SelectContent className="bg-input-background border-border text-foreground">
                                             <SelectItem value="freight">Freight</SelectItem>
                                             <SelectItem value="loading">Loading</SelectItem>
                                             <SelectItem value="unloading">Unloading</SelectItem>
@@ -2138,12 +2363,12 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         placeholder="Amount"
                                         value={newExpenseAmount > 0 ? newExpenseAmount : ''}
                                         onChange={(e) => setNewExpenseAmount(parseFloat(e.target.value) || 0)}
-                                        className="h-9 bg-gray-950 border-gray-700 text-white text-xs"
+                                        className="h-9 bg-input-background border-border text-foreground text-xs"
                                     />
                                     <Button
                                         onClick={handleAddExpense}
                                         size="sm"
-                                        className="h-9 bg-purple-600 hover:bg-purple-500 text-white text-xs"
+                                        className="h-9 bg-purple-600 hover:bg-purple-500 text-foreground text-xs"
                                     >
                                         <Plus size={14} className="mr-1" /> Add
                                     </Button>
@@ -2153,10 +2378,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 {extraExpenses.length > 0 && (
                                     <div className="space-y-2 max-h-32 overflow-y-auto">
                                         {extraExpenses.map((exp) => (
-                                            <div key={exp.id} className="flex items-center justify-between bg-gray-950 rounded p-2 text-sm">
+                                            <div key={exp.id} className="flex items-center justify-between bg-input-background rounded p-2 text-sm">
                                                 <span className="text-purple-400 capitalize">{exp.type}</span>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-white font-medium text-sm">{exp.amount.toLocaleString()}</span>
+                                                    <span className="text-foreground font-medium text-sm">{exp.amount.toLocaleString()}</span>
                                                     <button
                                                         onClick={() => setExtraExpenses(extraExpenses.filter(e => e.id !== exp.id))}
                                                         className="text-red-400 hover:text-red-300"
@@ -2171,26 +2396,38 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             </div>
 
                             {/* Summary Card */}
-                            <div className="bg-gradient-to-br from-gray-900/80 to-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
-                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Purchase Summary</h3>
+                            <div className="bg-gradient-to-br from-muted/60 to-muted/40 border border-border rounded-lg p-4 shrink-0">
+                                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Purchase Summary</h3>
                                 <div className="space-y-2">
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-gray-400">Items Subtotal</span>
-                                        <span className="text-white font-medium">{subtotal.toLocaleString()}</span>
+                                        <span className="text-muted-foreground">
+                                          Items Subtotal{fxMode ? ` (${currencyLabel})` : ''}
+                                        </span>
+                                        <span className="text-foreground font-medium">
+                                          {fxMode && foreignSubtotal != null
+                                            ? foreignSubtotal.toLocaleString()
+                                            : subtotal.toLocaleString()}
+                                        </span>
                                     </div>
+                                    {fxMode && (
+                                        <div className="flex justify-between text-xs text-muted-foreground">
+                                            <span>≈ PKR @ {fxRateToBase || '—'}</span>
+                                            <span className="tabular-nums">{subtotal.toLocaleString()}</span>
+                                        </div>
+                                    )}
                                     
                                     {/* Discount - Inline Input */}
                                     <div className="flex items-center justify-between gap-2 py-1">
                                         <div className="flex items-center gap-1.5">
                                             <Percent size={14} className="text-red-400" />
-                                            <span className="text-sm text-gray-400">Discount</span>
+                                            <span className="text-sm text-muted-foreground">Discount</span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                                                <SelectTrigger className="w-14 h-8 bg-gray-950 border-gray-700 text-white text-sm px-2">
+                                                <SelectTrigger className="w-14 h-8 bg-input-background border-border text-foreground text-sm px-2">
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
+                                                <SelectContent className="bg-input-background border-border text-foreground min-w-[60px]">
                                                     <SelectItem value="percentage">%</SelectItem>
                                                     <SelectItem value="fixed">$</SelectItem>
                                                 </SelectContent>
@@ -2198,7 +2435,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                             <Input 
                                                 type="number"
                                                 placeholder="0"
-                                                className="w-20 h-8 bg-gray-950 border-gray-700 text-white text-sm text-right px-2"
+                                                className="w-20 h-8 bg-input-background border-border text-foreground text-sm text-right px-2"
                                                 value={discountValue > 0 ? discountValue : ''}
                                                 onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                                             />
@@ -2221,20 +2458,20 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     {partialPayments.length > 0 && (
                                         <>
                                             <div className="pt-1">
-                                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
                                                     <Wallet size={14} />
                                                     Payment history {partialPayments.length > 0 && `(${partialPayments.length})`}
                                                 </h4>
                                                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
                                                     {partialPayments.map((p) => (
-                                                        <div key={p.id} className="flex items-center justify-between gap-2 bg-gray-950/80 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                        <div key={p.id} className="flex items-center justify-between gap-2 bg-input-background/80 rounded-md px-2.5 py-2 border border-border/50">
                                                             <div className="flex items-center gap-2 min-w-0 flex-1">
                                                                 {p.method === 'cash' && <Banknote size={14} className="text-green-500 shrink-0" />}
                                                                 {p.method === 'bank' && <CreditCard size={14} className="text-blue-500 shrink-0" />}
                                                                 {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-amber-500 shrink-0" />}
-                                                                <span className="text-sm text-white capitalize truncate">{p.method}</span>
+                                                                <span className="text-sm text-foreground capitalize truncate">{p.method}</span>
                                                                 {(p.reference || p.notes || (p.attachments?.length ?? 0) > 0) && (
-                                                                    <span className="text-xs text-gray-500 truncate">
+                                                                    <span className="text-xs text-muted-foreground truncate">
                                                                         {p.reference && `Ref: ${p.reference}`}
                                                                         {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
                                                                         {p.notes && `Note: ${p.notes}`}
@@ -2243,7 +2480,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <span className="text-sm font-semibold text-green-400 shrink-0 tabular-nums">{Number(p.amount).toLocaleString()}</span>
+                                                            <span className="text-sm font-semibold text-[var(--erp-money-positive)] shrink-0 tabular-nums">{Number(p.amount).toLocaleString()}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -2251,22 +2488,57 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         </>
                                     )}
                                     
-                                    <Separator className="bg-gray-800" />
+                                    <Separator className="bg-muted" />
                                     
-                                    <div className="flex justify-between items-center pt-1">
-                                        <span className="text-gray-400">Grand Total</span>
-                                        <span className="text-xl font-semibold text-white">${totalAmount.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center pt-1">
-                                        <span className="text-sm font-semibold text-white">Due balance</span>
-                                        <span className="text-xl font-semibold text-orange-500">${Math.max(0, balanceDue).toLocaleString()}</span>
-                                    </div>
+                                    {fxMode && foreignGrandDisplay != null ? (
+                                        <>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-muted-foreground">
+                                                    Grand Total ({currencyLabel})
+                                                </span>
+                                                <span className="text-xl font-semibold text-foreground tabular-nums">
+                                                    {foreignGrandDisplay.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-muted-foreground -mt-1">
+                                                <span>≈ PKR</span>
+                                                <span className="tabular-nums">{totalAmount.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-sm font-semibold text-foreground">
+                                                    Due balance ({currencyLabel})
+                                                </span>
+                                                <span className="text-xl font-semibold text-orange-500 tabular-nums">
+                                                    {(foreignDueDisplay ?? 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-muted-foreground -mt-1">
+                                                <span>≈ PKR</span>
+                                                <span className="tabular-nums">{Math.max(0, balanceDue).toLocaleString()}</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-muted-foreground">Grand Total</span>
+                                                <span className="text-xl font-semibold text-foreground">
+                                                    ${totalAmount.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-1">
+                                                <span className="text-sm font-semibold text-foreground">Due balance</span>
+                                                <span className="text-xl font-semibold text-orange-500">
+                                                    ${Math.max(0, balanceDue).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
                             {/* Attachments Card – upload purchase bill / docs; saved with payment when you Pay Now */}
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0">
-                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                            <div className="bg-card border border-border rounded-lg p-4 space-y-3 shrink-0">
+                                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                                     <Paperclip size={14} />
                                     Attachments
                                 </h3>
@@ -2298,13 +2570,31 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 />
                                 <label className="block cursor-pointer">
                                     <div
-                                        className="border-2 border-dashed border-gray-700 rounded-lg p-3 hover:border-blue-500/50 hover:bg-gray-800/30 transition-all text-center"
+                                        tabIndex={0}
+                                        className="border-2 border-dashed border-border rounded-lg p-3 hover:border-blue-500/50 hover:bg-accent/30 transition-all text-center outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                                         onClick={() => purchaseAttachmentInputRef.current?.click()}
-                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-gray-800/30'); }}
-                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30'); }}
+                                        onPaste={(e) => {
+                                            handleAttachmentPaste(e, (pasted) => {
+                                                void (async () => {
+                                                    setIsProcessingPurchaseAttachments(true);
+                                                    try {
+                                                        const valid = pasted.filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf' || !f.type);
+                                                        const { files: processed, compressionMessages, skippedMessages } =
+                                                            await prepareAttachmentFilesForUpload(valid, ATTACHMENT_MAX_BYTES);
+                                                        skippedMessages.forEach((msg) => toast.error(msg));
+                                                        compressionMessages.forEach((msg) => toast.success(msg));
+                                                        if (processed.length) setPurchaseAttachmentFiles((prev) => [...prev, ...processed]);
+                                                    } finally {
+                                                        setIsProcessingPurchaseAttachments(false);
+                                                    }
+                                                })();
+                                            }, { maxBytes: ATTACHMENT_MAX_BYTES });
+                                        }}
+                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-accent/30'); }}
+                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-accent/30'); }}
                                         onDrop={(e) => {
                                             e.preventDefault();
-                                            e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30');
+                                            e.currentTarget.classList.remove('border-blue-500/50', 'bg-accent/30');
                                             void (async () => {
                                                 const files = e.dataTransfer.files;
                                                 if (!files?.length) return;
@@ -2322,17 +2612,17 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                             })();
                                         }}
                                     >
-                                        <Upload className="mx-auto mb-1 text-gray-500" size={20} />
-                                        <p className="text-xs text-gray-400">{isProcessingPurchaseAttachments ? 'Compressing…' : 'Click or drop files (images, PDF)'}</p>
-                                        <p className="text-[10px] text-gray-500 mt-0.5">Saved with purchase when you save</p>
+                                        <Upload className="mx-auto mb-1 text-muted-foreground" size={20} />
+                                        <p className="text-xs text-muted-foreground">{isProcessingPurchaseAttachments ? 'Compressing…' : 'Click, drop, or paste (Ctrl+V) — images, PDF'}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">Saved with purchase when you save</p>
                                     </div>
                                 </label>
                                 {purchaseAttachmentFiles.length > 0 && (
                                     <div className="space-y-1.5 max-h-28 overflow-y-auto">
                                         {purchaseAttachmentFiles.map((file, idx) => (
-                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-2 border border-gray-800/50">
-                                                <FileText size={14} className="text-gray-500 shrink-0" />
-                                                <span className="text-sm text-gray-300 truncate flex-1 min-w-0">{file.name}</span>
+                                            <div key={idx} className="flex items-center justify-between gap-2 bg-input-background rounded-md px-2.5 py-2 border border-border/50">
+                                                <FileText size={14} className="text-muted-foreground shrink-0" />
+                                                <span className="text-sm text-muted-foreground truncate flex-1 min-w-0">{file.name}</span>
                                                 <button
                                                     type="button"
                                                     onClick={() => setPurchaseAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
@@ -2356,13 +2646,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     return (
                                         <>
                                             {hasPurchaseSaved && (
-                                                <div className="space-y-1.5 pt-1 border-t border-gray-800">
-                                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Saved with purchase</p>
+                                                <div className="space-y-1.5 pt-1 border-t border-border">
+                                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Saved with purchase</p>
                                                     <div className="space-y-1.5 max-h-24 overflow-y-auto">
                                                         {purchaseSaved.map((att: { url: string; name?: string }, idx: number) => (
-                                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
-                                                                <FileText size={12} className="text-gray-500 shrink-0" />
-                                                                <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                            <div key={idx} className="flex items-center justify-between gap-2 bg-input-background rounded-md px-2.5 py-1.5 border border-border/50">
+                                                                <FileText size={12} className="text-muted-foreground shrink-0" />
+                                                                <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
                                                                 <Button
                                                                     type="button"
                                                                     variant="ghost"
@@ -2382,13 +2672,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                 </div>
                                             )}
                                             {fromPayments.length > 0 && (
-                                                <div className="space-y-1.5 pt-1 border-t border-gray-800">
-                                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">From payments</p>
+                                                <div className="space-y-1.5 pt-1 border-t border-border">
+                                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">From payments</p>
                                                     <div className="space-y-1.5 max-h-24 overflow-y-auto">
                                                         {fromPayments.map((att, idx) => (
-                                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
-                                                                <FileText size={12} className="text-gray-500 shrink-0" />
-                                                                <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                            <div key={idx} className="flex items-center justify-between gap-2 bg-input-background rounded-md px-2.5 py-1.5 border border-border/50">
+                                                                <FileText size={12} className="text-muted-foreground shrink-0" />
+                                                                <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
                                                                 <Button
                                                                     type="button"
                                                                     variant="ghost"
@@ -2411,7 +2701,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     );
                                 })()}
                                 {purchaseAttachmentFiles.length === 0 && partialPayments.flatMap((p) => p.attachments || []).length === 0 && !(Array.isArray((loadedPurchaseData as any)?.attachments) && (loadedPurchaseData as any).attachments.length > 0) && (
-                                    <p className="text-xs text-gray-500">No files yet. Add above; they’ll be saved with the purchase when you save.</p>
+                                    <p className="text-xs text-muted-foreground">No files yet. Add above; they’ll be saved with the purchase when you save.</p>
                                 )}
                             </div>
 
@@ -2422,13 +2712,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
             {/* ============ PAYMENT CHOICE DIALOG (like Sale – Pay Now / Credit) ============ */}
             <AlertDialog open={paymentChoiceDialogOpen} onOpenChange={setPaymentChoiceDialogOpen}>
-                <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+                <AlertDialogContent className="bg-popover border-border text-foreground max-w-md">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-xl font-bold flex items-center gap-2">
                             <DollarSign size={20} className="text-blue-400" />
                             Payment Option
                         </AlertDialogTitle>
-                        <AlertDialogDescription className="text-gray-400 pt-2">
+                        <AlertDialogDescription className="text-muted-foreground pt-2">
                             Is purchase ki payment ab record karein ya credit par chhorein?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -2457,7 +2747,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 }
                                 setPendingSaveAction(null);
                             }}
-                            className="w-full h-14 bg-gray-700 hover:bg-gray-600 text-white text-base font-semibold flex items-center justify-center gap-2"
+                            className="w-full h-14 bg-muted hover:bg-gray-600 text-foreground text-base font-semibold flex items-center justify-center gap-2"
                         >
                             <CreditCard size={20} />
                             Credit (Save without payment)
@@ -2466,7 +2756,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     <AlertDialogFooter>
                         <AlertDialogCancel
                             onClick={() => setPendingSaveAction(null)}
-                            className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+                            className="bg-muted hover:bg-accent text-foreground border-border"
                         >
                             Cancel
                         </AlertDialogCancel>
@@ -2501,10 +2791,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             />
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
-            <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">
+            <div className="shrink-0 bg-popover border-t border-border">
                 {/* Status Summary Row */}
-                <div className="h-12 flex items-center justify-between px-6 border-b border-gray-800/50">
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                <div className="h-12 flex items-center justify-between px-6 border-b border-border/50">
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         {/* Items Count */}
                         <span>{items.length} Items</span>
                         <span className="w-1 h-1 rounded-full bg-gray-600" />
@@ -2542,7 +2832,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             <Button 
                                 type="button"
                                 variant="outline"
-                                className="h-10 bg-transparent border border-gray-700 hover:border-gray-600 hover:bg-gray-800 text-white text-sm font-semibold"
+                                className="h-10 bg-transparent border border-border hover:border-gray-600 hover:bg-accent text-foreground text-sm font-semibold"
                                 onClick={() => handleSave(false)}
                                 disabled={saving}
                             >
@@ -2551,7 +2841,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             </Button>
                             <Button 
                                 type="button"
-                                className="h-10 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-900/20"
+                                className="h-10 bg-orange-600 hover:bg-orange-500 text-foreground text-sm font-bold shadow-lg shadow-orange-900/20"
                                 onClick={() => handleSave(true)}
                                 disabled={saving}
                             >

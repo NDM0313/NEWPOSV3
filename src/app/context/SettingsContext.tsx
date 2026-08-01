@@ -6,7 +6,6 @@ import { branchService } from '@/app/services/branchService';
 import { permissionService } from '@/app/services/permissionService';
 import type { EngineRole } from '@/app/services/permissionService';
 import { permissionEngine } from '@/app/services/permissionEngine';
-import { accountService } from '@/app/services/accountService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { isDebugErpEnabled } from '@/app/lib/debugErp';
@@ -18,7 +17,9 @@ import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app
 import {
   mapAppRoleToEngineRole,
   mapAppRoleToUiRole,
+  isPlatformOperatorAppRole,
 } from '@/app/config/functionalRoles';
+import { FISCAL_YEAR_CONFIG_UPDATED_EVENT } from '@/app/utils/financialYear';
 
 export type { ModuleToggles };
 
@@ -198,6 +199,8 @@ export interface AccountingSettings {
   manualJournalEnabled: boolean;
   defaultCurrency: string;
   multiCurrencyEnabled: boolean;
+  /** Foreign currencies for import FX document dropdown (PKR always available separately). */
+  activeCurrencies: { code: string; label: string }[];
   taxCalculationMethod: 'Inclusive' | 'Exclusive';
   defaultTaxRate: number;
 }
@@ -310,7 +313,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateBusinessSettings: noop,
     rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
     updateRentalSettings: noop,
-    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
+    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, activeCurrencies: [{ code: 'CNY', label: 'RMB (CNY)' }, { code: 'USD', label: 'US Dollar' }], taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
     updateAccountingSettings: noop,
     defaultAccounts: { paymentMethods: [] },
     updateDefaultAccounts: noop,
@@ -344,7 +347,7 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, user, userRole, homeCompanyId } = useSupabase();
   const [loading, setLoading] = useState<boolean>(true);
 
   // Company Settings
@@ -437,6 +440,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     manualJournalEnabled: false,
     defaultCurrency: 'PKR',
     multiCurrencyEnabled: false,
+    activeCurrencies: [
+      { code: 'CNY', label: 'RMB (CNY)' },
+      { code: 'USD', label: 'US Dollar' },
+    ],
     taxCalculationMethod: 'Inclusive',
     defaultTaxRate: 0,
   });
@@ -541,41 +548,38 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       console.time('loadAllSettings');
 
       const branchFilterId = branchId === 'all' ? null : branchId || null;
+
+      // Tier A — shell critical (company, modules, flags, role/perms gate)
+      // Platform ops: users.company_id stays HOME while React companyId is the switched tenant.
+      // Never filter the profile role lookup by effective companyId or permissions stay Staff/empty.
+      const profileCompanyIdForRole =
+        isPlatformOperatorAppRole(userRole) && homeCompanyId
+          ? homeCompanyId
+          : companyId;
       const [
         { data: companyData },
         branchesData,
-        accountsList,
-        allSettings,
-        enablePacking,
-        businessSettingsData,
-        erpSequences,
-        sequences,
         moduleConfigs,
         flags,
         userData,
       ] = await Promise.all([
         supabase.from('companies').select('*').eq('id', companyId).single(),
         branchService.getAllBranches(companyId),
-        accountService.getAllAccounts(companyId),
-        settingsService.getAllSettings(companyId),
-        settingsService.getEnablePacking(companyId),
-        businessSettingsService.getBusinessSettings(companyId).catch(() => ({
-          enableBespokeOrders: false,
-          bespokeFormConfig: { ...DEFAULT_BESPOKE_FORM_CONFIG },
-          customGenericProductIds: [],
-        })),
-        settingsService.getErpDocumentSequences(companyId, branchFilterId).catch(() => [] as any[]),
-        settingsService.getAllDocumentSequences(companyId, branchFilterId ?? undefined),
         settingsService.getAllModuleConfigs(companyId),
         featureFlagsService.getAll(companyId).catch(() => ({} as Record<string, boolean>)),
         user?.id && companyId
-          ? supabase
-              .from('users')
-              .select('role')
-              .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
-              .eq('company_id', companyId)
-              .maybeSingle()
-              .then(r => r.data)
+          ? (() => {
+              let q = supabase
+                .from('users')
+                .select('role')
+                .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+                .limit(1);
+              // Prefer home company row for platform ops; otherwise match active company if present.
+              if (profileCompanyIdForRole) {
+                q = q.eq('company_id', profileCompanyIdForRole);
+              }
+              return q.maybeSingle().then((r) => r.data);
+            })()
           : Promise.resolve(null),
       ]);
 
@@ -596,6 +600,172 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           businessType: c.business_type || undefined,
         });
       }
+
+      // Early branches (names filled in Tier B) so header selector works immediately
+      setBranches(
+        (branchesData || []).map((b: any) => ({
+          id: b.id,
+          branchCode: b.code || '',
+          branchName: b.name || '',
+          address: b.address || '',
+          phone: b.phone || '',
+          city: b.city || '',
+          state: b.state || '',
+          fiscalYearStart: b.fiscal_year_start ? String(b.fiscal_year_start).split('T')[0] : '',
+          fiscalYearEnd: b.fiscal_year_end ? String(b.fiscal_year_end).split('T')[0] : '',
+          isActive: b.is_active !== false,
+          isDefault: !!b.is_default,
+          cashAccount: '',
+          bankAccount: '',
+          posCashDrawer: '',
+          cashAccountId: b.default_cash_account_id || undefined,
+          bankAccountId: b.default_bank_account_id || undefined,
+          posCashDrawerId: b.default_pos_drawer_account_id || undefined,
+        })),
+      );
+
+      // Module toggles + flags (shell gating)
+      setModules(
+        buildModuleTogglesFromConfigRows(
+          (moduleConfigs || []).map((m: { module_name: string; is_enabled: boolean }) => ({
+            module_name: m.module_name,
+            is_enabled: m.is_enabled,
+          })),
+        ),
+      );
+      setFeatureFlags(flags || {});
+
+      // Permissions ASAP so shell unlocks before Tier B (sequences/settings blobs)
+      const roleFromProfile = (userData as { role?: string } | null)?.role ?? userRole;
+      if (roleFromProfile) {
+        const role = mapAppRoleToUiRole(roleFromProfile);
+        const engineRole: EngineRole = mapAppRoleToEngineRole(roleFromProfile);
+        let canManagePurchases = role === 'Admin' || role === 'Manager';
+        let canUsePos: boolean | undefined;
+        let canAccessStudio: boolean | undefined;
+        let canManageRentals = role === 'Admin' || role === 'Manager';
+        let canCreateSale = role === 'Admin' || role === 'Manager';
+        let canEditSale = role === 'Admin' || role === 'Manager';
+        let canDeleteSale = role === 'Admin';
+        let canViewReports = role === 'Admin' || role === 'Manager';
+        let canViewSale = false;
+        let canViewContacts = role === 'Admin' || role === 'Manager';
+        let canCreateContact = role === 'Admin' || role === 'Manager';
+        let canDeleteContact = role === 'Admin';
+        let canManageSettings = role === 'Admin';
+        let canManageUsers = role === 'Admin';
+        let canAccessAccounting = role === 'Admin' || role === 'Manager';
+        let canMakePayments = role === 'Admin' || role === 'Manager';
+        let canReceivePayments = role === 'Admin' || role === 'Manager';
+        let canManageExpenses = role === 'Admin' || role === 'Manager';
+        let canManageProducts = role === 'Admin' || role === 'Manager';
+        let canEditPurchase = role === 'Admin' || role === 'Manager';
+        let canDeletePurchase = role === 'Admin';
+        let derivedPerms: UserPermissions | null = null;
+        try {
+          const userId = user?.id ?? '';
+          if (userId && companyId) {
+            derivedPerms = await permissionEngine.loadPermissions(userId, companyId, engineRole, role);
+          }
+        } catch (err) {
+          if (import.meta.env?.DEV && isDebugErpEnabled()) {
+            console.log('[PERM_DEBUG] permissionEngine.loadPermissions threw:', err);
+          }
+        }
+        // Platform developer/super_admin map to Admin — Admin bypass in checkPermission = full module access.
+        // If role_permissions RPC fails, keep Admin defaults so company switch still unlocks the shell.
+        if (derivedPerms) {
+          canManagePurchases = derivedPerms.canManagePurchases;
+          canUsePos = derivedPerms.canUsePos ?? (role === 'Admin' || role === 'Manager');
+          canAccessStudio = derivedPerms.canAccessStudio ?? (role === 'Admin' || role === 'Manager');
+          canManageRentals = derivedPerms.canManageRentals;
+          canViewSale = derivedPerms.canViewSale;
+          canViewReports = derivedPerms.canViewReports;
+          canAccessAccounting = derivedPerms.canAccessAccounting;
+          canManageProducts = derivedPerms.canManageProducts;
+          canViewContacts = derivedPerms.canViewContacts;
+          canCreateContact = derivedPerms.canCreateContact ?? derivedPerms.canViewContacts;
+          canDeleteContact = derivedPerms.canDeleteContact ?? false;
+          canManageUsers = derivedPerms.canManageUsers;
+          canManageSettings = derivedPerms.canManageSettings;
+          canReceivePayments = derivedPerms.canReceivePayments;
+          canMakePayments = derivedPerms.canMakePayments ?? derivedPerms.canReceivePayments;
+          canManageExpenses = derivedPerms.canReceivePayments;
+          canEditPurchase = derivedPerms.canEditPurchase ?? derivedPerms.canManagePurchases;
+          canDeletePurchase = derivedPerms.canDeletePurchase ?? false;
+          canCreateSale = derivedPerms.canCreateSale;
+          canEditSale = derivedPerms.canEditSale;
+          canDeleteSale = derivedPerms.canDeleteSale;
+        } else if (role === 'Admin') {
+          canViewSale = true;
+          canUsePos = true;
+          canAccessStudio = true;
+        }
+        setCurrentUser({
+          role,
+          canCreateSale,
+          canEditSale,
+          canDeleteSale,
+          canCancelSale: role === 'Admin' || role === 'Manager',
+          canViewSale: canViewSale || role === 'Admin',
+          canViewReports,
+          canViewContacts,
+          canCreateContact,
+          canDeleteContact,
+          canManageSettings,
+          canManageUsers,
+          canAccessAccounting,
+          canMakePayments,
+          canReceivePayments,
+          canManageExpenses,
+          canManageProducts,
+          canManagePurchases,
+          canManageRentals,
+          canEditPurchase,
+          canDeletePurchase,
+          canUsePos: canUsePos ?? (role === 'Admin' || role === 'Manager'),
+          canAccessStudio: canAccessStudio ?? (role === 'Admin' || role === 'Manager'),
+        });
+      }
+
+      // Unlock shell — Tier B (settings blobs / sequences) loads after
+      setLoading(false);
+      if (companyId) settingsHydratedForCompanyRef.current = companyId;
+      if (import.meta.env?.DEV) console.timeLog?.('loadAllSettings', 'tierA-done');
+
+      // Tier B — settings pages / numbering (non-blocking for first paint)
+      const [allSettings, businessSettingsData, erpSequences, sequences] = await Promise.all([
+        settingsService.getAllSettings(companyId),
+        businessSettingsService.getBusinessSettings(companyId).catch(() => ({
+          enableBespokeOrders: false,
+          bespokeFormConfig: { ...DEFAULT_BESPOKE_FORM_CONFIG },
+          customGenericProductIds: [],
+        })),
+        settingsService.getErpDocumentSequences(companyId, branchFilterId).catch(() => [] as any[]),
+        settingsService.getAllDocumentSequences(companyId, branchFilterId ?? undefined),
+      ]);
+
+      // Slim account name lookup for branch defaults only (AccountingContext owns full COA).
+      const branchAccountIds = [
+        ...new Set(
+          (branchesData || []).flatMap((b: any) =>
+            [b.default_cash_account_id, b.default_bank_account_id, b.default_pos_drawer_account_id].filter(
+              Boolean,
+            ) as string[],
+          ),
+        ),
+      ];
+      let accountsList: { id: string; name: string }[] = [];
+      if (branchAccountIds.length > 0) {
+        const { data: slimAccounts } = await supabase
+          .from('accounts')
+          .select('id, name')
+          .in('id', branchAccountIds);
+        accountsList = (slimAccounts as { id: string; name: string }[]) || [];
+      }
+
+      const settingsMapEarly = new Map((allSettings || []).map((s: any) => [s.key, s.value]));
+      const enablePacking = settingsMapEarly.get('enable_packing') === true;
 
       // Resolve branch account names
       const accountNameById = new Map<string, string>();
@@ -696,6 +866,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         manualJournalEnabled: accountingData.manualJournalEnabled || false,
         defaultCurrency: accountingData.defaultCurrency || 'PKR',
         multiCurrencyEnabled: accountingData.multiCurrencyEnabled || false,
+        activeCurrencies: Array.isArray(accountingData.activeCurrencies) && accountingData.activeCurrencies.length > 0
+          ? accountingData.activeCurrencies
+          : [
+              { code: 'CNY', label: 'RMB (CNY)' },
+              { code: 'USD', label: 'US Dollar' },
+            ],
         taxCalculationMethod: accountingData.taxCalculationMethod || 'Inclusive',
         defaultTaxRate: accountingData.defaultTaxRate || 0,
       });
@@ -753,117 +929,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         journalNextNumber: getNext('journal').next ?? 1,
       });
 
-      // Module Toggles (already fetched in parallel above)
-      setModules(
-        buildModuleTogglesFromConfigRows(
-          (moduleConfigs || []).map((m: { module_name: string; is_enabled: boolean }) => ({
-            module_name: m.module_name,
-            is_enabled: m.is_enabled,
-          }))
-        )
-      );
-
-      // Feature flags (already fetched in parallel above, errors caught with .catch({}))
-      setFeatureFlags(flags || {});
-
-      // User permissions (userData fetched in parallel above)
-      if (userData) {
-          const role = mapAppRoleToUiRole(userData.role);
-          const engineRole: EngineRole = mapAppRoleToEngineRole(userData.role);
-          let canManagePurchases = role === 'Admin' || role === 'Manager';
-          let canUsePos: boolean | undefined;
-          let canAccessStudio: boolean | undefined;
-          let canManageRentals = role === 'Admin' || role === 'Manager';
-          let canCreateSale = role === 'Admin' || role === 'Manager';
-          let canEditSale = role === 'Admin' || role === 'Manager';
-          let canDeleteSale = role === 'Admin';
-          let canViewReports = role === 'Admin' || role === 'Manager';
-          let canViewSale = false;
-          let canViewContacts = role === 'Admin' || role === 'Manager';
-          let canCreateContact = role === 'Admin' || role === 'Manager';
-          let canDeleteContact = role === 'Admin';
-          let canManageSettings = role === 'Admin';
-          let canManageUsers = role === 'Admin';
-          let canAccessAccounting = role === 'Admin' || role === 'Manager';
-          let canMakePayments = role === 'Admin' || role === 'Manager';
-          let canReceivePayments = role === 'Admin' || role === 'Manager';
-          let canManageExpenses = role === 'Admin' || role === 'Manager';
-          let canManageProducts = role === 'Admin' || role === 'Manager';
-          let canEditPurchase = role === 'Admin' || role === 'Manager';
-          let canDeletePurchase = role === 'Admin';
-          let derivedPerms: UserPermissions | null = null;
-          try {
-            const userId = user?.id ?? '';
-            if (userId && companyId) {
-              derivedPerms = await permissionEngine.loadPermissions(userId, companyId, engineRole, role);
-            }
-          } catch (err) {
-            if (import.meta.env?.DEV && isDebugErpEnabled()) {
-              console.log('[PERM_DEBUG] permissionEngine.loadPermissions threw:', err);
-            }
-          }
-          if (derivedPerms) {
-            canManagePurchases = derivedPerms.canManagePurchases;
-            canUsePos = derivedPerms.canUsePos ?? (role === 'Admin' || role === 'Manager');
-            canAccessStudio = derivedPerms.canAccessStudio ?? (role === 'Admin' || role === 'Manager');
-            canManageRentals = derivedPerms.canManageRentals;
-            canViewSale = derivedPerms.canViewSale;
-            canViewReports = derivedPerms.canViewReports;
-            canAccessAccounting = derivedPerms.canAccessAccounting;
-            canManageProducts = derivedPerms.canManageProducts;
-            canViewContacts = derivedPerms.canViewContacts;
-            canCreateContact = derivedPerms.canCreateContact ?? derivedPerms.canViewContacts;
-            canDeleteContact = derivedPerms.canDeleteContact ?? false;
-            canManageUsers = derivedPerms.canManageUsers;
-            canManageSettings = derivedPerms.canManageSettings;
-            canReceivePayments = derivedPerms.canReceivePayments;
-            canMakePayments = derivedPerms.canMakePayments ?? derivedPerms.canReceivePayments;
-            canManageExpenses = derivedPerms.canReceivePayments;
-            canEditPurchase = derivedPerms.canEditPurchase ?? derivedPerms.canManagePurchases;
-            canDeletePurchase = derivedPerms.canDeletePurchase ?? false;
-            canCreateSale = derivedPerms.canCreateSale;
-            canEditSale = derivedPerms.canEditSale;
-            canDeleteSale = derivedPerms.canDeleteSale;
-          }
-          if (import.meta.env?.DEV && isDebugErpEnabled()) {
-            console.log('[PERM_DEBUG] 3. Derived flags:', {
-              canViewSale,
-              canCreateSale,
-              canEditSale,
-              canViewReports,
-              canManageProducts,
-              canViewContacts,
-              canAccessAccounting,
-              canUsePos,
-              canAccessStudio,
-            });
-          }
-          setCurrentUser({
-            role,
-            canCreateSale,
-            canEditSale,
-            canDeleteSale,
-            canCancelSale: role === 'Admin' || role === 'Manager',
-            canViewReports,
-            canViewSale,
-            canViewContacts,
-            canCreateContact: canCreateContact ?? canViewContacts,
-            canDeleteContact: canDeleteContact ?? false,
-            canManageSettings,
-            canManageUsers,
-            canAccessAccounting,
-            canMakePayments,
-            canReceivePayments,
-            canManageExpenses,
-            canManageProducts,
-            canManagePurchases,
-            canManageRentals,
-            canEditPurchase,
-            canDeletePurchase,
-            canUsePos: canUsePos ?? (role === 'Admin' || role === 'Manager'),
-            canAccessStudio: canAccessStudio ?? (role === 'Admin' || role === 'Manager'),
-          });
-      }
+      // Modules/flags/permissions already applied in Tier A
 
       console.timeEnd('loadAllSettings');
       if (import.meta.env?.DEV && isDebugErpEnabled()) console.log('✅ Settings loaded');
@@ -878,7 +944,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
       }
     }
-  }, [companyId, branchId, user?.id]);
+  }, [companyId, branchId, user?.id, userRole, homeCompanyId]);
 
   // Load settings on mount
   useEffect(() => {
@@ -1038,6 +1104,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     
     try {
       await settingsService.setSetting(companyId, 'accounting_settings', updated, 'accounting', 'Accounting module settings');
+      if (updated.fiscalYearStart) {
+        await supabase
+          .from('companies')
+          .update({ financial_year_start: updated.fiscalYearStart })
+          .eq('id', companyId);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(FISCAL_YEAR_CONFIG_UPDATED_EVENT));
+      }
       toast.success('Accounting settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving accounting settings:', error);

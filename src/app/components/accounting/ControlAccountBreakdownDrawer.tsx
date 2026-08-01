@@ -114,17 +114,17 @@ export function ControlAccountBreakdownDrawer({
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-lg bg-[#0B0F19] border-gray-800 text-white overflow-y-auto"
+        className="w-full sm:max-w-lg bg-secondary border-border text-foreground overflow-y-auto"
       >
         <SheetHeader>
-          <SheetTitle className="text-white text-left">Control account breakdown</SheetTitle>
-          <SheetDescription className="text-gray-400 text-left space-y-1">
+          <SheetTitle className="text-foreground text-left">Control account breakdown</SheetTitle>
+          <SheetDescription className="text-muted-foreground text-left space-y-1">
             <span className="block">
               {account?.name} {account?.code ? `(${account.code})` : ''} — each figure uses one engine:{' '}
-              <strong className="text-gray-300">GL</strong> (journal),{' '}
-              <strong className="text-gray-300">Operational</strong> (documents / RPC),{' '}
-              <strong className="text-gray-300">Reconciliation</strong> (variance), or{' '}
-              <strong className="text-gray-300">Pending mapping</strong> (not split — no fake precision).
+              <strong className="text-muted-foreground">GL</strong> (journal),{' '}
+              <strong className="text-muted-foreground">Operational</strong> (documents / RPC),{' '}
+              <strong className="text-muted-foreground">Reconciliation</strong> (variance), or{' '}
+              <strong className="text-muted-foreground">Pending mapping</strong> (not split — no fake precision).
             </span>
           </SheetDescription>
         </SheetHeader>
@@ -139,19 +139,19 @@ export function ControlAccountBreakdownDrawer({
         {!loading && data && (
           <div className="mt-6 space-y-6 text-sm">
             <section>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">GL (journal)</h4>
-              <div className="rounded-lg border border-gray-800 bg-[#0F1419] p-3 space-y-2">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">GL (journal)</h4>
+              <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-gray-300">Trial balance balance (Dr − Cr)</span>
+                  <span className="text-muted-foreground">Trial balance balance (Dr − Cr)</span>
                   <Badge variant="outline" className="text-[10px] bg-violet-600/20 text-violet-100 border-violet-500/30">
                     GL
                   </Badge>
                 </div>
-                <p className="text-lg font-semibold tabular-nums text-white">
+                <p className="text-lg font-semibold tabular-nums text-foreground">
                   {data.glAccountBalance != null ? formatCurrency(data.glAccountBalance) : '—'}
                 </p>
                 {data.controlKind === 'ap' && data.glAccountBalance != null && (
-                  <p className="text-[11px] text-gray-500">
+                  <p className="text-[11px] text-muted-foreground">
                     AP liability view: credit − debit ≈ {formatCurrency(-data.glAccountBalance)} (compare to party
                     payables).
                   </p>
@@ -161,10 +161,10 @@ export function ControlAccountBreakdownDrawer({
             </section>
 
             <section>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Subcategory breakdown
               </h4>
-              <p className="text-[10px] text-gray-600 mb-2">
+              <p className="text-[10px] text-muted-foreground mb-2">
                 Use the row badge for engine; &quot;Pending mapping&quot; means the bucket is intentionally not broken
                 down further here.
               </p>
@@ -172,43 +172,43 @@ export function ControlAccountBreakdownDrawer({
                 {data.subcategories.map((row, i) => (
                   <li
                     key={i}
-                    className="rounded-lg border border-gray-800 bg-[#0F1419] p-3 flex flex-col gap-1.5"
+                    className="rounded-lg border border-border bg-muted/40 p-3 flex flex-col gap-1.5"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-gray-200">{row.label}</span>
                       {sourceBadge(row.source)}
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-base font-medium tabular-nums text-white">
+                      <span className="text-base font-medium tabular-nums text-foreground">
                         {row.amount != null ? formatCurrency(row.amount) : '—'}
                       </span>
                       {row.status !== 'ok' && (
-                        <Badge className="bg-gray-700 text-gray-200 text-[10px]">{statusLabel(row.status)}</Badge>
+                        <Badge className="bg-muted text-gray-200 text-[10px]">{statusLabel(row.status)}</Badge>
                       )}
                     </div>
-                    {row.note && <p className="text-[11px] text-gray-500">{row.note}</p>}
+                    {row.note && <p className="text-[11px] text-muted-foreground">{row.note}</p>}
                   </li>
                 ))}
               </ul>
             </section>
 
             {data.partySectionNote && (
-              <p className="text-[11px] text-gray-500 border border-gray-800 rounded-lg p-2">{data.partySectionNote}</p>
+              <p className="text-[11px] text-muted-foreground border border-border rounded-lg p-2">{data.partySectionNote}</p>
             )}
 
             {data.controlKind !== 'suspense' && (
               <section>
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   Party-wise (GL resolver)
                 </h4>
-                <p className="text-[11px] text-gray-500 mb-2">
-                  Amounts from <code className="text-gray-400">get_contact_party_gl_balances</code> — GL slice, not
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  Amounts from <code className="text-muted-foreground">get_contact_party_gl_balances</code> — GL slice, not
                   operational subledger.
                 </p>
                 {data.partyRows.length === 0 ? (
-                  <p className="text-gray-500 text-xs">No non-zero party rows.</p>
+                  <p className="text-muted-foreground text-xs">No non-zero party rows.</p>
                 ) : (
-                  <ul className="max-h-56 overflow-y-auto space-y-1 border border-gray-800 rounded-lg p-2 bg-[#0F1419]">
+                  <ul className="max-h-56 overflow-y-auto space-y-1 border border-border rounded-lg p-2 bg-muted/40">
                     {data.partyRows.map((p) => (
                       <li key={p.contactId} className="flex items-center justify-between gap-2 text-xs">
                         <button
@@ -240,7 +240,7 @@ export function ControlAccountBreakdownDrawer({
                 <h4 className="text-xs font-semibold text-amber-200/90 uppercase tracking-wide mb-1">
                   Unmapped / residual (GL)
                 </h4>
-                <p className="text-[11px] text-gray-400 mb-1">{data.unmappedNote}</p>
+                <p className="text-[11px] text-muted-foreground mb-1">{data.unmappedNote}</p>
                 {data.unmappedGlResidual != null && (
                   <p className="text-sm font-semibold text-amber-100 tabular-nums">
                     {formatCurrency(data.unmappedGlResidual)}
@@ -261,8 +261,8 @@ export function ControlAccountBreakdownDrawer({
                     <p className="text-[10px] font-semibold text-amber-100/90 uppercase tracking-wide mb-1.5">
                       Unmapped lines by journal reference_type
                     </p>
-                    <p className="text-[10px] text-gray-500 mb-2">
-                      RPC <code className="text-gray-400">get_control_unmapped_party_gl_buckets</code> — control code
+                    <p className="text-[10px] text-muted-foreground mb-2">
+                      RPC <code className="text-muted-foreground">get_control_unmapped_party_gl_buckets</code> — control code
                       only; AR/1180 = Dr−Cr, AP/WP = Cr−Dr per line. Sum should reconcile to residual (AR/AP) when
                       migration is applied.
                     </p>
@@ -272,7 +272,7 @@ export function ControlAccountBreakdownDrawer({
                           key={row.referenceType}
                           className="flex justify-between gap-2 tabular-nums text-gray-200"
                         >
-                          <span className="truncate text-gray-400 font-mono">{row.referenceType}</span>
+                          <span className="truncate text-muted-foreground font-mono">{row.referenceType}</span>
                           <span>{formatCurrency(row.amount)}</span>
                         </li>
                       ))}
@@ -282,8 +282,8 @@ export function ControlAccountBreakdownDrawer({
               </section>
             )}
 
-            <section className="flex flex-col gap-2 pt-2 border-t border-gray-800">
-              <span className="text-xs text-gray-500 uppercase tracking-wide">Actions</span>
+            <section className="flex flex-col gap-2 pt-2 border-t border-border">
+              <span className="text-xs text-muted-foreground uppercase tracking-wide">Actions</span>
               <Button
                 type="button"
                 variant="outline"
@@ -312,7 +312,7 @@ export function ControlAccountBreakdownDrawer({
               >
                 Open operational statement (Contacts)
               </Button>
-              <p className="text-[10px] text-gray-600 px-1">
+              <p className="text-[10px] text-muted-foreground px-1">
                 In Contacts, row menu → Party statement (Operational / GL / Reconciliation); pick Customers / Suppliers /
                 Workers tab as needed.
               </p>

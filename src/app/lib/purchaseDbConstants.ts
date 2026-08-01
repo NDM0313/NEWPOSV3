@@ -25,6 +25,8 @@ export const PURCHASE_HEADER_COLUMNS = `
   discount_amount,
   tax_amount,
   shipping_cost,
+  freight_settlement,
+  clearance_courier_id,
   total,
   paid_amount,
   due_amount,

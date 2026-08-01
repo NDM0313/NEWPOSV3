@@ -1,0 +1,56 @@
+/**
+ * ERP surface utility classes — codemod-friendly migration helpers.
+ * Prefer React components in erp-surfaces.tsx for new code.
+ */
+
+@utility erp-surface-card {
+  @apply bg-card border border-border rounded-xl;
+}
+
+@utility erp-page {
+  @apply flex flex-col h-full min-h-0 bg-secondary text-foreground;
+}
+
+@utility erp-page-header {
+  @apply shrink-0 px-6 py-4 border-b border-border flex justify-between items-start;
+}
+
+@utility erp-table-shell {
+  @apply flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col;
+}
+
+@utility erp-table-header {
+  @apply bg-muted/40 border-b border-border;
+}
+
+@utility erp-table-row {
+  @apply hover:bg-[var(--erp-row-hover)] transition-colors;
+}
+
+@utility erp-table-row-child {
+  @apply border-l-2 border-border hover:bg-[var(--erp-row-hover)] transition-colors;
+}
+
+@utility erp-money-cell {
+  @apply text-right text-sm font-medium tabular-nums text-foreground;
+}
+
+@utility erp-money-cell-negative {
+  @apply text-right text-sm font-medium tabular-nums text-destructive;
+}
+
+@utility erp-money-positive {
+  @apply tabular-nums font-semibold text-[var(--erp-money-positive)];
+}
+
+@utility erp-money-negative {
+  @apply tabular-nums font-semibold text-[var(--erp-money-negative)];
+}
+
+@utility erp-overlay {
+  @apply bg-[var(--erp-overlay)];
+}
+
+@utility erp-drawer-panel {
+  @apply w-full max-w-2xl h-screen bg-background border-l border-border shadow-2xl flex flex-col;
+}

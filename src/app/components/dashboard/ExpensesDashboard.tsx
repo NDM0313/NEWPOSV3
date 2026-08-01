@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { 
   Receipt, 
   Calendar, 
@@ -13,7 +13,8 @@ import {
   LayoutGrid,
   List as ListIcon,
   Loader2,
-  Clock
+  Clock,
+  Paperclip
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
@@ -22,6 +23,11 @@ import { AddCategoryModal } from './AddCategoryModal';
 import { ExpenseCategoryTreePanel } from './ExpenseCategoryTreePanel';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
 import { expenseMatchesMainFilter, findPathToCategory, formatCategoryPathFromNodes } from '@/app/lib/expenseCategoryTreeUtils';
+import { PENDING_EXPENSE_OPEN_KEY } from '@/app/lib/notificationNavConstants';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
@@ -41,6 +47,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { toast } from "sonner";
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import type { Expense } from '@/app/context/ExpenseContext';
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
 import { DatePicker } from '../ui/DatePicker';
@@ -51,19 +59,55 @@ import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
 import { expenseService } from '../../services/expenseService';
+import { branchService } from '../../services/branchService';
 import { normalizeCategoryForComparison } from '@/app/lib/expenseEditCanonical';
+import {
+  expenseDeleteOrCancelLabel,
+  isPostedExpenseStatus,
+} from '@/app/lib/expenseCancelPolicy';
 import {
   EXPENSE_LIST_TRACE,
   isExpenseListDiagnosticsEnabled,
   logExpenseListTrace,
   setExpenseListDiagnosticsEnabled,
 } from '@/app/lib/expenseListDiagnostics';
+import { formatLocalDateYYYYMMDD, formatRelativeListDateTime, parseLocalDateInput } from '@/app/utils/localDate';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import {
+  DEFAULT_ROZNAMCHA_WEEK_STARTS_ON,
+  getWeekRangeContaining,
+} from '@/app/utils/roznamchaWeekRange';
+
+function expenseLocalDateParts(dateStr: string): { y: number; m: number; d: number } | null {
+  const raw = String(dateStr ?? '').trim();
+  if (!raw) return null;
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (ymd) {
+    return { y: Number(ymd[1]), m: Number(ymd[2]) - 1, d: Number(ymd[3]) };
+  }
+  const parsed = parseLocalDateInput(raw.slice(0, 10));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return { y: parsed.getFullYear(), m: parsed.getMonth(), d: parsed.getDate() };
+}
+
+function isInCalendarMonth(dateStr: string, year: number, monthIndex: number): boolean {
+  const parts = expenseLocalDateParts(dateStr);
+  if (!parts) return false;
+  return parts.y === year && parts.m === monthIndex;
+}
 
 function isInCurrentCalendarMonth(dateStr: string): boolean {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
   const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  return isInCalendarMonth(dateStr, now.getFullYear(), now.getMonth());
+}
+
+function isInDateRangeInclusive(dateStr: string, fromYmd: string, toYmd: string): boolean {
+  const parts = expenseLocalDateParts(dateStr);
+  if (!parts) return false;
+  const key = formatLocalDateYYYYMMDD(new Date(parts.y, parts.m, parts.d));
+  if (fromYmd && key < fromYmd) return false;
+  if (toYmd && key > toYmd) return false;
+  return true;
 }
 
 function paymentDisplayForExpense(expense: { paymentAccountDisplay?: string; paymentMethod?: string }): string {
@@ -76,7 +120,7 @@ const getCategoryBadgeStyle = (category: string) => {
     case 'Salaries': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     case 'Utilities': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
     case 'Stitching': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   }
 };
 
@@ -86,7 +130,7 @@ const getStatusBadgeStyle = (status: string) => {
     case 'approved': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     case 'paid': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     case 'rejected': return 'bg-red-500/10 text-red-400 border-red-500/20';
-    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   }
 };
 
@@ -95,17 +139,60 @@ const ICON_BY_SLUG: Record<string, React.ComponentType<{ size?: number }>> = {
   Other: Wallet,
 };
 
+function expenseReceiptAttachments(expense: Pick<Expense, 'receiptUrl' | 'receiptAttached'>) {
+  const url = expense.receiptUrl?.trim();
+  if (!url) return null;
+  const base = url.split('/').pop() || 'receipt';
+  let name = base;
+  try {
+    name = decodeURIComponent(base.replace(/^\d+_/, ''));
+  } catch {
+    /* keep base */
+  }
+  return [{ url, name }];
+}
+
 export const ExpensesDashboard = () => {
   const { formatCurrency } = useFormatCurrency();
   const { companyId } = useSupabase();
-  const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
+  const { expenses, loading, deleteExpense, cancelExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
+  const {
+    startDate: globalStartDate,
+    endDate: globalEndDate,
+    setCurrentModule,
+    getDateRangeLabel,
+  } = useGlobalFilter();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryRow | null>(null);
   const [categoryModalParentId, setCategoryModalParentId] = useState<string | null>(null);
   const [categoriesFromDb, setCategoriesFromDb] = useState<ExpenseCategoryTreeItem[]>([]);
+
+  // List filtering states (declared before hooks that depend on them)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+  const [accountFilter, setAccountFilter] = useState<string>('all');
+  /** Local From/To override header global range when either is set. */
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
+
+  useEffect(() => {
+    setCurrentModule('expenses');
+  }, [setCurrentModule]);
+
+  const localDateOverride = Boolean(fromDate.trim() || toDate.trim());
+  const effectiveFromDate = localDateOverride ? fromDate.trim() : (globalStartDate || '');
+  const effectiveToDate = localDateOverride ? toDate.trim() : (globalEndDate || '');
+  /** Overview cards/labels: any effective date filter (header global or local From/To). */
+  const overviewUsesDateRange = Boolean(effectiveFromDate || effectiveToDate);
 
   const loadCategoriesFromDb = React.useCallback(() => {
     if (!companyId) return;
@@ -116,20 +203,55 @@ export const ExpensesDashboard = () => {
     loadCategoriesFromDb();
   }, [loadCategoriesFromDb]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    branchService.getBranchesCached(companyId).then(setBranches).catch(() => setBranches([]));
+  }, [companyId]);
+
+  const branchNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    branches.forEach((b) => {
+      const label = b.code ? `${b.code} | ${b.name}` : b.name;
+      map.set(b.id, label);
+    });
+    return map;
+  }, [branches]);
+
+  const resolveExpenseBranchLabel = useCallback(
+    (location?: string) => {
+      if (!location) return '—';
+      return branchNameById.get(location) || location;
+    },
+    [branchNameById]
+  );
+
+  const subCategoryFilterOptions = useMemo(() => {
+    if (categoryFilter === 'all') return [];
+    const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+    return main?.children ?? [];
+  }, [categoryFilter, categoriesFromDb]);
+
   // 🎯 NEW: Action States
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
 
-  // List filtering states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pageSize, setPageSize] = useState(25);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [accountFilter, setAccountFilter] = useState<string>('all');
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
+  useEffect(() => {
+    try {
+      const pendingId = safeSessionStorageGetItem(PENDING_EXPENSE_OPEN_KEY);
+      if (!pendingId || expenses.length === 0) return;
+      const match = expenses.find((e) => e.id === pendingId);
+      safeSessionStorageRemoveItem(PENDING_EXPENSE_OPEN_KEY);
+      if (match) {
+        setActiveTab('list');
+        setSelectedExpense(match);
+        setIsDrawerOpen(true);
+      }
+    } catch {
+      safeSessionStorageRemoveItem(PENDING_EXPENSE_OPEN_KEY);
+    }
+  }, [expenses]);
   /** Expense documents whose GL posting was reversed (correction_reversal on the expense JE). */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
   const [showReversedExpenses, setShowReversedExpenses] = useState(false);
@@ -153,10 +275,38 @@ export const ExpensesDashboard = () => {
     return expenses.filter((e) => !reversedExpenseIds.has(e.id));
   }, [expenses, reversedExpenseIds, showReversedExpenses]);
 
-  const monthExpenses = useMemo(
-    () => operationalExpenses.filter((e) => isInCurrentCalendarMonth(e.date)),
-    [operationalExpenses],
-  );
+  const monthExpenses = useMemo(() => {
+    if (effectiveFromDate || effectiveToDate) {
+      return operationalExpenses.filter((e) =>
+        isInDateRangeInclusive(e.date, effectiveFromDate, effectiveToDate),
+      );
+    }
+    return operationalExpenses.filter((e) => isInCurrentCalendarMonth(e.date));
+  }, [operationalExpenses, effectiveFromDate, effectiveToDate]);
+
+  const overviewPeriodLabel = useMemo(() => {
+    if (localDateOverride) {
+      const from = fromDate.trim() || '…';
+      const to = toDate.trim() || '…';
+      return `${from} → ${to}`;
+    }
+    if (effectiveFromDate || effectiveToDate) {
+      return getDateRangeLabel();
+    }
+    return new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' });
+  }, [
+    localDateOverride,
+    fromDate,
+    toDate,
+    effectiveFromDate,
+    effectiveToDate,
+    getDateRangeLabel,
+  ]);
+
+  const overviewEmptyHint = useMemo(() => {
+    if (monthExpenses.length > 0 || operationalExpenses.length === 0) return null;
+    return `No expenses in ${overviewPeriodLabel} — ${operationalExpenses.length} expense${operationalExpenses.length === 1 ? '' : 's'} loaded outside this range.`;
+  }, [monthExpenses.length, operationalExpenses.length, overviewPeriodLabel]);
 
   const accountFilterOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -173,7 +323,10 @@ export const ExpensesDashboard = () => {
   }, [operationalExpenses, accounts]);
 
   const monthCategoryBreakdown = useMemo(() => {
-    const map = new Map<string, { label: string; count: number; amount: number; categoryFilter: string }>();
+    const map = new Map<
+      string,
+      { label: string; count: number; amount: number; categoryFilter: string; subCategoryFilter: string }
+    >();
     monthExpenses.forEach((e) => {
       const catId = (e as { expense_category_id?: string }).expense_category_id;
       const pathNodes = catId ? findPathToCategory(categoriesFromDb, catId) : null;
@@ -181,11 +334,14 @@ export const ExpensesDashboard = () => {
         ? formatCategoryPathFromNodes(pathNodes)
         : (e.category || 'Other');
       const key = catId || label;
+      const leafId =
+        pathNodes && pathNodes.length >= 2 ? pathNodes[pathNodes.length - 1].id : 'all';
       const existing = map.get(key) || {
         label,
         count: 0,
         amount: 0,
         categoryFilter: pathNodes?.[0]?.name || e.category || 'Other',
+        subCategoryFilter: leafId,
       };
       existing.count += 1;
       existing.amount += e.amount || 0;
@@ -195,16 +351,14 @@ export const ExpensesDashboard = () => {
   }, [monthExpenses, categoriesFromDb]);
 
   const priorMonthTotal = useMemo(() => {
+    if (overviewUsesDateRange) return 0;
     const now = new Date();
     const priorMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
     const priorYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
     return operationalExpenses
-      .filter((e) => {
-        const d = new Date(e.date);
-        return d.getFullYear() === priorYear && d.getMonth() === priorMonth;
-      })
+      .filter((e) => isInCalendarMonth(e.date, priorYear, priorMonth))
       .reduce((s, e) => s + (e.amount || 0), 0);
-  }, [operationalExpenses]);
+  }, [operationalExpenses, overviewUsesDateRange]);
 
   const monthTotal = useMemo(
     () => monthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
@@ -239,17 +393,24 @@ export const ExpensesDashboard = () => {
   };
   
   const handleDeleteExpense = async () => {
-    if (selectedExpense) {
-      try {
+    if (!selectedExpense) return;
+    const posted = isPostedExpenseStatus(selectedExpense.status);
+    try {
+      if (posted) {
+        await cancelExpense(selectedExpense.id);
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" cancelled — audit trail kept.`);
+      } else {
         await deleteExpense(selectedExpense.id);
-        await refreshExpenses();
-        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted successfully.`);
-        setDeleteAlertOpen(false);
-        setSelectedExpense(null);
-      } catch (error: any) {
-        console.error('[EXPENSES DASHBOARD] Error deleting expense:', error);
-        toast.error('Failed to delete expense: ' + (error.message || 'Unknown error'));
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted.`);
       }
+      await refreshExpenses();
+      setDeleteAlertOpen(false);
+      setSelectedExpense(null);
+    } catch (error: any) {
+      console.error('[EXPENSES DASHBOARD] Error removing expense:', error);
+      toast.error(
+        (posted ? 'Failed to cancel expense: ' : 'Failed to delete expense: ') + (error.message || 'Unknown error')
+      );
     }
   };
 
@@ -361,16 +522,28 @@ export const ExpensesDashboard = () => {
         if (!matchesSearch) filterReason = 'search_term_mismatch';
       }
 
-      // Category filter: main includes its sub-categories
+      // Category filter: sub-category exact match, or main includes its sub-categories
       if (!filterReason && categoryFilter !== 'all') {
-        const main = categoriesFromDb.find((m) => m.name === categoryFilter);
-        if (main) {
-          const catId = (expense as { expense_category_id?: string }).expense_category_id;
-          if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
-            filterReason = `category_filter: not under "${categoryFilter}"`;
+        const catId = (expense as { expense_category_id?: string }).expense_category_id;
+        if (subCategoryFilter !== 'all') {
+          if (catId !== subCategoryFilter) {
+            filterReason = `subcategory_filter: expense category id "${catId}" !== "${subCategoryFilter}"`;
           }
-        } else if ((expense.category || '') !== categoryFilter) {
-          filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+        } else {
+          const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+          if (main) {
+            if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
+              filterReason = `category_filter: not under "${categoryFilter}"`;
+            }
+          } else if ((expense.category || '') !== categoryFilter) {
+            filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+          }
+        }
+      }
+
+      if (!filterReason && branchFilter !== 'all') {
+        if ((expense.location || '') !== branchFilter) {
+          filterReason = 'branch_filter_mismatch';
         }
       }
 
@@ -380,10 +553,18 @@ export const ExpensesDashboard = () => {
         if (payId !== accountFilter) filterReason = 'account_filter_mismatch';
       }
 
-      // Date filter (From Date – To Date)
-      const expenseDate = expense.date ? new Date(expense.date).toISOString().slice(0, 10) : '';
-      if (!filterReason && fromDate && expenseDate < fromDate) filterReason = 'before_from_date';
-      if (!filterReason && toDate && expenseDate > toDate) filterReason = 'after_to_date';
+      // Date filter: local From/To override header global range
+      const expenseParts = expenseLocalDateParts(expense.date);
+      const expenseDate = expenseParts
+        ? formatLocalDateYYYYMMDD(new Date(expenseParts.y, expenseParts.m, expenseParts.d))
+        : '';
+      if (
+        !filterReason &&
+        (effectiveFromDate || effectiveToDate) &&
+        !isInDateRangeInclusive(expense.date, effectiveFromDate, effectiveToDate)
+      ) {
+        filterReason = 'date_range_mismatch';
+      }
 
       const watch = diagnosticWatchId.trim().toLowerCase();
       const isWatched =
@@ -414,10 +595,12 @@ export const ExpensesDashboard = () => {
     operationalExpenses,
     searchTerm,
     categoryFilter,
+    subCategoryFilter,
+    branchFilter,
     categoriesFromDb,
     accountFilter,
-    fromDate,
-    toDate,
+    effectiveFromDate,
+    effectiveToDate,
     showFetchDiagnostics,
     diagnosticWatchId,
     reversedExpenseIds,
@@ -435,7 +618,44 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
+  }, [
+    searchTerm,
+    categoryFilter,
+    subCategoryFilter,
+    branchFilter,
+    accountFilter,
+    fromDate,
+    toDate,
+    effectiveFromDate,
+    effectiveToDate,
+    showReversedExpenses,
+  ]);
+
+  const applyDatePreset = (preset: 'today' | 'week' | 'month' | 'clear') => {
+    if (preset === 'clear') {
+      setFromDate('');
+      setToDate('');
+      return;
+    }
+    const now = new Date();
+    now.setHours(12, 0, 0, 0);
+    if (preset === 'today') {
+      const ymd = formatLocalDateYYYYMMDD(now);
+      setFromDate(ymd);
+      setToDate(ymd);
+      return;
+    }
+    if (preset === 'week') {
+      const { startDate, endDate } = getWeekRangeContaining(now, DEFAULT_ROZNAMCHA_WEEK_STARTS_ON);
+      setFromDate(formatLocalDateYYYYMMDD(startDate));
+      setToDate(formatLocalDateYYYYMMDD(endDate));
+      return;
+    }
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setFromDate(formatLocalDateYYYYMMDD(start));
+    setToDate(formatLocalDateYYYYMMDD(end));
+  };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -449,6 +669,8 @@ export const ExpensesDashboard = () => {
   // Active filter count
   const activeFilterCount = [
     categoryFilter !== 'all',
+    subCategoryFilter !== 'all',
+    branchFilter !== 'all',
     accountFilter !== 'all',
     !!fromDate,
     !!toDate,
@@ -458,6 +680,8 @@ export const ExpensesDashboard = () => {
   // Clear filters
   const clearFilters = () => {
     setCategoryFilter('all');
+    setSubCategoryFilter('all');
+    setBranchFilter('all');
     setAccountFilter('all');
     setFromDate('');
     setToDate('');
@@ -472,11 +696,12 @@ export const ExpensesDashboard = () => {
 
   // Export handlers (use filtered list from backend)
   const getExportData = (): ExportData => ({
-    headers: ['Date', 'Reference #', 'Category', 'Expense For', 'Paid Via', 'Amount', 'Status'],
+    headers: ['Date', 'Reference #', 'Category', 'Branch', 'Expense For', 'Paid Via', 'Amount', 'Status'],
     rows: filteredExpenses.map((e) => [
-      new Date(e.date).toLocaleDateString(),
+      formatRelativeListDateTime(e.date),
       e.expenseNo || '—',
       e.category,
+      resolveExpenseBranchLabel(e.location),
       e.description,
       paymentDisplayForExpense(e),
       e.amount ?? 0,
@@ -501,10 +726,10 @@ export const ExpensesDashboard = () => {
     <div className="space-y-6 animate-in fade-in duration-500">
       
       {/* Header: title left, Add button right - always same row (like Accounting) */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-800 pb-4 flex-nowrap">
+      <div className="flex items-center justify-between gap-4 border-b border-border pb-4 flex-nowrap">
         <div className="min-w-0">
-          <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Expenses</h2>
-          <p className="text-gray-400 mt-0.5 text-sm">Track and manage business operational costs.</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Expenses</h2>
+          <p className="text-muted-foreground mt-0.5 text-sm">Track and manage business operational costs.</p>
         </div>
         <div className="flex-shrink-0">
           {activeTab === 'categories' ? (
@@ -533,7 +758,7 @@ export const ExpensesDashboard = () => {
           onClick={() => setActiveTab('overview')}
           className={cn(
             "pb-2 text-sm font-medium transition-all relative",
-            activeTab === 'overview' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+            activeTab === 'overview' ? "text-blue-400" : "text-muted-foreground hover:text-muted-foreground"
           )}
         >
           Overview
@@ -545,7 +770,7 @@ export const ExpensesDashboard = () => {
           onClick={() => setActiveTab('list')}
           className={cn(
             "pb-2 text-sm font-medium transition-all relative",
-            activeTab === 'list' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+            activeTab === 'list' ? "text-blue-400" : "text-muted-foreground hover:text-muted-foreground"
           )}
         >
           All Expenses
@@ -557,7 +782,7 @@ export const ExpensesDashboard = () => {
           onClick={() => setActiveTab('categories')}
           className={cn(
             "pb-2 text-sm font-medium transition-all relative",
-            activeTab === 'categories' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+            activeTab === 'categories' ? "text-blue-400" : "text-muted-foreground hover:text-muted-foreground"
           )}
         >
           Categories
@@ -576,11 +801,13 @@ export const ExpensesDashboard = () => {
         <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
           {/* Top Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
+            <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">
+                  <p className="text-muted-foreground text-sm font-medium">
+                    {overviewUsesDateRange ? 'Total Expense (filtered)' : 'Total Monthly Expense'}
+                  </p>
+                  <h3 className="text-2xl font-bold text-foreground mt-2">
                     {formatCurrency(monthTotal)}
                   </h3>
                 </div>
@@ -589,15 +816,18 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">{monthExpenses.length} expenses this month</span>
+                <span className="text-muted-foreground">
+                  {monthExpenses.length} expense{monthExpenses.length === 1 ? '' : 's'}
+                  {overviewUsesDateRange ? ' in range' : ' this month'}
+                </span>
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
+            <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">Pending Expenses</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">
+                  <p className="text-muted-foreground text-sm font-medium">Pending Expenses</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-2">
                     {monthExpenses.filter(e => e.status === 'pending' || e.status === 'submitted').length}
                   </h3>
                 </div>
@@ -606,15 +836,15 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">Require approval</span>
+                <span className="text-muted-foreground">Require approval</span>
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
+            <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">vs Prior Month</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">
+                  <p className="text-muted-foreground text-sm font-medium">vs Prior Month</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-2">
                     {priorMonthTotal > 0
                       ? `${monthTotal >= priorMonthTotal ? '+' : ''}${(((monthTotal - priorMonthTotal) / priorMonthTotal) * 100).toFixed(0)}%`
                       : monthTotal > 0 ? 'New' : '—'}
@@ -631,10 +861,10 @@ export const ExpensesDashboard = () => {
               <div className="mt-4">
                  {chartData.length > 0 && totalExpenseAmount > 0 && (
                    <>
-                     <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                     <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden">
                         <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(chartData[0].value / totalExpenseAmount) * 100}%` }}></div>
                      </div>
-                     <p className="text-gray-500 text-xs mt-2">
+                     <p className="text-muted-foreground text-xs mt-2">
                        Top: {chartData[0].name} · {formatCurrency(priorMonthTotal)} prior month
                      </p>
                    </>
@@ -643,41 +873,50 @@ export const ExpensesDashboard = () => {
             </div>
           </div>
 
+          {overviewEmptyHint ? (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm text-amber-200">
+              {overviewEmptyHint}
+            </div>
+          ) : null}
+
           {monthCategoryBreakdown.length > 0 ? (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white">This month by category</h3>
-                <span className="text-xs text-gray-500">{new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' })}</span>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+                <h3 className="text-lg font-bold text-foreground">
+                  {overviewUsesDateRange ? 'Filtered range by category' : 'This month by category'}
+                </h3>
+                <span className="text-xs text-muted-foreground">{overviewPeriodLabel}</span>
               </div>
               <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 uppercase bg-gray-950/50">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/40">
                   <tr>
                     <th className="px-6 py-3 text-left font-medium">Category</th>
                     <th className="px-6 py-3 text-right font-medium">Count</th>
                     <th className="px-6 py-3 text-right font-medium">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {monthCategoryBreakdown.map((row) => (
                     <tr
                       key={row.label}
-                      className="hover:bg-gray-800/30 cursor-pointer"
+                      className="hover:bg-accent/30 cursor-pointer"
                       onClick={() => {
                         setCategoryFilter(row.categoryFilter);
+                        setSubCategoryFilter(row.subCategoryFilter);
                         setActiveTab('list');
                       }}
                     >
-                      <td className="px-6 py-3 text-white">{row.label}</td>
-                      <td className="px-6 py-3 text-right text-gray-400">{row.count}</td>
+                      <td className="px-6 py-3 text-foreground">{row.label}</td>
+                      <td className="px-6 py-3 text-right text-muted-foreground">{row.count}</td>
                       <td className="px-6 py-3 text-right font-medium text-red-400">-{formatCurrency(row.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-gray-800 bg-gray-950/50">
-                    <td className="px-6 py-3 font-medium text-gray-400">Total</td>
-                    <td className="px-6 py-3 text-right text-gray-400">{monthExpenses.length}</td>
-                    <td className="px-6 py-3 text-right font-bold text-white">-{formatCurrency(monthTotal)}</td>
+                  <tr className="border-t border-border bg-muted/40">
+                    <td className="px-6 py-3 font-medium text-muted-foreground">Total</td>
+                    <td className="px-6 py-3 text-right text-muted-foreground">{monthExpenses.length}</td>
+                    <td className="px-6 py-3 text-right font-bold text-foreground">-{formatCurrency(monthTotal)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -685,8 +924,10 @@ export const ExpensesDashboard = () => {
           ) : null}
 
           {/* Donut Chart Section */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
-            <h3 className="text-lg font-bold text-white mb-2 self-start">Expense Breakdown (this month)</h3>
+          <div className="bg-card border border-border rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
+            <h3 className="text-lg font-bold text-foreground mb-2 self-start">
+              Expense Breakdown ({overviewUsesDateRange ? 'filtered' : 'this month'})
+            </h3>
             <div className="h-[300px] w-full max-w-lg relative min-h-[300px] shrink-0">
               <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={300}>
                 <PieChart>
@@ -704,25 +945,32 @@ export const ExpensesDashboard = () => {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6', borderRadius: '8px' }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--popover-foreground))', borderRadius: '8px' }}
                     itemStyle={{ color: '#F3F4F6' }}
                     formatter={(value: number) => formatCurrency(value)}
-                  />
-                  <Legend 
-                     verticalAlign="bottom" 
-                     height={36} 
-                     iconType="circle"
-                     formatter={(value) => <span className="text-gray-400 ml-1">{value}</span>}
                   />
                 </PieChart>
               </ResponsiveContainer>
               
               {/* Center Text - Real total from database */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                 <p className="text-gray-500 text-sm">Total</p>
-                 <p className="text-3xl font-bold text-white">{formatCurrency(totalExpenseAmount)}</p>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                 <p className="text-muted-foreground text-sm">Total</p>
+                 <p className="text-3xl font-bold text-foreground">{formatCurrency(totalExpenseAmount)}</p>
               </div>
             </div>
+            {chartData.length > 0 && (
+              <div className="mt-4 w-full flex flex-wrap justify-center gap-x-4 gap-y-2">
+                {chartData.map((entry) => (
+                  <div key={entry.name} className="flex items-center gap-1.5 text-sm">
+                    <span
+                      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span className="text-muted-foreground">{entry.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : activeTab === 'list' ? (
@@ -749,9 +997,9 @@ export const ExpensesDashboard = () => {
                   value={diagnosticWatchId}
                   onChange={(e) => setDiagnosticWatchId(e.target.value)}
                   placeholder="Expense UUID or EXP-… to trace"
-                  className="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-500"
+                  className="flex-1 bg-input-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                 />
-                <p className="text-xs text-gray-400 max-w-xl">
+                <p className="text-xs text-muted-foreground max-w-xl">
                   Open DevTools → Console. Each filter pass logs the watched row; a summary effect logs pipeline
                   (operational list → filters → current page).
                 </p>
@@ -781,9 +1029,9 @@ export const ExpensesDashboard = () => {
               onToggle: () => setFilterOpen(!filterOpen),
               activeCount: activeFilterCount,
               renderPanel: () => (
-                <div className="absolute right-0 top-12 w-96 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+                <div className="absolute right-0 top-12 w-96 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-white">Filters</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Filters</h3>
                     <button
                       onClick={clearFilters}
                       className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -793,10 +1041,35 @@ export const ExpensesDashboard = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Date Filter: From – To */}
+                    {!localDateOverride && (effectiveFromDate || effectiveToDate) ? (
+                      <p className="text-xs text-muted-foreground">
+                        Header: <span className="text-foreground font-medium">{getDateRangeLabel()}</span>
+                        {' '}(set From/To below to override)
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ['today', 'Today'],
+                          ['week', 'This Week'],
+                          ['month', 'This Month'],
+                          ['clear', 'Clear'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => applyDatePreset(key)}
+                          className="px-2.5 py-1 rounded-md text-xs border border-border bg-muted/40 hover:bg-muted text-foreground"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Date Filter: From – To (local override of header range) */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                           From Date
                         </label>
                         <DatePicker
@@ -807,7 +1080,7 @@ export const ExpensesDashboard = () => {
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                           To Date
                         </label>
                         <DatePicker
@@ -821,13 +1094,16 @@ export const ExpensesDashboard = () => {
 
                     {/* Category Filter */}
                     <div>
-                      <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                      <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                         Category
                       </label>
                       <select
                         value={categoryFilter}
-                        onChange={(e) => setCategoryFilter(e.target.value)}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        onChange={(e) => {
+                          setCategoryFilter(e.target.value);
+                          setSubCategoryFilter('all');
+                        }}
+                        className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Categories</option>
                         {categoryFilterOptions.map((cat) => (
@@ -836,15 +1112,53 @@ export const ExpensesDashboard = () => {
                       </select>
                     </div>
 
+                    {subCategoryFilterOptions.length > 0 && (
+                      <div>
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
+                          Sub-category
+                        </label>
+                        <select
+                          value={subCategoryFilter}
+                          onChange={(e) => setSubCategoryFilter(e.target.value)}
+                          className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="all">All sub-categories</option>
+                          {subCategoryFilterOptions.map((sub) => (
+                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {branches.length > 0 && (
+                      <div>
+                        <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
+                          Branch
+                        </label>
+                        <select
+                          value={branchFilter}
+                          onChange={(e) => setBranchFilter(e.target.value)}
+                          className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="all">All Branches</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.code ? `${b.code} | ${b.name}` : b.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     {/* Account Filter */}
                     <div>
-                      <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                      <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                         Payment Account
                       </label>
                       <select
                         value={accountFilter}
                         onChange={(e) => setAccountFilter(e.target.value)}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Accounts</option>
                         {accountFilterOptions.map((opt) => (
@@ -853,12 +1167,12 @@ export const ExpensesDashboard = () => {
                       </select>
                     </div>
 
-                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={showReversedExpenses}
                         onChange={(e) => setShowReversedExpenses(e.target.checked)}
-                        className="rounded border-gray-600 bg-gray-950"
+                        className="rounded border-gray-600 bg-input-background"
                       />
                       Show reversed in journal (offset in GL)
                     </label>
@@ -873,81 +1187,130 @@ export const ExpensesDashboard = () => {
             }}
           />
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
+          <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col max-w-full">
            {/* Table */}
-           <div className="overflow-x-auto flex-1">
-              <table className="w-full text-sm text-left">
-                 <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+           <div className="overflow-x-auto flex-1 max-w-full">
+              <table className="w-full table-fixed text-sm text-left">
+                 <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border">
                     <tr>
-                       <th className="px-6 py-3 font-medium">Date</th>
-                       <th className="px-6 py-3 font-medium">Reference #</th>
-                       <th className="px-6 py-3 font-medium">Category</th>
-                       <th className="px-6 py-3 font-medium">Expense For</th>
-                       <th className="px-6 py-3 font-medium">Paid Via</th>
-                       <th className="px-6 py-3 font-medium text-right">Amount</th>
-                       <th className="px-6 py-3 font-medium text-center">Action</th>
+                       <th className="px-3 py-3 font-medium w-[8.5rem] min-w-[8.5rem]">Date</th>
+                       <th className="px-3 py-3 font-medium w-[7.5rem] min-w-[7.5rem]">Reference #</th>
+                       <th className="px-3 py-3 font-medium max-w-[7rem]">Category</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem] hidden md:table-cell">Branch</th>
+                       <th className="px-3 py-3 font-medium w-[12rem]">Expense For</th>
+                       <th className="px-3 py-3 font-medium max-w-[8rem]">Paid Via</th>
+                       <th className="px-3 py-3 font-medium text-right w-[5.5rem]">Amount</th>
+                       <th className="px-3 py-3 font-medium text-center w-[4rem]">Action</th>
                     </tr>
                  </thead>
-                 <tbody className="divide-y divide-gray-800">
+                 <tbody className="divide-y divide-border">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-3 py-12 text-center">
                           <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-                          <p className="text-gray-400 text-sm">Loading expenses...</p>
+                          <p className="text-muted-foreground text-sm">Loading expenses...</p>
                         </td>
                       </tr>
                     ) : paginatedExpenses.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center">
-                          <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
-                          <p className="text-gray-400 text-sm">No expenses found</p>
-                          <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                        <td colSpan={8} className="px-3 py-12 text-center">
+                          <Receipt size={48} className="mx-auto text-muted-foreground mb-3" />
+                          <p className="text-muted-foreground text-sm">No expenses found</p>
+                          <p className="text-muted-foreground text-xs mt-1">Try adjusting your search or filters</p>
                         </td>
                       </tr>
                     ) : (
                       paginatedExpenses.map((expense) => (
-                       <tr key={expense.id} className="group hover:bg-gray-800/30 transition-colors">
-                          <td className="px-6 py-4 font-medium text-gray-300">
-                             <div className="flex items-center gap-2">
-                                <Calendar size={14} className="text-gray-500" />
-                                {new Date(expense.date).toLocaleDateString()}
+                       <tr
+                         key={expense.id}
+                         className="group hover:bg-accent/30 transition-colors cursor-pointer"
+                         onClick={() => handleExpenseAction(expense, 'view')}
+                       >
+                          <td className="px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">
+                             <div className="flex items-center gap-1.5">
+                                <Calendar size={14} className="text-muted-foreground shrink-0" />
+                                <span className="tabular-nums">{formatRelativeListDateTime(expense.date)}</span>
                              </div>
                           </td>
-                          <td className="px-6 py-4 text-gray-500 font-mono text-xs">
+                          <td className="px-3 py-3 text-muted-foreground whitespace-nowrap tabular-nums">
                              {expense.expenseNo || '—'}
                           </td>
-                          <td className="px-6 py-4">
-                             <Badge variant="outline" className={cn("font-normal", getCategoryBadgeStyle(expense.category))}>
-                                {expense.category}
+                          <td className="px-3 py-3 max-w-[8rem]">
+                             <Badge variant="outline" className={cn("font-normal truncate max-w-full", getCategoryBadgeStyle(expense.category))}>
+                                <span className="truncate">{expense.category}</span>
                              </Badge>
                           </td>
-                          <td className="px-6 py-4 text-white">
-                             {expense.description}
+                          <td className="px-3 py-3 text-muted-foreground text-sm max-w-[8rem] truncate hidden md:table-cell">
+                             {resolveExpenseBranchLabel(expense.location)}
                           </td>
-                          <td className="px-6 py-4 text-gray-400">
+                          <td className="px-3 py-3 text-foreground max-w-[12rem]">
+                             <div className="flex items-center gap-1.5 min-w-0">
+                               <span className="truncate">
+                                 {expense.payeeName?.trim() || expense.description || '—'}
+                               </span>
+                               {(expense.receiptUrl || expense.receiptAttached) && expenseReceiptAttachments(expense) ? (
+                                 <button
+                                   type="button"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     const list = expenseReceiptAttachments(expense);
+                                     if (list?.length) setAttachmentsDialogList(list);
+                                   }}
+                                   className="shrink-0 p-0.5 hover:bg-amber-500/20 rounded transition-colors"
+                                   title="View attachment"
+                                 >
+                                   <Paperclip size={14} className="text-amber-400" />
+                                 </button>
+                               ) : null}
+                             </div>
+                          </td>
+                          <td className="px-3 py-3 text-muted-foreground max-w-[8rem] truncate">
                              {paymentDisplayForExpense(expense)}
                           </td>
-                          <td className="px-6 py-4 text-right font-bold text-red-500">
+                          <td className="px-3 py-3 text-right text-foreground whitespace-nowrap tabular-nums">
                              -{formatCurrency(expense.amount)}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 py-3 text-center">
                              <DropdownMenu>
                                <DropdownMenuTrigger asChild>
-                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-white data-[state=open]:bg-gray-800">
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   className="h-8 w-8 text-muted-foreground hover:text-foreground data-[state=open]:bg-muted"
+                                   onClick={(e) => e.stopPropagation()}
+                                 >
                                    <MoreVertical size={16} />
                                  </Button>
                                </DropdownMenuTrigger>
-                               <DropdownMenuContent align="end" className="w-[160px] bg-[#1F2937] border-gray-700 text-white">
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700" onClick={() => handleExpenseAction(expense, 'view')}>
+                               <DropdownMenuContent align="end" className="w-[160px] bg-popover border-border text-foreground">
+                                 <DropdownMenuItem
+                                   className="cursor-pointer hover:bg-muted focus:bg-muted"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleExpenseAction(expense, 'view');
+                                   }}
+                                 >
                                    <Eye className="mr-2 h-4 w-4 text-blue-400" />
                                    <span>View Details</span>
                                  </DropdownMenuItem>
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-gray-700 focus:bg-gray-700" onClick={() => handleExpenseAction(expense, 'edit')}>
-                                   <Pencil className="mr-2 h-4 w-4 text-gray-400" />
+                                 <DropdownMenuItem
+                                   className="cursor-pointer hover:bg-muted focus:bg-muted"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleExpenseAction(expense, 'edit');
+                                   }}
+                                 >
+                                   <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
                                    <span>Edit</span>
                                  </DropdownMenuItem>
-                                 <DropdownMenuSeparator className="bg-gray-700" />
-                                 <DropdownMenuItem className="cursor-pointer hover:bg-red-900/20 focus:bg-red-900/20 text-red-400 hover:text-red-300" onClick={() => handleExpenseAction(expense, 'delete')}>
+                                 <DropdownMenuSeparator className="bg-muted" />
+                                 <DropdownMenuItem
+                                   className="cursor-pointer hover:bg-red-900/20 focus:bg-red-900/20 text-red-400 hover:text-red-300"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleExpenseAction(expense, 'delete');
+                                   }}
+                                 >
                                    <Trash className="mr-2 h-4 w-4" />
                                    <span>Delete</span>
                                  </DropdownMenuItem>
@@ -961,18 +1324,18 @@ export const ExpensesDashboard = () => {
               </table>
            </div>
            {/* Fixed summary bar – Total / Grand Total + entries count */}
-           <div className="border-t border-gray-800 bg-gray-950/80 px-6 py-3 flex items-center justify-between text-sm">
-             <span className="text-gray-400">
+           <div className="border-t border-border bg-input-background/80 px-6 py-3 flex items-center justify-between text-sm">
+             <span className="text-muted-foreground">
                {categoryFilter !== 'all' ? (
-                 <>Filter: <span className="text-white font-medium">{categoryFilter}</span></>
+                 <>Filter: <span className="text-foreground font-medium">{categoryFilter}</span></>
                ) : (
                  <>Grand Total</>
                )}
-               <span className="text-gray-500 ml-2">
+               <span className="text-muted-foreground ml-2">
                  · {filteredExpenses.length} {filteredExpenses.length === 1 ? 'entry' : 'entries'}
                </span>
              </span>
-             <span className="font-bold text-white text-lg">
+             <span className="font-bold text-foreground text-lg">
                {formatCurrency(summaryTotal)}
              </span>
            </div>
@@ -1028,29 +1391,44 @@ export const ExpensesDashboard = () => {
         }}
         categoryToEdit={selectedCategory}
         initialParentId={categoryModalParentId}
-        onSuccess={loadCategoriesFromDb}
+        onSuccess={() => {
+          loadCategoriesFromDb();
+          void refreshExpenses();
+        }}
       />
 
-      {/* Delete Expense Confirmation */}
+      {/* Delete / Cancel Expense Confirmation */}
       <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
-              Are you sure you want to delete expense {selectedExpense?.expenseNo || selectedExpense?.id}? This action cannot be undone.
+            <AlertDialogTitle>
+              {expenseDeleteOrCancelLabel(selectedExpense?.status)}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              {isPostedExpenseStatus(selectedExpense?.status)
+                ? `Cancel expense ${selectedExpense?.expenseNo || selectedExpense?.id}? Accounting will be voided; the row stays for audit and is hidden from normal reports.`
+                : `Delete draft expense ${selectedExpense?.expenseNo || selectedExpense?.id}? This removes the row.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-muted">Back</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteExpense}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-foreground"
             >
-              Delete
+              {isPostedExpenseStatus(selectedExpense?.status) ? 'Cancel Expense' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {attachmentsDialogList ? (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      ) : null}
 
     </div>
   );

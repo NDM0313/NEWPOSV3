@@ -1,0 +1,10 @@
+{
+  "run": "MOBILE_MANAGER_SALESMAN_DOCS_UPDATE",
+  "run_local_datetime": "2026-07-02T19:22:36+05:00",
+  "admin_qa": "ADMIN_QA_PASS",
+  "manager_qa": "MANAGER_QA_BLOCKED_CREDENTIALS",
+  "salesman_qa": "SALESMAN_QA_BLOCKED_CREDENTIALS",
+  "mobile_release_gate": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES",
+  "play_store_released": false,
+  "r8_blocked": true
+}

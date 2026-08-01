@@ -1,0 +1,16 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "final-monitoring",
+  "generated_at": "2026-07-01T14:41:26.501Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T14-31-26-501Z.json",
+  "overall": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "admin_compare_din_china": "9/9 PASS"
+}

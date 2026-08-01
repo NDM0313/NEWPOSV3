@@ -1,0 +1,33 @@
+﻿# Validation results — 2026-07-15 audit session
+Starting HEAD: 5cf65f4c
+VPS HEAD: 5cf65f4c (match)
+erp-frontend: healthy; VITE_BUILD_COMMIT=5cf65f4c
+HTTP https://erp.dincouture.pk: 200
+
+## monitor:three-company-unified-ledger
+RESULT: NOT RUN (credential gate)
+ERROR: Missing QA_BROWSER_PASSWORD_CHINA / BRIDAL / COUTURE
+Latest documented PASS: reports/din-china-phase-216-golden-refresh-20260712/ (2026-07-12)
+
+## test:unified-ledger
+RESULT: PASS 339/339 (fail 0) duration ~7.4s
+
+## test:unit
+RESULT: PASS 183/183 (fail 0)
+NOTE: Closeout 2026-07-12 claimed 189/189 — current package.json script list yields 183.
+
+## build
+RESULT: PASS (vite build ~51s + PWA generateSW)
+
+## git diff --check
+RESULT: PASS (exit 0)
+
+## AR/AP parity (SSH read-only SQL — npm script failed on Windows bash)
+See validation-arap-parity.txt and validation-bridal-deltas.txt
+effective_party: COUTURE PASS, CHINA PASS, BRIDAL FAIL sum_abs_delta=79850
+official_gl: all three PASS delta 0
+audit_full_history: all three PASS delta 0
+Bridal drivers unchanged: Walk-in Customer old Δ +80000; Walk-in Customer Δ -150
+
+## Prod flags
+54 unified_ledger_* rows ON for three companies; kill_switch row absent (= OFF)

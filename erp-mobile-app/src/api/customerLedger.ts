@@ -243,6 +243,25 @@ export async function getCustomerLastTransactions(
   if (branchId && branchId !== 'all' && branchId !== 'default') onAccountQuery = onAccountQuery.eq('branch_id', branchId);
   const { data: onAccount } = await onAccountQuery;
 
+  let onAccountRefQuery = supabase
+    .from('payments')
+    .select('id, reference_number, payment_date, created_at, amount, reference_type')
+    .eq('company_id', company)
+    .eq('reference_type', 'on_account')
+    .eq('reference_id', customerId)
+    .is('contact_id', null)
+    .is('voided_at', null);
+  if (branchId && branchId !== 'all' && branchId !== 'default') onAccountRefQuery = onAccountRefQuery.eq('branch_id', branchId);
+  const { data: onAccountByRef } = await onAccountRefQuery;
+  const onAccountMerged = [...((onAccount || []) as PayRow[])];
+  const onAccountSeen = new Set(onAccountMerged.map((p) => p.id));
+  for (const p of (onAccountByRef || []) as PayRow[]) {
+    if (!onAccountSeen.has(p.id)) {
+      onAccountSeen.add(p.id);
+      onAccountMerged.push(p);
+    }
+  }
+
   let manualQuery = supabase
     .from('payments')
     .select('id, reference_number, payment_date, created_at, amount, reference_type')
@@ -294,7 +313,7 @@ export async function getCustomerLastTransactions(
     return 'Payment';
   };
 
-  [...salePayments, ...((onAccount || []) as PayRow[]), ...((manualRec || []) as PayRow[])].forEach((p) => {
+  [...salePayments, ...onAccountMerged, ...((manualRec || []) as PayRow[])].forEach((p) => {
     tx.push({
       id: `p-${p.id}`,
       date: p.payment_date || p.created_at || '',

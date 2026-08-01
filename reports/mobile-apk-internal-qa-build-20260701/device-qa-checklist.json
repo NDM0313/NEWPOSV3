@@ -1,0 +1,32 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "device-qa-checklist",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "device_qa_status": "DEVICE_QA_PENDING",
+  "adb_devices_connected": 0,
+  "apk_installed": false,
+  "checks": [
+    { "id": 1, "item": "App opens", "status": "pending" },
+    { "id": 2, "item": "Login screen works", "status": "pending" },
+    { "id": 3, "item": "Admin login works", "status": "pending" },
+    { "id": 4, "item": "Reports hub opens", "status": "pending" },
+    { "id": 5, "item": "Financial statements section visible for full accounting role", "status": "pending" },
+    { "id": 6, "item": "Balance Sheet opens", "status": "pending" },
+    { "id": 7, "item": "Profit & Loss opens", "status": "pending" },
+    { "id": 8, "item": "Trial Balance opens", "status": "pending" },
+    { "id": 9, "item": "Cash Flow opens", "status": "pending" },
+    { "id": 10, "item": "Ledger V2 opens", "status": "pending" },
+    { "id": 11, "item": "Account Ledger opens", "status": "pending" },
+    { "id": 12, "item": "DIN CHINA totals visible for authorized role", "status": "pending" },
+    { "id": 13, "item": "DIN BRIDAL totals visible for authorized role", "status": "pending" },
+    { "id": 14, "item": "DIN COUTURE totals visible for authorized role", "status": "pending" },
+    { "id": 15, "item": "Salesman/restricted role hides sensitive totals", "status": "pending" },
+    { "id": 16, "item": "No crash", "status": "pending" },
+    { "id": 17, "item": "No blank screen", "status": "pending" },
+    { "id": 18, "item": "No chunk/import errors", "status": "pending" },
+    { "id": 19, "item": "No mutation APIs called", "status": "pending" },
+    { "id": 20, "item": "Logout works", "status": "pending" }
+  ],
+  "roles_to_test": ["admin", "manager", "salesman"],
+  "rules": "navigation only; do not create or edit transactions"
+}

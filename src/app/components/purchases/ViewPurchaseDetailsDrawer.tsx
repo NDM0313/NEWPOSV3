@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePurchases, Purchase, convertFromSupabasePurchase } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -6,7 +6,17 @@ import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { resolvePaymentRowForEdit, resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
-import { activityLogService } from '@/app/services/activityLogService';
+import {
+  lineClearanceAlloc,
+  purchaseClearanceTotal,
+  purchaseHasSeparateClearance,
+} from '@/app/lib/purchaseClearanceAlloc';
+import {
+  isWholesaleImportClearance,
+  purchaseSupplierDue,
+} from '@/app/wholesale/wholesaleImportPurchase';
+import { WholesaleImportClearanceWorkflow } from '@/app/wholesale/WholesaleImportClearanceWorkflow';
+import { formatQty } from '@/app/utils/quantity';
 import { UnifiedPurchaseInvoiceView } from '@/app/documents';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
@@ -50,7 +60,8 @@ import { Separator } from "../ui/separator";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DatePicker } from "../ui/DatePicker";
+import { format, parseISO, isValid } from 'date-fns';
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
@@ -93,12 +104,12 @@ function AttachmentImage({ att }: { att: { url: string; name: string } }) {
     });
     return () => { cancelled = true; };
   }, [att.url]);
-  if (!src) return <div className="h-32 flex items-center justify-center text-gray-500 text-sm">Loading...</div>;
+  if (!src) return <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>;
   return (
     <img
       src={src}
       alt={att.name || 'Attachment'}
-      className="w-full max-w-md max-h-48 object-contain rounded border border-gray-700 bg-gray-900"
+      className="w-full max-w-md max-h-48 object-contain rounded border border-border bg-card"
     />
   );
 }
@@ -158,7 +169,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const { formatDate, formatDateTime } = useFormatDate();
   const { getPurchaseById } = usePurchases();
   const { companyId, branchId: contextBranchId, user } = useSupabase();
-  const { inventorySettings } = useSettings();
+  const { inventorySettings, company } = useSettings();
+  const businessType = company?.businessType;
+  const isWholesaleCompany = businessType === 'wholesale';
   const enablePacking = inventorySettings.enablePacking;
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -194,6 +207,20 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [itemSelectionDialogOpen, setItemSelectionDialogOpen] = useState(false);
   const [purchaseReturns, setPurchaseReturns] = useState<any[]>([]);
   const [loadingPurchaseReturns, setLoadingPurchaseReturns] = useState(false);
+
+  const showClearanceSplit = purchase != null && purchaseHasSeparateClearance(purchase);
+  const wholesaleClearanceActive =
+    purchase != null &&
+    isWholesaleCompany &&
+    (isWholesaleImportClearance(purchase) || showClearanceSplit || purchase.freightSettlement === 'courier');
+  const clearanceTotal = purchase ? purchaseClearanceTotal(purchase) : 0;
+  const goodsSubtotal = useMemo(() => {
+    if (!purchase?.items?.length) return 0;
+    return purchase.items.reduce((sum, it) => {
+      const lineTotal = Number((it as any).total ?? (it.price ?? 0) * (it.quantity ?? 0)) || 0;
+      return sum + lineTotal;
+    }, 0);
+  }, [purchase?.items]);
 
   // Load branches for location display
   useEffect(() => {
@@ -621,7 +648,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-        <div className="text-white">Loading purchase details...</div>
+        <div className="text-foreground">Loading purchase details...</div>
       </div>
     );
   }
@@ -629,7 +656,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   if (!purchase) {
     return (
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-        <div className="text-white">Purchase not found</div>
+        <div className="text-foreground">Purchase not found</div>
         <Button onClick={onClose} className="ml-4">Close</Button>
       </div>
     );
@@ -638,11 +665,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const effectiveStatus = getEffectivePurchaseStatus(purchase);
   const isCancelled = effectiveStatus === 'cancelled';
   const statusBadgeConfig = getPurchaseStatusBadgeConfig(purchase);
-  const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
+  const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-muted-foreground', border: 'border-gray-500/30', label: 'Draft' };
   const hidePaymentCommercial = isPurchaseNonPostedCommercial(purchase.status);
   const purchaseDue = (purchase as any).due ?? (purchase as any).paymentDue ?? 0;
+  const displaySupplierDue = wholesaleClearanceActive && purchase
+    ? purchaseSupplierDue(purchase)
+    : purchaseDue;
   const canAddPayment =
-    !hidePaymentCommercial && canAddPaymentToPurchase(purchase, purchaseDue);
+    !hidePaymentCommercial && canAddPaymentToPurchase(purchase, displaySupplierDue);
 
   const getStatusColor = (status: string) => {
     const s = (status || '').toLowerCase();
@@ -651,11 +681,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       case 'completed':
       case 'received': return 'bg-green-500/10 text-green-500 border-green-500/20';
       case 'ordered': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'draft': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      case 'draft': return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
       case 'cancelled': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
       case 'returned': return 'bg-green-500/10 text-green-500 border-green-500/20';
       case 'partially_returned': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      default: return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
     }
   };
 
@@ -664,7 +694,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       case 'paid': return 'bg-green-500/10 text-green-500';
       case 'partial': return 'bg-yellow-500/10 text-yellow-500';
       case 'unpaid': return 'bg-red-500/10 text-red-500';
-      default: return 'bg-gray-500/10 text-gray-500';
+      default: return 'bg-gray-500/10 text-muted-foreground';
     }
   };
 
@@ -677,7 +707,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
+      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-input-background shadow-2xl z-50 overflow-hidden flex flex-col border-l border-border">
         {/* Cancelled banner - when purchase is cancelled */}
         {isCancelled && (
           <div className="shrink-0 bg-amber-500/20 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2">
@@ -687,13 +717,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           </div>
         )}
         {/* Header: In return mode show "Purchase Return · Ref: ..."; otherwise normal purchase title */}
-        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="bg-card/95 border-b border-border px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+              <h2 className="text-xl font-bold text-foreground flex items-center gap-3">
                 {returnMode ? (
                   <>
-                    Purchase Return <span className="text-gray-400 font-normal">· Ref: {purchase.purchaseNo}</span>
+                    Purchase Return <span className="text-muted-foreground font-normal">· Ref: {purchase.purchaseNo}</span>
                     <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs font-semibold">Return Mode</Badge>
                   </>
                 ) : (
@@ -705,7 +735,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   </>
                 )}
               </h2>
-              <p className="text-sm text-gray-400 mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {returnMode ? 'Return items from this purchase. Only return quantities are editable.' : 'Purchase Transaction Details'}
               </p>
             </div>
@@ -716,7 +746,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             <Button
               variant="ghost"
               size="sm"
-              className="text-gray-400 hover:text-white hover:bg-gray-800"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={() => {
                 setShowPrintLayout(true);
                 onPrint?.(purchase.id);
@@ -733,7 +763,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-purple-400 hover:text-purple-300 hover:bg-gray-800"
+                  className="text-purple-400 hover:text-purple-300 hover:bg-muted"
                   onClick={() => onPrintBarcodeLabels(purchase.id)}
                 >
                   <Barcode size={16} className="mr-2" />
@@ -746,15 +776,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-gray-400 hover:text-white hover:bg-gray-800"
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted"
                 >
                   <MoreVertical size={16} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
+              <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
                 {!isCancelled && (
                   <DropdownMenuItem 
-                    className="hover:bg-gray-800 cursor-pointer"
+                    className="hover:bg-muted cursor-pointer"
                     onClick={() => onEdit?.(purchase.id)}
                   >
                     <Edit size={14} className="mr-2" />
@@ -763,24 +793,24 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 )}
                 {!isCancelled && (purchase.status === 'final' || purchase.status === 'received') && effectiveStatus !== 'cancelled' && (
                   <DropdownMenuItem 
-                    className="hover:bg-gray-800 cursor-pointer"
+                    className="hover:bg-muted cursor-pointer"
                     onClick={() => onOpenReturn ? onOpenReturn() : handleEnterReturnMode()}
                   >
                     <RotateCcw size={14} className="mr-2 text-purple-400" />
                     Return Items
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                   <Download size={14} className="mr-2" />
                   Export PDF
                 </DropdownMenuItem>
-                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                   <Share2 size={14} className="mr-2" />
                   Share
                 </DropdownMenuItem>
                 {canDelete && !isCancelled && (
                 <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                  className="hover:bg-muted cursor-pointer text-red-400"
                   onClick={() => onDelete?.(purchase.id)}
                 >
                   <Trash2 size={14} className="mr-2" />
@@ -793,7 +823,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           <Button
             variant="ghost"
             size="icon"
-              className="text-gray-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             onClick={onClose}
           >
             <X size={20} />
@@ -802,7 +832,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         </div>
 
         {/* Tabs */}
-        <div className="bg-gray-900/50 border-b border-gray-800 px-6 shrink-0">
+        <div className="bg-muted/40 border-b border-border px-6 shrink-0">
           <div className="flex gap-1">
             {(
               hidePaymentCommercial
@@ -823,7 +853,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   "px-4 py-3 text-sm font-medium transition-colors relative",
                   activeTab === tab.id
                     ? "text-blue-400"
-                    : "text-gray-500 hover:text-gray-300"
+                    : "text-muted-foreground hover:text-muted-foreground"
                 )}
               >
                 {tab.label}
@@ -843,23 +873,23 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               {!returnMode && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Supplier Info */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-2">
                     <User size={16} />
                     Supplier Information
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Supplier Name</p>
-                      <p className="text-white font-medium">{purchase.supplierName}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Supplier Name</p>
+                      <p className="text-foreground font-medium">{purchase.supplierName}</p>
                       {supplierCode && (
-                        <p className="text-sm text-gray-400">Code: {supplierCode}</p>
+                        <p className="text-sm text-muted-foreground">Code: {supplierCode}</p>
                       )}
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Contact Number</p>
-                      <p className="text-white flex items-center gap-2">
-                        <Phone size={14} className="text-gray-500" />
+                      <p className="text-xs text-muted-foreground mb-1">Contact Number</p>
+                      <p className="text-foreground flex items-center gap-2">
+                        <Phone size={14} className="text-muted-foreground" />
                         {purchase.contactNumber || 'N/A'}
                       </p>
                     </div>
@@ -867,39 +897,39 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 </div>
 
                 {/* Transaction Info */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-2">
                     <FileText size={16} />
                     Transaction Details
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <span className="text-xs text-gray-500 block mb-1">Date</span>
-                      <div className="text-white flex items-center gap-2">
-                        <Calendar size={14} className="text-gray-500" />
+                      <span className="text-xs text-muted-foreground block mb-1">Date</span>
+                      <div className="text-foreground flex items-center gap-2">
+                        <Calendar size={14} className="text-muted-foreground" />
                         <div>
                           <div>{formatDate(purchase.date)}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
+                          <div className="text-xs text-muted-foreground mt-0.5">
                             {formatDateTime(purchase.createdAt)}
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Location</span>
-                      <span className="text-white flex items-center gap-2">
-                        <Building2 size={14} className="text-gray-500" />
+                      <span className="text-xs text-muted-foreground">Location</span>
+                      <span className="text-foreground flex items-center gap-2">
+                        <Building2 size={14} className="text-muted-foreground" />
                         {branchMap.get(purchase.branchId || '') || purchase.location}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Created At</span>
-                      <span className="text-white">{formatDateTime(purchase.createdAt)}</span>
+                      <span className="text-xs text-muted-foreground">Created At</span>
+                      <span className="text-foreground">{formatDateTime(purchase.createdAt)}</span>
                     </div>
                     {purchase.updatedAt && (
                       <div className="flex justify-between">
-                        <span className="text-xs text-gray-500">Last Updated</span>
-                        <span className="text-white">{formatDateTime(purchase.updatedAt)}</span>
+                        <span className="text-xs text-muted-foreground">Last Updated</span>
+                        <span className="text-foreground">{formatDateTime(purchase.updatedAt)}</span>
                     </div>
                     )}
                   </div>
@@ -911,23 +941,23 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               {!returnMode && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {hidePaymentCommercial ? (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-2">Payments</p>
-                    <p className="text-sm text-gray-400">
-                      Supplier payments and balances apply after the PO is <strong className="text-gray-300">received</strong> or{' '}
-                      <strong className="text-gray-300">final</strong>.
+                  <div className="bg-card border border-border rounded-xl p-4">
+                    <p className="text-xs text-muted-foreground mb-2">Payments</p>
+                    <p className="text-sm text-muted-foreground">
+                      Supplier payments and balances apply after the PO is <strong className="text-muted-foreground">received</strong> or{' '}
+                      <strong className="text-muted-foreground">final</strong>.
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                    <p className="text-xs text-gray-500 mb-2">Payment Status</p>
+                  <div className="bg-card border border-border rounded-xl p-4">
+                    <p className="text-xs text-muted-foreground mb-2">Payment Status</p>
                     <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(purchase.paymentStatus))}>
                       {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
                     </Badge>
                   </div>
                 )}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Order Status</p>
+                <div className="bg-card border border-border rounded-xl p-4">
+                  <p className="text-xs text-muted-foreground mb-2">Order Status</p>
                   <Badge className={cn("text-sm font-semibold", badge.bg, badge.text, badge.border)}>
                     {badge.label}
                   </Badge>
@@ -937,28 +967,28 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
               {/* Purchase Returns - when this purchase has returns (from API or after loading list) */}
               {((purchase as any).hasReturn || purchaseReturns.length > 0) && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
                     <RotateCcw size={16} className="text-purple-400" />
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Purchase Returns</h3>
-                    {loadingPurchaseReturns && <span className="text-xs text-gray-500">Loading...</span>}
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Purchase Returns</h3>
+                    {loadingPurchaseReturns && <span className="text-xs text-muted-foreground">Loading...</span>}
                   </div>
                   <div className="p-4">
                     {loadingPurchaseReturns ? (
-                      <p className="text-sm text-gray-500">Loading returns...</p>
+                      <p className="text-sm text-muted-foreground">Loading returns...</p>
                     ) : purchaseReturns.length === 0 ? (
-                      <p className="text-sm text-gray-500">No returns found for this purchase.</p>
+                      <p className="text-sm text-muted-foreground">No returns found for this purchase.</p>
                     ) : (
                       <ul className="space-y-2">
                         {purchaseReturns.map((ret: any) => {
                           const retStatus = (ret.status || '').toString().toLowerCase();
                           const statusLabel = retStatus === 'void' ? 'Voided' : retStatus === 'final' ? 'Final' : 'Draft';
-                          const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+                          const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-muted-foreground border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
                           return (
-                            <li key={ret.id} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
-                              <span className="text-sm font-medium text-white font-mono">{ret.return_no || ret.id || '—'}</span>
+                            <li key={ret.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                              <span className="text-sm font-medium text-foreground font-mono">{ret.return_no || ret.id || '—'}</span>
                               <Badge className={cn('text-xs', statusClass)}>{statusLabel}</Badge>
-                              <span className="text-xs text-gray-500">{ret.return_date ? new Date(ret.return_date).toLocaleDateString() : ''}</span>
+                              <span className="text-xs text-muted-foreground">{ret.return_date ? new Date(ret.return_date).toLocaleDateString() : ''}</span>
                             </li>
                           );
                         })}
@@ -969,9 +999,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               )}
 
               {/* Items Table */}
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                     <Package size={16} />
                     Items ({purchase.items.length})
                     {returnMode && (
@@ -1005,7 +1035,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                        className="border-border text-muted-foreground hover:bg-muted"
                         onClick={handleExitReturnMode}
                         disabled={savingReturn}
                       >
@@ -1013,7 +1043,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       </Button>
                       <Button
                         size="sm"
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        className="bg-purple-600 hover:bg-purple-700 text-foreground"
                         onClick={handleSaveReturn}
                         disabled={savingReturn || Object.values(returnQuantities).every(qty => qty <= 0)}
                       >
@@ -1035,19 +1065,22 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-gray-800 hover:bg-transparent">
-                        <TableHead className="text-gray-400">Product</TableHead>
-                        <TableHead className="text-gray-400">SKU</TableHead>
-                        <TableHead className="text-gray-400">Variation</TableHead>
-                        {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
-                        <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
-                        <TableHead className="text-gray-400 text-center">Original Qty</TableHead>
-                        {returnMode && <TableHead className="text-gray-400 text-center">Already Returned</TableHead>}
-                        {returnMode && <TableHead className="text-gray-400 text-center">Return Qty</TableHead>}
-                        {!returnMode && <TableHead className="text-gray-400 text-center">Qty</TableHead>}
-                        <TableHead className="text-gray-400">Unit</TableHead>
-                        {returnMode && <TableHead className="text-gray-400 text-right">Return Total</TableHead>}
-                        {!returnMode && <TableHead className="text-gray-400 text-right">Total</TableHead>}
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-muted-foreground">Product</TableHead>
+                        <TableHead className="text-muted-foreground">SKU</TableHead>
+                        <TableHead className="text-muted-foreground">Variation</TableHead>
+                        {enablePacking && <TableHead className="text-muted-foreground">Packing</TableHead>}
+                        <TableHead className="text-muted-foreground text-right">Unit Price</TableHead>
+                        {showClearanceSplit && (
+                          <TableHead className="text-muted-foreground text-right">Courier alloc</TableHead>
+                        )}
+                        <TableHead className="text-muted-foreground text-center">Original Qty</TableHead>
+                        {returnMode && <TableHead className="text-muted-foreground text-center">Already Returned</TableHead>}
+                        {returnMode && <TableHead className="text-muted-foreground text-center">Return Qty</TableHead>}
+                        {!returnMode && <TableHead className="text-muted-foreground text-center">Qty</TableHead>}
+                        <TableHead className="text-muted-foreground">Unit</TableHead>
+                        {returnMode && <TableHead className="text-muted-foreground text-right">Return Total</TableHead>}
+                        {!returnMode && <TableHead className="text-muted-foreground text-right">Total</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1055,6 +1088,10 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         const productName = item.productName || 'Unknown Product';
                         const displaySku = item.sku || 'N/A';
                         const qty = item.quantity ?? 0;
+                        const lineTotal = Number((item as any).total ?? (item.price ?? 0) * qty) || 0;
+                        const courierAlloc = showClearanceSplit
+                          ? lineClearanceAlloc(lineTotal, goodsSubtotal, clearanceTotal)
+                          : 0;
                         
                         // Extract variation data
                         const variation = (item as any).variation || (item as any).product_variations || null;
@@ -1127,25 +1164,25 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         }
                         
                         return (
-                        <TableRow key={item.id} className={cn("border-gray-800", returnMode && !canReturn && "opacity-50")}>
+                        <TableRow key={item.id} className={cn("border-border", returnMode && !canReturn && "opacity-50")}>
                           <TableCell>
                             <div>
-                              <p className="font-medium text-white">{productName}</p>
+                              <p className="font-medium text-foreground">{productName}</p>
                               {finalSku && finalSku !== 'N/A' && (
-                                <p className="text-xs text-gray-500">SKU: {finalSku}</p>
+                                <p className="text-xs text-muted-foreground">SKU: {finalSku}</p>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-400">{finalSku}</TableCell>
+                          <TableCell className="text-muted-foreground">{finalSku}</TableCell>
                           <TableCell>
                             {variationText ? (
-                              <span className="text-gray-300 text-sm">{variationText}</span>
+                              <span className="text-muted-foreground text-sm">{variationText}</span>
                             ) : (
-                              <span className="text-gray-600">—</span>
+                              <span className="text-muted-foreground">—</span>
                             )}
                           </TableCell>
                           {enablePacking && (
-                            <TableCell className="text-gray-400">
+                            <TableCell className="text-muted-foreground">
                               <button
                                 onClick={() => handleOpenPackingModal(item)}
                                 className="text-left hover:text-purple-400 transition-colors cursor-pointer"
@@ -1158,11 +1195,16 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               </button>
                             </TableCell>
                           )}
-                          <TableCell className="text-right text-white">
+                          <TableCell className="text-right text-foreground">
                             {formatCurrency(item.price)}
                           </TableCell>
-                          <TableCell className="text-center text-white font-medium">
-                            {qty}
+                          {showClearanceSplit && (
+                            <TableCell className="text-right text-amber-300/90 tabular-nums">
+                              {courierAlloc > 0 ? formatCurrency(courierAlloc) : '—'}
+                            </TableCell>
+                          )}
+                          <TableCell className="text-center text-foreground font-medium tabular-nums">
+                            {formatQty(qty)}
                           </TableCell>
                           {returnMode && (
                             <TableCell className="text-center">
@@ -1171,7 +1213,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                   {alreadyReturned}
                                 </Badge>
                               ) : (
-                                <span className="text-gray-500">0</span>
+                                <span className="text-muted-foreground">0</span>
                               )}
                             </TableCell>
                           )}
@@ -1180,8 +1222,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               {hasPackingStructure ? (
                                 /* Read-only: value only from Return Packing dialog */
                                 <div className="flex flex-col items-center gap-0.5">
-                                  <div className="flex items-center justify-center gap-1 rounded bg-gray-800/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
-                                    <span className="text-sm font-medium text-white tabular-nums">{returnQtyFromPacking}</span>
+                                  <div className="flex items-center justify-center gap-1 rounded bg-muted/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
+                                    <span className="text-sm font-medium text-foreground tabular-nums">{returnQtyFromPacking}</span>
                                   </div>
                                   <p className="text-[10px] text-amber-400/90">From Return Packing</p>
                                   {!canReturn && (
@@ -1200,7 +1242,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                       handleReturnQuantityChange(itemKey, val);
                                     }}
                                     disabled={!canReturn}
-                                    className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-20 text-center bg-card border border-border text-foreground h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                     placeholder="0"
                                   />
                                   {!canReturn && (
@@ -1210,17 +1252,17 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               )}
                             </TableCell>
                           ) : (
-                            <TableCell className="text-center text-white font-medium">
-                              {qty}
+                            <TableCell className="text-center text-foreground font-medium tabular-nums">
+                              {formatQty(qty)}
                             </TableCell>
                           )}
-                          <TableCell className="text-gray-400">{unitDisplay}</TableCell>
+                          <TableCell className="text-muted-foreground">{unitDisplay}</TableCell>
                           {returnMode ? (
                             <TableCell className="text-right text-red-400 font-medium">
                               {returnQtyFromPacking > 0 ? `-${formatCurrency(returnQtyFromPacking * item.price)}` : '—'}
                             </TableCell>
                           ) : (
-                            <TableCell className="text-right text-white font-medium">
+                            <TableCell className="text-right text-foreground font-medium">
                               {formatCurrency(item.price * qty)}
                             </TableCell>
                           )}
@@ -1234,18 +1276,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
               {/* Return Mode: Reason & Notes */}
               {returnMode && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5 space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                     <RotateCcw size={16} />
                     Return Details
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-gray-200 mb-2 block">Return Date *</Label>
-                      <CalendarDatePicker 
-                        value={returnDate} 
-                        onChange={(d) => d && setReturnDate(d)} 
-                        className="bg-gray-800 border-gray-700 text-white" 
+                      <DatePicker
+                        value={format(returnDate, 'yyyy-MM-dd')}
+                        onChange={(v) => {
+                          if (!v) return;
+                          const d = parseISO(v);
+                          if (isValid(d)) setReturnDate(d);
+                        }}
                       />
                     </div>
                     <div>
@@ -1254,7 +1299,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         value={returnReason} 
                         onChange={(e) => setReturnReason(e.target.value)} 
                         placeholder="Reason for return" 
-                        className="bg-gray-800 border-gray-700 text-white" 
+                        className="bg-muted border-border text-foreground" 
                       />
                     </div>
                   </div>
@@ -1264,19 +1309,19 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       value={returnNotes} 
                       onChange={(e) => setReturnNotes(e.target.value)} 
                       placeholder="Additional notes" 
-                      className="bg-gray-800 border-gray-700 text-white min-h-[60px]" 
+                      className="bg-muted border-border text-foreground min-h-[60px]" 
                     />
                   </div>
-                  <div className="pt-2 border-t border-gray-800">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Amounts</h3>
+                  <div className="pt-2 border-t border-border">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Amounts</h3>
                     <div className="space-y-3">
                       <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Original Purchase Amount</p>
-                        <p className="text-lg font-bold text-green-400">{formatCurrency(purchase.total)}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">Reference only</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">Original Purchase Amount</p>
+                        <p className="text-lg font-bold text-[var(--erp-money-positive)]">{formatCurrency(purchase.total)}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Reference only</p>
                       </div>
-                      <div className="border-t border-gray-800 pt-3">
-                        <p className="text-xs text-gray-500 mb-0.5">Returned Amount</p>
+                      <div className="border-t border-border pt-3">
+                        <p className="text-xs text-muted-foreground mb-0.5">Returned Amount</p>
                         <p className="text-lg font-bold text-red-400">
                           - {formatCurrency(Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
                             const item = purchase.items.find((it) => {
@@ -1286,11 +1331,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             return sum + (qty * (item?.price || 0));
                           }, 0))}
                         </p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">Supplier credit impact</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Supplier credit impact</p>
                       </div>
-                      <div className="border-t border-gray-800 pt-3">
-                        <p className="text-xs text-gray-500 mb-0.5">Net After Return</p>
-                        <p className="text-lg font-bold text-white">
+                      <div className="border-t border-border pt-3">
+                        <p className="text-xs text-muted-foreground mb-0.5">Net After Return</p>
+                        <p className="text-lg font-bold text-foreground">
                           {formatCurrency(Math.max(0, purchase.total - Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
                             const item = purchase.items.find((it) => {
                               const itemKey = `${it.productId}_${it.variationId || 'null'}`;
@@ -1307,30 +1352,37 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
               {/* Payment Summary — hidden in return mode (amounts in Return Details) */}
               {!returnMode && (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b border-border">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                     <DollarSign size={16} />
                     {hidePaymentCommercial ? 'Order totals' : 'Payment Summary'}
                   </h3>
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Subtotal</span>
-                    <span className="text-white font-medium">{formatCurrency(purchase.subtotal ?? 0)}</span>
+                    <span className="text-muted-foreground">{showClearanceSplit ? 'Goods subtotal' : 'Subtotal'}</span>
+                    <span className="text-foreground font-medium">{formatCurrency(purchase.subtotal ?? goodsSubtotal ?? 0)}</span>
                   </div>
+                  
+                  {showClearanceSplit && clearanceTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Clearance / Freight (YAQOOB)</span>
+                      <span className="text-amber-300/90 font-medium">{formatCurrency(clearanceTotal)}</span>
+                    </div>
+                  )}
                   
                   {(purchase.discount ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Discount</span>
+                      <span className="text-muted-foreground">Discount</span>
                       <span className="text-red-400 font-medium">- {formatCurrency(purchase.discount)}</span>
                     </div>
                   )}
                   
                   {(purchase.tax ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Tax</span>
-                      <span className="text-white font-medium">{formatCurrency(purchase.tax)}</span>
+                      <span className="text-muted-foreground">Tax</span>
+                      <span className="text-foreground font-medium">{formatCurrency(purchase.tax)}</span>
                     </div>
                   )}
                   
@@ -1339,17 +1391,20 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     const charges = (purchase as any).charges ?? [];
                     const chargeList = Array.isArray(charges) ? charges : [];
                     const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
-                    const extraRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
+                    const extraRows = chargeList.filter((c: any) => {
+                      const type = c.charge_type || c.chargeType;
+                      return type !== 'discount' && type !== 'shipping' && !(showClearanceSplit && type === 'freight');
+                    });
                     const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
                     const extraTotal = extraRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
                     const hasShipping = shippingTotal > 0;
                     const hasExtra = extraRows.length > 0;
                     if (!hasShipping && !hasExtra) {
-                      if ((purchase.shippingCost ?? 0) > 0) {
+                      if ((purchase.shippingCost ?? 0) > 0 && !showClearanceSplit) {
                         return (
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Shipping / Extra charges</span>
-                            <span className="text-white font-medium">{formatCurrency(purchase.shippingCost)}</span>
+                            <span className="text-muted-foreground">Shipping / Extra charges</span>
+                            <span className="text-foreground font-medium">{formatCurrency(purchase.shippingCost)}</span>
                           </div>
                         );
                       }
@@ -1359,38 +1414,40 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <>
                         {hasShipping && (
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Shipping</span>
-                            <span className="text-white font-medium">{formatCurrency(shippingTotal)}</span>
+                            <span className="text-muted-foreground">Shipping</span>
+                            <span className="text-foreground font-medium">{formatCurrency(shippingTotal)}</span>
                           </div>
                         )}
                         {extraRows.map((c: any, idx: number) => (
                           <div key={c.id || idx} className="flex justify-between text-sm">
-                            <span className="text-gray-400">{c.charge_type || c.chargeType || 'Other'}</span>
-                            <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                            <span className="text-muted-foreground">{c.charge_type || c.chargeType || 'Other'}</span>
+                            <span className="text-foreground font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
                           </div>
                         ))}
                       </>
                     );
                   })()}
                   
-                  <Separator className="bg-gray-800" />
+                  <Separator className="bg-muted" />
                   
                   <div className="flex justify-between">
-                    <span className="text-gray-300 font-semibold">Grand Total</span>
-                    <span className="text-white text-xl font-bold">{formatCurrency(purchase.total)}</span>
+                    <span className="text-muted-foreground font-semibold">Grand Total</span>
+                    <span className="text-foreground text-xl font-bold">{formatCurrency(purchase.total)}</span>
                   </div>
                   
                   {!hidePaymentCommercial && (
                     <>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Total Paid</span>
-                        <span className="text-green-400 font-medium">{formatCurrency(purchase.paid)}</span>
+                        <span className="text-muted-foreground">Total Paid</span>
+                        <span className="text-[var(--erp-money-positive)] font-medium">{formatCurrency(purchase.paid)}</span>
                       </div>
 
-                      {purchase.due > 0 && (
+                      {displaySupplierDue > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-400 font-medium">Amount Due</span>
-                          <span className="text-red-400 text-lg font-bold">{formatCurrency(purchase.due)}</span>
+                          <span className="text-muted-foreground font-medium">
+                            {wholesaleClearanceActive ? 'Supplier due (goods)' : 'Amount Due'}
+                          </span>
+                          <span className="text-red-400 text-lg font-bold">{formatCurrency(displaySupplierDue)}</span>
                         </div>
                       )}
                     </>
@@ -1399,11 +1456,26 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               </div>
               )}
 
+              {wholesaleClearanceActive && purchase && companyId && (
+                <WholesaleImportClearanceWorkflow
+                  purchase={purchase}
+                  companyId={companyId}
+                  formatCurrency={formatCurrency}
+                  onUpdated={() => {
+                    if (purchaseId) {
+                      void purchaseService.getPurchase(purchaseId).then((row) => {
+                        if (row) setPurchase(convertFromSupabasePurchase(row));
+                      });
+                    }
+                  }}
+                />
+              )}
+
               {/* Notes */}
               {purchase.notes && (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Notes</h3>
-                  <p className="text-white text-sm leading-relaxed">{purchase.notes}</p>
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Notes</h3>
+                  <p className="text-foreground text-sm leading-relaxed">{purchase.notes}</p>
                 </div>
               )}
 
@@ -1420,8 +1492,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 }
                 
                 return (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <div className="bg-card border border-border rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
                       <Paperclip size={16} />
                       Attachments ({Array.isArray(purchase.attachments) ? purchase.attachments.length : 1})
                     </h3>
@@ -1474,7 +1546,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             <div className="space-y-4">
               {/* Same as ViewSaleDetailsDrawer: Payment History + Add Payment + breakdown */}
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-white">Payment History</h3>
+                <h3 className="text-lg font-semibold text-foreground">Payment History</h3>
                 {canAddPayment && (
                   <Button
                     onClick={() => {
@@ -1489,79 +1561,81 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               </div>
 
               {loadingPayments ? (
-                <div className="text-center py-12 text-gray-400">Loading…</div>
+                <div className="text-center py-12 text-muted-foreground">Loading…</div>
               ) : payments.length > 0 ? (
                 <div className="space-y-4">
                   {/* Summary Cards by Payment Method */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {payments.filter((p: any) => p.method === 'cash').length > 0 && (
                       <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
-                        <p className="text-2xl font-bold text-green-400">
+                        <p className="text-xs text-muted-foreground mb-1">Paid (Cash)</p>
+                        <p className="text-2xl font-bold text-[var(--erp-money-positive)]">
                           {formatCurrency(payments.filter((p: any) => p.method === 'cash').reduce((sum: number, p: any) => sum + p.amount, 0))}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {payments.filter((p: any) => p.method === 'cash').length} payment(s)
                         </p>
                       </div>
                     )}
                     {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').length > 0 && (
                       <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
+                        <p className="text-xs text-muted-foreground mb-1">Paid (Bank/Card)</p>
                         <p className="text-2xl font-bold text-blue-400">
                           {formatCurrency(payments.filter((p: any) => p.method === 'bank' || p.method === 'card').reduce((sum: number, p: any) => sum + p.amount, 0))}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').length} payment(s)
                         </p>
                       </div>
                     )}
                     {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length > 0 && (
                       <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
+                        <p className="text-xs text-muted-foreground mb-1">Paid (Other)</p>
                         <p className="text-2xl font-bold text-purple-400">
                           {formatCurrency(payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum: number, p: any) => sum + p.amount, 0))}
                         </p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
                         </p>
                       </div>
                     )}
                   </div>
 
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <div className="bg-card border border-border rounded-xl p-5">
                     <div className="flex justify-between items-center mb-4">
                       <div>
-                        <p className="text-white font-semibold text-xl">
+                        <p className="text-foreground font-semibold text-xl">
                           {formatCurrency(purchase.paid)}
                         </p>
-                        <p className="text-sm text-gray-400 mt-1">Total Paid Amount</p>
+                        <p className="text-sm text-muted-foreground mt-1">Total Paid Amount</p>
                       </div>
                       <Badge className={cn(
                         "text-sm font-semibold",
-                        purchase.paymentStatus === 'paid' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                        purchase.paymentStatus === 'paid' ? "bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20" :
                         purchase.paymentStatus === 'partial' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
                         "bg-red-500/10 text-red-400 border-red-500/20"
                       )}>
                         {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
                       </Badge>
                     </div>
-                    {purchase.due > 0 && (
-                      <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
-                        <span className="text-gray-400">Amount Due:</span>
-                        <span className="text-red-400 font-medium">{formatCurrency(purchase.due)}</span>
+                    {displaySupplierDue > 0 && (
+                      <div className="flex justify-between text-sm pt-3 border-t border-border">
+                        <span className="text-muted-foreground">
+                          {wholesaleClearanceActive ? 'Supplier due (goods):' : 'Amount Due:'}
+                        </span>
+                        <span className="text-red-400 font-medium">{formatCurrency(displaySupplierDue)}</span>
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-gray-400 uppercase">Payment Details</h4>
+                    <h4 className="text-sm font-semibold text-muted-foreground uppercase">Payment Details</h4>
                     {payments.map((payment: any) => (
-                      <div key={payment.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                      <div key={payment.id} className="bg-card border border-border rounded-xl p-4">
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="text-white font-semibold">{formatCurrency(payment.amount)}</p>
+                              <p className="text-foreground font-semibold">{formatCurrency(payment.amount)}</p>
                               {(() => {
                                 const c = payment.createdAt ? new Date(payment.createdAt).getTime() : 0;
                                 const u = payment.updatedAt ? new Date(payment.updatedAt).getTime() : 0;
@@ -1575,7 +1649,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                 return null;
                               })()}
                               {payment.referenceNo && (
-                                <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
+                                <code className="text-xs bg-muted px-2 py-0.5 rounded text-blue-400 border border-border">
                                   {payment.referenceNo}
                                 </code>
                               )}
@@ -1585,16 +1659,16 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-sm text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                               {formatDate(payment.date)}
                             </p>
                             {payment.accountName && (
-                              <p className="text-xs text-gray-500 mt-1">Account: {payment.accountName}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Account: {payment.accountName}</p>
                             )}
                             {payment.notes && (
-                              <p className="text-xs text-gray-400 mt-2 flex items-start gap-1.5">
-                                <FileText size={12} className="text-gray-500 shrink-0 mt-0.5" />
-                                <span><span className="text-gray-500">Note:</span> {payment.notes}</span>
+                              <p className="text-xs text-muted-foreground mt-2 flex items-start gap-1.5">
+                                <FileText size={12} className="text-muted-foreground shrink-0 mt-0.5" />
+                                <span><span className="text-muted-foreground">Note:</span> {payment.notes}</span>
                               </p>
                             )}
                           </div>
@@ -1613,7 +1687,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                   });
                                   if (list.length) setAttachmentsDialogList(list);
                                 }}
-                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-gray-400 hover:text-amber-400 transition-colors"
+                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-muted-foreground hover:text-amber-400 transition-colors"
                                 title={`${Array.isArray(payment.attachments) ? payment.attachments.length : 1} attachment(s)`}
                               >
                                 <Paperclip size={14} />
@@ -1621,7 +1695,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             )}
                             <Badge className={cn(
                               "text-xs font-semibold",
-                              payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                              payment.method === 'cash' ? "bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20" :
                               payment.method === 'bank' || payment.method === 'card' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                               "bg-purple-500/10 text-purple-400 border-purple-500/20"
                             )}>
@@ -1638,7 +1712,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                   toast.error(e?.message || 'Cannot edit this payment line');
                                 }
                               }}
-                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
+                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-muted-foreground hover:text-blue-400 transition-colors"
                               title="Edit payment (allocation lines edit the parent payment)"
                             >
                               <Edit size={14} />
@@ -1648,8 +1722,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                 setPaymentToDelete(payment);
                                 setDeleteConfirmationOpen(true);
                               }}
-                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Delete Payment"
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Cancel Payment"
                               disabled={isDeletingPayment || loadingPayments}
                             >
                               <Trash2 size={14} />
@@ -1659,8 +1733,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           </div>
                         </div>
                         {(payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments)) && (
-                          <div className="mt-3 pt-3 border-t border-gray-800 flex flex-wrap items-center gap-2">
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Paperclip size={12} /> Attachments:
                             </span>
                             {Array.isArray(payment.attachments) ? (
@@ -1703,14 +1777,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   </div>
                 </div>
               ) : purchase.paid > 0 ? (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <p className="text-white font-semibold text-lg">{formatCurrency(purchase.paid)}</p>
-                  <p className="text-sm text-gray-400 mt-1">Total paid amount (payment details loading...)</p>
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <p className="text-foreground font-semibold text-lg">{formatCurrency(purchase.paid)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">Total paid amount (payment details loading...)</p>
                 </div>
               ) : (
                 <div className="text-center py-12">
                   <CreditCard size={48} className="mx-auto text-gray-700 mb-4" />
-                  <p className="text-gray-500">No payments recorded yet</p>
+                  <p className="text-muted-foreground">No payments recorded yet</p>
                   <Button onClick={() => setViewPaymentsModalOpen(true)} className="mt-4 bg-blue-600 hover:bg-blue-500 text-white">
                     <CreditCard size={16} className="mr-2" />
                     View Payment History
@@ -1722,17 +1796,17 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
           {activeTab === 'history' && (
             <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-white mb-4">Activity Timeline</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Activity Timeline</h3>
               
               {loadingActivityLogs ? (
-                <div className="text-center py-12 text-gray-400">Loading…</div>
+                <div className="text-center py-12 text-muted-foreground">Loading…</div>
               ) : activityLogs.length > 0 ? (
                 <div className="space-y-4">
                   {activityLogs.map((log, index) => {
                     const getIcon = () => {
                       switch (log.action) {
                         case 'create':
-                          return <FileText size={16} className="text-gray-500" />;
+                          return <FileText size={16} className="text-muted-foreground" />;
                         case 'status_change':
                           return <CheckCircle2 size={16} className="text-green-500" />;
                         case 'payment_added':
@@ -1744,14 +1818,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         case 'delete':
                           return <Trash2 size={16} className="text-red-500" />;
                         default:
-                          return <Clock size={16} className="text-gray-500" />;
+                          return <Clock size={16} className="text-muted-foreground" />;
                       }
                     };
 
                     const getBgColor = () => {
                       switch (log.action) {
                         case 'create':
-                          return 'bg-gray-700/20';
+                          return 'bg-muted/20';
                         case 'status_change':
                           return 'bg-green-500/20';
                         case 'payment_added':
@@ -1763,7 +1837,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         case 'delete':
                           return 'bg-red-500/20';
                         default:
-                          return 'bg-gray-700/20';
+                          return 'bg-muted/20';
                       }
                     };
 
@@ -1774,28 +1848,28 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             {getIcon()}
                           </div>
                           {index < activityLogs.length - 1 && (
-                            <div className="w-0.5 h-full bg-gray-800 mt-2" />
+                            <div className="w-0.5 h-full bg-muted mt-2" />
                           )}
                         </div>
                         <div className="flex-1 pb-6">
-                          <p className="text-white font-medium">
+                          <p className="text-foreground font-medium">
                             {log.description || activityLogService.formatActivityLog(log)}
                           </p>
-                          <p className="text-sm text-gray-400 mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             {formatDateTime(log.created_at)}
                           </p>
                           {log.performed_by_name && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               By: {log.performed_by_name}
                             </p>
                           )}
                           {log.field && log.old_value !== undefined && log.new_value !== undefined && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               {log.field}: {String(log.old_value)} → {String(log.new_value)}
                             </p>
                           )}
                           {log.amount && (
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                               Amount: {formatCurrency(log.amount)} {log.payment_method && `via ${log.payment_method}`}
                             </p>
                       )}
@@ -1807,7 +1881,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               ) : (
                 <div className="text-center py-12">
                   <Clock size={48} className="mx-auto text-gray-700 mb-4" />
-                  <p className="text-gray-500">No activity logs found</p>
+                  <p className="text-muted-foreground">No activity logs found</p>
                   </div>
                 )}
             </div>
@@ -1816,11 +1890,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
         {/* Footer Actions - Add Payment when allowed by effective status */}
         {activeTab === 'details' && canAddPayment && !hidePaymentCommercial && (
-          <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
+          <div className="border-t border-border px-6 py-4 bg-muted/40 shrink-0">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400">{formatCurrency(purchase.due)}</p>
+                <p className="text-sm text-muted-foreground">
+                  {wholesaleClearanceActive ? 'Supplier due (goods)' : 'Amount Due'}
+                </p>
+                <p className="text-2xl font-bold text-red-400">{formatCurrency(displaySupplierDue)}</p>
               </div>
           <Button
                 onClick={() => onAddPayment?.(purchase.id)}
@@ -1836,7 +1912,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
       {/* Print Layout Modal */}
       {showPrintLayout && purchase && companyId && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-[var(--erp-overlay)] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
             <UnifiedPurchaseInvoiceView
               purchaseId={purchase.id}
@@ -1930,7 +2006,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           context="supplier"
           entityName={purchase.supplierName || 'Supplier'}
           entityId={purchase.supplier}
-          outstandingAmount={purchase.due}
+          outstandingAmount={displaySupplierDue}
           totalAmount={purchase.total}
           paidAmount={purchase.paid}
           referenceNo={purchase.purchaseNo}
@@ -1942,6 +2018,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             method: paymentToEdit.method,
             accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
             date: paymentToEdit.date || paymentToEdit.payment_date,
+            createdAt: paymentToEdit.createdAt || paymentToEdit.created_at,
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,

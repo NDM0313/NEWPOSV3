@@ -1,0 +1,315 @@
+{
+  "phase": "3B-I",
+  "run": "Aligned Cash Flow candidate golden re-capture",
+  "productionUrl": "https://erp.dincouture.pk",
+  "capturedAt": "2026-06-29T14:39:12.832Z",
+  "captureEndDate": "2026-06-29",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "financeRules": {
+    "Q4": "A",
+    "Q5": "C",
+    "Q7": "B"
+  },
+  "companies": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "userEmail": "din@yahoo.com",
+      "availability": {
+        "cashFlowLoads": true,
+        "toggleVisible": true,
+        "toggleDefaultOff": true,
+        "legacyLoads": true,
+        "previewLabelsPresent": true
+      },
+      "cashFlow": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29",
+        "branchScope": "Selected branch",
+        "liquidityFilter": "all",
+        "sourceModuleFilter": "all",
+        "auditMode": false,
+        "previewBasis": "effective_party",
+        "financeRules": {
+          "Q4": "A",
+          "Q5": "C",
+          "Q7": "B"
+        },
+        "financeAlignmentApplied": true,
+        "legacy": {
+          "cashIn": 104176812,
+          "cashOut": 67042426,
+          "netMovement": 37134386,
+          "closing": 37134386,
+          "rowCount": 323
+        },
+        "alignedPreview": {
+          "cashIn": 35460880,
+          "cashOut": 67964117,
+          "netMovement": -32503237,
+          "closing": -32503237,
+          "rowCount": 236
+        },
+        "compareDeltas": {
+          "cashInDelta": 68715932,
+          "cashOutDelta": -921691,
+          "netMovementDelta": 69637623,
+          "closingDelta": 69637623,
+          "rowCountDelta": 87
+        },
+        "rowKeyedCounts": {
+          "exact": 89,
+          "strong": 0,
+          "weak": 11,
+          "legacyOnly": 223,
+          "previewOnly": 305,
+          "transferBucket": 0,
+          "openingBucket": 0,
+          "financeExcludedTransfer": 0,
+          "financeExcludedOpening": 0
+        },
+        "transferBucketEffect": {
+          "excludedFromNormalTotals": {
+            "internalTransferRows": 169,
+            "openingBalanceRows": 0,
+            "auditDetailRows": 169
+          },
+          "thematicTransferBucket": 0,
+          "financeExcludedTransfer": 0
+        },
+        "openingBucketEffect": {
+          "excludedFromNormalTotals": 0,
+          "thematicOpeningBucket": 0,
+          "financeExcludedOpening": 0
+        },
+        "pass": false,
+        "zeroDiff": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Phase 3B-H: preview follows approved finance rules Q4=A, Q5=C, Q7=B.",
+          "Opening balance rows summary-only — not period cash-in (Q4=A).",
+          "Internal transfers excluded from normal preview totals (Q5=C).",
+          "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+          "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.",
+          "Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration.",
+          "Phase 3B-H row-keyed export — Q4=A, Q5=C, Q7=B preview alignment.",
+          "Legacy Cash Flow remains authoritative.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.",
+          "Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration."
+        ],
+        "screenshot": "screenshots/din-china-cash-flow-aligned-preview.png",
+        "export": "exports/din-china-cash-flow-aligned-preview.json",
+        "diffReport": "diff-reports/din-china-aligned-diff-summary.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "userEmail": "ndm313@yahoo.com",
+      "availability": {
+        "cashFlowLoads": true,
+        "toggleVisible": true,
+        "toggleDefaultOff": true,
+        "legacyLoads": true,
+        "previewLabelsPresent": true
+      },
+      "cashFlow": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29",
+        "branchScope": "All branches",
+        "liquidityFilter": "all",
+        "sourceModuleFilter": "all",
+        "auditMode": false,
+        "previewBasis": "effective_party",
+        "financeRules": {
+          "Q4": "A",
+          "Q5": "C",
+          "Q7": "B"
+        },
+        "financeAlignmentApplied": true,
+        "legacy": {
+          "cashIn": 1836350,
+          "cashOut": 917780,
+          "netMovement": 918570,
+          "closing": 918570,
+          "rowCount": 51
+        },
+        "alignedPreview": {
+          "cashIn": 1003500,
+          "cashOut": 942780,
+          "netMovement": 60720,
+          "closing": 60720,
+          "rowCount": 51
+        },
+        "compareDeltas": {
+          "cashInDelta": 832850,
+          "cashOutDelta": -25000,
+          "netMovementDelta": 857850,
+          "closingDelta": 857850,
+          "rowCountDelta": 0
+        },
+        "rowKeyedCounts": {
+          "exact": 2,
+          "strong": 48,
+          "weak": 0,
+          "legacyOnly": 1,
+          "previewOnly": 3,
+          "transferBucket": 0,
+          "openingBucket": 0,
+          "financeExcludedTransfer": 0,
+          "financeExcludedOpening": 0
+        },
+        "transferBucketEffect": {
+          "excludedFromNormalTotals": {
+            "internalTransferRows": 0,
+            "openingBalanceRows": 2,
+            "auditDetailRows": 2
+          },
+          "thematicTransferBucket": 0,
+          "financeExcludedTransfer": 0
+        },
+        "openingBucketEffect": {
+          "excludedFromNormalTotals": 2,
+          "thematicOpeningBucket": 0,
+          "financeExcludedOpening": 0
+        },
+        "pass": false,
+        "zeroDiff": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Phase 3B-H: preview follows approved finance rules Q4=A, Q5=C, Q7=B.",
+          "Opening balance rows summary-only — not period cash-in (Q4=A).",
+          "Internal transfers excluded from normal preview totals (Q5=C).",
+          "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+          "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.",
+          "Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration.",
+          "Phase 3B-H row-keyed export — Q4=A, Q5=C, Q7=B preview alignment.",
+          "Legacy Cash Flow remains authoritative.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.",
+          "Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration."
+        ],
+        "screenshot": "screenshots/din-bridal-cash-flow-aligned-preview.png",
+        "export": "exports/din-bridal-cash-flow-aligned-preview.json",
+        "diffReport": "diff-reports/din-bridal-aligned-diff-summary.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "companyId": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "userEmail": "zhd@dincouture.pk",
+      "availability": {
+        "cashFlowLoads": true,
+        "toggleVisible": true,
+        "toggleDefaultOff": true,
+        "legacyLoads": true,
+        "previewLabelsPresent": true
+      },
+      "cashFlow": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29",
+        "branchScope": "Selected branch",
+        "liquidityFilter": "all",
+        "sourceModuleFilter": "all",
+        "auditMode": false,
+        "previewBasis": "effective_party",
+        "financeRules": {
+          "Q4": "A",
+          "Q5": "C",
+          "Q7": "B"
+        },
+        "financeAlignmentApplied": true,
+        "legacy": {
+          "cashIn": 85000,
+          "cashOut": 34500,
+          "netMovement": 50500,
+          "closing": 50500,
+          "rowCount": 6
+        },
+        "alignedPreview": {
+          "cashIn": 85000,
+          "cashOut": 34500,
+          "netMovement": 50500,
+          "closing": 50500,
+          "rowCount": 6
+        },
+        "compareDeltas": {
+          "cashInDelta": 0,
+          "cashOutDelta": 0,
+          "netMovementDelta": 0,
+          "closingDelta": 0,
+          "rowCountDelta": 0
+        },
+        "rowKeyedCounts": {
+          "exact": 2,
+          "strong": 4,
+          "weak": 0,
+          "legacyOnly": 0,
+          "previewOnly": 0,
+          "transferBucket": 0,
+          "openingBucket": 0,
+          "financeExcludedTransfer": 0,
+          "financeExcludedOpening": 0
+        },
+        "transferBucketEffect": {
+          "excludedFromNormalTotals": {
+            "internalTransferRows": 0,
+            "openingBalanceRows": 0,
+            "auditDetailRows": 0
+          },
+          "thematicTransferBucket": 0,
+          "financeExcludedTransfer": 0
+        },
+        "openingBucketEffect": {
+          "excludedFromNormalTotals": 0,
+          "thematicOpeningBucket": 0,
+          "financeExcludedOpening": 0
+        },
+        "pass": true,
+        "zeroDiff": true,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Phase 3B-H: preview follows approved finance rules Q4=A, Q5=C, Q7=B.",
+          "Opening balance rows summary-only — not period cash-in (Q4=A).",
+          "Internal transfers excluded from normal preview totals (Q5=C).",
+          "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+          "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.",
+          "Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration.",
+          "Phase 3B-H row-keyed export — Q4=A, Q5=C, Q7=B preview alignment.",
+          "Legacy Cash Flow remains authoritative.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "Phase 3B-H preview alignment — Q4=A opening summary-only; Q5=C transfers excluded from normal totals.",
+          "Q7=B — preview aligned to approved finance rules; legacy getCashFlowReport remains official.",
+          "Cash Flow loader swap NOT APPROVED.",
+          "NEEDS_FINANCE_GOLDEN_RE_CAPTURE after deploy before loader consideration."
+        ],
+        "screenshot": "screenshots/din-couture-cash-flow-aligned-preview.png",
+        "export": "exports/din-couture-cash-flow-aligned-preview.json",
+        "diffReport": "diff-reports/din-couture-aligned-diff-summary.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+AR/AP Phase 2b — Migration apply record
+Date: 2026-07-12
+Approval: APPROVE_AR_AP_PHASE2B_UNIFIED_RPC_PRODUCTION_MIGRATION
+
+File: migrations/20260712120000_get_unified_contact_party_gl_balances.sql
+Checksum (LF-normalized SHA-256): dc383ec1d04de1e76affd7500c1e987fdf07bc8f7fd409bd6636292c99d77448
+
+## Production state found
+
+schema_migrations already contained:
+  20260712120000_get_unified_contact_party_gl_balances.sql|2026-07-11 21:36:11.261634+00
+
+Function already existed before this session:
+  public.get_unified_contact_party_gl_balances(p_company_id uuid, p_branch_id uuid, p_as_of_date date, p_basis text)
+  SECURITY DEFINER
+  search_path=public (proconfig)
+  owner: supabase_admin
+
+Body markers verified:
+  HAS_ASSERT | HAS_BRANCH | HAS_BASIS | HAS_VOID | def_len=6241
+
+## Re-apply attempt (this session)
+
+Attempted CREATE OR REPLACE via docker exec as postgres:
+  ERROR: must be owner of function get_unified_contact_party_gl_balances
+
+No DROP / no ownership change / no data mutation performed.
+Treated as ALREADY APPLIED (idempotent production state). Other migrations: none applied.
+
+## Grants observed
+
+authenticated EXECUTE
+service_role EXECUTE
+(also postgres/anon/PUBLIC from existing privilege cascade)
+
+## Rollback (not executed)
+
+DROP FUNCTION IF EXISTS public.get_unified_contact_party_gl_balances(UUID, UUID, DATE, TEXT);
+
+## Production data mutation
+
+none

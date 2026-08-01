@@ -1,0 +1,42 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "phase": "loader-wiring-readiness",
+  "classification": "CODE_NOT_WIRED_BLOCKED",
+  "flagsEnabled": false,
+  "frontendDeployPerformed": false,
+  "findings": {
+    "unifiedLedgerFlagKeys": {
+      "LOADER_BALANCE_SHEET": "MISSING",
+      "LOADER_PROFIT_LOSS": "MISSING",
+      "SCREEN_BALANCE_SHEET": "MISSING",
+      "SCREEN_PROFIT_LOSS": "MISSING",
+      "referencePattern": "LOADER_CASH_FLOW / SCREEN_CASH_FLOW exist; BS/P&L keys absent"
+    },
+    "resolvers": {
+      "resolveBalanceSheetMainLoaderSource": "MISSING",
+      "resolveProfitLossMainLoaderSource": "MISSING",
+      "reference": "src/app/lib/resolveCashFlowMainLoaderSource.ts"
+    },
+    "uiMainLoader": {
+      "BalanceSheetPage": "legacy accountingReportsService.getBalanceSheet only; unified is opt-in preview toggle (unifiedPreviewEnabled)",
+      "ProfitLossPage": "legacy accountingReportsService.getProfitLoss only; unified preview panel separate",
+      "bsPlUnifiedPreviewService": "PREVIEW_ONLY — does not replace main loaders"
+    },
+    "monitoringProfiles": {
+      "expected_unified_flags_on": "No BS/P&L loader/screen keys in monitoring-company-profiles.json"
+    },
+    "enableScripts": "No scripts/single-core-ledger/*enable*bs*pl* SQL scripts",
+    "gapAnalysis": "reports/single-core-ledger/remaining-optional-screens-audit/gap-analysis.md — G-BS-02, G-PL-02 NEEDS_RUNTIME_CHANGE"
+  },
+  "implementationPlan": [
+    "Add LOADER_BALANCE_SHEET, LOADER_PROFIT_LOSS, SCREEN_BALANCE_SHEET, SCREEN_PROFIT_LOSS to src/app/lib/unifiedLedgerFlagKeys.ts and unifiedLedgerScreenFlags.ts",
+    "Add resolveBalanceSheetMainLoaderSource.ts and resolveProfitLossMainLoaderSource.ts mirroring resolveCashFlowMainLoaderSource.ts",
+    "Wire BalanceSheetPage.tsx main data path to resolver (unified via loadBalanceSheetUnifiedPreview when flags ON)",
+    "Wire ProfitLossPage.tsx main data path similarly",
+    "Add unit tests for resolvers and page loader branches",
+    "Add per-company SQL enable scripts under scripts/single-core-ledger/",
+    "Frontend deploy (deploy/vps-build-erp-only.sh) then enable flags with rollback plan",
+    "Update monitoring profiles if source-marker expectations change post-swap"
+  ],
+  "finalStatus": "BLOCKED_CODE_NOT_WIRED"
+}

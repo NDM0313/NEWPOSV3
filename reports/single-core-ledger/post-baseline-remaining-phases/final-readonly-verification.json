@@ -1,0 +1,21 @@
+{
+  "run": "POST_BASELINE_FINAL_READONLY_VERIFICATION",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "overall": "PASS",
+  "din_china_flags_on": 12,
+  "din_china_loaders_on": 5,
+  "din_bridal_flags_on": 12,
+  "din_bridal_loaders_on": 5,
+  "din_couture_flags_on": 12,
+  "din_couture_loaders_on": 5,
+  "other_company_loaders_on": 0,
+  "cross_company_leakage": false,
+  "monitoring_evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T14-14-14-851Z.json",
+  "monitoring_profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "migrations_run": false,
+  "gl_mutations": false
+}

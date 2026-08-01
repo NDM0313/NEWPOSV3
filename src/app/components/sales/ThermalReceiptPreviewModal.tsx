@@ -57,8 +57,8 @@ export const ThermalReceiptPreviewModal = ({
               {/* Header */}
               <div className="text-center mb-4">
                  <h2 className="text-xl font-bold uppercase tracking-wider">Fashion Store</h2>
-                 <p className="text-[10px] text-gray-600">Shop #12, Mall Road, Lahore</p>
-                 <p className="text-[10px] text-gray-600">Tel: +92 300 1234567</p>
+                 <p className="text-[10px] text-muted-foreground">Shop #12, Mall Road, Lahore</p>
+                 <p className="text-[10px] text-muted-foreground">Tel: +92 300 1234567</p>
               </div>
 
               {/* Invoice Meta */}
@@ -67,7 +67,7 @@ export const ThermalReceiptPreviewModal = ({
                  <span className="font-bold">{invoiceId}</span>
               </div>
               <div className="w-full mb-4 text-[11px] text-left">
-                 <span className="text-gray-500">Customer:</span> <span className="font-semibold">{customerName}</span>
+                 <span className="text-muted-foreground">Customer:</span> <span className="font-semibold">{customerName}</span>
               </div>
 
               {/* Items Table */}
@@ -95,11 +95,11 @@ export const ThermalReceiptPreviewModal = ({
               {/* Totals */}
               <div className="w-full space-y-1 border-t border-black pt-2 mb-6">
                  <div className="flex justify-between text-[11px]">
-                    <span className="text-gray-600">Subtotal</span>
+                    <span className="text-muted-foreground">Subtotal</span>
                     <span>{subtotal.toLocaleString()}</span>
                  </div>
                  <div className="flex justify-between text-[11px]">
-                    <span className="text-gray-600">Discount</span>
+                    <span className="text-muted-foreground">Discount</span>
                     <span>-{discount.toLocaleString()}</span>
                  </div>
                  <div className="flex justify-between text-sm font-bold mt-2 pt-2 border-t border-dashed border-gray-300">
@@ -115,7 +115,7 @@ export const ThermalReceiptPreviewModal = ({
                       <div key={i} className="bg-black" style={{ width: Math.random() > 0.5 ? '2px' : '1px', height: '100%' }}></div>
                     ))}
                  </div>
-                 <p className="text-[9px] tracking-[0.2em] font-mono mt-1 text-gray-500">THANK YOU</p>
+                 <p className="text-[9px] tracking-[0.2em] font-mono mt-1 text-muted-foreground">THANK YOU</p>
               </div>
 
            </div>
@@ -126,13 +126,13 @@ export const ThermalReceiptPreviewModal = ({
 
         {/* Action Buttons (Outside the receipt) */}
         <div className="mt-6 flex gap-3">
-           <Button variant="outline" onClick={onClose} className="border-gray-600 text-gray-300 hover:bg-gray-800 rounded-full h-10 w-10 p-0">
+           <Button variant="outline" onClick={onClose} className="border-gray-600 text-muted-foreground hover:bg-muted rounded-full h-10 w-10 p-0">
              <X size={20} />
            </Button>
            <Button className="bg-blue-600 hover:bg-blue-500 text-white rounded-full px-6 font-semibold shadow-lg shadow-blue-600/30">
              <Printer size={18} className="mr-2" /> Print
            </Button>
-           <Button variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-800 rounded-full h-10 w-10 p-0">
+           <Button variant="outline" className="border-gray-600 text-muted-foreground hover:bg-muted rounded-full h-10 w-10 p-0">
              <Share2 size={18} />
            </Button>
         </div>

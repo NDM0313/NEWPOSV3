@@ -1,0 +1,17 @@
+{
+  "run": "PHASE_3B_G_DIN_COUTURE_FINANCE_SUMMARY",
+  "company": "DIN COUTURE",
+  "approvalStatus": "CANDIDATE_ONLY_NOT_FINANCE_APPROVED",
+  "financeStatus": "PENDING",
+  "period": { "from": "2000-01-01", "to": "2026-06-29" },
+  "totals": {
+    "legacyClosing": 50500,
+    "previewClosing": 50500,
+    "closingDelta": 0
+  },
+  "zeroDiffAtSummary": true,
+  "financeQuestions": ["Q7"],
+  "loaderSwapApproved": false,
+  "note": "Await global Cash Flow decision; no company-specific delta driver",
+  "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/finance-review-pack.md"
+}

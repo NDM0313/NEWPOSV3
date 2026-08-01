@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-06-30T11:23:00.000Z",
+  "status": "BLOCKED_MISSING_SMTP_CONFIG",
+  "required_fields": [
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASS",
+    "SMTP_ADMIN_EMAIL"
+  ],
+  "optional_fields": [
+    "SMTP_SENDER_NAME"
+  ],
+  "sources_checked": [
+    {
+      "source": "erp-mobile-app/.env",
+      "smtp_host": "MISSING",
+      "smtp_port": "MISSING",
+      "smtp_user": "MISSING",
+      "smtp_pass": "MISSING",
+      "smtp_admin_email": "MISSING",
+      "smtp_sender_name": "MISSING"
+    },
+    {
+      "source": "VPS non-interactive SSH shell environment",
+      "smtp_host": "MISSING",
+      "smtp_port": "MISSING",
+      "smtp_user": "MISSING",
+      "smtp_pass": "MISSING",
+      "smtp_admin_email": "MISSING",
+      "smtp_sender_name": "MISSING"
+    }
+  ],
+  "action_taken": "STOP — autoconfirm and SMTP were NOT changed",
+  "operator_next_step": "Provide real SMTP settings via secure local/VPS shell only (not committed). Re-run this infra fix after export."
+}

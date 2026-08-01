@@ -34,6 +34,8 @@ import { getCompanyName } from '../../api/reports';
 import * as branchesApi from '../../api/branches';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { prepareMobileProductDuplicateSeed } from '../../utils/productDuplicateUtils';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -75,6 +77,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [filterCat, setFilterCat] = useState<string>('all');
   const [view, setView] = useState<'list' | 'add'>('list');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [duplicateFromProduct, setDuplicateFromProduct] = useState<Product | null>(null);
   const [saveError, setSaveError] = useState('');
   const { run: runSave, busy: saving } = useSubmitLock();
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
@@ -126,6 +129,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     async (p: Product) => {
       if (!companyId) return;
       setDetailProduct(null);
+      setDuplicateFromProduct(null);
       setEditLoadingId(p.id);
       const { data, error } = await productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null });
       setEditLoadingId(null);
@@ -135,6 +139,28 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
       }
       setSaveError('');
       setEditingProduct(data);
+      setView('add');
+    },
+    [companyId, branchId],
+  );
+
+  const openDuplicateProduct = useCallback(
+    async (p: Product) => {
+      if (!companyId) return;
+      setDetailProduct(null);
+      setEditingProduct(null);
+      setEditLoadingId(p.id);
+      const [{ data, error }, skuRes] = await Promise.all([
+        productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null }),
+        productsApi.getNextProductSKU(companyId, branchId ?? null),
+      ]);
+      setEditLoadingId(null);
+      if (error || !data) {
+        setSaveError(error || 'Could not load product to duplicate.');
+        return;
+      }
+      setSaveError('');
+      setDuplicateFromProduct(prepareMobileProductDuplicateSeed(data, skuRes || data.sku));
       setView('add');
     },
     [companyId, branchId],
@@ -162,11 +188,12 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     });
   }, [companyId, branchId]);
 
-  const filtered = products.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat === 'all' || p.category === filterCat;
-    return matchSearch && matchCat;
-  });
+  const filtered = useMemo(() => {
+    const term = search.trim();
+    const byCat = products.filter((p) => filterCat === 'all' || p.category === filterCat);
+    if (!term) return byCat;
+    return filterAndRankProducts(byCat, term, productMatchesSearch);
+  }, [products, search, filterCat]);
 
   const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
 
@@ -298,6 +325,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     }
     setView('list');
     setEditingProduct(null);
+    setDuplicateFromProduct(null);
     });
   };
 
@@ -322,9 +350,14 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
           companyId={companyId}
           branchId={branchId ?? null}
           sessionUserId={effectiveUserId}
-          onClose={() => setView('list')}
+          onClose={() => {
+            setView('list');
+            setEditingProduct(null);
+            setDuplicateFromProduct(null);
+          }}
           onSave={handleAddEditSave}
           product={editingProduct}
+          duplicateFrom={duplicateFromProduct}
           saving={saving}
           error={saveError}
         />
@@ -336,11 +369,13 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
               setConfirmationData(null);
               setView('list');
               setEditingProduct(null);
+              setDuplicateFromProduct(null);
             }}
             onOk={() => {
               setConfirmationData(null);
               setView('list');
               setEditingProduct(null);
+              setDuplicateFromProduct(null);
             }}
           />
         )}
@@ -384,6 +419,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
               <button
                 onClick={() => {
                   setEditingProduct(null);
+                  setDuplicateFromProduct(null);
                   setView('add');
                 }}
                 className="flex items-center gap-1.5 px-3 h-9 bg-white text-[#1E40AF] rounded-lg font-semibold shadow-md hover:bg-white/95"
@@ -482,15 +518,23 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                       isSelected ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40' : 'border-[#374151] hover:border-[#3B82F6]/50'
                     }`}
                   >
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       if (selectMode) toggleSelected(p.id);
                       else {
                         setDetailProduct(p);
                       }
                     }}
-                    className="w-full text-left active:scale-[0.99]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (selectMode) toggleSelected(p.id);
+                        else setDetailProduct(p);
+                      }
+                    }}
+                    className="w-full text-left active:scale-[0.99] cursor-pointer"
                   >
                     <div className="flex items-start gap-3">
                       {selectMode && (
@@ -577,7 +621,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                         )}
                       </button>
                     </div>
-                  </button>
+                  </div>
                   {!selectMode && (
                     <button
                       type="button"
@@ -625,6 +669,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         displayStock={detailProduct ? getDisplayStock(detailProduct) : 0}
         onClose={() => setDetailProduct(null)}
         onEdit={(p) => void openEditProduct(p)}
+        onDuplicate={(p) => void openDuplicateProduct(p)}
         onPhoto={(p) => {
           setDetailProduct(null);
           setImagePreviewProduct(p);

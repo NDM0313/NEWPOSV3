@@ -1,0 +1,8 @@
+{
+  "calendar_day3": { "status": "pending", "gate": "local_date_gte_2026-07-03" },
+  "manager_qa_user": { "status": "blocked", "reason": "NEED_OPERATOR_EMAIL_AND_PASSWORD" },
+  "salesman_qa": { "status": "blocked", "reason": "NEED_OPERATOR_PASSWORD" },
+  "device_adb": { "status": "blocked", "reason": "DEVICE_NOT_CONNECTED" },
+  "r8": { "status": "BLOCKED" },
+  "play_store": { "status": "NOT_RELEASED" }
+}

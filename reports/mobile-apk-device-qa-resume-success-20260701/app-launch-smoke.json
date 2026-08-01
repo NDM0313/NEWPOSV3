@@ -1,0 +1,18 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA_RESUME",
+  "task": "app-launch-smoke",
+  "generated_at": "2026-07-01T11:35:00.000Z",
+  "status": "PARTIAL_PASS",
+  "device_locked_during_automation": true,
+  "checks": [
+    { "id": 1, "item": "App opens (process)", "status": "PASS", "note": "pid active after am start / monkey launch" },
+    { "id": 2, "item": "No crash", "status": "PASS", "note": "no FATAL EXCEPTION in logcat" },
+    { "id": 3, "item": "Login screen appears", "status": "NOT_VERIFIED", "note": "device lock screen blocked UI visibility" },
+    { "id": 4, "item": "No blank screen", "status": "NOT_VERIFIED" },
+    { "id": 5, "item": "No webview/chunk/import error", "status": "PASS", "note": "no ChunkLoadError in logcat" },
+    { "id": 6, "item": "Backend connection", "status": "PASS", "note": "device ping erp.dincouture.pk and supabase.dincouture.pk OK" },
+    { "id": 7, "item": "Close and reopen", "status": "PASS", "note": "monkey relaunch succeeded" },
+    { "id": 8, "item": "Logout/login flow available", "status": "NOT_VERIFIED", "note": "requires unlocked device + operator" }
+  ],
+  "logcat_notes": "Transient Capacitor DNS warning on cold start; no fatal crash"
+}

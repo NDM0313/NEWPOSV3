@@ -1,0 +1,18 @@
+{
+  "run": "MOBILE_APK_MANUAL_ADMIN_QA",
+  "task": "final-monitoring",
+  "generated_at": "2026-07-01T12:20:00.000Z",
+  "status": "FAIL",
+  "timestamp_slug": "2026-07-01T12-09-53-635Z",
+  "din_china": "PASS",
+  "din_bridal": "FAIL",
+  "din_couture": "PASS",
+  "admin_compare_din_china": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "din_bridal_failures": [
+    "Roznamcha Cash In golden",
+    "Roznamcha Closing golden",
+    "Trial Balance golden total"
+  ]
+}

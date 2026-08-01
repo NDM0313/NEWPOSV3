@@ -1,0 +1,12 @@
+{
+  "run": "PHASE_3B_CASH_FLOW_PARITY_CONTRACT",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "status": "PREVIEW_ONLY",
+  "finance_approved": false,
+  "basis_normal": "effective_party",
+  "basis_audit": "audit_full_history",
+  "compare_fields": ["opening", "cash_in", "cash_out", "net_movement", "closing", "row_count"],
+  "golden_capture_companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+  "golden_values_invented": false,
+  "loader_swap_approved": false
+}

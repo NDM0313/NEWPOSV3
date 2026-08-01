@@ -28,8 +28,8 @@ export const UserDashboard = () => {
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">User Management</h2>
-          <p className="text-gray-400 text-sm">Manage system users and their permissions.</p>
+          <h2 className="text-2xl font-bold text-foreground">User Management</h2>
+          <p className="text-muted-foreground text-sm">Manage system users and their permissions.</p>
         </div>
         <Button 
           onClick={() => {
@@ -57,7 +57,7 @@ export const UserDashboard = () => {
           value="20" 
           subtitle="Currently active"
           icon={UserCheck}
-          highlightColor="text-green-400"
+          highlightColor="text-[var(--erp-money-positive)]"
         />
         <GlassCard 
           title="Logged In Today" 
@@ -69,26 +69,26 @@ export const UserDashboard = () => {
       </div>
 
       {/* Table Section */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         {/* Table Toolbar */}
-        <div className="p-4 border-b border-gray-800 flex gap-4">
+        <div className="p-4 border-b border-border flex gap-4">
           <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input 
               placeholder="Search users..." 
-              className="pl-9 bg-gray-950 border-gray-800 text-white focus:border-blue-500" 
+              className="pl-9 bg-input-background border-border text-white focus:border-blue-500" 
             />
           </div>
           <div className="flex gap-2 ml-auto">
-             <Button variant="outline" className="border-gray-800 text-gray-300">Filter</Button>
-             <Button variant="outline" className="border-gray-800 text-gray-300">Export</Button>
+             <Button variant="outline" className="border-border text-muted-foreground">Filter</Button>
+             <Button variant="outline" className="border-border text-muted-foreground">Export</Button>
           </div>
         </div>
 
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-950/50 text-gray-400 font-medium border-b border-gray-800">
+            <thead className="bg-muted/40 text-muted-foreground font-medium border-b border-border">
               <tr>
                 <th className="px-6 py-4">User</th>
                 <th className="px-6 py-4">Role</th>
@@ -98,20 +98,20 @@ export const UserDashboard = () => {
                 <th className="px-6 py-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {mockUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-800/50 transition-colors group">
+                <tr key={user.id} className="hover:bg-muted/50 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9 border border-gray-700">
+                      <Avatar className="h-9 w-9 border border-border">
                         <AvatarImage src={`https://api.dicebear.com/7.x/avatars/svg?seed=${user.name}`} />
                         <AvatarFallback className="bg-blue-900 text-blue-200">
                           {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium text-white">{user.name}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
+                        <p className="font-medium text-foreground">{user.name}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
                       </div>
                     </div>
                   </td>
@@ -129,18 +129,18 @@ export const UserDashboard = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-gray-400">
+                    <div className="flex items-center gap-2 text-muted-foreground">
                       <MapPin size={14} />
                       {user.location}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-gray-400">
+                  <td className="px-6 py-4 text-muted-foreground">
                     {user.lastLogin}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className={cn(
                       "px-2.5 py-1 rounded-full text-xs font-medium",
-                      user.status === 'Active' ? "bg-green-500/10 text-green-500" : "bg-gray-800 text-gray-400"
+                      user.status === 'Active' ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground"
                     )}>
                       {user.status}
                     </span>
@@ -151,21 +151,21 @@ export const UserDashboard = () => {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <MoreVertical size={16} />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                      <DropdownMenuContent align="end" className="bg-card border-border text-white">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <Eye size={14} className="mr-2" />
                           View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <Edit size={14} className="mr-2" />
                           Edit User
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer text-red-400">
                           <Trash2 size={14} className="mr-2" />
                           Delete User
                         </DropdownMenuItem>
@@ -187,10 +187,10 @@ const GlassCard = ({ title, value, subtitle, icon: Icon, highlightColor }: any) 
     <div className="absolute top-0 right-0 p-4 opacity-10">
       <Icon size={64} className="text-white" />
     </div>
-    <p className="text-gray-400 text-sm font-medium">{title}</p>
+    <p className="text-muted-foreground text-sm font-medium">{title}</p>
     <div className="flex items-end gap-3 mt-1 mb-2">
       <h3 className={cn("text-3xl font-bold", highlightColor || "text-white")}>{value}</h3>
     </div>
-    <p className="text-gray-500 text-xs">{subtitle}</p>
+    <p className="text-muted-foreground text-xs">{subtitle}</p>
   </div>
 );

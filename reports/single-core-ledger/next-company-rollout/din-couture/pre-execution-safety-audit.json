@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-06-27T18:30:00Z",
+  "read_only_audit": "PASS",
+  "rollout_started": false,
+  "din_couture": { "unified_flags_on": 0, "loaders_on": 0, "status": "PASS_PRE_STAGE" },
+  "din_china": { "unified_flags_on": 12, "loaders_on": 5, "status": "PASS_UNCHANGED" },
+  "din_bridal": { "unified_flags_on": 12, "loaders_on": 5, "status": "PASS_UNCHANGED" },
+  "other_company_loaders_on": 0,
+  "cross_company_leakage": false,
+  "blockers": {
+    "finance_sign_off": "PASS",
+    "din_couture_browser_credentials": "FAIL",
+    "golden_capture": "FAIL",
+    "pre_enable_tests": "PASS"
+  },
+  "flag_sql_executed": false
+}

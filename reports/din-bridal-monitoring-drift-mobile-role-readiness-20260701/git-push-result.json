@@ -1,0 +1,14 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "git-push-result",
+  "generated_at": "2026-07-01T12:55:00.000Z",
+  "evidence_commit": "df601d95",
+  "head": "df601d951922f3253d4459585eae7b67dc776c94",
+  "origin_main": "df601d951922f3253d4459585eae7b67dc776c94",
+  "push_result": "SUCCESS",
+  "remote": "origin",
+  "branch": "main",
+  "staged_only_policy": true,
+  "apk_staged": false,
+  "credentials_staged": false
+}

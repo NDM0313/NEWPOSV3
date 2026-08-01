@@ -16,12 +16,36 @@ import { Loader2, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 /** Document = transaction (invoice, payment). Master = permanent record (product, customer). */
-const MODULES: { document_type: string; label: string; defaultPrefix: string; type: 'Document' | 'Master' }[] = [
+const MODULES: {
+  document_type: string;
+  label: string;
+  defaultPrefix: string;
+  type: 'Document' | 'Master';
+  description?: string;
+}[] = [
   { document_type: 'SALE', label: 'Sale', defaultPrefix: 'SL', type: 'Document' },
   { document_type: 'PURCHASE', label: 'Purchase', defaultPrefix: 'PUR', type: 'Document' },
-  { document_type: 'PAYMENT', label: 'Outgoing payment', defaultPrefix: 'PAY', type: 'Document' },
-  { document_type: 'CUSTOMER_RECEIPT', label: 'Customer receipt', defaultPrefix: 'RCV', type: 'Document' },
-  { document_type: 'EXPENSE', label: 'Expense', defaultPrefix: 'EXP', type: 'Document' },
+  {
+    document_type: 'PAYMENT',
+    label: 'Outgoing payment',
+    defaultPrefix: 'PAY',
+    type: 'Document',
+    description: 'Single PAY sequence for purchase pay, supplier, worker, and courier (RPC).',
+  },
+  {
+    document_type: 'CUSTOMER_RECEIPT',
+    label: 'Customer receipt',
+    defaultPrefix: 'RCV',
+    type: 'Document',
+    description: 'Customer receipts use RCV prefix.',
+  },
+  {
+    document_type: 'EXPENSE',
+    label: 'Expense',
+    defaultPrefix: 'EXP',
+    type: 'Document',
+    description: 'Expense cash payments use EXP prefix, not PAY.',
+  },
   { document_type: 'RENTAL', label: 'Rental', defaultPrefix: 'REN', type: 'Document' },
   { document_type: 'STUDIO', label: 'Studio', defaultPrefix: 'STD', type: 'Document' },
   { document_type: 'POS', label: 'POS', defaultPrefix: 'POS', type: 'Document' },
@@ -219,7 +243,7 @@ export function NumberingRulesTable() {
           null,
           row.document_type,
           row.prefix,
-          undefined,
+          row.last_number,
           row.padding,
           row.year_reset,
           row.branch_based,
@@ -268,7 +292,7 @@ export function NumberingRulesTable() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-400">
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
         <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     );
@@ -276,8 +300,10 @@ export function NumberingRulesTable() {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted-foreground">
         Configure prefixes and digits for document numbers. Preview next number engine ke mutabiq hai (last issued + 1).
+        Phase B: outgoing supplier, worker, courier, and purchase payments share the <span className="font-mono text-muted-foreground">PAYMENT</span> row
+        below — do not add separate supplier or worker payment rules here.
       </p>
 
       {!branchCodeColumnSupported ? (
@@ -287,12 +313,12 @@ export function NumberingRulesTable() {
       ) : null}
 
       {hasBranchBasedRows && branches.length > 0 ? (
-        <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-2">
-          <Label className="text-gray-300">Preview branch (Branch Based rules ke liye)</Label>
+        <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-2">
+          <Label className="text-muted-foreground">Preview branch (Branch Based rules ke liye)</Label>
           <select
             value={selectedBranchId}
             onChange={(e) => setSelectedBranchId(e.target.value)}
-            className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            className="w-full max-w-md bg-card border border-border rounded-lg px-3 py-2 text-foreground text-sm"
           >
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
@@ -300,17 +326,17 @@ export function NumberingRulesTable() {
               </option>
             ))}
           </select>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Branch Based ON = har branch ka alag counter. Branch Code ON = number mein branch code embed (maslan CR-SL-0001).
             {loadingBranchSeq ? ' Branch sequences load ho rahe hain…' : null}
           </p>
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-gray-800 overflow-hidden">
+      <div className="rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
+            <thead className="bg-card text-muted-foreground border-b border-border">
               <tr>
                 <th className="px-4 py-3 text-left font-medium w-28">Module</th>
                 <th className="px-4 py-3 text-left font-medium w-20">Type</th>
@@ -322,16 +348,21 @@ export function NumberingRulesTable() {
                 <th className="px-4 py-3 text-left font-medium min-w-[140px]">Preview</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {rows.map((r) => {
                 const lastNum = resolveLastNumber(r);
                 const preview = previewDocumentNumber(r, lastNum, selectedBranch?.code);
                 return (
-                  <tr key={r.document_type} className="hover:bg-gray-800/30 bg-gray-950/30">
-                    <td className="px-4 py-3 text-white font-medium">
-                      {r.document_type.charAt(0) + r.document_type.slice(1).toLowerCase()}
+                  <tr key={r.document_type} className="hover:bg-accent/30 bg-muted/30">
+                    <td className="px-4 py-3 text-foreground font-medium">
+                      <div>{MODULES.find((m) => m.document_type === r.document_type)?.label ?? r.document_type}</div>
+                      {MODULES.find((m) => m.document_type === r.document_type)?.description ? (
+                        <p className="text-xs text-muted-foreground font-normal mt-0.5 font-sans">
+                          {MODULES.find((m) => m.document_type === r.document_type)?.description}
+                        </p>
+                      ) : null}
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs uppercase tracking-wide">{r.type ?? 'Document'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs uppercase tracking-wide">{r.type ?? 'Document'}</td>
                     <td className="px-4 py-3">
                       <Input
                         value={r.prefix}
@@ -340,7 +371,7 @@ export function NumberingRulesTable() {
                             prefix: e.target.value.replace(/-/g, '').toUpperCase().slice(0, 8),
                           })
                         }
-                        className="bg-gray-900 border-gray-700 text-white w-24 font-mono"
+                        className="bg-card border-border text-foreground w-24 font-mono"
                         maxLength={8}
                       />
                     </td>
@@ -355,7 +386,7 @@ export function NumberingRulesTable() {
                             padding: Math.min(8, Math.max(1, Number(e.target.value) || 4)),
                           })
                         }
-                        className="bg-gray-900 border-gray-700 text-white w-20"
+                        className="bg-card border-border text-foreground w-20"
                       />
                     </td>
                     <td className="px-4 py-3">
@@ -385,9 +416,9 @@ export function NumberingRulesTable() {
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-mono text-gray-300">{preview}</div>
+                      <div className="font-mono text-muted-foreground">{preview}</div>
                       {r.branch_based && selectedBranch ? (
-                        <div className="text-[11px] text-gray-500 mt-0.5">
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
                           Branch: {selectedBranch.name}
                           {selectedBranch.code ? ` (${selectedBranch.code})` : ''}
                           {r.include_branch_code && !normalizeBranchCode(selectedBranch.code) ? ' — branch code set karein (Settings → Branches)' : ''}
@@ -405,7 +436,7 @@ export function NumberingRulesTable() {
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="bg-green-600 hover:bg-green-500 text-white gap-2"
+          className="bg-green-600 hover:bg-green-500 text-foreground gap-2"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Rules
@@ -413,7 +444,7 @@ export function NumberingRulesTable() {
         <Button
           onClick={handleResetDefaults}
           variant="outline"
-          className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+          className="border-gray-600 text-muted-foreground hover:bg-muted gap-2"
         >
           <RotateCcw className="w-4 h-4" />
           Reset Defaults

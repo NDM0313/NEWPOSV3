@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-06-27T13:12:05.217Z",
+  "company": "DIN COUTURE",
+  "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+  "party": "DHARIA",
+  "party_id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
+  "date_range": {
+    "start": "2000-01-01",
+    "end": "2026-06-27"
+  },
+  "branch_scope": "all",
+  "party_ledger": {
+    "loader": "legacy",
+    "closing": 4488088
+  },
+  "account_statement": {
+    "loader": "legacy",
+    "closing": 4488088
+  },
+  "ledger_v2": {
+    "loader": "legacy",
+    "closing": 4488088
+  },
+  "trial_balance": {
+    "loader": "legacy",
+    "debit": 49747104,
+    "credit": 49747104
+  },
+  "roznamcha": {
+    "loader": "legacy",
+    "cashIn": 85000,
+    "cashOut": 34500,
+    "closing": 50500
+  }
+}

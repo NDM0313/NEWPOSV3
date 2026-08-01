@@ -17,6 +17,7 @@ import {
 import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
+import { Capacitor } from '@capacitor/core';
 import { useBarcodeScanner } from '../../features/barcode';
 import { ProductImage } from '../products/ProductImage';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
@@ -27,6 +28,11 @@ import { resolveFabricMaterialRetailPrice } from '../../lib/bespokeCartInjection
 import { SaleCustomizeModal } from './SaleCustomizeModal';
 import { FabricProductGrid } from './FabricProductGrid';
 import { mapApiProductToFabricPicker, type FabricPickerProduct } from './fabricPickerTypes';
+import {
+  filterAndRankProducts,
+  matchesProductSku,
+  productMatchesSearch,
+} from '../../lib/productSearchRank';
 import type { SaleData } from './SalesModule';
 import { NumericInput } from '../common/NumericInput';
 import { unitAllowsDecimal } from '../../lib/unitDecimal';
@@ -126,8 +132,10 @@ export function AddProducts({
   const [fabricAttachMode, setFabricAttachMode] = useState(false);
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const barcode = useBarcodeScanner();
+  const preferNativeCamera = Capacitor.isNativePlatform();
+  const showCameraScan = preferNativeCamera || barcodeMethod === 'camera';
   const { negativeStockAllowed, loaded: settingsLoaded, reload: reloadSettings } = useSettings();
-  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
+  const { enabled: bespokeEnabled, formConfig: bespokeFormConfig } = useBespokeEnabled(companyId);
 
   useEffect(() => {
     if (companyId) void reloadSettings(companyId);
@@ -188,20 +196,19 @@ export function AddProducts({
   }, [companyId]);
 
   useEffect(() => {
-    if (barcodeMethod === 'camera') void barcode.checkStatus();
-  }, [barcodeMethod]);
+    if (showCameraScan) void barcode.checkStatus();
+  }, [showCameraScan, barcode.checkStatus]);
 
-  const searchLower = search.toLowerCase().trim();
+  const searchTerm = search.trim();
 
   const filtered = useMemo(() => {
-    return available.filter((a) => {
-      if (!searchLower) return true;
-      if (a.name.toLowerCase().includes(searchLower)) return true;
-      if (a.barcode?.toLowerCase() === searchLower || a.sku?.toLowerCase() === searchLower) return true;
-      if (a.variations?.some((v) => v.sku?.toLowerCase() === searchLower)) return true;
+    if (!searchTerm) return available;
+    return filterAndRankProducts(available, searchTerm, (a, term) => {
+      if (productMatchesSearch(a, term)) return true;
+      if (a.variations?.some((v) => matchesProductSku(v.sku || '', term))) return true;
       return false;
     });
-  }, [available, searchLower]);
+  }, [available, searchTerm]);
 
   const filteredCustom = useMemo(
     () => (bespokeEnabled ? filtered.filter((a) => isBespokeGenericSku(a.sku)) : []),
@@ -279,7 +286,7 @@ export function AddProducts({
   };
 
   const handleScanClick = async () => {
-    if (barcode.supported) {
+    if (preferNativeCamera || barcode.supported) {
       if (barcode.permissionGranted === false) {
         await barcode.requestPermission();
       }
@@ -287,7 +294,10 @@ export function AddProducts({
         setScanMessage({ type: 'error', text: barcode.error });
         return;
       }
-      await barcode.startScan(handleBarcodeDetected);
+      const result = await barcode.startScan(handleBarcodeDetected);
+      if (!result?.code && barcode.error) {
+        setScanMessage({ type: 'error', text: barcode.error });
+      }
       return;
     }
     setCameraScanOpen(true);
@@ -442,29 +452,50 @@ export function AddProducts({
                       {(p.variation || p.variationId) && (
                         <p className="text-xs text-[#9CA3AF]">{p.variation || 'Variant'}</p>
                       )}
+                      {(p.isBespokeInjected || p.bespokeRole === 'fabric') && (
+                        <p className="text-[11px] text-amber-400/90 mt-0.5">
+                          {p.bespokeRefUnitPrice != null && p.bespokeRefUnitPrice > 0
+                            ? `Ref Rs. ${Number(p.bespokeRefUnitPrice).toLocaleString()}/m — dress price میں شامل`
+                            : 'Fabric (linked) — billed in dress price'}
+                        </p>
+                      )}
                       {p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0 && (
                         <p className="text-xs text-[#3B82F6] mt-1">
                           {p.packingDetails.total_boxes ?? 0} Box • {p.packingDetails.total_pieces ?? 0} Pc • {(p.packingDetails.total_meters ?? 0).toFixed(1)} M
                         </p>
                       )}
+                      {typeof (p.customizationDetails as { expected_delivery_date?: string } | null)?.expected_delivery_date === 'string' &&
+                        (p.customizationDetails as { expected_delivery_date: string }).expected_delivery_date && (
+                        <p className="text-xs text-cyan-300/90 mt-0.5">
+                          Line delivery: {(p.customizationDetails as { expected_delivery_date: string }).expected_delivery_date.slice(0, 10)}
+                        </p>
+                      )}
+                      {typeof (p.customizationDetails as { notes?: string } | null)?.notes === 'string' &&
+                        (p.customizationDetails as { notes: string }).notes.trim() && (
+                        <p className="text-xs text-[#A78BFA] mt-0.5 line-clamp-2">
+                          {(p.customizationDetails as { notes: string }).notes}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {bespokeEnabled && isBespokeGenericSku(p.sku) && !p.isBespokeInjected && (
+                      {bespokeEnabled && !p.isBespokeInjected && (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFabricAttachParent(p);
-                              setCustomizeLine(null);
-                            }}
-                            className={`px-2 py-1 text-xs rounded border ${
-                              isAttachTarget
-                                ? 'bg-[#10B981]/20 text-[#6EE7B7] border-[#10B981]/50'
-                                : 'bg-[#059669]/10 text-[#6EE7B7] border-[#059669]/40'
-                            }`}
-                          >
-                            Add fabric
-                          </button>
+                          {isBespokeGenericSku(p.sku) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFabricAttachParent(p);
+                                setCustomizeLine(null);
+                              }}
+                              className={`px-2 py-1 text-xs rounded border ${
+                                isAttachTarget
+                                  ? 'bg-[#10B981]/20 text-[#6EE7B7] border-[#10B981]/50'
+                                  : 'bg-[#059669]/10 text-[#6EE7B7] border-[#059669]/40'
+                              }`}
+                            >
+                              Add fabric
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -473,7 +504,9 @@ export function AddProducts({
                             }}
                             className="px-2 py-1 text-xs rounded bg-[#7C3AED]/20 text-[#C4B5FD] border border-[#7C3AED]/40"
                           >
-                            Customize
+                            {p.customizationDetails && Object.keys(p.customizationDetails).length > 0
+                              ? 'Edit customization'
+                              : 'Customize / Add Details'}
                           </button>
                         </>
                       )}
@@ -493,7 +526,11 @@ export function AddProducts({
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-[#9CA3AF]">
-                      Qty: {p.quantity} × Rs. {p.price.toLocaleString()}
+                      {(p.isBespokeInjected || p.bespokeRole === 'fabric') &&
+                      p.bespokeRefUnitPrice != null &&
+                      p.bespokeRefUnitPrice > 0
+                        ? `Qty: ${p.quantity} × Ref Rs. ${Number(p.bespokeRefUnitPrice).toLocaleString()}/m`
+                        : `Qty: ${p.quantity} × Rs. ${p.price.toLocaleString()}`}
                     </div>
                     <div className="font-semibold text-[#10B981]">
                       Rs. {p.total.toLocaleString()}
@@ -534,17 +571,19 @@ export function AddProducts({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder={barcodeMethod === 'camera' ? 'Search or type barcode...' : 'Search products...'}
+              placeholder={
+                showCameraScan ? 'Search or tap Scan for camera…' : 'Search products...'
+              }
               className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-[#F9FAFB] placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
             />
           </div>
-          {barcodeMethod === 'camera' && (
+          {showCameraScan && (
             <button
               type="button"
               onClick={() => void handleScanClick()}
               disabled={barcode.loading}
               className="h-11 px-4 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 rounded-lg flex items-center gap-2 text-white font-medium shrink-0"
-              title="Scan barcode"
+              title="Scan barcode with camera"
             >
               {barcode.loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Scan className="w-5 h-5" />}
               <span className="hidden sm:inline">Scan</span>
@@ -684,6 +723,7 @@ export function AddProducts({
           parentLine={customizeLine}
           cartProducts={products}
           relaxStock={relaxStockForAdd}
+          formConfig={bespokeFormConfig}
           onClose={() => setCustomizeLine(null)}
           onApply={(next) => {
             setProducts(next);

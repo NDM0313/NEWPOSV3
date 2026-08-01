@@ -1,0 +1,35 @@
+{
+  "run": "PHASE_3D_SIGNOFF_EVIDENCE_VERIFICATION",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "source_commit": "edcd075c",
+  "overall": "VERIFIED_COMPLETE",
+  "companies_captured": 3,
+  "reports_per_company": 2,
+  "total_captures": 6,
+  "captures_complete": "6/6",
+  "all_candidate_only": true,
+  "all_zero_diff": true,
+  "monitoring_pass": true,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "tests_build_baseline": {
+    "test_unified_ledger": "265/265 PASS",
+    "build": "PASS @ edcd075c"
+  },
+  "evidence_files_verified": [
+    "capture-matrix.md",
+    "capture-matrix.json",
+    "balance-sheet-candidate-goldens.md",
+    "balance-sheet-candidate-goldens.json",
+    "profit-loss-candidate-goldens.md",
+    "profit-loss-candidate-goldens.json",
+    "diff-analysis.md",
+    "diff-analysis.json",
+    "finance-review-pack.md",
+    "finance-review-pack.json",
+    "post-capture-monitoring.md",
+    "post-capture-monitoring.json"
+  ],
+  "screenshots_count": 6,
+  "exports_count": 6
+}

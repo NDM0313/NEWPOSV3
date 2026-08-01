@@ -159,17 +159,17 @@ export const QuotationWorkflow: React.FC<QuotationWorkflowProps> = ({
             </Button>
           </div>
           {loading ? (
-            <div className="py-8 text-center text-gray-500">Loading…</div>
+            <div className="py-8 text-center text-muted-foreground">Loading…</div>
           ) : list.length === 0 ? (
-            <div className="py-8 text-center text-gray-500">No quotations. Create one to get started.</div>
+            <div className="py-8 text-center text-muted-foreground">No quotations. Create one to get started.</div>
           ) : (
             <ul className="space-y-2">
               {list.map((q) => (
                 <li key={q.id} className="flex items-center justify-between rounded border p-3 text-sm">
                   <div>
                     <span className="font-medium">{q.quotation_no}</span>
-                    <span className="text-gray-500 ml-2">{q.customer_name}</span>
-                    <span className="text-gray-400 ml-2">{q.status}</span>
+                    <span className="text-muted-foreground ml-2">{q.customer_name}</span>
+                    <span className="text-muted-foreground ml-2">{q.status}</span>
                   </div>
                   <div className="flex gap-1 flex-wrap">
                     {q.status !== 'converted' && (
@@ -189,7 +189,7 @@ export const QuotationWorkflow: React.FC<QuotationWorkflowProps> = ({
                       </>
                     )}
                     {q.status === 'converted' && (
-                      <span className="text-gray-500 text-xs">Converted</span>
+                      <span className="text-muted-foreground text-xs">Converted</span>
                     )}
                   </div>
                 </li>

@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-30T12:39:40.000Z",
+  "overall": "PASS",
+  "exit_code": 0,
+  "timestamp_slug": "2026-06-30T12-28-58-651Z",
+  "admin_compare": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false
+}

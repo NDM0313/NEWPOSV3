@@ -1,0 +1,90 @@
+{
+  "phase": "3D",
+  "capturedAt": "2026-06-29T10:50:03.438Z",
+  "matrix": [
+    {
+      "company": "DIN CHINA",
+      "profileId": "din-china",
+      "report": "Balance Sheet",
+      "branchScope": "All branches",
+      "dateOrPeriod": "As at 2026-07-01",
+      "userEmail": "din@yahoo.com",
+      "legacySource": "getBalanceSheet (main loader)",
+      "unifiedPreviewSource": "get_unified_trial_balance → balanceSheetUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-china-balance-sheet-preview.png",
+      "export": "exports/din-china-balance-sheet-preview.json",
+      "status": "CAPTURED",
+      "notes": "Preview toggle default OFF verified; compare pass within tolerance"
+    },
+    {
+      "company": "DIN CHINA",
+      "profileId": "din-china",
+      "report": "Profit & Loss",
+      "branchScope": "All branches",
+      "dateOrPeriod": "2000-01-01 to 2026-07-01",
+      "userEmail": "din@yahoo.com",
+      "legacySource": "getProfitLoss (main loader)",
+      "unifiedPreviewSource": "get_unified_trial_balance → profitLossUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-china-profit-loss-preview.png",
+      "export": "exports/din-china-profit-loss-preview.json",
+      "status": "CAPTURED",
+      "notes": "Wide date range from production global filter; compare pass within tolerance"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "profileId": "din-bridal",
+      "report": "Balance Sheet",
+      "branchScope": "All branches",
+      "dateOrPeriod": "As at 2026-07-01",
+      "userEmail": "ndm313@yahoo.com",
+      "legacySource": "getBalanceSheet (main loader)",
+      "unifiedPreviewSource": "get_unified_trial_balance → balanceSheetUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-bridal-balance-sheet-preview.png",
+      "export": "exports/din-bridal-balance-sheet-preview.json",
+      "status": "CAPTURED",
+      "notes": "Preview toggle default OFF verified; compare pass within tolerance"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "profileId": "din-bridal",
+      "report": "Profit & Loss",
+      "branchScope": "All branches",
+      "dateOrPeriod": "2000-01-01 to 2026-07-01",
+      "userEmail": "ndm313@yahoo.com",
+      "legacySource": "getProfitLoss (main loader)",
+      "unifiedPreviewSource": "get_unified_trial_balance → profitLossUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-bridal-profit-loss-preview.png",
+      "export": "exports/din-bridal-profit-loss-preview.json",
+      "status": "CAPTURED",
+      "notes": "Wide date range from production global filter; compare pass within tolerance"
+    },
+    {
+      "company": "DIN COUTURE",
+      "profileId": "din-couture",
+      "report": "Balance Sheet",
+      "branchScope": "All branches",
+      "dateOrPeriod": "As at 2026-07-01",
+      "userEmail": "zhd@dincouture.pk",
+      "legacySource": "getBalanceSheet (main loader)",
+      "unifiedPreviewSource": "get_unified_trial_balance → balanceSheetUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-couture-balance-sheet-preview.png",
+      "export": "exports/din-couture-balance-sheet-preview.json",
+      "status": "CAPTURED",
+      "notes": "Preview toggle default OFF verified; compare pass within tolerance"
+    },
+    {
+      "company": "DIN COUTURE",
+      "profileId": "din-couture",
+      "report": "Profit & Loss",
+      "branchScope": "All branches",
+      "dateOrPeriod": "2000-01-01 to 2026-07-01",
+      "userEmail": "zhd@dincouture.pk",
+      "legacySource": "getProfitLoss (main loader)",
+      "unifiedPreviewSource": "get_unified_trial_balance → profitLossUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-couture-profit-loss-preview.png",
+      "export": "exports/din-couture-profit-loss-preview.json",
+      "status": "CAPTURED",
+      "notes": "Wide date range from production global filter; compare pass within tolerance"
+    }
+  ]
+}

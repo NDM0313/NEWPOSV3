@@ -1,4 +1,6 @@
 /** Session bridge: Accounting → Contacts party statement (modern). */
+import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
+
 export const CONTACTS_PARTY_DRILLDOWN_KEY = 'newpos_contacts_party_drilldown_v1';
 
 export type ContactsPartyDrilldownPayload = {
@@ -8,9 +10,5 @@ export type ContactsPartyDrilldownPayload = {
 };
 
 export function setContactsPartyDrilldown(payload: ContactsPartyDrilldownPayload): void {
-  try {
-    sessionStorage.setItem(CONTACTS_PARTY_DRILLDOWN_KEY, JSON.stringify(payload));
-  } catch {
-    /* ignore */
-  }
+  safeSessionStorageSetItem(CONTACTS_PARTY_DRILLDOWN_KEY, JSON.stringify(payload));
 }

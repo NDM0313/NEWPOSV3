@@ -1,6 +1,5 @@
 import { recordSupplierPayment } from '../../api/accounts';
-import { uploadPaymentAttachments, updatePaymentAttachments } from '../../api/paymentAttachments';
-import { attachmentUploadWarningMessage } from '../../utils/storageUploadErrors';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
@@ -41,12 +40,14 @@ export function MobilePaySupplier({
   const handleSubmit = async (payload: MobilePaymentSheetSubmitPayload): Promise<MobilePaymentSheetSubmitResult> => {
     const methodForRpc =
       payload.method === 'wallet' ? 'other' : payload.method === 'card' ? 'card' : payload.method;
+    const payBranchId = payload.branchId ?? branchId;
     const { data, error } = await recordSupplierPayment({
       companyId,
-      branchId,
+      branchId: payBranchId,
       purchaseId,
       amount: payload.amount,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       paymentAccountId: payload.accountId,
       paymentMethod: methodForRpc,
       userId: userId ?? undefined,
@@ -56,25 +57,13 @@ export function MobilePaySupplier({
 
     let attachmentWarning: string | null = null;
     if (data?.payment_id && payload.attachments.length > 0) {
-      try {
-        const { results, failures } = await uploadPaymentAttachments(
-          companyId,
-          purchaseId,
-          data.payment_id,
-          payload.attachments,
-        );
-        if (results.length > 0) {
-          const upd = await updatePaymentAttachments(data.payment_id, results);
-          if (upd.error) {
-            attachmentWarning = `Payment saved. Attachments uploaded but could not be linked: ${upd.error}`;
-          }
-        }
-        attachmentWarning =
-          attachmentUploadWarningMessage(results.length, payload.attachments.length, failures)
-          ?? attachmentWarning;
-      } catch (err) {
-        attachmentWarning = `Payment saved. Attachment upload failed: ${(err as Error)?.message ?? 'unknown error'}.`;
-      }
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: purchaseId,
+        paymentId: data.payment_id,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
     }
 
     return {

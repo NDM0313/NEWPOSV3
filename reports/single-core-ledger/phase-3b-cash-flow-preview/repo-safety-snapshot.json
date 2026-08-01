@@ -1,0 +1,15 @@
+{
+  "run": "PHASE_3B_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "branch": "main",
+  "head_commit": "51f308c6",
+  "origin_main_includes_51f308c6": true,
+  "staged_files_count": 0,
+  "constraints": {
+    "migrations_run": false,
+    "flags_toggled": false,
+    "deploy": false,
+    "gl_mutations": false,
+    "default_cash_flow_unchanged": true
+  }
+}

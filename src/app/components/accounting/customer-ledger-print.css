@@ -98,8 +98,8 @@
   /* Hide screen-only elements */
   .no-print,
   button:not(.print-button),
-  .bg-gray-900,
-  .bg-gray-950 {
+  .bg-card,
+  .bg-input-background {
     display: none !important;
   }
 

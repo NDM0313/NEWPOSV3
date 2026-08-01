@@ -1,0 +1,11 @@
+{
+  "run": "FIXTURE_FILES_UPDATED",
+  "files": [
+    "scripts/single-core-ledger/monitoring-company-profiles.json",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.md"
+  ],
+  "roznamcha_cash_in_pkr": 2026850,
+  "roznamcha_cash_out_pkr": 917780,
+  "roznamcha_closing_pkr": 1109070
+}

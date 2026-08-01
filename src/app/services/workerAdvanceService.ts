@@ -33,6 +33,7 @@ async function getWorkerGlNetPayableForParty(
   const { data, error } = await supabase.rpc('get_contact_party_gl_balances', {
     p_company_id: companyId,
     p_branch_id: safeBranchForRpc(branchId),
+    p_as_of_date: null,
   });
   if (error || !Array.isArray(data)) return 0;
   const row = (data as { contact_id: string; gl_worker_payable?: number | string }[]).find(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
+import { Calendar, Clock, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from './utils';
 import {
@@ -7,6 +7,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from './popover';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/app/utils/formatDate';
+import { CALENDAR_DAYS, CalendarMonthYearHeader } from './calendarChrome';
 
 interface CalendarDatePickerProps {
   value?: Date;
@@ -21,9 +24,6 @@ interface CalendarDatePickerProps {
   displayFormat?: (date: Date) => string;
 }
 
-const DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
 export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   value,
   onChange,
@@ -35,6 +35,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   maxDate,
   displayFormat,
 }) => {
+  const { dateFormat, timeFormat, timezone } = useFormatDate();
   const [isOpen, setIsOpen] = useState(false);
   // Helper to safely convert value to Date
   const getDateValue = (val: Date | undefined): Date | null => {
@@ -54,7 +55,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     }
     return dateVal;
   };
-  
+
   const initialDate = getDateValue(value);
   const [selectedDate, setSelectedDate] = useState<Date | null>(initialDate);
   const [currentMonth, setCurrentMonth] = useState(initialDate || new Date());
@@ -84,13 +85,19 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
 
   const formatDate = (date: Date | null | undefined) => {
     if (!date) return '';
-    return displayFormat ? displayFormat(date) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (displayFormat) return displayFormat(date);
+    return formatDateUtil(date, dateFormat, timezone);
   };
 
   const formatDateTime = (date: Date | null | undefined, time: string) => {
     if (!date) return '';
     const dateStr = formatDate(date);
-    return showTime ? `${dateStr} ${time}` : dateStr;
+    if (!showTime) return dateStr;
+    const [hours, minutes] = time.split(':').map(Number);
+    const withTime = new Date(date);
+    withTime.setHours(hours || 0, minutes || 0, 0, 0);
+    if (displayFormat) return displayFormat(withTime);
+    return `${dateStr} ${formatTimeUtil(withTime, timeFormat as '12h' | '24h', timezone)}`;
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -102,23 +109,20 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     const startingDayOfWeek = firstDay.getDay();
 
     const days: (Date | null)[] = [];
-    
-    // Add empty cells for days before month starts
+
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
-    
-    // Add actual days
+
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(new Date(year, month, day));
     }
-    
+
     return days;
   };
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
-    // When no time picker, commit immediately so parent state updates even if user closes without clicking Confirm
     if (!showTime) {
       onChange?.(date);
       setIsOpen(false);
@@ -162,17 +166,13 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     setCurrentMonth(today);
   };
 
-  const nextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  const prevMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  // Show value (linked from parent) when present, else in-popover selection, so trigger is always linked to actual date
   const effectiveDate = getDateValue(value) ?? selectedDate;
-  const timeForDisplay = effectiveDate === selectedDate ? selectedTime : (effectiveDate ? `${effectiveDate.getHours().toString().padStart(2, '0')}:${effectiveDate.getMinutes().toString().padStart(2, '0')}` : '00:00');
+  const timeForDisplay =
+    effectiveDate === selectedDate
+      ? selectedTime
+      : effectiveDate
+        ? `${effectiveDate.getHours().toString().padStart(2, '0')}:${effectiveDate.getMinutes().toString().padStart(2, '0')}`
+        : '00:00';
   const displayText = effectiveDate ? formatDateTime(effectiveDate, timeForDisplay) : placeholder;
 
   const hasValue = !!effectiveDate;
@@ -180,7 +180,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-gray-300 mb-2">
+        <label className="block text-sm font-medium text-muted-foreground mb-2">
           {label}
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -190,50 +190,34 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
           <Button
             variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal bg-gray-900 border-gray-800 text-white hover:bg-gray-800 hover:text-white",
-              !hasValue && "text-gray-500"
+              'w-full justify-start text-left font-normal bg-input-background border-border text-foreground hover:bg-accent hover:text-foreground',
+              !hasValue && 'text-muted-foreground',
             )}
           >
             <Calendar className="mr-2 h-4 w-4" />
             <span className="flex-1 truncate">{displayText}</span>
             {hasValue && (
               <X
-                className="ml-2 h-4 w-4 text-gray-500 hover:text-white"
+                className="ml-2 h-4 w-4 text-muted-foreground hover:text-foreground"
                 onClick={handleClear}
               />
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="start">
+        <PopoverContent className="w-auto p-0 bg-popover border-border" align="start">
           <div className="p-4">
-            {/* Month Navigation */}
-            <div className="flex items-center justify-between mb-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={prevMonth}
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-800"
-              >
-                <ChevronLeft size={18} />
-              </Button>
-              <div className="text-sm font-semibold text-white">
-                {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={nextMonth}
-                className="h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-800"
-              >
-                <ChevronRight size={18} />
-              </Button>
-            </div>
+            <CalendarMonthYearHeader
+              currentMonth={currentMonth}
+              onMonthChange={setCurrentMonth}
+              minDate={minDate}
+              maxDate={maxDate}
+              monthLabels="full"
+            />
 
-            {/* Calendar Grid */}
             <div className="w-64">
               <div className="grid grid-cols-7 gap-1 mb-2">
-                {DAYS.map((day) => (
-                  <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+                {CALENDAR_DAYS.map((day) => (
+                  <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
                     {day}
                   </div>
                 ))}
@@ -243,22 +227,22 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                   if (!date) {
                     return <div key={`empty-${idx}`} className="h-9" />;
                   }
-                  
+
                   const isSelected = isDateSelected(date);
                   const isToday = date.toDateString() === new Date().toDateString();
                   const isDisabled = isDateDisabled(date);
-                  
+
                   return (
                     <button
                       key={idx}
                       onClick={() => !isDisabled && handleDateClick(date)}
                       disabled={isDisabled}
                       className={cn(
-                        "h-9 text-sm rounded transition-colors",
-                        isSelected && "bg-blue-600 text-white font-semibold",
-                        !isSelected && !isDisabled && "text-gray-300 hover:bg-gray-800",
-                        isToday && !isSelected && "border border-blue-500",
-                        isDisabled && "text-gray-700 cursor-not-allowed opacity-50"
+                        'h-9 text-sm rounded transition-colors',
+                        isSelected && 'bg-blue-600 text-white font-semibold',
+                        !isSelected && !isDisabled && 'text-muted-foreground hover:bg-accent',
+                        isToday && !isSelected && 'border border-blue-500',
+                        isDisabled && 'text-gray-700 cursor-not-allowed opacity-50',
                       )}
                     >
                       {date.getDate()}
@@ -268,11 +252,10 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
               </div>
             </div>
 
-            {/* Time Selection (Optional) */}
             {showTime && (
-              <div className="mt-4 pt-4 border-t border-gray-800">
+              <div className="mt-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 flex items-center gap-1">
+                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                     <Clock size={12} />
                     Select Time
                   </label>
@@ -280,14 +263,13 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                     type="time"
                     value={selectedTime}
                     onChange={(e) => setSelectedTime(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-input-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
               </div>
             )}
 
-            {/* Footer */}
-            <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between">
+            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
               <Button
                 variant="ghost"
                 size="sm"
@@ -301,7 +283,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={handleClear}
-                  className="border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800"
+                  className="border-border text-muted-foreground hover:text-foreground hover:bg-accent"
                 >
                   Clear
                 </Button>
@@ -309,7 +291,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
                   size="sm"
                   onClick={handleConfirm}
                   disabled={!selectedDate}
-                  className="bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-blue-600 hover:bg-blue-500 text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Confirm
                 </Button>

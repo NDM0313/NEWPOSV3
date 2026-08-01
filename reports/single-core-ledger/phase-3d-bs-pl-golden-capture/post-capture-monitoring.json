@@ -1,0 +1,16 @@
+{
+  "run": "PHASE_3D_POST_CAPTURE_MONITORING",
+  "generated_at": "2026-06-29T11:06:53.708Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "local_evidence_not_committed": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T10-56-15-324Z.json",
+  "credentials_status": "CONFIGURED"
+}

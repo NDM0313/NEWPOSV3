@@ -40,3 +40,62 @@ export const formatCurrency = (
     maximumFractionDigits: prec,
   })}`;
 };
+
+/** Numeric amount only (no currency symbol) — for table cells where headers carry context. */
+export const formatAmount = (value: number, decimalPrecision: number = 2): string => {
+  if (value === null || value === undefined || isNaN(value)) {
+    return '0';
+  }
+  const prec = Math.max(0, Math.min(6, decimalPrecision));
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: prec,
+    maximumFractionDigits: prec,
+  });
+};
+
+function compactMaxFractionDigits(abs: number): number {
+  if (abs < 10_000) return 1;
+  if (abs < 1_000_000) return 0;
+  return 1;
+}
+
+/**
+ * Compact currency for KPI cards — K / M / B notation (1000 → 1K).
+ * Values under 1,000 use full formatCurrency for precision.
+ */
+export const formatCurrencyCompact = (
+  value: number,
+  currency: string = 'PKR',
+  decimalPrecision: number = 2
+): string => {
+  const symbol = getCurrencySymbol(currency);
+  if (value === null || value === undefined || isNaN(value)) {
+    return `${symbol} 0`;
+  }
+  const abs = Math.abs(value);
+  if (abs < 1000) {
+    return formatCurrency(value, currency, decimalPrecision);
+  }
+  const compactNum = new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    compactDisplay: 'short',
+    maximumFractionDigits: compactMaxFractionDigits(abs),
+  }).format(value);
+  return `${symbol} ${compactNum}`;
+};
+
+/** Compact numeric amount (no symbol) — for count-style KPIs. */
+export const formatAmountCompact = (value: number, decimalPrecision: number = 2): string => {
+  if (value === null || value === undefined || isNaN(value)) {
+    return '0';
+  }
+  const abs = Math.abs(value);
+  if (abs < 1000) {
+    return formatAmount(value, decimalPrecision);
+  }
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    compactDisplay: 'short',
+    maximumFractionDigits: compactMaxFractionDigits(abs),
+  }).format(value);
+};

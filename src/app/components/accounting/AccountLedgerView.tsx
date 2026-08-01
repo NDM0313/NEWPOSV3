@@ -12,7 +12,10 @@ import { CalendarDateRangePicker } from '@/app/components/ui/CalendarDateRangePi
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { exportToExcel } from '@/app/utils/exportUtils';
+import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 
 interface AccountLedgerViewProps {
   isOpen: boolean;
@@ -33,7 +36,7 @@ const SOURCE_COLORS: Record<string, string> = {
   Rental: 'bg-cyan-900/60 text-cyan-300',
   Studio: 'bg-violet-900/60 text-violet-300',
   Reversal: 'bg-amber-900/60 text-amber-300',
-  Accounting: 'bg-gray-800 text-gray-400',
+  Accounting: 'bg-muted text-muted-foreground',
 };
 
 function sourceBadge(src: string) {
@@ -51,6 +54,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
 }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { formatTime } = useFormatDate();
   const [ledgerEntries, setLedgerEntries] = useState<AccountLedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>(() => ({
@@ -135,10 +139,11 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
     );
   };
 
-  const openJournalDetail = (referenceNumber: string, autoEdit = false) => {
+  const openJournalDetail = (entry: AccountLedgerEntry, autoEdit = false) => {
+    const detail = ledgerTransactionOpenEventDetail(entry, autoEdit);
     window.dispatchEvent(
       new CustomEvent('openTransactionDetail', {
-        detail: { referenceNumber, autoLaunchUnifiedEdit: autoEdit },
+        detail,
       })
     );
   };
@@ -155,22 +160,22 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
           'flex flex-col !gap-0 !p-0 overflow-hidden',
           'w-full max-w-[min(calc(100vw-2rem),1200px)] sm:max-w-[min(calc(100vw-2rem),1200px)]',
           'h-[92vh] max-h-[92vh]',
-          'bg-gray-900 border-gray-800 text-white'
+          'bg-card border-border text-foreground'
         )}
       >
         {/* ── Header ── */}
-        <DialogHeader className="shrink-0 px-6 pt-5 pb-4 border-b border-gray-800">
+        <DialogHeader className="shrink-0 px-6 pt-5 pb-4 border-b border-border">
           <DialogTitle asChild>
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <h2 className="text-xl font-bold text-white leading-tight">Account Ledger</h2>
+                <h2 className="text-xl font-bold text-foreground leading-tight">Account Ledger</h2>
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <span className="text-sm text-gray-300">
-                    {accountCode && <span className="font-mono text-gray-400">{accountCode} — </span>}
+                  <span className="text-sm text-muted-foreground">
+                    {accountCode && <span className="font-mono text-muted-foreground">{accountCode} — </span>}
                     <span className="font-semibold">{accountName}</span>
                   </span>
                   {accountType && (
-                    <Badge className="bg-blue-600/80 text-white text-xs px-2">{accountType}</Badge>
+                    <Badge className="bg-blue-600/80 text-foreground text-xs px-2">{accountType}</Badge>
                   )}
                 </div>
               </div>
@@ -178,7 +183,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                 variant="ghost"
                 size="icon"
                 onClick={onClose}
-                className="shrink-0 text-gray-400 hover:text-white hover:bg-gray-800"
+                className="shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted"
               >
                 <X size={20} />
               </Button>
@@ -187,30 +192,30 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
         </DialogHeader>
 
         {/* ── Summary strip ── */}
-        <div className="shrink-0 px-6 py-3 bg-gray-800/60 border-b border-gray-800 flex flex-wrap items-center gap-6">
+        <div className="shrink-0 px-6 py-3 bg-muted/60 border-b border-border flex flex-wrap items-center gap-6">
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Opening Balance</p>
-            <p className={cn('text-base font-bold mt-0.5 tabular-nums', openingBalance >= 0 ? 'text-green-400' : 'text-red-400')}>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Opening Balance</p>
+            <p className={cn('text-base font-bold mt-0.5 tabular-nums', openingBalance >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
               {formatCurrency(openingBalance)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Closing Balance</p>
-            <p className={cn('text-base font-bold mt-0.5 tabular-nums', closingBalance >= 0 ? 'text-green-400' : 'text-red-400')}>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Closing Balance</p>
+            <p className={cn('text-base font-bold mt-0.5 tabular-nums', closingBalance >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
               {formatCurrency(closingBalance)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Total Debit</p>
-            <p className="text-base font-bold mt-0.5 text-green-400 tabular-nums">{formatCurrency(totalDebit)}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Total Debit</p>
+            <p className="text-base font-bold mt-0.5 text-[var(--erp-money-positive)] tabular-nums">{formatCurrency(totalDebit)}</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Total Credit</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Total Credit</p>
             <p className="text-base font-bold mt-0.5 text-red-400 tabular-nums">{formatCurrency(totalCredit)}</p>
           </div>
           <div className="ml-auto text-right">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Date Range</p>
-            <p className="text-sm text-gray-300 mt-0.5">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Date Range</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
               {dateRange.from && dateRange.to
                 ? `${format(dateRange.from, 'dd MMM yyyy')} — ${format(dateRange.to, 'dd MMM yyyy')}`
                 : dateRange.from
@@ -221,22 +226,22 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
         </div>
 
         {/* ── Toolbar ── */}
-        <div className="shrink-0 px-6 py-3 border-b border-gray-800 flex flex-wrap items-center gap-3">
+        <div className="shrink-0 px-6 py-3 border-b border-border flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
             <Input
               placeholder="Search description, reference, counter account…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 h-9 bg-gray-800 border-gray-700 text-white text-sm placeholder:text-gray-600"
+              className="pl-9 h-9 bg-muted border-border text-foreground text-sm placeholder:text-muted-foreground"
             />
           </div>
-          <CalendarDateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+          <CalendarDateRangePicker value={dateRange} onChange={setDateRange} />
           <Button
             variant="outline"
             size="sm"
             onClick={handleExport}
-            className="h-9 bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+            className="h-9 bg-muted border-border text-foreground hover:bg-muted"
           >
             <Download size={14} className="mr-1.5" />
             Export Excel
@@ -246,17 +251,17 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
         {/* ── Table (min width so all columns stay on one row on ≥~1200px dialog; smaller = horizontal scroll) ── */}
         <div className="flex-1 min-h-0 min-w-0 overflow-auto overscroll-x-contain">
           {loading ? (
-            <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="flex items-center justify-center h-full text-muted-foreground">
               <span className="animate-pulse">Loading ledger…</span>
             </div>
           ) : filteredEntries.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               No entries found for this period.
             </div>
           ) : (
             <table className="w-full min-w-[1100px] text-sm border-collapse">
-              <thead className="sticky top-0 z-10 bg-gray-800 border-b border-gray-700">
-                <tr className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <thead className="sticky top-0 z-10 bg-muted border-b border-border">
+                <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   <th className="px-4 py-2.5 text-left whitespace-nowrap w-[110px]">Date</th>
                   <th className="px-4 py-2.5 text-left whitespace-nowrap w-[130px]">Reference No</th>
                   <th className="px-4 py-2.5 text-left min-w-[180px]">Description</th>
@@ -270,9 +275,9 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
               </thead>
               <tbody>
                 {/* Opening balance pseudo-row */}
-                <tr className="bg-gray-800/40 border-b border-gray-800">
-                  <td className="px-4 py-2 text-xs text-gray-500" colSpan={6}>Opening Balance</td>
-                  <td className={cn('px-4 py-2 text-right text-xs font-semibold tabular-nums', openingBalance >= 0 ? 'text-green-400' : 'text-red-400')}>
+                <tr className="bg-muted/40 border-b border-border">
+                  <td className="px-4 py-2 text-xs text-muted-foreground" colSpan={6}>Opening Balance</td>
+                  <td className={cn('px-4 py-2 text-right text-xs font-semibold tabular-nums', openingBalance >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
                     {formatCurrency(openingBalance)}
                   </td>
                   <td colSpan={2} />
@@ -282,15 +287,20 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                   <tr
                     key={`${entry.journal_entry_id}-${index}`}
                     className={cn(
-                      'border-b border-gray-800/60 transition-colors',
+                      'border-b border-border/60 transition-colors',
                       entry.ledger_kind === 'reversal'
                         ? 'bg-amber-500/5 hover:bg-amber-500/10'
-                        : 'hover:bg-gray-800/40'
+                        : 'hover:bg-muted/40'
                     )}
                   >
                     {/* Date */}
-                    <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
-                      {format(new Date(entry.date), 'dd MMM yyyy')}
+                    <td className="px-4 py-2.5 text-muted-foreground text-xs whitespace-nowrap">
+                      <div className="flex flex-col leading-tight">
+                        <DateTimeDisplay date={entry.date} dateOnly className="text-muted-foreground text-xs" />
+                        {entry.created_at ? (
+                          <span className="text-[10px] text-muted-foreground italic mt-0.5">{formatTime(entry.created_at)}</span>
+                        ) : null}
+                      </div>
                     </td>
 
                     {/* Reference No — clickable, opens transaction detail */}
@@ -298,37 +308,37 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                       <button
                         type="button"
                         className="text-blue-400 hover:text-blue-300 hover:underline text-xs font-medium"
-                        onClick={() => openJournalDetail(entry.entry_no || entry.reference_number, false)}
+                        onClick={() => openJournalDetail(entry, false)}
                       >
                         {entry.reference_number}
                       </button>
                     </td>
 
                     {/* Description */}
-                    <td className="px-4 py-2.5 text-gray-300 text-xs leading-snug">
+                    <td className="px-4 py-2.5 text-muted-foreground text-xs leading-snug">
                       {entry.description}
                       {entry.branch_name && (
-                        <span className="ml-1.5 text-[10px] text-gray-600">· {entry.branch_name}</span>
+                        <span className="ml-1.5 text-[10px] text-muted-foreground">· {entry.branch_name}</span>
                       )}
                     </td>
 
                     {/* Counter Account */}
-                    <td className="px-4 py-2.5 text-gray-500 text-xs">
+                    <td className="px-4 py-2.5 text-muted-foreground text-xs">
                       {entry.counter_account || '—'}
                     </td>
 
                     {/* Debit */}
-                    <td className={cn('px-4 py-2.5 text-right tabular-nums text-xs', entry.debit > 0 ? 'text-green-400' : 'text-gray-600')}>
+                    <td className={cn('px-4 py-2.5 text-right tabular-nums text-xs', entry.debit > 0 ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground')}>
                       {entry.debit > 0 ? formatCurrency(entry.debit) : '—'}
                     </td>
 
                     {/* Credit */}
-                    <td className={cn('px-4 py-2.5 text-right tabular-nums text-xs', entry.credit > 0 ? 'text-red-400' : 'text-gray-600')}>
+                    <td className={cn('px-4 py-2.5 text-right tabular-nums text-xs', entry.credit > 0 ? 'text-red-400' : 'text-muted-foreground')}>
                       {entry.credit > 0 ? formatCurrency(entry.credit) : '—'}
                     </td>
 
                     {/* Running Balance */}
-                    <td className={cn('px-4 py-2.5 text-right tabular-nums text-xs font-semibold', entry.running_balance >= 0 ? 'text-green-400' : 'text-red-400')}>
+                    <td className={cn('px-4 py-2.5 text-right tabular-nums text-xs font-semibold', entry.running_balance >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
                       {formatCurrency(entry.running_balance)}
                     </td>
 
@@ -346,9 +356,9 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-gray-500 hover:text-blue-400"
+                          className="h-7 w-7 text-muted-foreground hover:text-blue-400"
                           title="View journal entry"
-                          onClick={() => openJournalDetail(entry.entry_no || entry.reference_number, false)}
+                          onClick={() => openJournalDetail(entry, false)}
                         >
                           <FileSearch size={13} />
                         </Button>
@@ -356,9 +366,9 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-gray-500 hover:text-sky-400"
+                          className="h-7 w-7 text-muted-foreground hover:text-sky-400"
                           title="Edit journal entry"
-                          onClick={() => openJournalDetail(entry.journal_entry_id, true)}
+                          onClick={() => openJournalDetail(entry, true)}
                         >
                           <Edit size={13} />
                         </Button>
@@ -369,18 +379,18 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
               </tbody>
 
               {/* Sticky totals footer */}
-              <tfoot className="sticky bottom-0 z-10 bg-gray-800 border-t-2 border-gray-700">
-                <tr className="text-xs font-bold text-white">
-                  <td className="px-4 py-2.5 text-right text-gray-400" colSpan={4}>
+              <tfoot className="sticky bottom-0 z-10 bg-muted border-t-2 border-border">
+                <tr className="text-xs font-bold text-foreground">
+                  <td className="px-4 py-2.5 text-right text-muted-foreground" colSpan={4}>
                     Totals ({filteredEntries.length} entries)
                   </td>
-                  <td className="px-4 py-2.5 text-right text-green-400 tabular-nums">
+                  <td className="px-4 py-2.5 text-right text-[var(--erp-money-positive)] tabular-nums">
                     {formatCurrency(totalDebit)}
                   </td>
                   <td className="px-4 py-2.5 text-right text-red-400 tabular-nums">
                     {formatCurrency(totalCredit)}
                   </td>
-                  <td className={cn('px-4 py-2.5 text-right tabular-nums', closingBalance >= 0 ? 'text-green-400' : 'text-red-400')}>
+                  <td className={cn('px-4 py-2.5 text-right tabular-nums', closingBalance >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
                     {formatCurrency(closingBalance)}
                   </td>
                   <td colSpan={2} />

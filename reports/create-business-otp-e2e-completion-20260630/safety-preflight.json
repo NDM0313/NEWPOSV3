@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-06-30T18:35:00.000Z",
+  "status": "BLOCKED_OTP_CODE_MISSING",
+  "git": {
+    "branch": "main",
+    "head": "b9a59907b7834b2e97a472d6bc2e9fb698b96cbb",
+    "origin_main": "b9a59907b7834b2e97a472d6bc2e9fb698b96cbb",
+    "b9a59907_present": true,
+    "staged_files": false,
+    "credentials_staged": false
+  },
+  "env": {
+    "email": "khan5955+1@gmail.com",
+    "email_ok": true,
+    "email_typo_line22_still_present": true,
+    "password_set": true,
+    "otp_code_set": false
+  },
+  "signup_initiated": false,
+  "downstream_tasks_skipped": true
+}

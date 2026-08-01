@@ -1,0 +1,39 @@
+{
+  "capturedAt": "2026-06-16T09:12:25.898Z",
+  "supabaseHost": "supabase.dincouture.pk",
+  "label": "post_phase4",
+  "rows": [
+    {
+      "name": "AZIZ   JAMURAD",
+      "arCode": "AR-A987EE",
+      "partyGlNet": 0,
+      "rpcAr": 0,
+      "salesDueSum": 0,
+      "gapGlMinusDue": 0
+    },
+    {
+      "name": "SHAHURKH   KHAN",
+      "arCode": "AR-2BA4BA",
+      "partyGlNet": 0,
+      "rpcAr": 0,
+      "salesDueSum": 0,
+      "gapGlMinusDue": 0
+    },
+    {
+      "name": "LAL   MOHAMMAD",
+      "arCode": "AR-F8FD5E",
+      "partyGlNet": 64424,
+      "rpcAr": 64424,
+      "salesDueSum": 64424,
+      "gapGlMinusDue": 0
+    },
+    {
+      "name": "HASSAN   MARDAN",
+      "arCode": "AR-ED1ABD",
+      "partyGlNet": 6009458,
+      "rpcAr": 6009458,
+      "salesDueSum": 5059563,
+      "gapGlMinusDue": 949895
+    }
+  ]
+}

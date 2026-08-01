@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-06-15T07:07:55.464Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "pass": true,
+  "validation": {
+    "pass": true,
+    "checks": [
+      {
+        "name": "sales count",
+        "pass": true,
+        "expected": 34,
+        "actual": 34
+      },
+      {
+        "name": "sale items count",
+        "pass": true,
+        "expected": 63,
+        "actual": 63
+      },
+      {
+        "name": "sale payments count",
+        "pass": true,
+        "expected": 70,
+        "actual": 70
+      },
+      {
+        "name": "sale payments total",
+        "pass": true,
+        "expected": 8416540,
+        "actual": 8416540
+      },
+      {
+        "name": "purchase count",
+        "pass": true,
+        "expected": 1,
+        "actual": 1
+      },
+      {
+        "name": "purchase items count",
+        "pass": true,
+        "expected": 17,
+        "actual": 17
+      },
+      {
+        "name": "purchase payments count",
+        "pass": true,
+        "expected": 4,
+        "actual": 4
+      },
+      {
+        "name": "purchase payments total",
+        "pass": true,
+        "expected": 65916440,
+        "actual": 65916440
+      },
+      {
+        "name": "expenses count",
+        "pass": true,
+        "expected": 4,
+        "actual": 4
+      },
+      {
+        "name": "expenses total",
+        "pass": true,
+        "expected": 88000,
+        "actual": 88000
+      },
+      {
+        "name": "sale JEs Dr1100/Cr4100",
+        "pass": true,
+        "expected": ">=34",
+        "actual": 34
+      },
+      {
+        "name": "no 4050 parent posting",
+        "pass": true,
+        "expected": false,
+        "actual": false
+      },
+      {
+        "name": "no 4000 Revenue account",
+        "pass": true,
+        "expected": false,
+        "actual": false
+      },
+      {
+        "name": "no 4000 in sale JEs",
+        "pass": true,
+        "expected": false,
+        "actual": false
+      },
+      {
+        "name": "no branch id 1 in import set",
+        "pass": true,
+        "expected": "DIN CHINA branch only",
+        "actual": "BL0002"
+      }
+    ]
+  },
+  "auditSummary": {
+    "sales": 34,
+    "saleItems": 63,
+    "salePayments": 70,
+    "salePaymentTotal": 8416540,
+    "purchases": 1,
+    "purchaseItems": 17,
+    "purchasePayments": 4,
+    "purchasePaymentTotal": 65916440,
+    "expenses": 4,
+    "expenseTotal": 88000,
+    "saleJournals1100_4100": 34,
+    "used4050": false,
+    "used4000": false,
+    "account4000Exists": false
+  }
+}

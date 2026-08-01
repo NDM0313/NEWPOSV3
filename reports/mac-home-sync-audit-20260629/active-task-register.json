@@ -1,0 +1,23 @@
+{
+  "generated": "2026-06-29",
+  "head": "ae6c69d0",
+  "categories": {
+    "A_releaseCandidates": [
+      { "id": "A1", "task": "Party Ledger Discount", "status": "code_merged_tests_pass", "next": "browser_qa_push_deploy_approval" },
+      { "id": "A2", "task": "Create Business OTP", "status": "code_merged_tests_pass", "next": "browser_qa_push" },
+      { "id": "A3", "task": "Push to GitHub", "status": "pending_operator_approval", "commitsAhead": 1 }
+    ],
+    "B_blockedUnifiedLedger": [
+      { "id": "B1", "task": "Cash Flow loader swap beyond 3 cos", "gate": "operator_written_approval" },
+      { "id": "B2", "task": "BS/P&L main loader swap", "gate": "finance_pending" },
+      { "id": "B3", "task": "R7 roznamcha_payment RPC", "gate": "BLOCKED_R7" },
+      { "id": "B4", "task": "R8 legacy retirement", "gate": "BLOCKED_R8" },
+      { "id": "B5", "task": "4th company rollout", "gate": "BLOCKED_NEEDS_FINANCE_SIGNOFF" }
+    ],
+    "C_glBacklogRevalidate": ["C1 MURAD DC-0007", "C2 AZIZ 1100", "C3 ABDUL WAJID", "C4 DIN BRIDAL 1100"],
+    "D_uiQa": ["D1 REN-0005 KPI", "D2 reports date reload", "D3 pie overlap", "D4 C&S Due/Advance", "D5 expenses receipt", "D6 KPI strips"],
+    "E_dinChinaImport": ["E1 cost_price", "E2 purchase delta", "E3 sell returns", "E4 opening stock excluded"],
+    "F_mobile": ["F1 rental AR", "F2 APK rebuild"],
+    "G_ops": ["G1 three-company monitoring", "G2 scheduler"]
+  }
+}

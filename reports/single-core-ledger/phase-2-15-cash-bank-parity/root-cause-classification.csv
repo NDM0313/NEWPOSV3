@@ -1,0 +1,6 @@
+bucket,approx_amount_pkr,classification,fix_phase
+payment_posted_gl_legs,68464117,unified includes GL row not treated as roznamcha cash/bank,2.15 parity assembler uses getRoznamcha
+document_expense_gl,1125986,legacy includes non-GL payment row,payment path owns expense outflows
+transfer_je_dedupe,58389891,transfer double-count or missing transfer side,legacy JE entity dedupe keeps one leg
+payment_entry_date_skew,421691,date mismatch,payment_date vs entry_date
+raw_rpc_opening,0,opening balance basis mismatch,legacy getOpeningBalance used in composite

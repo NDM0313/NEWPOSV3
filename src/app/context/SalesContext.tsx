@@ -28,6 +28,7 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { getSaleDisplayNumber, isPreFinalSaleDocumentNo } from '@/app/lib/documentDisplayNumbers';
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { perfStart } from '@/app/utils/perfTiming';
 import { readSaleBillRef } from '@/app/utils/saleBillRef';
 import {
   parseCustomizationDetails,
@@ -50,6 +51,8 @@ import {
   snapshotBespokeWorkOrderAnchors,
   relinkBespokeWorkOrdersAfterSaleItemReplace,
 } from '@/app/services/bespokeWorkOrderRelinkService';
+import { coerceUuidOrNull } from '@/app/utils/uuidCoerce';
+import { normalizeVariationIdForPersist } from '@/app/utils/saleLineVariation';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null | undefined): id is string {
@@ -139,9 +142,10 @@ async function buildSaleChargeRowsFromExtras(
           amount: amt,
           ledger_account_id: extraLedgerAccountId,
           charged_to_customer: chargeOnBill,
-          tailor_contact_id: e.tailorContactId ?? e.tailor_contact_id ?? null,
-          expense_category_id:
-            e.tailorExpenseCategoryId ?? e.tailor_expense_category_id ?? null,
+          tailor_contact_id: coerceUuidOrNull(e.tailorContactId ?? e.tailor_contact_id),
+          expense_category_id: coerceUuidOrNull(
+            e.tailorExpenseCategoryId ?? e.tailor_expense_category_id,
+          ),
         });
       }
     });
@@ -277,7 +281,7 @@ export interface Sale {
   notes?: string;
   /** Manual customer bill / REF # (sales.customer_bill_ref). */
   customerBillRef?: string;
-  /** Delivery/deadline date (YYYY-MM-DD) for studio sales. */
+  /** Delivery/deadline date (YYYY-MM-DD) for studio sales and regular orders. */
   deadline?: string;
   attachments?: { url: string; name: string }[] | null; // Sale attachments
   /** Line-level charges from sale_charges (for view/drawer actual data) */
@@ -603,8 +607,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
-  // Load sales from database (all up to cap for client-side filter/sort/pagination)
-  const SALES_LOAD_CAP = 5000;
+  // Load sales from database (server-paginated)
   const loadSales = useCallback(async () => {
     if (!companyId) return;
     try {
@@ -612,12 +615,26 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const result = await saleService.getAllSales(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined,
-        { offset: 0, limit: SALES_LOAD_CAP }
+        { offset: page * pageSize, limit: pageSize }
       );
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
       const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
-      setSales(data.map(convertFromSupabaseSale));
+      let mapped = data.map(convertFromSupabaseSale);
+      const pageIds = new Set(mapped.map((s) => s.id));
+      const missingRecent = recentCreatedSaleIdsRef.current.filter((id) => !pageIds.has(id));
+      if (missingRecent.length > 0) {
+        const extraRows = await Promise.all(
+          missingRecent.map((id) => saleService.getSaleById(id).catch(() => null))
+        );
+        const extras = extraRows
+          .filter(Boolean)
+          .map((row) => convertFromSupabaseSale(row!));
+        if (extras.length > 0) {
+          mapped = [...extras, ...mapped];
+        }
+      }
+      setSales(mapped);
       setTotalCount(total);
     } catch (error) {
       console.error('[SALES CONTEXT] Error loading sales:', error);
@@ -627,7 +644,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, page, pageSize]);
 
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
@@ -635,6 +652,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   const activatedRef = React.useRef(false);
   const [activated, setActivated] = React.useState(false);
+  const recentCreatedSaleIdsRef = React.useRef<string[]>([]);
+  const rememberRecentCreatedSale = useCallback((saleId: string) => {
+    recentCreatedSaleIdsRef.current = [
+      saleId,
+      ...recentCreatedSaleIdsRef.current.filter((id) => id !== saleId),
+    ].slice(0, 10);
+  }, []);
   const activate = useCallback(() => {
     if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
   }, []);
@@ -642,7 +666,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (companyId && activated) loadSales();
     else if (!companyId) setLoading(false);
-  }, [companyId, activated, loadSales]);
+  }, [companyId, activated, loadSales, page]);
 
   const patchSaleInList = useCallback(async (saleId: string) => {
     if (!companyId) return;
@@ -694,6 +718,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     };
     const onDataInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
+      if (
+        reason.includes('sales-context-create') &&
+        detail?.entityId &&
+        detail?.companyId === companyId
+      ) {
+        setPageState(0);
+        void patchSaleInList(String(detail.entityId));
+        return;
+      }
       if (
         !shouldAcceptInvalidation(detail, {
           domain: ['sales', 'contacts', 'studio'],
@@ -703,7 +738,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       ) {
         return;
       }
-      const reason = String(detail?.reason ?? '');
       if (
         (reason.includes('sales-context-payment') || reason.includes('sale-payment')) &&
         detail?.entityId
@@ -718,9 +752,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     };
-  }, [branchId, companyId, loadSales]);
+  }, [branchId, companyId, loadSales, patchSaleInList]);
 
-  // When page changes we do not refetch; SalesPage slices the loaded sales for display
+  useEffect(() => {
+    setPageState(0);
+  }, [companyId, branchId]);
+
+  // When page changes we refetch from server; SalesPage filters/sorts the current page only
 
   // Get sale by ID (stable ref — avoids consumer useEffect loops when only unrelated context fields change)
   const getSaleById = useCallback((id: string): Sale | undefined => {
@@ -731,6 +769,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const createSale = async (
     saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>
   ): Promise<Sale> => {
+    const perf = perfStart('createSale');
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
@@ -786,58 +825,41 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 : docType === 'pos'
                   ? 'PS'
                   : 'SL';
+
+      const fromContext = inventorySettings.negativeStockAllowed === true;
+      const preflight = perfStart('createSale.preflight');
+      const [invoiceNoResult, allowNegativeResult, authUserResult] = await Promise.all([
+        documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType),
+        fromContext
+          ? Promise.resolve(true)
+          : import('@/app/services/settingsService').then((m) =>
+              m.settingsService.getAllowNegativeStock(companyId),
+            ),
+        import('@/lib/supabase').then((m) => m.supabase.auth.getUser()),
+      ]);
+      preflight.end();
+
       let invoiceNo: string;
       try {
-        invoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
+        invoiceNo = invoiceNoResult;
       } catch (e) {
-        // Fallback to form number only if RPC missing (e.g. migration not run)
-        const formInvoiceNo = (saleData as any).invoiceNo as string | undefined;
-        invoiceNo = (typeof formInvoiceNo === 'string' && formInvoiceNo && !formInvoiceNo.includes('undefined'))
-          ? formInvoiceNo
-          : generateDocumentNumber(docType);
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Could not allocate document number (${sequenceType}). Apply migrations on the server (get_next_document_number_global self-heal) and retry. ${msg}`
+        );
       }
       const weGeneratedNumber = true;
       if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
 
-      // Negative stock: only enforce when this save will post stock (`final`), not for draft/quotation/order
-      const effectiveCreateStatus = saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation');
-      const fromContext = inventorySettings.negativeStockAllowed === true;
-      const fromDb = fromContext
-        ? true
-        : await import('@/app/services/settingsService').then((m) =>
-            m.settingsService.getAllowNegativeStock(companyId)
-          );
-      const allowNegative = fromContext || fromDb;
+      const allowNegative = fromContext || allowNegativeResult === true;
       if (import.meta.env?.DEV) {
-        console.log('[SALES CONTEXT] Negative stock:', { allowNegative, fromContext, fromDb, inventorySettingsNegative: inventorySettings.negativeStockAllowed });
-      }
-      if (canPostStockForSaleStatus(effectiveCreateStatus) && !allowNegative && saleData.items?.length > 0) {
-        const { supabase } = await import('@/lib/supabase');
-        const productIds = [...new Set(saleData.items.map((i) => i.productId))];
-        const [stockMap, { data: prods }] = await Promise.all([
-          productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
-          supabase.from('products').select('id, has_variations').in('id', productIds),
-        ]);
-        const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
-
-        for (const item of saleData.items) {
-          const p = productMap.get(item.productId) as { has_variations?: boolean } | undefined;
-          if (!p) continue;
-          const key = (item as any).variationId ? `${item.productId}:${(item as any).variationId}` : `${item.productId}:`;
-          const stock = stockMap.get(key) ?? 0;
-          if (stock < item.quantity) {
-            throw new Error(
-              `${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock}). ` +
-              'To allow this sale, enable "Negative Stock Allowed" in Settings → Inventory.'
-            );
-          }
-        }
+        console.log('[SALES CONTEXT] Negative stock:', { allowNegative, fromContext, fromDb: allowNegativeResult, inventorySettingsNegative: inventorySettings.negativeStockAllowed });
       }
 
       // Identity: created_by must be auth.uid() (never public.users.id)
-      const { data: { user: authUser } } = await import('@/lib/supabase').then(m => m.supabase.auth.getUser());
+      const authUser = authUserResult.data?.user;
       const createdByAuthId = authUser?.id ?? user?.auth_user_id ?? user?.id;
 
       // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
@@ -1083,6 +1105,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const partialPayments = (saleData as any).partialPayments || [];
       
       // Payments table + payment JEs: only for posted (final) sales — draft paid fields are UI/draft only
+      // saleService.recordPayment already posts JE via RPC + assert; do not also call accounting.recordSalePayment.
       if (
         newSale.paid > 0 &&
         companyId &&
@@ -1091,31 +1114,37 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         canPostAccountingForSaleStatus(newSale.status)
       ) {
         try {
+          const payPerf = perfStart('createSale.payments');
           const { accountHelperService } = await import('@/app/services/accountHelperService');
           const { saleService } = await import('@/app/services/saleService');
           const { accountService } = await import('@/app/services/accountService');
-          
-          // CRITICAL FIX: If partialPayments array exists, split into separate payments
+
+          const accountByMethod = new Map<string, string | null>();
+          let cashFallbackId: string | null | undefined;
+          const resolvePaymentAccountId = async (paymentMethod: string): Promise<string | null> => {
+            if (accountByMethod.has(paymentMethod)) {
+              return accountByMethod.get(paymentMethod) ?? null;
+            }
+            let paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
+              paymentMethod,
+              companyId,
+            );
+            if (!paymentAccountId) {
+              if (cashFallbackId === undefined) {
+                const allAccounts = await accountService.getAllAccounts(companyId);
+                cashFallbackId = allAccounts.find((acc) => acc.code === '1000')?.id || null;
+              }
+              paymentAccountId = cashFallbackId;
+            }
+            accountByMethod.set(paymentMethod, paymentAccountId);
+            return paymentAccountId;
+          };
+
           if (partialPayments.length > 0) {
-            // Split payments: each method gets its own payment record
             for (const partialPayment of partialPayments) {
               const paymentMethod = normalizePaymentMethodForEnum(partialPayment.method || 'cash');
-              
-              // Get account for this payment method
-              let paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
-                paymentMethod,
-                companyId
-              );
-              
-              // If no account found, use Cash as default
-              if (!paymentAccountId) {
-                const allAccounts = await accountService.getAllAccounts(companyId);
-                const cashAccount = allAccounts.find(acc => acc.code === '1000');
-                paymentAccountId = cashAccount?.id || null;
-              }
-              
+              const paymentAccountId = await resolvePaymentAccountId(paymentMethod);
               if (paymentAccountId && partialPayment.amount > 0) {
-                // Let DB trigger set reference_number (avoid duplicate key)
                 await saleService.recordPayment(
                   newSale.id,
                   partialPayment.amount,
@@ -1124,25 +1153,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   companyId,
                   effectiveBranchId,
                   saleData.date,
-                  undefined
+                  undefined,
                 );
-                // Create separate journal entry for this payment
-                accounting?.recordSalePayment({
-                  saleId: newSale.id,
-                  invoiceNo: newSale.invoiceNo,
-                  customerName: newSale.customerName,
-                  amount: partialPayment.amount,
-                  paymentMethod: paymentMethod as any,
-                  accountId: paymentAccountId,
-                });
               }
             }
           } else {
-            // Fallback: Single payment (backward compatibility)
             const paymentMethod = normalizePaymentMethodForEnum(saleData.paymentMethod || 'cash');
             let paymentAccountId: string | null = null;
-            
-            // Check if payment already exists (from SQL trigger)
+
             const { supabase } = await import('@/lib/supabase');
             const { data: existingPayment } = await supabase
               .from('payments')
@@ -1152,24 +1170,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               .eq('amount', newSale.paid)
               .limit(1)
               .maybeSingle();
-            
+
             if (existingPayment) {
-              // Payment already exists from trigger, use its account_id
               paymentAccountId = existingPayment.payment_account_id;
             } else {
-              // Payment doesn't exist, create it
-              paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
-                paymentMethod,
-                companyId
-              );
-              
-              // If no account found, use Cash as default
-              if (!paymentAccountId) {
-                const allAccounts = await accountService.getAllAccounts(companyId);
-                const cashAccount = allAccounts.find(acc => acc.code === '1000');
-                paymentAccountId = cashAccount?.id || null;
-              }
-              
+              paymentAccountId = await resolvePaymentAccountId(paymentMethod);
               if (paymentAccountId) {
                 await saleService.recordPayment(
                   newSale.id,
@@ -1179,23 +1184,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   companyId,
                   effectiveBranchId,
                   saleData.date,
-                  undefined
+                  undefined,
                 );
               }
             }
-            
-            // Create journal entry for initial payment (whether payment existed or was just created)
-            if (paymentAccountId) {
-              accounting?.recordSalePayment({
-                saleId: newSale.id,
-                invoiceNo: newSale.invoiceNo,
-                customerName: newSale.customerName,
-                amount: newSale.paid,
-                paymentMethod: paymentMethod as any,
-                accountId: paymentAccountId,
-              });
-            }
           }
+          payPerf.end();
         } catch (error: any) {
           console.error('[SALES CONTEXT] Error recording initial payment:', error);
           // Don't fail sale creation if payment recording fails
@@ -1203,6 +1197,25 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       
       setSales((prev) => [newSale, ...prev]);
+      rememberRecentCreatedSale(newSale.id);
+
+      if (
+        branchId &&
+        branchId !== 'all' &&
+        newSale.branchId &&
+        newSale.branchId !== branchId
+      ) {
+        const branchLabel = newSale.location?.trim() || 'another branch';
+        toast.info(
+          `Sale saved on ${branchLabel}. Switch header branch to All or ${branchLabel} to see it in the default list.`
+        );
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('saleUpdated', { detail: { saleId: newSale.id, fullReload: false } })
+        );
+      }
       
       // Stock OUT: handled by DB trigger (if exists) + syncSaleStockForDocument (Z1 below).
       // The manual stock creation loop was removed because it raced with the DB trigger,
@@ -1391,17 +1404,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Z1: Idempotent line ↔ movements reconciliation (trigger/app drift, combos edge cases)
+      // Z1: Idempotent line ↔ movements reconciliation — background (mobile uses RPC inline; trigger + async reconcile is enough for UI responsiveness)
       if (newSale.id && (canPostStockForSaleStatus(newSale.status) || String(newSale.status).toLowerCase() === 'cancelled')) {
-        try {
-          const { syncSaleStockForDocument } = await import('@/app/services/documentStockSyncService');
-          const z1 = await syncSaleStockForDocument(newSale.id);
-          if (z1.adjustmentsInserted > 0) {
-            console.log('[SALES CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
-          }
-        } catch (z1Err) {
-          console.warn('[SALES CONTEXT] Z1 stock sync (create) failed:', z1Err);
-        }
+        void import('@/app/services/documentStockSyncService')
+          .then(({ syncSaleStockForDocument }) => syncSaleStockForDocument(newSale.id))
+          .then((z1) => {
+            if (z1.adjustmentsInserted > 0) {
+              console.log('[SALES CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+            }
+          })
+          .catch((z1Err) => console.warn('[SALES CONTEXT] Z1 stock sync (create) failed:', z1Err));
       }
       
       // Commission: NOT posted per sale (commission_status=pending until batch post).
@@ -1421,42 +1433,33 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Payment JE only for posted (final) sales — draft/quotation/order must not hit GL or AR payment postings
-      if (canPostAccountingForSaleStatus(newSale.status) && newSale.paid > 0) {
-        try {
-          await accounting?.recordSalePayment({
-          saleId: newSale.id,
-          invoiceNo: newSale.invoiceNo,
-          customerName: newSale.customerName,
-          amount: newSale.paid,
-          paymentMethod: newSale.paymentMethod as any,
-          });
-        } catch (accountingError) {
-          console.error('[SALES CONTEXT] ❌ CRITICAL: Payment journal entry failed:', accountingError);
-          // Don't block sale creation if payment entry fails (sale entry already created)
-          console.warn('[SALES CONTEXT] Warning: Sale created but payment entry failed');
-        }
-      }
+      // Payment JEs handled above via saleService.recordPayment (RPC + assert); no AccountingContext verify path.
 
       const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
-      toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
-      
-      // Dispatch event to refresh inventory
+      if (import.meta.env?.DEV) {
+        console.info('[SALES CONTEXT] createSale complete:', createdLabel, effectiveInvoiceNo);
+      }
+
+      // Dispatch event to refresh inventory — defer heavy invalidation so UI can close spinner first
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
       if (newSale.customer) {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: newSale.customer } }));
       }
 
       if (companyId) {
-        dispatchSaleLifecycleInvalidated({
+        const invalidatePayload = {
           companyId,
           branchId: effectiveBranchId,
           customerId: newSale.customer || null,
           saleId: newSale.id,
-          reason: 'sales-context-create',
+          reason: 'sales-context-create' as const,
+        };
+        queueMicrotask(() => {
+          setTimeout(() => dispatchSaleLifecycleInvalidated(invalidatePayload), 0);
         });
       }
 
+      perf.end({ status: newSale.status, items: newSale.items?.length ?? 0 });
       return newSale;
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error creating sale:', error);
@@ -1520,11 +1523,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.date !== undefined) supabaseUpdates.invoice_date = updates.date;
       if (updates.customerName !== undefined) supabaseUpdates.customer_name = updates.customerName;
       // UUID column: empty string is invalid; use null for walk-in / no customer
-      if (updates.customer !== undefined) supabaseUpdates.customer_id = (updates.customer === '' || updates.customer == null) ? null : updates.customer;
+      if (updates.customer !== undefined) {
+        supabaseUpdates.customer_id = coerceUuidOrNull(updates.customer);
+      }
       if (updates.location !== undefined) {
-        // Location is branch_id, need to resolve branch name to ID
-        // For now, if it's already a UUID, use it directly
-        supabaseUpdates.branch_id = updates.location;
+        supabaseUpdates.branch_id = coerceUuidOrNull(updates.location);
       }
       if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes;
       if ((updates as any).customerBillRef !== undefined) {
@@ -1541,8 +1544,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
       if ((updates as any).salesmanId !== undefined) {
-        const sid = (updates as any).salesmanId;
-        supabaseUpdates.salesman_id = (sid === '' || sid === 'none' || sid === '1') ? null : sid;
+        supabaseUpdates.salesman_id = coerceUuidOrNull((updates as any).salesmanId);
       }
       if ((updates as any).commissionAmount !== undefined) supabaseUpdates.commission_amount = Number((updates as any).commissionAmount) || 0;
       if ((updates as any).commissionEligibleAmount !== undefined) supabaseUpdates.commission_eligible_amount = (updates as any).commissionEligibleAmount;
@@ -1630,9 +1632,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         ((updates as any).items && Array.isArray((updates as any).items))
       );
       let oldAccountingSnapshot: { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number } | null = null;
+      let preUpdateSaleRow: Awaited<ReturnType<typeof saleService.getSaleById>> | null | undefined;
+      const ensurePreUpdateSaleRow = async () => {
+        if (preUpdateSaleRow !== undefined) return preUpdateSaleRow;
+        preUpdateSaleRow = await saleService.getSaleById(id);
+        return preUpdateSaleRow;
+      };
       if (accountingRepostNeeded && companyId) {
         try {
-          const oldSaleForAccounting = await saleService.getSaleById(id);
+          const oldSaleForAccounting = await ensurePreUpdateSaleRow();
           const { saleAccountingService: sac } = await import('@/app/services/saleAccountingService');
           oldAccountingSnapshot = sac.getSaleAccountingSnapshot(oldSaleForAccounting);
         } catch (e) {
@@ -1752,9 +1760,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             )
           : false);
       let headerBranchForStockEdit: string | undefined =
-        updates.location !== undefined ? updates.location : undefined;
+        updates.location !== undefined ? updates.location : sale?.location;
       if (headerBranchForStockEdit === undefined && companyId) {
-        const row = await saleService.getSaleById(id);
+        const row = await ensurePreUpdateSaleRow();
         headerBranchForStockEdit = (row as any)?.branch_id ?? undefined;
       }
       let effectiveBranchIdForStockEdit = branchIdFromSaleHeader(headerBranchForStockEdit, branchId);
@@ -1860,7 +1868,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const lineTotal = Number(item.total ?? unitPrice * qty) || 0;
           const saleItem = {
           product_id: item.productId,
-          variation_id: item.variationId || undefined,
+          variation_id: normalizeVariationIdForPersist(
+            item.variationId,
+            item.product as { has_variations?: boolean; variations?: unknown[] } | undefined,
+          ),
           product_name: item.productName,
           sku: item.sku || 'N/A',
           quantity: qty,
@@ -2331,11 +2342,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           if (docJe?.id) {
             const jeId = docJe.id as string;
             const newTotal = newSnapshot.total;
-            const newGross = newSnapshot.subtotal || (newTotal + newSnapshot.discount);
             const newDiscount = newSnapshot.discount;
             const newShipping = newSnapshot.shippingCharges || 0;
             const newExtra = newSnapshot.extraExpense || 0;
-            const newRevenue = newGross - newShipping - newExtra;
 
             // Resolve AR sub-ledger for customer
             const customerId = (updatedSale as any).customer_id;
@@ -2354,9 +2363,22 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               const { data } = await sbEdit.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
               return data?.id as string | null;
             };
-            const { computeProductRevenueCreditSplit, syncSaleDocumentJeCogsInventoryPair, assertJournalEntryBalanced } =
-              await import('@/app/services/saleAccountingService');
-            const revenueSplit = await computeProductRevenueCreditSplit(id, Math.max(0, newRevenue));
+            const {
+              computeProductRevenueCreditSplit,
+              computeSaleDocumentRevenueAmounts,
+              syncSaleDocumentJeCogsInventoryPair,
+              assertJournalEntryBalanced,
+            } = await import('@/app/services/saleAccountingService');
+            const docAmounts = computeSaleDocumentRevenueAmounts({
+              total: newTotal,
+              discount: newDiscount,
+              extraExpense: newExtra,
+              shippingCharges: newShipping,
+            });
+            const revenueSplit = await computeProductRevenueCreditSplit(
+              id,
+              Math.max(0, docAmounts.merchandisePool)
+            );
             const merchandiseRevenueIds = new Set(
               [(await getAccId('4000')), (await getAccId('4100'))].filter(Boolean) as string[]
             );
@@ -2378,7 +2400,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               let didMatch = false;
 
               if (accId === arAccountId || (ar1100Id && accId === ar1100Id)) {
-                newDebit = Math.round((newTotal + newShipping) * 100) / 100;
+                newDebit = docAmounts.arDebit;
                 newCredit = 0;
                 didMatch = true;
               } else if (merchandiseRevenueIds.has(accId)) {
@@ -2678,11 +2700,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Z1: Reconcile stock_movements to line totals (posted + cancelled net-zero)
+      // Z1 + commission + list patch: one post-mutation fetch (was 3× getSaleById)
+      let postUpdateSaleRow: Awaited<ReturnType<typeof saleService.getSaleById>> | null = null;
       try {
-        const preReload = await saleService.getSaleById(id);
-        const syncSt = String((preReload as any)?.status ?? '').toLowerCase();
-        if (preReload && (canPostStockForSaleStatus(syncSt) || syncSt === 'cancelled')) {
+        postUpdateSaleRow = await saleService.getSaleById(id);
+        const syncSt = String((postUpdateSaleRow as any)?.status ?? '').toLowerCase();
+        if (postUpdateSaleRow && (canPostStockForSaleStatus(syncSt) || syncSt === 'cancelled')) {
           const { syncSaleStockForDocument } = await import('@/app/services/documentStockSyncService');
           const z1 = await syncSaleStockForDocument(id);
           if (z1.adjustmentsInserted > 0) {
@@ -2696,7 +2719,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
       // Commission on final: pending row until Commission Report batch post
       try {
-        const rowForCommission = await saleService.getSaleById(id);
+        const rowForCommission = postUpdateSaleRow ?? (await saleService.getSaleById(id));
+        postUpdateSaleRow = rowForCommission;
         const st = String((rowForCommission as { status?: string }).status ?? '').toLowerCase();
         const isFinalNow = canPostAccountingForSaleStatus(st);
         if (isFinalNow && sale) {
@@ -2750,6 +2774,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             if (patch) {
               const commErr = await applySaleCommissionPatch(id, patch);
               if (commErr) console.warn('[SALES CONTEXT] Commission patch:', commErr);
+              // Commission patch may change row — refresh once for list state
+              postUpdateSaleRow = await saleService.getSaleById(id);
             }
           }
         }
@@ -2758,7 +2784,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // CRITICAL FIX: Reload sale from database to get fresh data
-      const updatedSaleData = await saleService.getSaleById(id);
+      const updatedSaleData = postUpdateSaleRow ?? (await saleService.getSaleById(id));
       if (updatedSaleData) {
         const updatedSale = convertFromSupabaseSale(updatedSaleData);
         setSales(prev => prev.map(s => s.id === id ? updatedSale : s));
@@ -3032,8 +3058,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         s.id === saleId ? { ...s, shippingStatus: status } : s
       ));
       
-      // Also refresh from database to ensure consistency
-      await loadSales();
+      // Also refresh from database in background
+      void loadSales();
       
       toast.success(`Shipping status updated to ${status}!`);
     } catch (error) {

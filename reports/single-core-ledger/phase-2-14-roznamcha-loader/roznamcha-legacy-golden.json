@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-06-26T18:50:33.128Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "dateRange": { "from": "2000-01-01", "to": "2026-06-26" },
+  "branchId": "all",
+  "accountFilter": "all",
+  "includeVoidedReversed": false,
+  "openingBalance": 0,
+  "cashIn": 136158012,
+  "cashOut": 67042426,
+  "closingBalance": 69115586,
+  "mainLoader": "legacy"
+}

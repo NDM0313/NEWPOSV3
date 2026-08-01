@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-06-30T12:45:00.000Z",
+  "test_email_masked": "k***+1@gmail.com",
+  "auth_user_id": "6a101ab0-f34d-4948-b6cb-20659b76e400",
+  "company_id": null,
+  "email_confirmed_at": null,
+  "transaction_counts_all_zero": true,
+  "bootstrap_counts_all_zero": true,
+  "decision": "CLEANUP_AUTH_ONLY_ALLOWED"
+}

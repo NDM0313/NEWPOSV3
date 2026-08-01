@@ -10,6 +10,7 @@ import { formatAmount, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
 
 export type AccountKind = 'cash' | 'bank' | 'wallet';
 
@@ -43,7 +44,7 @@ export function AccountSummaryReport({
   const Icon = cfg.icon;
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [movements, setMovements] = useState<Record<string, { inAmount: number; outAmount: number; net: number; count: number; lines: LedgerLine[] }>>({});
   const [movementsRefreshNonce, setMovementsRefreshNonce] = useState(0);
   const [movementsRefreshBusy, setMovementsRefreshBusy] = useState(false);
@@ -138,14 +139,9 @@ export function AccountSummaryReport({
     return accounts.flatMap((a) => {
       const m = movements[a.id];
       if (!m) return [];
-      return m.lines.map((l) => ({
-        date: l.date,
-        reference: `${a.code}·${l.entryNo}`,
-        description: `${a.name} — ${l.description}`,
-        debit: l.debit,
-        credit: l.credit,
-        balance: l.runningBalance,
-      }));
+      return m.lines.map((l) =>
+        toLedgerPreviewRow(l, `${a.code}·${l.entryNo}`, { viewedAccountName: a.name }),
+      );
     });
   }, [accounts, movements]);
 
@@ -179,7 +175,7 @@ export function AccountSummaryReport({
         }}
         refreshing={movementsRefreshBusy}
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
       <ReportShell loading={loading} empty={!loading && accounts.length === 0} emptyLabel="No accounts of this type.">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Plus, LayoutList, Calendar as CalendarIcon, Truck, CornerDownLeft, DollarSign } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -15,10 +15,14 @@ import { ReturnModal } from './ReturnModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { clsx } from 'clsx';
 import { useRentals, type RentalUI } from '@/app/context/RentalContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { rentalService } from '@/app/services/rentalService';
 import { supabase } from '@/lib/supabase';
+import { safeSessionStorageGetItem, safeSessionStorageRemoveItem } from '@/app/lib/safeBrowserStorage';
 
 export const RentalDashboard = () => {
-  const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById } = useRentals();
+  const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById, rentals } = useRentals();
+  const { companyId, branchId } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editRental, setEditRental] = useState<RentalUI | null>(null);
   const [viewRental, setViewRental] = useState<RentalUI | null>(null);
@@ -29,6 +33,39 @@ export const RentalDashboard = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [collectionRental, setCollectionRental] = useState<RentalUI | null>(null);
   const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections' | 'reports'>('list');
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0);
+  const [tabCounts, setTabCounts] = useState({ pickup: 0, return: 0, collections: 0 });
+
+  const activeCount = useMemo(
+    () => rentals.filter((r) => ['booked', 'active', 'rented', 'picked_up', 'overdue'].includes(r.status)).length,
+    [rentals]
+  );
+
+  const bumpQueueRefresh = useCallback(async () => {
+    setQueueRefreshKey((k) => k + 1);
+    await refreshRentals();
+  }, [refreshRentals]);
+
+  const loadTabCounts = useCallback(async () => {
+    if (!companyId) return;
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    try {
+      const [pickups, returns, outstanding] = await Promise.all([
+        rentalService.getPickupsDue(companyId, b),
+        rentalService.getReturnsDue(companyId, b),
+        rentalService.getOutstandingForCollections(companyId, b),
+      ]);
+      setTabCounts({ pickup: pickups.length, return: returns.length, collections: outstanding.length });
+    } catch (e) {
+      console.error('[RentalDashboard] tab counts', e);
+      toast.error('Failed to load rental queue counts');
+      setTabCounts({ pickup: 0, return: 0, collections: 0 });
+    }
+  }, [companyId, branchId]);
+
+  useEffect(() => {
+    void loadTabCounts();
+  }, [loadTabCounts, queueRefreshKey]);
 
   const handleAddRental = () => {
     setEditRental(null);
@@ -47,9 +84,17 @@ export const RentalDashboard = () => {
 
   /** Deep-link from accounting unified edit (rental JE): open booking drawer after navigating to Rentals. */
   useEffect(() => {
-    const pending = typeof window !== 'undefined' ? sessionStorage.getItem('pendingRentalDetailsId') : null;
+    const initialTab = safeSessionStorageGetItem('rentalsInitialTab');
+    if (initialTab === 'reports') {
+      safeSessionStorageRemoveItem('rentalsInitialTab');
+      setActiveTab('reports');
+    }
+  }, []);
+
+  useEffect(() => {
+    const pending = safeSessionStorageGetItem('pendingRentalDetailsId');
     if (!pending) return;
-    sessionStorage.removeItem('pendingRentalDetailsId');
+    safeSessionStorageRemoveItem('pendingRentalDetailsId');
     void (async () => {
       try {
         await refreshRentals();
@@ -67,20 +112,20 @@ export const RentalDashboard = () => {
   }, [refreshRentals, getRentalById]);
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+    <div className="h-screen flex flex-col bg-secondary">
+      <div className="shrink-0 px-6 py-4 border-b border-border">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-white">Rentals</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and availability</p>
+            <h1 className="text-2xl font-bold text-foreground">Rentals</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Manage rental orders and availability</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="bg-gray-900 p-1 rounded-lg border border-gray-800 flex items-center">
+            <div className="bg-card p-1 rounded-lg border border-border flex items-center">
               <button
                 onClick={() => setActiveTab('list')}
                 className={clsx(
                   'px-3 py-2 rounded-md text-sm font-medium transition-all',
-                  activeTab === 'list' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                  activeTab === 'list' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
                 title="List View"
               >
@@ -91,7 +136,7 @@ export const RentalDashboard = () => {
                 onClick={() => setActiveTab('calendar')}
                 className={clsx(
                   'px-3 py-2 rounded-md text-sm font-medium transition-all',
-                  activeTab === 'calendar' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                  activeTab === 'calendar' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
                 title="Calendar / Availability"
               >
@@ -102,40 +147,55 @@ export const RentalDashboard = () => {
                 onClick={() => setActiveTab('pickupToday')}
                 className={clsx(
                   'px-3 py-2 rounded-md text-sm font-medium transition-all',
-                  activeTab === 'pickupToday' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                  activeTab === 'pickupToday' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
                 title="Pickup Today"
               >
                 <Truck size={16} className="mr-1.5 inline" />
                 Pickup Today
+                {tabCounts.pickup > 0 && (
+                  <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                    {tabCounts.pickup}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('returnToday')}
                 className={clsx(
                   'px-3 py-2 rounded-md text-sm font-medium transition-all',
-                  activeTab === 'returnToday' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                  activeTab === 'returnToday' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
                 title="Return Today"
               >
                 <CornerDownLeft size={16} className="mr-1.5 inline" />
                 Return Today
+                {tabCounts.return > 0 && (
+                  <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-[var(--erp-money-positive)]">
+                    {tabCounts.return}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('collections')}
                 className={clsx(
                   'px-3 py-2 rounded-md text-sm font-medium transition-all',
-                  activeTab === 'collections' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                  activeTab === 'collections' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
                 title="Collections / Outstanding"
               >
                 <DollarSign size={16} className="mr-1.5 inline" />
                 Collections
+                {tabCounts.collections > 0 && (
+                  <span className="ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                    {tabCounts.collections}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('reports')}
                 className={clsx(
                   'px-3 py-2 rounded-md text-sm font-medium transition-all',
-                  activeTab === 'reports' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                  activeTab === 'reports' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 )}
                 title="Rental Reports"
               >
@@ -145,7 +205,7 @@ export const RentalDashboard = () => {
             </div>
             <Button
               onClick={handleAddRental}
-              className="bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 font-semibold"
+              className="bg-pink-600 hover:bg-pink-500 text-foreground shadow-lg shadow-pink-600/20 font-semibold"
             >
               <Plus size={18} className="mr-2" /> New Rental Booking
             </Button>
@@ -164,6 +224,9 @@ export const RentalDashboard = () => {
         )}
         {activeTab === 'pickupToday' && (
           <PickupTodayTab
+            refreshKey={queueRefreshKey}
+            activeCount={activeCount}
+            onViewAllRentals={() => setActiveTab('list')}
             onProcessPickup={(r) => {
               setRentalForPickup(r);
               setPickupModalOpen(true);
@@ -172,6 +235,9 @@ export const RentalDashboard = () => {
         )}
         {activeTab === 'returnToday' && (
           <ReturnTodayTab
+            refreshKey={queueRefreshKey}
+            activeCount={activeCount}
+            onViewAllRentals={() => setActiveTab('list')}
             onProcessReturn={(r) => {
               setRentalForReturn(r);
               setReturnModalOpen(true);
@@ -180,6 +246,7 @@ export const RentalDashboard = () => {
         )}
         {activeTab === 'collections' && (
           <RentalCollectionsTab
+            refreshKey={queueRefreshKey}
             onCollectPayment={(r) => {
               setCollectionRental(r);
               setPaymentDialogOpen(true);
@@ -230,7 +297,7 @@ export const RentalDashboard = () => {
         rental={rentalForPickup}
         onConfirm={async (id, payload) => {
           await markAsPickedUp(id, payload);
-          await refreshRentals();
+          await bumpQueueRefresh();
         }}
         onAddPayment={(r) => {
           setRentalForPickup(r);
@@ -280,7 +347,7 @@ export const RentalDashboard = () => {
               setPickupModalOpen(true);
             }
             // Refresh context AFTER modal is re-opened with fresh data
-            await refreshRentals();
+            await bumpQueueRefresh();
           }}
         />
       )}
@@ -292,10 +359,10 @@ export const RentalDashboard = () => {
           if (!open) setRentalForReturn(null);
         }}
         rental={rentalForReturn}
-        documentInfo={rentalForReturn ? { documentType: rentalForReturn.documentType, documentNumber: rentalForReturn.documentNumber } : undefined}
+        documentInfo={rentalForReturn ? { documentType: rentalForReturn.pickupDocumentType || rentalForReturn.documentType, documentNumber: rentalForReturn.pickupDocumentNumber || undefined } : undefined}
         onConfirm={async (id, payload) => {
           await receiveReturn(id, payload);
-          await refreshRentals();
+          await bumpQueueRefresh();
         }}
       />
     </div>

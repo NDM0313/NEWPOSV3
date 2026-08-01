@@ -1,0 +1,39 @@
+﻿Single Core A-to-Z production verify ΓÇö 2026-07-19
+Generated: 2026-07-19T15:34:25Z
+
+=== VPS git HEAD ===
+6e89f2850d02848e8004b79dc5d5866ef6e3f872
+6e89f285 roznamcha ioa
+
+=== erp-frontend ===
+health=healthy
+VITE_BUILD_COMMIT=6e89f285
+
+=== HTTP ===
+https://erp.dincouture.pk -> 200
+
+=== Unified RPCs (pg_proc) ===
+get_contact_party_gl_balances
+get_unified_account_ledger
+get_unified_cash_bank_ledger
+get_unified_contact_party_gl_balances
+get_unified_party_ledger
+get_unified_trial_balance
+
+=== Legacy main-loader wrappers (R8-R2 must be ABSENT) ===
+ABSENT:src/app/services/accountStatementLegacyMainService.ts
+ABSENT:src/app/services/trialBalanceLegacyMainService.ts
+ABSENT:src/app/services/partyLedgerLegacyMainService.ts
+ABSENT:src/app/services/roznamchaLegacyMainService.ts
+
+=== Bundle markers (unified still present) ===
+FOUND:get_unified_party_ledger
+FOUND:get_unified_contact_party_gl_balances
+FOUND:assertUnifiedMainLoaderSource
+
+=== Redeploy decision ===
+Runtime HEAD / VITE_BUILD_COMMIT matched GitHub main at verify (6e89f285).
+This refresh is docs-only — no DB migration, no erp-frontend rebuild required.
+Redeploy performed: NO
+Kill switch toggled: NO
+Other migrations applied: NO

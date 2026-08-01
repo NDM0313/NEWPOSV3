@@ -1,11 +1,16 @@
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import type { LedgerLine } from '../../../../api/reports';
+import {
+  formatLedgerLinePresentation,
+  type LedgerLinePresentationOpts,
+} from '../../../../lib/ledgerLinePresentation';
 import { AttachmentIndicatorButton } from '../../../shared/AttachmentIndicatorButton';
 import { formatAmount, formatDate } from './format';
 
 export interface LedgerActivityListRowProps {
   line: LedgerLine;
   displayReference: (entryNo: string, referenceType: string) => string;
+  presentationOpts?: LedgerLinePresentationOpts;
   onRowClick?: () => void;
   onAttachmentClick?: () => void;
 }
@@ -13,9 +18,11 @@ export interface LedgerActivityListRowProps {
 export function LedgerActivityListRow({
   line: l,
   displayReference,
+  presentationOpts,
   onRowClick,
   onAttachmentClick,
 }: LedgerActivityListRowProps) {
+  const pres = formatLedgerLinePresentation(l, presentationOpts);
   const isDebit = l.debit > 0;
   const amount = isDebit ? l.debit : l.credit;
   const time = l.createdAt
@@ -33,7 +40,10 @@ export function LedgerActivityListRow({
         {isDebit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownLeft className="w-4 h-4" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
+        <p className="text-sm font-semibold text-white truncate">{pres.title}</p>
+        {pres.subline ? (
+          <p className="text-[11px] text-[#9CA3AF] truncate">{pres.subline}</p>
+        ) : null}
         <p className="text-[11px] text-[#9CA3AF] truncate">
           {formatDate(l.date)}
           {time ? ` · ${time}` : ''} · {refLabel}

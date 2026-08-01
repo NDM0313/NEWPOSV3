@@ -1,0 +1,16 @@
+{
+  "stability_window_start": "2026-07-01",
+  "stability_sample_label": 8,
+  "run_local_datetime": "2026-07-02T17:03:03+05:00",
+  "calendar_days_elapsed_since_window_start": 1,
+  "evidence_folder": "reports/single-core-engine-stability-daily-20260708",
+  "classification": "STABILITY_SAMPLE_FAIL",
+  "monitoring_artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T12-03-36-782Z.json",
+  "diagnosis_primary": "monitoring_bug",
+  "production_mutation": false,
+  "fixture_refresh": false,
+  "r8_blocked": true,
+  "same_day_samples_do_not_shorten_r8_window": true,
+  "mobile_release_separate": true,
+  "supplier_party_discount_separate": true
+}

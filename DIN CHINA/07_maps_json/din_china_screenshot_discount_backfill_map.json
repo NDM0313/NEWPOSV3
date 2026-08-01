@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "source": "old_erp_customers_suppliers_screenshot_2026",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "branchId": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+  "rows": [
+    {
+      "legacyTransactionId": 53,
+      "invoiceNo": "DC-0041",
+      "customerName": "AZIZ JAMURAD",
+      "discountAmount": 13540,
+      "forgiveRemainingDue": true
+    },
+    {
+      "legacyTransactionId": 7,
+      "invoiceNo": "DC-0004",
+      "customerName": "SHAHURKH KHAN",
+      "discountAmount": 35218,
+      "forgiveRemainingDue": true
+    },
+    {
+      "legacyTransactionId": 5,
+      "invoiceNo": "DC-0002",
+      "customerName": "LAL MOHAMMAD",
+      "discountAmount": 100000,
+      "forgiveRemainingDue": false
+    }
+  ]
+}

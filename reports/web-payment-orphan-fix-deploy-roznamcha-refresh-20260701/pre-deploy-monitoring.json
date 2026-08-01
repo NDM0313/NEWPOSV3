@@ -1,0 +1,20 @@
+{
+  "run": "PRE_DEPLOY_MONITORING",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T07-12-38-883Z.json",
+  "overall": "FAIL",
+  "din_china": "PASS",
+  "din_bridal": "FAIL",
+  "din_couture": "PASS",
+  "classification": "EXPECTED_ORPHAN_CLEANUP_DRIFT_ONLY",
+  "din_bridal_actuals": {
+    "trial_balance_pkr": 22390400,
+    "roznamcha_cash_in_pkr": 2026850,
+    "roznamcha_cash_out_pkr": 917780,
+    "roznamcha_closing_pkr": 1109070,
+    "mr_rehan_ali_closing_pkr": 530000
+  },
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "proceed": true
+}

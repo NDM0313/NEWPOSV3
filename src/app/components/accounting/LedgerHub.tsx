@@ -110,13 +110,13 @@ export function LedgerHub({ ledgerType }: LedgerHubProps) {
       {/* Only entity selector – same page, same filters, same date picker, same summary cards (no Ledger type dropdown here) */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400 whitespace-nowrap">{entityLabel}</span>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">{entityLabel}</span>
           <Select
             value={entityId || (entities[0]?.id ?? '')}
             onValueChange={setEntityId}
             disabled={loadingEntities || entities.length === 0}
           >
-            <SelectTrigger className="min-w-[220px] bg-gray-900 border-gray-700 text-white">
+            <SelectTrigger className="min-w-[220px] bg-card border-border text-foreground">
               <SelectValue placeholder={loadingEntities ? 'Loading…' : `Select ${entityLabel}…`} />
             </SelectTrigger>
             <SelectContent>
@@ -142,7 +142,7 @@ export function LedgerHub({ ledgerType }: LedgerHubProps) {
           entityName={selectedEntityName}
         />
       ) : (
-        <div className="py-8 text-center text-gray-400 text-sm">
+        <div className="py-8 text-center text-muted-foreground text-sm">
           Select a {ledgerType === 'customer' ? 'customer' : ledgerType === 'supplier' ? 'supplier' : ledgerType === 'user' ? 'user' : 'worker'} from the dropdown above.
         </div>
       )}

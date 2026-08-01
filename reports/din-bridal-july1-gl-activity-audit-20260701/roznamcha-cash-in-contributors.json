@@ -1,0 +1,39 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "roznamcha-cash-in-contributors",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "golden_cash_in_pkr": 1836350,
+  "actual_at_12_43_pkr": 1958350,
+  "delta_pkr": 122000,
+  "golden_closing_pkr": 918570,
+  "actual_closing_at_12_43_pkr": 1040570,
+  "closing_delta_pkr": 122000,
+  "contributors": [
+    {
+      "entry_no": "RCV-0075",
+      "payment_id": "54243a50-be7c-44ae-951b-138c0759ad74",
+      "amount_pkr": 80000,
+      "cash_account": "1061 NDM FSY (bank)",
+      "party": "Walk-in Customer / N331 reaming Balance",
+      "created_at": "2026-07-01T11:56:02Z",
+      "source_module": "payment"
+    },
+    {
+      "entry_no": "RCV-0076",
+      "payment_id": "f918811d-abb3-4be7-9e38-fba87b5173f1",
+      "amount_pkr": 42000,
+      "cash_account": "1002 CASH G140",
+      "party": "MAHVISH IQBAL / SL-0018",
+      "created_at": "2026-07-01T12:42:24Z",
+      "source_module": "payment"
+    }
+  ],
+  "sum_cash_in_pkr": 122000,
+  "je_0205_roznamcha_impact": 0,
+  "roznamcha_visibility": "Payment-posted cash/bank debits included in unified roznamcha Cash In summary; sale finalize JE-0205 has no cash leg",
+  "post_12_43": {
+    "entry_no": "RCV-0077",
+    "amount_pkr": 20000,
+    "party": "HARIS N219 / SL-0019"
+  }
+}

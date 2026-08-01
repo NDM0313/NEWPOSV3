@@ -1,0 +1,59 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "mobile-parity-readiness-audit",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "mobile_apps": [
+    {
+      "id": "erp-mobile-app",
+      "stack": "Capacitor + Vite + React",
+      "production_api": "https://supabase.dincouture.pk",
+      "native_shell_url": "https://erp.dincouture.pk",
+      "data_source": "Supabase client + shared RPCs (api/reports.ts, api/accounts.ts, api/roznamcha.ts)",
+      "status": "primary_production_mobile"
+    },
+    {
+      "id": "erp-flutter-app",
+      "stack": "Flutter + native repositories",
+      "data_source": "Supabase via Dart repositories",
+      "status": "parallel_native_client_reports_stub"
+    }
+  ],
+  "web_production_unified_reports": {
+    "ledger_v2": "live_unified",
+    "account_statement": "live_unified",
+    "trial_balance": "live_unified",
+    "party_ledger_roznamcha": "live_unified",
+    "cash_flow": "live_unified",
+    "balance_sheet": "live_unified_post_swap",
+    "profit_loss": "live_unified_post_swap"
+  },
+  "capacitor_report_parity": {
+    "ledger_v2": "partial_daybook_journal_ui_not_unified_v2_screen",
+    "account_statement": "partial_account_ledger_report",
+    "trial_balance": "missing",
+    "cash_flow": "missing_dedicated_screen",
+    "balance_sheet": "missing",
+    "profit_loss": "missing",
+    "party_ledger_roznamcha": "partial_party_ledger_customer_supplier_worker",
+    "unified_loader_flags": "not_consumed_on_mobile"
+  },
+  "flutter_report_parity": {
+    "reports_module": "routes_to_dashboard_placeholder",
+    "ledger_module": "journal_list_screen_contact_ledger",
+    "trial_balance": "missing",
+    "cash_flow": "missing",
+    "balance_sheet": "missing",
+    "profit_loss": "missing"
+  },
+  "print_share": {
+    "capacitor": "CompanyBrand PDF headers in api/reports.ts; attachment/share hooks exist",
+    "flutter": "limited_vs_web",
+    "docs": ["docs/MOBILE_RELEASE_PLAN.md", "docs/PWA_VS_NATIVE_LIMITS.md", "docs/infra/MOBILE_APK_LOCKED_PATTERN.md"]
+  },
+  "backlog": {
+    "rental_ar_sub_ledger": "erp-flutter-app/lib/data/repositories/rental_booking_accounting.dart — parity with Capacitor mobile booking flow"
+  },
+  "apk_release_process": "docs/MOBILE_RELEASE_PLAN.md — cap:sync, ANDROID_APK_BUILD.md; no release in this run",
+  "recommendation": "Implement unified report parity in erp-mobile-app first (same Supabase contract as web); Flutter reports module is placeholder",
+  "status": "READINESS_AUDIT_COMPLETE"
+}

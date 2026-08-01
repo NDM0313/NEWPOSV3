@@ -3,13 +3,12 @@ import { getNextContactReferenceCode } from './documentNumber';
 import { ensurePartySubledgersForContact } from './partySubledger';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { normalizeCompanyId } from './contactBalancesUtils';
-import type { ContactBalancesRow } from './contactBalancesRpc';
 import {
   balanceRowFromMap,
   fetchContactPartyGlBalancesMap,
   fetchOperationalContactBalancesSummary,
-  partyGlDueForListRole,
   partyGlSliceFromMap,
+  resolveContactListBalance,
 } from './contactBalancesRpc';
 
 export type ContactRole = 'customer' | 'supplier' | 'worker';
@@ -118,34 +117,9 @@ function rolesToType(roles: ContactRole[]): BackendContactType {
   return 'both';
 }
 
-/** Operational RPC row → single display balance on customer/supplier/worker list (branch context). */
-function balanceFromRpcRow(
-  contactType: string,
-  receivables: number,
-  payables: number,
-  listRole?: ContactRole
-): number {
-  const t = (contactType || '').toLowerCase();
-  if (listRole === 'customer') {
-    if (t === 'both') return Math.max(0, receivables);
-    return Math.max(0, receivables);
-  }
-  if (listRole === 'supplier') {
-    if (t === 'both') return Math.max(0, payables);
-    return Math.max(0, payables);
-  }
-  if (listRole === 'worker') {
-    return Math.max(0, payables);
-  }
-  if (t === 'supplier') return Math.max(0, payables);
-  if (t === 'worker') return Math.max(0, payables);
-  if (t === 'both') return Math.max(0, receivables) + Math.max(0, payables);
-  return Math.max(0, receivables);
-}
-
 /**
- * Operational balances from `get_contact_balances_summary` (same as web Contacts when RPC exists).
- * Falls back to opening_balance only if RPC fails.
+ * Party list balances: GL when non-zero; operational fill when GL empty/zero/missing;
+ * else opening_balance. Soft-fails empty GL maps (same as GL RPC error path).
  */
 export async function getContacts(
   companyId: string,
@@ -174,11 +148,16 @@ export async function getContacts(
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
-  const partyGl = await fetchContactPartyGlBalancesMap(company, branchId);
-  const opFallBack =
-    partyGl.error != null
-      ? await fetchOperationalContactBalancesSummary(company, branchId)
-      : { map: new Map<string, ContactBalancesRow>(), error: null as string | null };
+  const [partyGl, opSummary] = await Promise.all([
+    fetchContactPartyGlBalancesMap(company, branchId),
+    fetchOperationalContactBalancesSummary(company, branchId),
+  ]);
+  const glOk = partyGl.error == null;
+  if (glOk && partyGl.map.size === 0 && (data || []).length > 0) {
+    console.warn(
+      '[ERP Mobile] get_contact_party_gl_balances returned zero rows; using operational fill where available.'
+    );
+  }
 
   const listRole: ContactRole | undefined =
     type === 'customer' || type === 'supplier' || type === 'worker' ? type : undefined;
@@ -194,28 +173,14 @@ export async function getContacts(
     created_from?: string | null;
   }) => {
     const opening = Number(row.opening_balance ?? 0);
-    let balance = opening;
-
-    if (!partyGl.error) {
-      const slice = partyGlSliceFromMap(partyGl.map, row.id);
-      if (slice) {
-        if (listRole) {
-          balance = partyGlDueForListRole(slice, listRole);
-        } else {
-          balance =
-            Math.max(0, slice.glArReceivable) +
-            Math.max(0, slice.glApPayable) +
-            Math.max(0, slice.glWorkerPayable);
-        }
-      } else {
-        balance = opening;
-      }
-    } else {
-      const rpc = balanceRowFromMap(opFallBack.map, row.id);
-      balance = rpc
-        ? balanceFromRpcRow(row.type || 'customer', rpc.receivables, rpc.payables, listRole)
-        : opening;
-    }
+    const balance = resolveContactListBalance({
+      opening,
+      contactType: row.type || 'customer',
+      listRole,
+      glOk,
+      glSlice: partyGlSliceFromMap(partyGl.map, row.id),
+      opRow: balanceRowFromMap(opSummary.map, row.id),
+    });
     return {
       id: row.id,
       name: row.name,
