@@ -137,11 +137,18 @@ export interface CreateImportFxCaseParams {
   expectedCompletionDate?: string | null;
   notes?: string | null;
   createdBy?: string | null;
+  /** W1 create idempotency: reuse on network retry; rotate only after success or new intent. */
+  clientOperationId?: string | null;
 }
 
 export async function createImportFxCase(
   params: CreateImportFxCaseParams
-): Promise<{ caseId: string; caseNo: string; operationalStatus: string }> {
+): Promise<{
+  caseId: string;
+  caseNo: string;
+  operationalStatus: string;
+  idempotentReplay?: boolean;
+}> {
   await requireImportFxEnabled(params.companyId);
   const currency = params.plannedSourceCurrency
     ? normalizeImportDocCurrency(params.plannedSourceCurrency)
@@ -161,6 +168,7 @@ export async function createImportFxCase(
     p_expected_completion_date: params.expectedCompletionDate ?? null,
     p_notes: params.notes ?? null,
     p_created_by: params.createdBy ?? null,
+    p_client_operation_id: params.clientOperationId ?? null,
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
@@ -168,6 +176,7 @@ export async function createImportFxCase(
     caseId: String(row.case_id ?? ''),
     caseNo: String(row.case_no ?? ''),
     operationalStatus: String(row.operational_status ?? 'DRAFT'),
+    idempotentReplay: row.idempotent_replay === true,
   };
 }
 

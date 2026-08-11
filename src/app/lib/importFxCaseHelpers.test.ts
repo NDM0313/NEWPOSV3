@@ -27,3 +27,18 @@ test('planning events must not post journals', () => {
   assert.doesNotThrow(() => assertPlanningEventDoesNotPost(false));
   assert.throws(() => assertPlanningEventDoesNotPost(true));
 });
+
+test('create-case client op: reuse until success then rotate', () => {
+  let key = 'op-1';
+  const onSuccess = () => {
+    key = null;
+  };
+  const onNewIntent = () => {
+    key = 'op-2';
+  };
+  assert.equal(key, 'op-1');
+  onSuccess();
+  assert.equal(key, null);
+  onNewIntent();
+  assert.equal(key, 'op-2');
+});

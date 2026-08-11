@@ -100,6 +100,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const [expectedFees, setExpectedFees] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  const createClientOpRef = useRef<string | null>(null);
 
   const loadAgents = useCallback(async () => {
     if (!companyId) return;
@@ -209,25 +210,39 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const handleCreate = async () => {
     if (!companyId) return;
     await runBusy(async () => {
-      const created = await createImportFxCase({
-        companyId,
-        branchId: branchId ?? null,
-        arrangementType,
-        agentContactId: agentId || null,
-        thirdPartyContactId: thirdPartyId || null,
-        plannedSourceCurrency: plannedCurrency || null,
-        plannedUsdAmount: plannedUsd ? Number(plannedUsd) : null,
-        expectedPkrPerUsd: expectedPkrPerUsd ? Number(expectedPkrPerUsd) : null,
-        expectedCnyPerUsd: expectedCnyPerUsd ? Number(expectedCnyPerUsd) : null,
-        expectedCnyAmount: expectedCny ? Number(expectedCny) : null,
-        expectedFeesPkr: expectedFees ? Number(expectedFees) : null,
-        expectedCompletionDate: expectedDate || null,
-        notes: notes || null,
-        createdBy: user?.id ?? null,
-      });
-      toast.success(`Case ${created.caseNo} created (draft)`);
-      setSelectedCaseId(created.caseId);
-      await refreshList();
+      if (!createClientOpRef.current) {
+        createClientOpRef.current = crypto.randomUUID();
+      }
+      try {
+        const created = await createImportFxCase({
+          companyId,
+          branchId: branchId ?? null,
+          arrangementType,
+          agentContactId: agentId || null,
+          thirdPartyContactId: thirdPartyId || null,
+          plannedSourceCurrency: plannedCurrency || null,
+          plannedUsdAmount: plannedUsd ? Number(plannedUsd) : null,
+          expectedPkrPerUsd: expectedPkrPerUsd ? Number(expectedPkrPerUsd) : null,
+          expectedCnyPerUsd: expectedCnyPerUsd ? Number(expectedCnyPerUsd) : null,
+          expectedCnyAmount: expectedCny ? Number(expectedCny) : null,
+          expectedFeesPkr: expectedFees ? Number(expectedFees) : null,
+          expectedCompletionDate: expectedDate || null,
+          notes: notes || null,
+          createdBy: user?.id ?? null,
+          clientOperationId: createClientOpRef.current,
+        });
+        createClientOpRef.current = null;
+        toast.success(
+          created.idempotentReplay
+            ? `Case ${created.caseNo} already created (retry)`
+            : `Case ${created.caseNo} created (draft)`
+        );
+        setSelectedCaseId(created.caseId);
+        await refreshList();
+      } catch (e) {
+        toast.error(formatImportFxServerError(e));
+        // Retain createClientOpRef for network/retryable failures
+      }
     });
   };
 
