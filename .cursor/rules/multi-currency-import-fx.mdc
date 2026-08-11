@@ -5,6 +5,10 @@ alwaysApply: true
 
 # Multi-currency — import purchasing FX (NEW POSV3)
 
+**Canonical UX addendum (async resumable case):** [`docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md`](docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md)
+
+**W1 case persistence (shipped additive) + W2+ hold:** [`docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md)
+
 **Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
 
 **Pooled USD→CNY multi-supplier workflow (design only):** [`docs/accounting/POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](docs/accounting/POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md)
@@ -31,9 +35,10 @@ While `fxSettlementAccountingEnabled = false` (Profile A): FX difference / conve
 | Workflow | Status | Meaning |
 |----------|--------|---------|
 | **Path 21 — Agent dual credit** | Shipped (flag-gated) | `record_fx_currency_purchase_on_credit` + agent/supplier `createSupplierPayment`; tables `fx_currency_purchases` / `fx_currency_purchase_settlements` |
-| **Pooled USD→CNY multi-supplier** | Design only | Events B–F in pooled workflow doc; one TT/conversion → many supplier allocations |
+| **Import FX Case (W1)** | Shipped shell (flag-gated) | `import_fx_cases` + stages/events; draft/resume/arrangement only; **no money journals** |
+| **Pooled USD→CNY multi-supplier** | Design only (W2+) | Events B–F in pooled workflow doc; one TT/conversion → many supplier allocations |
 
-Preserve Path 21. Pooled must not silently replace it. Prepaid-agent is additive alongside credit.
+Preserve Path 21. Pooled must not silently replace it. Prepaid-agent is additive alongside credit. Do **not** implement W2–W6 or Phase-3 money/FX P&L without separate explicit approval.
 
 ## Current state (truth — do not mis-sell)
 

@@ -88,6 +88,7 @@ import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useSettings } from '@/app/context/SettingsContext';
 import { ImportFxAgentWizard } from '@/app/components/purchases/ImportFxAgentWizard';
+import { ImportFxCaseWorkspace } from '@/app/features/import-fx-case/ImportFxCaseWorkspace';
 import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
@@ -169,6 +170,7 @@ export const PurchasesPage = () => {
   const { accountingSettings } = useSettings();
   const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
   const [importFxWizardOpen, setImportFxWizardOpen] = useState(false);
+  const [importFxCaseOpen, setImportFxCaseOpen] = useState(false);
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, setCurrentModule } = globalFilter;
 
@@ -1395,13 +1397,22 @@ export const PurchasesPage = () => {
           </div>
           <div className="flex gap-2">
             {activeMainTab === 'purchases' && multiCurrencyEnabled && (
-              <Button
-                variant="outline"
-                onClick={() => setImportFxWizardOpen(true)}
-                className="h-10 gap-2 border-amber-600/50 text-amber-700 dark:text-amber-300"
-              >
-                Agent FX
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setImportFxCaseOpen(true)}
+                  className="h-10 gap-2 border-sky-600/50 text-sky-700 dark:text-sky-300"
+                >
+                  Import FX Cases
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setImportFxWizardOpen(true)}
+                  className="h-10 gap-2 border-amber-600/50 text-amber-700 dark:text-amber-300"
+                >
+                  Agent FX
+                </Button>
+              </>
             )}
             {activeMainTab === 'purchases' && (
               <Button
@@ -2853,7 +2864,10 @@ export const PurchasesPage = () => {
       />
 
       {multiCurrencyEnabled && (
-        <ImportFxAgentWizard open={importFxWizardOpen} onOpenChange={setImportFxWizardOpen} />
+        <>
+          <ImportFxCaseWorkspace open={importFxCaseOpen} onOpenChange={setImportFxCaseOpen} />
+          <ImportFxAgentWizard open={importFxWizardOpen} onOpenChange={setImportFxWizardOpen} />
+        </>
       )}
     </ErpPage>
   );
