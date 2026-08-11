@@ -70,6 +70,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const { companyId, branchId, user } = useSupabase();
   const { accountingSettings } = useSettings();
   const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
+  const readOnly = !multiCurrencyEnabled;
   const activeCurrencies = useMemo(
     () => resolveActiveImportCurrencies(accountingSettings),
     [accountingSettings]
@@ -119,7 +120,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   }, [companyId]);
 
   const refreshList = useCallback(async () => {
-    if (!companyId || !multiCurrencyEnabled) return;
+    if (!companyId) return;
     setLoadingList(true);
     try {
       const { rows } = await listImportFxCases({
@@ -134,7 +135,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     } finally {
       setLoadingList(false);
     }
-  }, [companyId, branchId, multiCurrencyEnabled, search]);
+  }, [companyId, branchId, search]);
 
   const loadDetail = useCallback(
     async (caseId: string) => {
@@ -180,10 +181,10 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   );
 
   useEffect(() => {
-    if (!open || !multiCurrencyEnabled) return;
-    void loadAgents();
+    if (!open || !companyId) return;
+    if (multiCurrencyEnabled) void loadAgents();
     void refreshList();
-  }, [open, multiCurrencyEnabled, loadAgents, refreshList]);
+  }, [open, companyId, multiCurrencyEnabled, loadAgents, refreshList]);
 
   useEffect(() => {
     if (!open || !selectedCaseId) return;
@@ -208,7 +209,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleCreate = async () => {
-    if (!companyId) return;
+    if (!companyId || readOnly) return;
     await runBusy(async () => {
       if (!createClientOpRef.current) {
         createClientOpRef.current = crypto.randomUUID();
@@ -247,7 +248,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleSaveDraft = async () => {
-    if (!companyId || !selectedCaseId) return;
+    if (!companyId || !selectedCaseId || readOnly) return;
     await runBusy(async () => {
       await updateImportFxCaseDraft({
         companyId,
@@ -273,7 +274,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleConfirmArrangement = async () => {
-    if (!companyId || !selectedCaseId) return;
+    if (!companyId || !selectedCaseId || readOnly) return;
     if (!isW1ConfirmableStage(activeStage)) {
       toast.error('W1: only Arrangement can be confirmed. Money stages ship in later waves.');
       return;
@@ -313,7 +314,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleCancel = async () => {
-    if (!companyId || !selectedCaseId) return;
+    if (!companyId || !selectedCaseId || readOnly) return;
     await runBusy(async () => {
       await cancelImportFxCaseUnposted({
         companyId,
@@ -329,35 +330,31 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
 
   if (!open) return null;
 
-  if (!multiCurrencyEnabled) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full space-y-3">
-          <p className="text-foreground font-medium">Multi Currency is OFF</p>
-          <p className="text-sm text-muted-foreground">
-            Enable Multi Currency in Settings to use Import FX Cases.
-          </p>
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-2 md:p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Import FX Cases</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {readOnly ? 'Import FX Cases — Read Only' : 'Import FX Cases'}
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Wave W1 — draft / resume / arrangement only. No money journals. Path 21 Agent FX stays
-              separate.
+              {readOnly
+                ? 'Historical Import FX cases only. Enable Multi Currency to create or continue workflows.'
+                : 'Wave W1 — draft / resume / arrangement only. No money journals. Path 21 Agent FX stays separate.'}
             </p>
           </div>
           <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} aria-label="Close">
             <X className="h-4 w-4" />
           </Button>
         </div>
+
+        {readOnly && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+            Multi Currency is currently disabled. Historical Import FX cases are available in
+            read-only mode. Enable Multi Currency to create or continue operational workflows.
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12">
           {/* List */}
@@ -373,19 +370,21 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                 {loadingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               </Button>
             </div>
-            <Button
-              className="w-full h-9 gap-1"
-              variant="secondary"
-              onClick={() => {
-                setSelectedCaseId(null);
-                setCaseRow(null);
-                setStages([]);
-                setEvents([]);
-                setActiveStage('ARRANGEMENT');
-              }}
-            >
-              <Plus className="h-4 w-4" /> New draft
-            </Button>
+            {!readOnly && (
+              <Button
+                className="w-full h-9 gap-1"
+                variant="secondary"
+                onClick={() => {
+                  setSelectedCaseId(null);
+                  setCaseRow(null);
+                  setStages([]);
+                  setEvents([]);
+                  setActiveStage('ARRANGEMENT');
+                }}
+              >
+                <Plus className="h-4 w-4" /> New draft
+              </Button>
+            )}
             <div className="space-y-1">
               {cases.map((c) => (
                 <button
@@ -468,13 +467,14 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                     credit settle until those waves ship.
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className={cn('space-y-3', readOnly && 'pointer-events-none opacity-90')}>
                     {!selectedCaseId && (
                       <div className="space-y-1">
                         <Label>Arrangement type</Label>
                         <Select
                           value={arrangementType}
                           onValueChange={(v) => setArrangementType(v as ImportFxArrangementType)}
+                          disabled={readOnly}
                         >
                           <SelectTrigger>
                             <SelectValue />
@@ -511,7 +511,11 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label>Planned currency</Label>
-                        <Select value={String(plannedCurrency)} onValueChange={setPlannedCurrency}>
+                        <Select
+                          value={String(plannedCurrency)}
+                          onValueChange={setPlannedCurrency}
+                          disabled={readOnly}
+                        >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
@@ -530,6 +534,8 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                           type="date"
                           value={expectedDate}
                           onChange={(e) => setExpectedDate(e.target.value)}
+                          disabled={readOnly}
+                          readOnly={readOnly}
                         />
                       </div>
                     </div>
@@ -537,17 +543,29 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <Label>Planned USD</Label>
-                        <Input value={plannedUsd} onChange={(e) => setPlannedUsd(e.target.value)} />
+                        <Input
+                          value={plannedUsd}
+                          onChange={(e) => setPlannedUsd(e.target.value)}
+                          disabled={readOnly}
+                          readOnly={readOnly}
+                        />
                       </div>
                       <div className="space-y-1">
                         <Label>Expected CNY</Label>
-                        <Input value={expectedCny} onChange={(e) => setExpectedCny(e.target.value)} />
+                        <Input
+                          value={expectedCny}
+                          onChange={(e) => setExpectedCny(e.target.value)}
+                          disabled={readOnly}
+                          readOnly={readOnly}
+                        />
                       </div>
                       <div className="space-y-1">
                         <Label>PKR / USD (expected)</Label>
                         <Input
                           value={expectedPkrPerUsd}
                           onChange={(e) => setExpectedPkrPerUsd(e.target.value)}
+                          disabled={readOnly}
+                          readOnly={readOnly}
                         />
                       </div>
                       <div className="space-y-1">
@@ -555,46 +573,65 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                         <Input
                           value={expectedCnyPerUsd}
                           onChange={(e) => setExpectedCnyPerUsd(e.target.value)}
+                          disabled={readOnly}
+                          readOnly={readOnly}
                         />
                       </div>
                       <div className="space-y-1 col-span-2">
                         <Label>Expected fees (PKR)</Label>
-                        <Input value={expectedFees} onChange={(e) => setExpectedFees(e.target.value)} />
+                        <Input
+                          value={expectedFees}
+                          onChange={(e) => setExpectedFees(e.target.value)}
+                          disabled={readOnly}
+                          readOnly={readOnly}
+                        />
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <Label>Notes</Label>
-                      <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+                      <Input
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        disabled={readOnly}
+                        readOnly={readOnly}
+                      />
                     </div>
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-                  {!selectedCaseId ? (
-                    <Button onClick={() => void handleCreate()} disabled={busy}>
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      Create Draft Case
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="secondary" onClick={() => void handleSaveDraft()} disabled={busy}>
-                        Save Draft
+                {!readOnly && (
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                    {!selectedCaseId ? (
+                      <Button onClick={() => void handleCreate()} disabled={busy}>
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        Create Draft Case
                       </Button>
-                      {isW1ConfirmableStage(activeStage) && (
-                        <Button onClick={() => void handleConfirmArrangement()} disabled={busy}>
-                          Confirm Arrangement
+                    ) : (
+                      <>
+                        <Button variant="secondary" onClick={() => void handleSaveDraft()} disabled={busy}>
+                          Save Draft
                         </Button>
-                      )}
-                      {caseRow?.accounting_status === 'NOT_POSTED' &&
-                        caseRow.operational_status !== 'CANCELLED' && (
-                          <Button variant="destructive" onClick={() => void handleCancel()} disabled={busy}>
-                            Cancel Unposted
+                        {isW1ConfirmableStage(activeStage) && (
+                          <Button onClick={() => void handleConfirmArrangement()} disabled={busy}>
+                            Confirm Arrangement
                           </Button>
                         )}
-                    </>
-                  )}
-                </div>
+                        {caseRow?.accounting_status === 'NOT_POSTED' &&
+                          caseRow.operational_status !== 'CANCELLED' && (
+                            <Button variant="destructive" onClick={() => void handleCancel()} disabled={busy}>
+                              Cancel Unposted
+                            </Button>
+                          )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {readOnly && selectedCaseId && (
+                  <p className="pt-2 border-t border-border text-xs text-muted-foreground">
+                    Read-only history — mutation actions are unavailable while Multi Currency is off.
+                  </p>
+                )}
               </>
             )}
           </main>

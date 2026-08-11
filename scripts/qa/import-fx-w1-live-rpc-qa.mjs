@@ -282,7 +282,7 @@ if (cancelCase) {
   }
 }
 
-// list/get
+// list/get ON
 const listed = (
   await client.query(`SELECT list_import_fx_cases($1,$2) AS j`, [companyA, branchA])
 ).rows[0].j;
@@ -301,22 +301,149 @@ const fxGate = (
 if (fxGate === 'false' || fxGate == null) ok('fxSettlementAccountingEnabled false', String(fxGate));
 else fail('fxSettlementAccountingEnabled false', String(fxGate));
 
-// OFF readable historical
+// --- Historical read when Multi Currency OFF ---
 await client.query(
   `UPDATE settings SET value = jsonb_set(value, '{multiCurrencyEnabled}', 'false'::jsonb) WHERE company_id = $1`,
   [companyA]
 );
+
+const beforeOffRead = await counts();
+
+let listedOff;
 try {
-  // get_import_fx_case currently requires enabled — document actual behavior
-  await client.query(`SELECT get_import_fx_case($1,$2)`, [companyA, caseId]);
-  ok('historical readable when OFF (get allowed)');
+  listedOff = (
+    await client.query(`SELECT list_import_fx_cases($1,$2) AS j`, [companyA, branchA])
+  ).rows[0].j;
+  if (
+    listedOff.ok &&
+    listedOff.read_only === true &&
+    listedOff.multi_currency_enabled === false &&
+    Array.isArray(listedOff.rows) &&
+    listedOff.rows.some((r) => r.id === caseId)
+  ) {
+    ok('OFF list returns historical case', `total=${listedOff.total}`);
+  } else fail('OFF list returns historical case', JSON.stringify(listedOff));
 } catch (e) {
-  // If blocked, still verify row exists via direct select (RLS table)
-  const row = await client.query(`SELECT id FROM import_fx_cases WHERE id = $1`, [caseId]);
-  if (row.rowCount === 1)
-    ok('historical row retained when OFF (RPC gated)', e.message.split('\n')[0]);
-  else fail('historical retain', e.message);
+  fail('OFF list returns historical case', e.message);
 }
+
+let gotOff;
+try {
+  gotOff = (await client.query(`SELECT get_import_fx_case($1,$2) AS j`, [companyA, caseId])).rows[0]
+    .j;
+  if (
+    gotOff.ok &&
+    gotOff.read_only === true &&
+    Array.isArray(gotOff.stages) &&
+    gotOff.stages.length >= 1 &&
+    Array.isArray(gotOff.events) &&
+    Array.isArray(gotOff.links) &&
+    Array.isArray(gotOff.attachments)
+  ) {
+    ok('OFF get returns full historical details', `stages=${gotOff.stages.length}`);
+  } else fail('OFF get returns full historical details', JSON.stringify(gotOff));
+} catch (e) {
+  fail('OFF get returns full historical details', e.message);
+}
+
+// Cross-company list/get blocked
+await client.query('BEGIN');
+try {
+  await client.query(`SELECT set_config('app.company_id', $1, true)`, [companyB]);
+  await client.query(`SELECT list_import_fx_cases($1,NULL)`, [companyA]);
+  await client.query('ROLLBACK');
+  fail('cross-company list blocked', 'expected COMPANY_MISMATCH');
+} catch (e) {
+  await client.query('ROLLBACK');
+  if (String(e.message).includes('COMPANY_MISMATCH')) ok('cross-company list blocked');
+  else fail('cross-company list blocked', e.message);
+}
+
+await client.query('BEGIN');
+try {
+  await client.query(`SELECT set_config('app.company_id', $1, true)`, [companyB]);
+  await client.query(`SELECT get_import_fx_case($1,$2)`, [companyA, caseId]);
+  await client.query('ROLLBACK');
+  fail('cross-company get blocked', 'expected COMPANY_MISMATCH');
+} catch (e) {
+  await client.query('ROLLBACK');
+  if (String(e.message).includes('COMPANY_MISMATCH')) ok('cross-company get blocked');
+  else fail('cross-company get blocked', e.message);
+}
+
+// Wrong company_id on get → NOT_FOUND (no tenant leak)
+try {
+  await client.query(`SELECT get_import_fx_case($1,$2)`, [companyB, caseId]);
+  fail('foreign company get not found', 'expected NOT_FOUND');
+} catch (e) {
+  if (String(e.message).includes('NOT_FOUND') || String(e.message).includes('COMPANY_MISMATCH'))
+    ok('foreign company get not found');
+  else fail('foreign company get not found', e.message);
+}
+
+// Branch filter: other branch id does not return this case
+const listedOtherBranch = (
+  await client.query(`SELECT list_import_fx_cases($1,$2) AS j`, [companyA, branchB])
+).rows[0].j;
+if (
+  listedOtherBranch.ok &&
+  (!Array.isArray(listedOtherBranch.rows) ||
+    !listedOtherBranch.rows.some((r) => r.id === caseId))
+) {
+  ok('unauthorized branch filter excludes case');
+} else fail('unauthorized branch filter excludes case', JSON.stringify(listedOtherBranch));
+
+// Mutations remain blocked while OFF
+for (const [name, sql, params] of [
+  ['OFF create fails', `SELECT create_import_fx_case($1,$2)`, [companyA, branchA]],
+  [
+    'OFF update fails',
+    `SELECT update_import_fx_case_draft($1,$2,NULL,NULL,'USD',1,NULL,NULL,NULL,NULL,NULL,'x',NULL,false,false)`,
+    [companyA, caseId],
+  ],
+  [
+    'OFF confirm fails',
+    `SELECT confirm_import_fx_case_stage($1,$2,'ARRANGEMENT')`,
+    [companyA, caseId],
+  ],
+  [
+    'OFF link fails',
+    `SELECT link_import_fx_case_target($1,$2,'PURCHASE',$3)`,
+    [companyA, caseId, purchaseId],
+  ],
+]) {
+  try {
+    await client.query(sql, params);
+    fail(name, 'expected MULTI_CURRENCY_DISABLED');
+  } catch (e) {
+    if (String(e.message).includes('MULTI_CURRENCY_DISABLED')) ok(name);
+    else fail(name, e.message);
+  }
+}
+
+const afterOffRead = await counts();
+const offReadDelta = {
+  je: afterOffRead.je - beforeOffRead.je,
+  jel: afterOffRead.jel - beforeOffRead.jel,
+  pay: afterOffRead.pay - beforeOffRead.pay,
+};
+if (offReadDelta.je === 0 && offReadDelta.jel === 0 && offReadDelta.pay === 0)
+  ok('historical read zero-journal proof', JSON.stringify(offReadDelta));
+else fail('historical read zero-journal proof', JSON.stringify(offReadDelta));
+
+// Re-enable Multi Currency → operational actions work again
+await client.query(
+  `UPDATE settings SET value = jsonb_set(value, '{multiCurrencyEnabled}', 'true'::jsonb) WHERE company_id = $1`,
+  [companyA]
+);
+const restoreCase = (
+  await client.query(
+    `SELECT create_import_fx_case($1,$2,'POOLED_USD_CNY',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'restore',NULL,$3) AS j`,
+    [companyA, branchA, randomUUID()]
+  )
+).rows[0].j;
+if (restoreCase?.case_id) ok('ON restored create works', restoreCase.case_no);
+else fail('ON restored create works', JSON.stringify(restoreCase));
 
 const after = await counts();
 const delta = {

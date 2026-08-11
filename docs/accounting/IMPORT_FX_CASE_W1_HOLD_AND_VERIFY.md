@@ -1,7 +1,7 @@
 # Import FX Case — W1 hold and Wave 0 verify
 
 **Date:** 2026-08-12  
-**Scope:** Wave W1 only (case/stage persistence + draft UI + create-case idempotency).  
+**Scope:** Wave W1 only (case/stage persistence + draft UI + create-case idempotency + historical read when disabled).  
 **Gates:** `multiCurrencyEnabled` ops · `fxSettlementAccountingEnabled = false` (Profile A).
 
 ---
@@ -35,6 +35,24 @@ Harness: `scripts/qa/import-fx-w1-local-harness.sql` (roles + stub ERP tables fo
 8. `20260811200000_import_fx_wave0_path21_idempotency_settlement_lifecycle.sql`
 9. `20260811230000_import_fx_case_stage_persistence_w1.sql`
 10. `20260812010000_import_fx_case_create_idempotency_w1.sql` (**create-case idempotency**)
+11. `20260812013000_import_fx_case_history_read_when_disabled_w1.sql` (**historical list/get when Multi Currency OFF**)
+
+---
+
+## Historical readability contract (PASS)
+
+When `multiCurrencyEnabled = false`:
+
+| Action | Expected |
+|--------|----------|
+| `list_import_fx_cases` | Allowed — returns historical rows; `read_only: true` |
+| `get_import_fx_case` | Allowed — case + stages + events + links + attachments; `read_only: true` |
+| Create / draft / confirm / link / cancel | Rejected (`MULTI_CURRENCY_DISABLED`) |
+| Journals / payments from reads | **None** |
+
+UI: Purchases shows **Import FX Cases — Read Only** when history exists; workspace banner + mutation buttons hidden.
+
+Verified on localhost live QA (2026-08-12): **PASS**.
 
 ---
 
@@ -52,17 +70,19 @@ Harness: `scripts/qa/import-fx-w1-local-harness.sql` (roles + stub ERP tables fo
 
 ## Live RPC / RLS results (`scripts/qa/import-fx-w1-live-rpc-qa.mjs`)
 
-**18/18 PASS** including OFF reject, ON create, retry same UUID, new UUID, cross-company mismatch, draft update, ARRANGEMENT confirm + retry, W2 stage reject, link purchase, cancel unposted, invalid cancel, list/get, `fxSettlementAccountingEnabled=false`, historical row retained when OFF (RPC gated), zero-journal proof, no Phase-3 accounts, no pooled tables.
+**29/29 PASS** including OFF reject mutations, ON create, retry same UUID, new UUID, cross-company mismatch, draft update, ARRANGEMENT confirm + retry, W2 stage reject, link purchase, cancel unposted, invalid cancel, list/get, `fxSettlementAccountingEnabled=false`, **OFF historical list/get**, cross-company list/get blocked, foreign-company get not found, branch filter exclusion, OFF mutation fails, ON restore create, zero-journal proof, no Phase-3 accounts, no pooled tables.
 
 ### Zero-journal proof
 
-After create / draft / confirm / link / cancel:
+After create / draft / confirm / link / cancel / OFF historical read / ON restore create:
 
 ```text
 Δ journal_entries = 0
 Δ journal_entry_lines = 0
 Δ payments = 0
 ```
+
+Historical-read-only slice (list+get while OFF): same Δ = 0.
 
 ---
 
@@ -81,8 +101,9 @@ After create / draft / confirm / link / cancel:
 
 | Check | Result |
 |-------|--------|
-| Static: Multi Currency gate on Purchases buttons | PASS |
-| Static: Create Draft / Save / Confirm Arrangement / Cancel / W2+ blocked | PASS |
+| Static: Multi Currency ON → Import FX Cases + Agent FX | PASS |
+| Static: Multi Currency OFF + history → Import FX Cases — Read Only | PASS |
+| Static: Read-only banner + Create/Save/Confirm/Cancel/New draft hidden | PASS |
 | Static: create clientOperationId retain/rotate | PASS |
 | Live browser vs local API | **SKIPPED** — app `.env.local` points at production Supabase HTTP API; local stack is Postgres-only. Did not retarget production. |
 
@@ -105,4 +126,3 @@ Do **not** implement without separate approval: advances, USD acquisition money,
 1. Full-repo `npm run migrate` against empty DB still unsuitable (bootstrap marks 02–18 without applying). Local Import FX QA uses the dedicated localhost runner above.
 2. Path 21 full JE posting needs broader ERP helpers than the W1 harness provides.
 3. Live web UI against local requires a non-prod Supabase API stack (not started this pass).
-4. Historical case **RPC** get/list remain gated OFF; table row retained (documented).

@@ -89,6 +89,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useSettings } from '@/app/context/SettingsContext';
 import { ImportFxAgentWizard } from '@/app/components/purchases/ImportFxAgentWizard';
 import { ImportFxCaseWorkspace } from '@/app/features/import-fx-case/ImportFxCaseWorkspace';
+import { listImportFxCases } from '@/app/services/importFxCaseService';
 import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
@@ -171,12 +172,36 @@ export const PurchasesPage = () => {
   const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
   const [importFxWizardOpen, setImportFxWizardOpen] = useState(false);
   const [importFxCaseOpen, setImportFxCaseOpen] = useState(false);
+  const [importFxHistoryAvailable, setImportFxHistoryAvailable] = useState(false);
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, setCurrentModule } = globalFilter;
 
   useEffect(() => {
     setCurrentModule('purchases');
   }, [setCurrentModule]);
+
+  // When Multi Currency is OFF, surface Import FX history only if cases exist.
+  useEffect(() => {
+    if (!companyId || multiCurrencyEnabled) {
+      setImportFxHistoryAvailable(false);
+      return;
+    }
+    let cancelled = false;
+    void listImportFxCases({
+      companyId,
+      branchId: branchId && branchId !== 'all' ? branchId : null,
+      limit: 1,
+    })
+      .then(({ total }) => {
+        if (!cancelled) setImportFxHistoryAvailable(total > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setImportFxHistoryAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, multiCurrencyEnabled]);
 
   const { purchases: contextPurchases, loading: contextLoading, listEpoch, refreshPurchases, deletePurchase } = usePurchases();
   /** Stable key so sync effect re-runs when list content or a fresh fetch epoch changes. */
@@ -1413,6 +1438,15 @@ export const PurchasesPage = () => {
                   Agent FX
                 </Button>
               </>
+            )}
+            {activeMainTab === 'purchases' && !multiCurrencyEnabled && importFxHistoryAvailable && (
+              <Button
+                variant="outline"
+                onClick={() => setImportFxCaseOpen(true)}
+                className="h-10 gap-2 border-sky-600/50 text-sky-700 dark:text-sky-300"
+              >
+                Import FX Cases — Read Only
+              </Button>
             )}
             {activeMainTab === 'purchases' && (
               <Button
@@ -2863,11 +2897,11 @@ export const PurchasesPage = () => {
         branchName={labelBranchName}
       />
 
+      {(multiCurrencyEnabled || importFxHistoryAvailable) && (
+        <ImportFxCaseWorkspace open={importFxCaseOpen} onOpenChange={setImportFxCaseOpen} />
+      )}
       {multiCurrencyEnabled && (
-        <>
-          <ImportFxCaseWorkspace open={importFxCaseOpen} onOpenChange={setImportFxCaseOpen} />
-          <ImportFxAgentWizard open={importFxWizardOpen} onOpenChange={setImportFxWizardOpen} />
-        </>
+        <ImportFxAgentWizard open={importFxWizardOpen} onOpenChange={setImportFxWizardOpen} />
       )}
     </ErpPage>
   );

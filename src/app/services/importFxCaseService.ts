@@ -272,8 +272,13 @@ export async function listImportFxCases(params: {
   search?: string | null;
   limit?: number;
   offset?: number;
-}): Promise<{ total: number; rows: ImportFxCase[] }> {
-  await requireImportFxEnabled(params.companyId);
+}): Promise<{
+  total: number;
+  rows: ImportFxCase[];
+  readOnly?: boolean;
+  multiCurrencyEnabled?: boolean;
+}> {
+  // Historical list allowed when Multi Currency OFF (server enforces company scope).
   const { data, error } = await supabase.rpc('list_import_fx_cases', {
     p_company_id: params.companyId,
     p_branch_id: params.branchId ?? null,
@@ -285,7 +290,12 @@ export async function listImportFxCases(params: {
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
   const rows = Array.isArray(row.rows) ? (row.rows as ImportFxCase[]) : [];
-  return { total: Number(row.total ?? rows.length), rows };
+  return {
+    total: Number(row.total ?? rows.length),
+    rows,
+    readOnly: row.read_only === true,
+    multiCurrencyEnabled: row.multi_currency_enabled === true,
+  };
 }
 
 export async function getImportFxCase(
@@ -296,8 +306,10 @@ export async function getImportFxCase(
   stages: ImportFxCaseStage[];
   events: ImportFxCaseEvent[];
   links: ImportFxCaseLink[];
+  readOnly?: boolean;
+  multiCurrencyEnabled?: boolean;
 }> {
-  await requireImportFxEnabled(companyId);
+  // Historical get allowed when Multi Currency OFF.
   const { data, error } = await supabase.rpc('get_import_fx_case', {
     p_company_id: companyId,
     p_case_id: caseId,
@@ -309,6 +321,8 @@ export async function getImportFxCase(
     stages: (Array.isArray(row.stages) ? row.stages : []) as ImportFxCaseStage[],
     events: (Array.isArray(row.events) ? row.events : []) as ImportFxCaseEvent[],
     links: (Array.isArray(row.links) ? row.links : []) as ImportFxCaseLink[],
+    readOnly: row.read_only === true,
+    multiCurrencyEnabled: row.multi_currency_enabled === true,
   };
 }
 
