@@ -44,18 +44,21 @@ function isTtClearingAccountCode(digits: string, name: string): boolean {
 }
 
 /**
- * Party TT agent foreign-currency wallet (e.g. HAMID IK RMB 1205) — not company roznamcha cash.
+ * Party TT agent foreign-currency wallet (e.g. HAMID IK RMB 1205, WALI T/T 1202)
+ * under 12xx — not company clearing / roznamcha cash.
  */
 export function isPartyTtAgentWalletAccount(acc: LiquidityAccountRef | null | undefined): boolean {
   if (!acc) return false;
   const name = String(acc.name ?? '').trim();
-  const n = name.toLowerCase();
   if (/\bclearing\b/i.test(name)) return false;
   const digits = accountCodeDigits(acc.code);
   if (digits.length < 3 || !digits.startsWith('12')) return false;
   if (/\btt\s*agent\b/i.test(name)) return true;
   if (/\bik\s*rmb\b/i.test(name)) return true;
   if (/\bhamid\b/i.test(name) && /\brmb\b/i.test(name)) return true;
+  // Party T/T routing wallets under 12xx (e.g. WALI T/T 1202)
+  if (/\bt\s*\/\s*t\b/i.test(name)) return true;
+  if (/\btt\b/i.test(name) && !/\btelegraphic\b/i.test(name)) return true;
   return false;
 }
 

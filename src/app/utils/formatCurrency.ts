@@ -11,11 +11,18 @@ export const CURRENCY_DISPLAY_SYMBOL: Record<string, string> = {
   eur: '€',
   GBP: '£',
   gbp: '£',
+  CNY: '¥',
+  cny: '¥',
+  RMB: '¥',
+  rmb: '¥',
 };
 
-/** Get display symbol for currency code (e.g. PKR → Rs., USD → $). Use for placeholders/labels. */
-export const getCurrencySymbol = (currencyCode: string = 'PKR'): string =>
-  CURRENCY_DISPLAY_SYMBOL[currencyCode] ?? currencyCode;
+/** Get display symbol for currency code (e.g. PKR → Rs., USD → $, CNY/RMB → ¥). Use for placeholders/labels. */
+export const getCurrencySymbol = (currencyCode: string = 'PKR'): string => {
+  const code = String(currencyCode || 'PKR').trim();
+  if (!code) return CURRENCY_DISPLAY_SYMBOL.PKR;
+  return CURRENCY_DISPLAY_SYMBOL[code] ?? CURRENCY_DISPLAY_SYMBOL[code.toUpperCase()] ?? code.toUpperCase();
+};
 
 /**
  * Format currency value - CENTRALIZED. Use everywhere for money display.

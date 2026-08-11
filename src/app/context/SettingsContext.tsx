@@ -199,6 +199,12 @@ export interface AccountingSettings {
   manualJournalEnabled: boolean;
   defaultCurrency: string;
   multiCurrencyEnabled: boolean;
+  /**
+   * Phase-3 gate for FX gain/loss / pending FX journal meanings.
+   * Default false — operational Multi Currency must never auto-enable this.
+   * Internal JSON key until explicit Phase-3 approval (no Settings toggle yet).
+   */
+  fxSettlementAccountingEnabled: boolean;
   /** Foreign currencies for import FX document dropdown (PKR always available separately). */
   activeCurrencies: { code: string; label: string }[];
   taxCalculationMethod: 'Inclusive' | 'Exclusive';
@@ -313,7 +319,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateBusinessSettings: noop,
     rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
     updateRentalSettings: noop,
-    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, activeCurrencies: [{ code: 'CNY', label: 'RMB (CNY)' }, { code: 'USD', label: 'US Dollar' }], taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
+    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, fxSettlementAccountingEnabled: false, activeCurrencies: [{ code: 'CNY', label: 'RMB (CNY)' }, { code: 'USD', label: 'US Dollar' }], taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
     updateAccountingSettings: noop,
     defaultAccounts: { paymentMethods: [] },
     updateDefaultAccounts: noop,
@@ -440,6 +446,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     manualJournalEnabled: false,
     defaultCurrency: 'PKR',
     multiCurrencyEnabled: false,
+    fxSettlementAccountingEnabled: false,
     activeCurrencies: [
       { code: 'CNY', label: 'RMB (CNY)' },
       { code: 'USD', label: 'US Dollar' },
@@ -866,6 +873,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         manualJournalEnabled: accountingData.manualJournalEnabled || false,
         defaultCurrency: accountingData.defaultCurrency || 'PKR',
         multiCurrencyEnabled: accountingData.multiCurrencyEnabled || false,
+        // Never coerce missing/undefined to true — Phase-3 journal meanings stay off until explicit approval.
+        fxSettlementAccountingEnabled: accountingData.fxSettlementAccountingEnabled === true,
         activeCurrencies: Array.isArray(accountingData.activeCurrencies) && accountingData.activeCurrencies.length > 0
           ? accountingData.activeCurrencies
           : [
@@ -1098,10 +1107,31 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   const updateAccountingSettings = async (settings: Partial<AccountingSettings>) => {
     if (!companyId) return;
-    
-    const updated = { ...accountingSettings, ...settings };
+
+    const previous = accountingSettings;
+    const turningOff =
+      previous.multiCurrencyEnabled === true && settings.multiCurrencyEnabled === false;
+
+    if (turningOff) {
+      const { assertCanDisableImportFx, formatImportFxServerError } = await import(
+        '@/app/lib/importFxServerGate'
+      );
+      const gate = await assertCanDisableImportFx(companyId);
+      if (!gate.ok) {
+        toast.error(formatImportFxServerError(gate.error || gate));
+        return;
+      }
+    }
+
+    const updated: AccountingSettings = {
+      ...accountingSettings,
+      ...settings,
+      // Phase-3 gate: never leave undefined; never promote Multi Currency ON into FX P&L.
+      fxSettlementAccountingEnabled:
+        (settings.fxSettlementAccountingEnabled ?? accountingSettings.fxSettlementAccountingEnabled) === true,
+    };
     setAccountingSettings(updated);
-    
+
     try {
       await settingsService.setSetting(companyId, 'accounting_settings', updated, 'accounting', 'Accounting module settings');
       if (updated.fiscalYearStart) {
@@ -1116,7 +1146,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       toast.success('Accounting settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving accounting settings:', error);
-      toast.error('Failed to save accounting settings');
+      setAccountingSettings(previous);
+      const { formatImportFxServerError } = await import('@/app/lib/importFxServerGate');
+      toast.error(formatImportFxServerError(error, 'Failed to save accounting settings'));
     }
   };
 

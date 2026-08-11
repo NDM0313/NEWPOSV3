@@ -1,7 +1,8 @@
 /**
  * Hook to format currency using company settings.
  * Use everywhere for money display - no hardcoded Rs, $, PKR.
- * currencySymbol = display symbol (e.g. Rs. for PKR, $ for USD).
+ * currencySymbol = display symbol (e.g. Rs. for PKR, $ for USD, ¥ for CNY).
+ * Pass an optional currencyCode to format document FC amounts (e.g. purchase CNY).
  */
 import { useCallback, useMemo } from 'react';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -14,12 +15,14 @@ export function useFormatCurrency() {
   const currencySymbol = useMemo(() => getCurrencySymbol(currency), [currency]);
 
   const formatCurrency = useCallback(
-    (value: number) => formatCurrencyUtil(value, currency, decimalPrecision),
+    (value: number, currencyCode?: string) =>
+      formatCurrencyUtil(value, currencyCode || currency, decimalPrecision),
     [currency, decimalPrecision]
   );
 
   const formatCurrencyCompact = useCallback(
-    (value: number) => formatCurrencyCompactUtil(value, currency, decimalPrecision),
+    (value: number, currencyCode?: string) =>
+      formatCurrencyCompactUtil(value, currencyCode || currency, decimalPrecision),
     [currency, decimalPrecision]
   );
 

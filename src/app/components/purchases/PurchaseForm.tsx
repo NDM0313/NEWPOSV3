@@ -2333,6 +2333,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 handlePriceKeyDown={handlePriceKeyDown}
                                 fxMode={fxMode}
                                 currencyLabel={currencyLabel}
+                                documentCurrency={documentCurrency}
                                 fxRateToBase={fxRateToBase}
                             />
                             </div>
@@ -2405,14 +2406,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         </span>
                                         <span className="text-foreground font-medium">
                                           {fxMode && foreignSubtotal != null
-                                            ? foreignSubtotal.toLocaleString()
-                                            : subtotal.toLocaleString()}
+                                            ? formatCurrency(foreignSubtotal, documentCurrency)
+                                            : formatCurrency(subtotal)}
                                         </span>
                                     </div>
                                     {fxMode && (
                                         <div className="flex justify-between text-xs text-muted-foreground">
                                             <span>≈ PKR @ {fxRateToBase || '—'}</span>
-                                            <span className="tabular-nums">{subtotal.toLocaleString()}</span>
+                                            <span className="tabular-nums">{formatCurrency(subtotal)}</span>
                                         </div>
                                     )}
                                     
@@ -2497,24 +2498,24 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                     Grand Total ({currencyLabel})
                                                 </span>
                                                 <span className="text-xl font-semibold text-foreground tabular-nums">
-                                                    {foreignGrandDisplay.toLocaleString()}
+                                                    {formatCurrency(foreignGrandDisplay, documentCurrency)}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between text-xs text-muted-foreground -mt-1">
                                                 <span>≈ PKR</span>
-                                                <span className="tabular-nums">{totalAmount.toLocaleString()}</span>
+                                                <span className="tabular-nums">{formatCurrency(totalAmount)}</span>
                                             </div>
                                             <div className="flex justify-between items-center pt-1">
                                                 <span className="text-sm font-semibold text-foreground">
                                                     Due balance ({currencyLabel})
                                                 </span>
                                                 <span className="text-xl font-semibold text-orange-500 tabular-nums">
-                                                    {(foreignDueDisplay ?? 0).toLocaleString()}
+                                                    {formatCurrency(foreignDueDisplay ?? 0, documentCurrency)}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between text-xs text-muted-foreground -mt-1">
                                                 <span>≈ PKR</span>
-                                                <span className="tabular-nums">{Math.max(0, balanceDue).toLocaleString()}</span>
+                                                <span className="tabular-nums">{formatCurrency(Math.max(0, balanceDue))}</span>
                                             </div>
                                         </>
                                     ) : (
@@ -2522,13 +2523,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                             <div className="flex justify-between items-center pt-1">
                                                 <span className="text-muted-foreground">Grand Total</span>
                                                 <span className="text-xl font-semibold text-foreground">
-                                                    ${totalAmount.toLocaleString()}
+                                                    {formatCurrency(totalAmount)}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center pt-1">
                                                 <span className="text-sm font-semibold text-foreground">Due balance</span>
                                                 <span className="text-xl font-semibold text-orange-500">
-                                                    ${Math.max(0, balanceDue).toLocaleString()}
+                                                    {formatCurrency(Math.max(0, balanceDue))}
                                                 </span>
                                             </div>
                                         </>
@@ -2822,7 +2823,12 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         <span className="w-1 h-1 rounded-full bg-gray-600" />
                         
                         {/* Grand Total */}
-                        <span>Total: ${totalAmount.toLocaleString()}</span>
+                        <span>
+                          Total:{' '}
+                          {fxMode
+                            ? formatCurrency(foreignGrandDisplay, documentCurrency)
+                            : formatCurrency(totalAmount)}
+                        </span>
                     </div>
                 </div>
                 

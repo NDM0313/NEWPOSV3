@@ -27,6 +27,11 @@ import {
 import { cn } from "@/app/components/ui/utils";
 import { getFreightSettlement, purchaseSupplierDue } from '@/app/wholesale/wholesaleImportPurchase';
 import {
+  basePkrToForeign,
+  isForeignImportCurrency,
+  normalizeImportDocCurrency,
+} from '@/app/lib/importFxHelpers';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -133,6 +138,10 @@ interface Purchase {
   items: number;
   grandTotal: number;
   paymentDue: number;
+  /** Import FX — list display when document is CNY/USD */
+  documentCurrency?: string | null;
+  foreignTotal?: number | null;
+  fxRateToBase?: number | null;
   freightSettlement?: 'supplier' | 'courier';
   status: PurchaseStatus;
   paymentStatus: PaymentStatus;
@@ -576,6 +585,15 @@ export const PurchasesPage = () => {
           items: itemCount,
           grandTotal: p.total || 0,
           paymentDue: resolveListPaymentDue(p as Record<string, unknown>),
+          documentCurrency: p.document_currency ?? null,
+          foreignTotal:
+            p.foreign_total != null && Number.isFinite(Number(p.foreign_total))
+              ? Number(p.foreign_total)
+              : null,
+          fxRateToBase:
+            p.fx_rate_to_base != null && Number.isFinite(Number(p.fx_rate_to_base))
+              ? Number(p.fx_rate_to_base)
+              : null,
           freightSettlement: (p.freight_settlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
@@ -654,6 +672,15 @@ export const PurchasesPage = () => {
           items: p.itemsCount ?? p.items?.length ?? 0,
           grandTotal: p.total || 0,
           paymentDue: resolveListPaymentDue(p as Record<string, unknown>),
+          documentCurrency: p.documentCurrency ?? null,
+          foreignTotal:
+            p.foreignTotal != null && Number.isFinite(Number(p.foreignTotal))
+              ? Number(p.foreignTotal)
+              : null,
+          fxRateToBase:
+            p.fxRateToBase != null && Number.isFinite(Number(p.fxRateToBase))
+              ? Number(p.fxRateToBase)
+              : null,
           freightSettlement: (p.freightSettlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
@@ -1239,16 +1266,48 @@ export const PurchasesPage = () => {
             <span className="text-sm font-medium">{purchase.items}</span>
           </div>
         );
-      case 'grandTotal':
+      case 'grandTotal': {
+        const docCur = normalizeImportDocCurrency(purchase.documentCurrency);
+        const fx = isForeignImportCurrency(docCur) && purchase.foreignTotal != null;
         return (
-          <div className="text-sm font-semibold text-foreground tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
+          <div className="text-sm font-semibold text-foreground tabular-nums text-right">
+            <div>
+              {fx
+                ? formatCurrency(Number(purchase.foreignTotal), docCur)
+                : formatCurrency(purchase.grandTotal)}
+            </div>
+            {fx ? (
+              <div className="text-[10px] text-muted-foreground font-normal">
+                ≈ {formatCurrency(purchase.grandTotal)}
+              </div>
+            ) : null}
+          </div>
         );
+      }
       case 'paymentDue': {
         if (isPurchaseNonPostedCommercial(purchase.status)) {
           return <span className="text-sm text-muted-foreground tabular-nums">—</span>;
         }
         const paymentClosed = isPaymentClosedForPurchase(purchase);
         const canPay = canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0);
+        const docCur = normalizeImportDocCurrency(purchase.documentCurrency);
+        const fx = isForeignImportCurrency(docCur) && purchase.foreignTotal != null;
+        const rate = Number(purchase.fxRateToBase) || 0;
+        const dueFc =
+          fx && rate > 0
+            ? (() => {
+                const paidFc = basePkrToForeign(
+                  Math.max(0, (purchase.grandTotal || 0) - (purchase.paymentDue || 0)),
+                  rate,
+                );
+                if (paidFc == null || purchase.foreignTotal == null) return null;
+                return Math.round((Number(purchase.foreignTotal) - paidFc) * 100) / 100;
+              })()
+            : null;
+        const dueLabel =
+          dueFc != null
+            ? formatCurrency(dueFc, docCur)
+            : formatCurrency(purchase.paymentDue);
         if (paymentClosed) {
           return (
             <span
@@ -1261,14 +1320,26 @@ export const PurchasesPage = () => {
         }
         if (purchase.paymentDue > 0 && canPay) {
           return (
-            <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
-              {formatCurrency(purchase.paymentDue)}
+            <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors text-right" title="Click to make payment">
+              <span className="block">{dueLabel}</span>
+              {dueFc != null ? (
+                <span className="block text-[10px] text-muted-foreground font-normal">
+                  ≈ {formatCurrency(purchase.paymentDue)}
+                </span>
+              ) : null}
             </button>
           );
         }
         return (
           purchase.paymentDue > 0 ? (
-            <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(purchase.paymentDue)}</div>
+            <div className="text-sm font-semibold text-red-400 tabular-nums text-right">
+              <div>{dueLabel}</div>
+              {dueFc != null ? (
+                <div className="text-[10px] text-muted-foreground font-normal">
+                  ≈ {formatCurrency(purchase.paymentDue)}
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="text-sm text-muted-foreground">-</div>
           )

@@ -18,6 +18,7 @@ export function mapGlReferenceTypeToSourceKind(
   refType?: string | null
 ): LedgerStatementV2Row['sourceKind'] {
   const r = normalizeDocType(refType || '');
+  if (r.includes('fx_currency_purchase')) return 'journal';
   if (r.includes('opening')) return 'opening';
   if (r.includes('sale_return') || (r.includes('return') && r.includes('sale'))) return 'return';
   if (r.includes('sale')) return 'sale';

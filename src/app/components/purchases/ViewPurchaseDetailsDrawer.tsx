@@ -16,6 +16,12 @@ import {
   purchaseSupplierDue,
 } from '@/app/wholesale/wholesaleImportPurchase';
 import { WholesaleImportClearanceWorkflow } from '@/app/wholesale/WholesaleImportClearanceWorkflow';
+import {
+  basePkrToForeign,
+  isForeignPurchaseDoc,
+  labelForImportCurrency,
+  normalizeImportDocCurrency,
+} from '@/app/lib/importFxHelpers';
 import { formatQty } from '@/app/utils/quantity';
 import { UnifiedPurchaseInvoiceView } from '@/app/documents';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
@@ -221,6 +227,48 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       return sum + lineTotal;
     }, 0);
   }, [purchase?.items]);
+
+  const fxDoc = isForeignPurchaseDoc(purchase);
+  const docCurrency = normalizeImportDocCurrency(purchase?.documentCurrency);
+  const docCurrencyLabel = labelForImportCurrency(docCurrency);
+  const fxRate = Number(purchase?.fxRateToBase) || 0;
+  const foreignGrand =
+    purchase?.foreignTotal != null && Number.isFinite(Number(purchase.foreignTotal))
+      ? Number(purchase.foreignTotal)
+      : null;
+  const foreignSub =
+    purchase?.foreignSubtotal != null && Number.isFinite(Number(purchase.foreignSubtotal))
+      ? Number(purchase.foreignSubtotal)
+      : foreignGrand;
+  const foreignDueDisplay = useMemo(() => {
+    if (!fxDoc || foreignGrand == null || !(fxRate > 0) || !purchase) return null;
+    const paidFc = basePkrToForeign(Number(purchase.paid) || 0, fxRate);
+    if (paidFc == null) return null;
+    return Math.round((foreignGrand - paidFc) * 100) / 100;
+  }, [fxDoc, foreignGrand, fxRate, purchase?.paid]);
+
+  const formatDocMoney = (value: number) =>
+    fxDoc ? formatCurrency(value, docCurrency) : formatCurrency(value);
+
+  const formatItemPrice = (item: { price: number; foreignUnitPrice?: number | null }) => {
+    if (fxDoc && item.foreignUnitPrice != null && Number.isFinite(Number(item.foreignUnitPrice))) {
+      return formatCurrency(Number(item.foreignUnitPrice), docCurrency);
+    }
+    return formatCurrency(item.price);
+  };
+
+  const formatItemLineTotal = (
+    item: { price: number; quantity?: number; foreignLineTotal?: number | null; foreignUnitPrice?: number | null },
+    qty: number,
+  ) => {
+    if (fxDoc && item.foreignLineTotal != null && Number.isFinite(Number(item.foreignLineTotal))) {
+      return formatCurrency(Number(item.foreignLineTotal), docCurrency);
+    }
+    if (fxDoc && item.foreignUnitPrice != null && Number.isFinite(Number(item.foreignUnitPrice))) {
+      return formatCurrency(Number(item.foreignUnitPrice) * qty, docCurrency);
+    }
+    return formatCurrency((item.price || 0) * qty);
+  };
 
   // Load branches for location display
   useEffect(() => {
@@ -922,6 +970,20 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         {branchMap.get(purchase.branchId || '') || purchase.location}
                       </span>
                     </div>
+                    {fxDoc ? (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-xs text-muted-foreground">Document currency</span>
+                          <span className="text-foreground font-medium">{docCurrencyLabel}</span>
+                        </div>
+                        {fxRate > 0 ? (
+                          <div className="flex justify-between">
+                            <span className="text-xs text-muted-foreground">FX rate → PKR</span>
+                            <span className="text-foreground tabular-nums">{fxRate}</span>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
                     <div className="flex justify-between">
                       <span className="text-xs text-muted-foreground">Created At</span>
                       <span className="text-foreground">{formatDateTime(purchase.createdAt)}</span>
@@ -1196,7 +1258,16 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             </TableCell>
                           )}
                           <TableCell className="text-right text-foreground">
-                            {formatCurrency(item.price)}
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span>{formatItemPrice(item)}</span>
+                              {fxDoc &&
+                              item.foreignUnitPrice != null &&
+                              Number.isFinite(Number(item.foreignUnitPrice)) ? (
+                                <span className="text-[10px] text-muted-foreground tabular-nums">
+                                  ≈ {formatCurrency(item.price)}
+                                </span>
+                              ) : null}
+                            </div>
                           </TableCell>
                           {showClearanceSplit && (
                             <TableCell className="text-right text-amber-300/90 tabular-nums">
@@ -1259,11 +1330,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           <TableCell className="text-muted-foreground">{unitDisplay}</TableCell>
                           {returnMode ? (
                             <TableCell className="text-right text-red-400 font-medium">
-                              {returnQtyFromPacking > 0 ? `-${formatCurrency(returnQtyFromPacking * item.price)}` : '—'}
+                              {returnQtyFromPacking > 0
+                                ? `-${formatCurrency(returnQtyFromPacking * item.price)}`
+                                : '—'}
                             </TableCell>
                           ) : (
                             <TableCell className="text-right text-foreground font-medium">
-                              {formatCurrency(item.price * qty)}
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span>{formatItemLineTotal(item, qty)}</span>
+                                {fxDoc &&
+                                (item.foreignLineTotal != null || item.foreignUnitPrice != null) ? (
+                                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                                    ≈ {formatCurrency(item.price * qty)}
+                                  </span>
+                                ) : null}
+                              </div>
                             </TableCell>
                           )}
                         </TableRow>
@@ -1317,8 +1398,18 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     <div className="space-y-3">
                       <div>
                         <p className="text-xs text-muted-foreground mb-0.5">Original Purchase Amount</p>
-                        <p className="text-lg font-bold text-[var(--erp-money-positive)]">{formatCurrency(purchase.total)}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Reference only</p>
+                        <p className="text-lg font-bold text-[var(--erp-money-positive)]">
+                          {fxDoc && foreignGrand != null
+                            ? formatDocMoney(foreignGrand)
+                            : formatCurrency(purchase.total)}
+                        </p>
+                        {fxDoc && foreignGrand != null ? (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            ≈ {formatCurrency(purchase.total)} (PKR books)
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Reference only</p>
+                        )}
                       </div>
                       <div className="border-t border-border pt-3">
                         <p className="text-xs text-muted-foreground mb-0.5">Returned Amount</p>
@@ -1361,8 +1452,22 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 </div>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{showClearanceSplit ? 'Goods subtotal' : 'Subtotal'}</span>
-                    <span className="text-foreground font-medium">{formatCurrency(purchase.subtotal ?? goodsSubtotal ?? 0)}</span>
+                    <span className="text-muted-foreground">
+                      {showClearanceSplit ? 'Goods subtotal' : 'Subtotal'}
+                      {fxDoc ? ` (${docCurrencyLabel})` : ''}
+                    </span>
+                    <span className="text-foreground font-medium text-right">
+                      <span className="block">
+                        {fxDoc && foreignSub != null
+                          ? formatDocMoney(foreignSub)
+                          : formatCurrency(purchase.subtotal ?? goodsSubtotal ?? 0)}
+                      </span>
+                      {fxDoc && foreignSub != null ? (
+                        <span className="block text-[10px] text-muted-foreground font-normal">
+                          ≈ {formatCurrency(purchase.subtotal ?? goodsSubtotal ?? 0)}
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   
                   {showClearanceSplit && clearanceTotal > 0 && (
@@ -1431,8 +1536,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <Separator className="bg-muted" />
                   
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-semibold">Grand Total</span>
-                    <span className="text-foreground text-xl font-bold">{formatCurrency(purchase.total)}</span>
+                    <span className="text-muted-foreground font-semibold">
+                      Grand Total{fxDoc ? ` (${docCurrencyLabel})` : ''}
+                    </span>
+                    <span className="text-foreground text-xl font-bold text-right">
+                      <span className="block">
+                        {fxDoc && foreignGrand != null
+                          ? formatDocMoney(foreignGrand)
+                          : formatCurrency(purchase.total)}
+                      </span>
+                      {fxDoc && foreignGrand != null ? (
+                        <span className="block text-xs text-muted-foreground font-normal">
+                          ≈ {formatCurrency(purchase.total)}
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   
                   {!hidePaymentCommercial && (
@@ -1446,8 +1564,20 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground font-medium">
                             {wholesaleClearanceActive ? 'Supplier due (goods)' : 'Amount Due'}
+                            {fxDoc && foreignDueDisplay != null ? ` (${docCurrencyLabel})` : ''}
                           </span>
-                          <span className="text-red-400 text-lg font-bold">{formatCurrency(displaySupplierDue)}</span>
+                          <span className="text-red-400 text-lg font-bold text-right">
+                            {fxDoc && foreignDueDisplay != null ? (
+                              <>
+                                <span className="block">{formatDocMoney(foreignDueDisplay)}</span>
+                                <span className="block text-xs text-muted-foreground font-normal">
+                                  ≈ {formatCurrency(displaySupplierDue)}
+                                </span>
+                              </>
+                            ) : (
+                              formatCurrency(displaySupplierDue)
+                            )}
+                          </span>
                         </div>
                       )}
                     </>

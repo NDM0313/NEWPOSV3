@@ -5,6 +5,7 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { formatQty } from '@/app/utils/quantity';
+import { formatCurrency } from '@/app/utils/formatCurrency';
 import { toast } from 'sonner';
 import {
     Command,
@@ -106,6 +107,8 @@ interface PurchaseItemsSectionProps {
     /** When true, Price/Total bind to foreignUnitPrice (document currency FC). */
     fxMode?: boolean;
     currencyLabel?: string;
+    /** Document currency code for symbols (e.g. CNY). */
+    documentCurrency?: string;
     fxRateToBase?: number;
 }
 
@@ -154,11 +157,13 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
     handlePriceKeyDown,
     fxMode = false,
     currencyLabel = 'PKR',
+    documentCurrency = 'PKR',
     fxRateToBase = 0,
 }) => {
     const { openDrawer, activeDrawer } = useNavigation();
     const priceHeader = fxMode ? `Price (${currencyLabel})` : 'Price';
     const totalHeader = fxMode ? `Total (${currencyLabel})` : 'Total';
+    const moneyCode = fxMode ? documentCurrency : undefined;
 
     return (
         <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col h-full">
@@ -407,7 +412,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                             <>
                                                                 <span>·</span>
                                                                 <span className="text-amber-500">
-                                                                    ${Number(displayPrice).toLocaleString()}
+                                                                    {formatCurrency(Number(displayPrice), moneyCode)}
                                                                 </span>
                                                             </>
                                                         )}
@@ -523,17 +528,20 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                         {fxMode ? (
                                             <div className="text-right">
                                                 <div className="text-sm font-bold text-popover-foreground">
-                                                    {((Number(item.foreignUnitPrice) || 0) * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                    {formatCurrency(
+                                                      (Number(item.foreignUnitPrice) || 0) * item.qty,
+                                                      documentCurrency,
+                                                    )}
                                                 </div>
                                                 {fxRateToBase > 0 && (Number(item.foreignUnitPrice) || 0) > 0 && (
                                                     <div className="text-[10px] text-muted-foreground tabular-nums">
-                                                        ≈ PKR {(item.price * item.qty).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                                        ≈ {formatCurrency(item.price * item.qty)}
                                                     </div>
                                                 )}
                                             </div>
                                         ) : (
                                             <div className="text-right text-sm font-bold text-popover-foreground">
-                                                ${(item.price * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                {formatCurrency(item.price * item.qty)}
                                             </div>
                                         )}
                                     </div>

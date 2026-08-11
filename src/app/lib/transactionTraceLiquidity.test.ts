@@ -63,6 +63,21 @@ test('HAMID IK RMB TT agent wallet is liquidity for transfers but excluded from 
   assert.equal(isRoznamchaLiquidityAccount(hamid), false);
 });
 
+test('WALI T/T 1202 is Import FX TT wallet (same parent clearing tree)', () => {
+  const wali = { code: '1202', type: 'bank', name: 'WALI T/T' };
+  assert.equal(isPartyTtAgentWalletAccount(wali), true);
+  assert.equal(isPartyTtRoutingAccount(wali), true);
+  assert.equal(isLiquidityPaymentAccount(wali), true);
+  assert.equal(isRoznamchaLiquidityAccount(wali), false);
+});
+
+test('USD TT Agent Clearing parent is not a party TT wallet', () => {
+  assert.equal(
+    isPartyTtAgentWalletAccount({ code: '1201', type: 'asset', name: 'USD TT Agent Clearing' }),
+    false
+  );
+});
+
 test('internal bank to own wallet both remain roznamcha liquidity', () => {
   assert.equal(isRoznamchaLiquidityAccount({ code: '1012', type: 'bank', name: 'FHD MZ' }), true);
   assert.equal(isRoznamchaLiquidityAccount({ code: '1021', type: 'wallet', name: 'NDM Easy' }), true);

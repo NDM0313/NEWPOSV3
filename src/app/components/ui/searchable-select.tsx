@@ -87,7 +87,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
       )
     : options;
 
-  const showAddNew = enableAddNew && searchTerm && filteredOptions.length === 0;
+  // Show Add New whenever enabled and there are no matches (including empty list / empty search).
+  const showAddNew = enableAddNew && filteredOptions.length === 0;
 
   const handleAddNew = () => {
     const currentSearch = searchTerm;

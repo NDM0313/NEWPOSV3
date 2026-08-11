@@ -35,6 +35,7 @@ import { PackingEntryModal } from '@/app/components/transactions/PackingEntryMod
 import { RotateCcw, Save, X } from 'lucide-react';
 import { cn, formatBoxesPieces } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
+import { isForeignImportCurrency, normalizeImportDocCurrency } from '@/app/lib/importFxHelpers';
 
 // ---------------------------------------------------------------------------
 // Types (aligned with Purchase View / purchase items)
@@ -66,6 +67,7 @@ export interface PurchaseReturnItemSelectionDialogProps {
   /** Purchase with items (same shape as ViewPurchaseDetailsDrawer) */
   purchase: {
     id: string;
+    documentCurrency?: string | null;
     items: Array<{
       id: string;
       productId: string;
@@ -78,6 +80,8 @@ export interface PurchaseReturnItemSelectionDialogProps {
       packing_details?: any;
       packingDetails?: any;
       variation?: any;
+      foreignUnitPrice?: number | null;
+      foreignLineTotal?: number | null;
     }>;
   } | null;
   /** Already returned qty per item key (e.g. from existing returns). Optional. */
@@ -104,6 +108,15 @@ export function PurchaseReturnItemSelectionDialog({
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking ?? false;
+  const docCurrency = normalizeImportDocCurrency(purchase?.documentCurrency);
+  const fxDoc = isForeignImportCurrency(docCurrency);
+
+  const formatItemPrice = (item: { price: number; foreignUnitPrice?: number | null }) => {
+    if (fxDoc && item.foreignUnitPrice != null && Number.isFinite(Number(item.foreignUnitPrice))) {
+      return formatCurrency(Number(item.foreignUnitPrice), docCurrency);
+    }
+    return formatCurrency(item.price);
+  };
 
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
   const [returnPackingDetails, setReturnPackingDetails] = useState<Record<string, any>>({});
@@ -345,7 +358,7 @@ export function PurchaseReturnItemSelectionDialog({
                           </TableCell>
                         )}
                         <TableCell className="text-right text-foreground">
-                          {formatCurrency(item.price)}
+                          {formatItemPrice(item)}
                         </TableCell>
                         <TableCell className="text-center text-foreground font-medium">{qty}</TableCell>
                         {Object.keys(alreadyReturnedMap).length > 0 && (

@@ -233,6 +233,18 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
       unit: item.unit || undefined,
       packingDetails: item.packing_details || undefined,
       variation: item.variation || item.product_variations || undefined,
+      foreignUnitPrice:
+        item.foreign_unit_price != null && item.foreign_unit_price !== ''
+          ? Number(item.foreign_unit_price)
+          : item.foreignUnitPrice != null
+            ? Number(item.foreignUnitPrice)
+            : null,
+      foreignLineTotal:
+        item.foreign_line_total != null && item.foreign_line_total !== ''
+          ? Number(item.foreign_line_total)
+          : item.foreignLineTotal != null
+            ? Number(item.foreignLineTotal)
+            : null,
     })),
     itemsCount,
     subtotal: supabasePurchase.subtotal || 0,
@@ -254,6 +266,25 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     reference: supabasePurchase.notes || supabasePurchase.reference || undefined,
     createdAt: supabasePurchase.created_at || getCurrentLocalTimestamp(),
     updatedAt: supabasePurchase.updated_at || getCurrentLocalTimestamp(),
+    documentCurrency: supabasePurchase.document_currency ?? supabasePurchase.documentCurrency ?? null,
+    fxRateToBase:
+      supabasePurchase.fx_rate_to_base != null
+        ? Number(supabasePurchase.fx_rate_to_base)
+        : supabasePurchase.fxRateToBase != null
+          ? Number(supabasePurchase.fxRateToBase)
+          : null,
+    foreignSubtotal:
+      supabasePurchase.foreign_subtotal != null
+        ? Number(supabasePurchase.foreign_subtotal)
+        : supabasePurchase.foreignSubtotal != null
+          ? Number(supabasePurchase.foreignSubtotal)
+          : null,
+    foreignTotal:
+      supabasePurchase.foreign_total != null
+        ? Number(supabasePurchase.foreign_total)
+        : supabasePurchase.foreignTotal != null
+          ? Number(supabasePurchase.foreignTotal)
+          : null,
   };
 };
 

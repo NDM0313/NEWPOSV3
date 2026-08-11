@@ -31,6 +31,10 @@ export const PURCHASE_HEADER_COLUMNS = `
   paid_amount,
   due_amount,
   notes,
+  document_currency,
+  fx_rate_to_base,
+  foreign_subtotal,
+  foreign_total,
   created_by,
   created_at,
   updated_at

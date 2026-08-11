@@ -1046,6 +1046,7 @@ export const SettingsPageNew = () => {
             }));
           await settings.updateAccountingSettings({
             ...accountingForm,
+            fxSettlementAccountingEnabled: accountingForm.fxSettlementAccountingEnabled === true,
             activeCurrencies:
               activeCurrencies.length > 0
                 ? activeCurrencies
@@ -2224,7 +2225,7 @@ export const SettingsPageNew = () => {
                     <div>
                       <p className="text-foreground font-medium">Multi Currency Enabled</p>
                       <p className="text-sm text-muted-foreground">
-                        China import / wholesale: enter foreign prices × rate → books stay PKR. Turns on currency-first purchase grid, Agent FX wizard, and TT-agent wallets in payments.
+                        China import / wholesale: enter foreign prices × rate → books stay PKR. Turns on currency-first purchase grid, Agent FX wizard, and TT-agent wallets in payments. Does not enable FX gain/loss accounting (separate Phase-3 gate). Cannot turn OFF while open/partial agent FX credits remain.
                       </p>
                     </div>
                     <Switch

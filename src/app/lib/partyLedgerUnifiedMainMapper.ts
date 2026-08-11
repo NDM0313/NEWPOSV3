@@ -24,6 +24,7 @@ const TYPE_LABELS: Record<EffectiveLedgerRow['type'], string> = {
 
 function mapReferenceTypeToLedgerType(ref: string | null): EffectiveLedgerRow['type'] {
   const r = (ref || '').toLowerCase();
+  if (r.includes('fx_currency_purchase')) return 'journal';
   if (r.includes('opening')) return 'opening';
   if (r.includes('sale_return') || r.includes('sales_return')) return 'return';
   if (r.includes('purchase_return')) return 'return';

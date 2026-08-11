@@ -2,6 +2,7 @@
 
 **Product:** DIN Collection / NEW POSV3 ERP (import purchasing FX)  
 **Rule:** [`.cursor/rules/multi-currency-import-fx.mdc`](../../.cursor/rules/multi-currency-import-fx.mdc)  
+**Detailed workflow + CoA linking:** [`MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md`](./MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md)  
 **Status:** Phases 0–2 dual-credit agent path shipped (flag-gated). Phase 3 still requires explicit approval.  
 **Base books currency:** PKR (company `companies.currency`)  
 **Document currencies (target):** RMB (CNY), USD (and PKR when single-currency)
@@ -156,6 +157,12 @@ Out of this roadmap unless lockdown is lifted for GL meaning changes:
 | TT-agent detection | `src/app/lib/liquidityPaymentAccount.ts`, `migrations/20260707140000_unified_ledger_party_tt_agent_wallet.sql` |
 | Mobile (Phase 2) | `erp-mobile-app/src/components/purchase/`, pay-supplier flows |
 | Contracts | `docs/accounting/PURCHASE_ACCOUNTING_CONTRACT.md`, `PAYMENT_ENTRY_PATHS.md` |
+
+---
+
+## China supplier paper ledger (Abu Ilyas–style)
+
+How to enter fabric CT/PC/METRE, package/freight, on-behalf printer pays, supplier cash/loan, and REC PAY **with today’s ERP** (no new code): [`ABU_ILYAS_SUPPLIER_LEDGER_HOWTO.md`](./ABU_ILYAS_SUPPLIER_LEDGER_HOWTO.md).
 
 ---
 

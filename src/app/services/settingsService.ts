@@ -659,6 +659,7 @@ export const settingsService = {
           manualJournalEnabled: true,
           defaultCurrency: 'PKR',
           multiCurrencyEnabled: false,
+          fxSettlementAccountingEnabled: false,
           activeCurrencies: [
             { code: 'CNY', label: 'RMB (CNY)' },
             { code: 'USD', label: 'US Dollar' },
