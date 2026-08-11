@@ -1,7 +1,7 @@
 # Import FX Case — W1 hold and Wave 0 verify
 
 **Date:** 2026-08-12  
-**Scope:** Wave W1 only (case/stage persistence + draft UI + create-case idempotency + historical read when disabled + read security hardening).  
+**Scope:** Wave W1 only (case/stage persistence + draft UI + create-case idempotency + historical read when disabled + read/mutation security hardening).  
 **Gates:** `multiCurrencyEnabled` ops · `fxSettlementAccountingEnabled = false` (Profile A).
 
 ---
@@ -37,7 +37,8 @@ Harness: `scripts/qa/import-fx-w1-local-harness.sql` + `scripts/qa/import-fx-w1-
 10. `20260812010000_import_fx_case_create_idempotency_w1.sql` (**create-case idempotency**)
 11. `20260812013000_import_fx_case_history_read_when_disabled_w1.sql` (**historical list/get when Multi Currency OFF**)
 12. `import-fx-w1-security-harness.sql` (localhost QA stubs only)
-13. `20260812020000_import_fx_case_read_security_hardening_w1.sql` (**fail-closed company + branch auth**)
+13. `20260812020000_import_fx_case_read_security_hardening_w1.sql` (**fail-closed company + branch auth for reads**)
+14. `20260812030000_import_fx_case_mutation_security_parity_w1.sql` (**fail-closed company + branch auth for mutations**)
 
 ---
 
@@ -75,6 +76,25 @@ QA: `node scripts/qa/import-fx-w1-read-security-qa.mjs` — **21/21 required sce
 
 ---
 
+## Mutation security parity (PASS)
+
+Migration: `20260812030000_import_fx_case_mutation_security_parity_w1.sql`
+
+| RPC | Company fail-closed | Case company match | Branch auth | MC OFF blocked | Journals |
+|-----|---------------------|--------------------|-------------|----------------|----------|
+| `create_import_fx_case` | Yes (`_import_fx_case_assert_company_access`) | N/A (creates) | `assert_branch_param`; idempotent replay also checks `branch_row_allowed` | Yes | None |
+| `update_import_fx_case_draft` | Yes | Yes (`id` + `company_id`) | `branch_row_allowed` on case | Yes | None |
+| `confirm_import_fx_case_stage` | Yes | Yes | `branch_row_allowed` on case | Yes | None (ARRANGEMENT only) |
+| `cancel_import_fx_case_unposted` | Yes | Yes | `branch_row_allowed` on case | Yes | None |
+| `link_import_fx_case_target` | Yes | Yes | `branch_row_allowed` on case | Yes | None |
+| Attachment mutations | **No dedicated RPC** — table RLS company-scoped only; no W1 attach/detach RPC | — | — | — | — |
+
+NULL-branch **create**: allowed for company members (same as commission/payments INSERT: `branch_id IS NULL OR has_branch_access`). Privileges: revoke `PUBLIC`/`anon`; grant `authenticated` only. Helpers remain non-executable by clients.
+
+QA: `node scripts/qa/import-fx-w1-mutation-security-qa.mjs` — **22/22 PASS** (0 skipped).
+
+---
+
 ## Create-case idempotency contract
 
 - Column: `import_fx_cases.client_operation_id` (nullable)
@@ -89,37 +109,25 @@ QA: `node scripts/qa/import-fx-w1-read-security-qa.mjs` — **21/21 required sce
 
 ## Live RPC / RLS results
 
+### `import-fx-w1-mutation-security-qa.mjs` — **22/22 PASS** (0 skipped)
+
+| # | Scenario | Result |
+|---|----------|--------|
+| 1–3 | Authorized create + idempotent retry / no duplicates | PASS |
+| 4–8 | Company/auth/anon create rejects | PASS |
+| 9–11 | Branch create (authorized / unauthorized / NULL per policy) | PASS |
+| 12–13 | MC OFF reject / ON create | PASS |
+| 14–18 | Cross-company + unauthorized branch mutations | PASS |
+| 19 | Invalid stage (ADVANCE) rejected | PASS |
+| 20–22 | JE / lines / payments Δ = 0 | PASS |
+
+### `import-fx-w1-read-security-qa.mjs` — **21/21 PASS** (0 skipped; suite also logs off-slice)
+
 ### `import-fx-w1-live-rpc-qa.mjs` — **29/29 PASS**
 
 Including OFF reject mutations, ON create/idempotency, draft/confirm/link/cancel, OFF historical list/get, cross-company blocked, zero-journal proof.
 
-### `import-fx-w1-read-security-qa.mjs` — **21/21 PASS**
-
-| # | Scenario | Result |
-|---|----------|--------|
-| 1 | Authorized company list | PASS |
-| 2 | Authorized company get | PASS |
-| 3 | Different company ID rejected | PASS |
-| 4 | Auth company NULL rejected | PASS |
-| 5 | Auth company resolution error rejected | PASS |
-| 6 | Anon cannot execute list | PASS |
-| 7 | Authenticated without company rejected | PASS |
-| 8 | Unauthorized branch request rejected | PASS |
-| 9 | `p_branch_id=NULL` does not expand restricted user | PASS |
-| 10 | Get unauthorized branch rejected | PASS |
-| 11 | Authorized branch case succeeds | PASS |
-| 12 | Null-branch case per canonical policy | PASS |
-| 13 | PUBLIC/anon cannot execute list/get | PASS |
-| 14 | Helper not executable by authenticated | PASS |
-| 15 | OFF historical reads read-only | PASS |
-| 16 | OFF mutations blocked | PASS |
-| 17 | ON reads succeed | PASS |
-| 18 | Cross-company blocked | PASS |
-| 19 | `Δ journal_entries = 0` | PASS |
-| 20 | `Δ journal_entry_lines = 0` | PASS |
-| 21 | `Δ payments = 0` | PASS |
-
-### Zero-journal proof (security suite)
+### Zero-journal proof (mutation + read security suites)
 
 ```text
 before: journal_entries=0 journal_entry_lines=0 payments=0
@@ -177,4 +185,4 @@ Do **not** implement without separate approval: advances, USD acquisition money,
 1. Full-repo `npm run migrate` against empty DB still unsuitable (bootstrap marks 02–18 without applying). Local Import FX QA uses the dedicated localhost runner above.
 2. Path 21 full JE posting needs broader ERP helpers than the W1 harness provides.
 3. Live web UI against local requires a non-prod Supabase API stack (not started this pass).
-4. `create_import_fx_case` still uses legacy inline company check (fail-open when session company unset); read RPCs are fail-closed. Mutation hardening can follow in a later additive pass if required.
+4. Attachment add/remove has no W1 SECURITY DEFINER RPC — direct table access relies on company RLS only (no branch predicate on attachment policies).
