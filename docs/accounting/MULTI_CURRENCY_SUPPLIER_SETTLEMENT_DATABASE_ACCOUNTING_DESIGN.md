@@ -987,7 +987,7 @@ Documented in [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_
 
 | Wave | Scope |
 | --- | --- |
-| Wave 0 | Path 21 forensic + role-separated ledgers + Step-1 server idempotency (no pooled tables) |
+| Wave 0 | Path 21 forensic + role-separated ledgers + Step-1 server idempotency + settlement link lifecycle (**implemented** — migration `20260811200000_import_fx_wave0_path21_idempotency_settlement_lifecycle.sql`; no pooled tables) |
 | Wave P1 | Open items, pool/batch headers, wallet movements, reconciliation exceptions |
 | Wave P2 | USD acquisition + agent settlement (credit/prepaid) |
 | Wave P3 | China USD transfer + USD→CNY conversion + pool lots |

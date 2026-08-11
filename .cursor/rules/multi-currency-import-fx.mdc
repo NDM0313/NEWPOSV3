@@ -53,8 +53,9 @@ Single Core Ledger / audit docs that mark **“FX / multi-currency app” OUT_OF
 ## Ledgers and idempotency
 
 - Supplier vs Agent operational reports must separate by **business role/source**, not only `contact_id`. Agent must be `money_exchange`; agent ≠ merchandise supplier.
-- Rows, summary cards, and exports for a party role view must use the **same filtered dataset**.
-- Future money commands require `client_operation_id` with UNIQUE `(company_id, event_type, client_operation_id)` and source posting uniqueness. Path 21 Step-1 still needs server idempotency (forensic: duplicate-intent credits `JV-000342`/`JV-000343`).
+- Rows, summary cards, and exports for a party role view must use the **same filtered dataset** (Wave 0: role-scoped opening via filtered pre-period activity).
+- Path 21 Step-1 requires `client_operation_id` (UNIQUE per company when set). Step 2/3 use `import_fx_client_operations` receipts. Settlement links use `status` active/inactive (no DELETE).
+- Future pooled money commands still require `client_operation_id` with UNIQUE `(company_id, event_type, client_operation_id)`.
 
 ## Implementation constraints
 

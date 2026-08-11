@@ -22,6 +22,11 @@ import {
 } from '@/app/utils/transactionAttachments';
 import { resolveStockMovementDisplayAmount } from '@/app/utils/stockMovementValuation';
 import { canUpdateViaManualJournalEditor } from '@/app/lib/journalEntryEditPolicy';
+import {
+  filterApRowsByPartyRole,
+  recalcApLiabilityRunningBalances,
+  splitRoleFilteredApRowsByPeriod,
+} from '@/app/lib/importFxPartyLedgerRoleFilter';
 
 export interface JournalEntry {
   id?: string;
@@ -1616,6 +1621,26 @@ export const accountingService = {
     const existingId = await this.findActiveCorrectionReversalJournalId(companyId, originalJournalEntryId);
     if (existingId) {
       console.log('[PAYMENT_REVERSAL_TRACE]', JSON.stringify({ phase: 'already_exists', originalJournalEntryId, reversalId: existingId }));
+      try {
+        const existingOriginal = await this.getEntry(originalJournalEntryId).catch(() => null);
+        const origRef = String((existingOriginal as any)?.reference_type || '').toLowerCase();
+        if (origRef === 'fx_currency_purchase') {
+          const { finalizeFxCurrencyPurchaseCreditAfterReversal } = await import(
+            '@/app/services/importFxAgentService'
+          );
+          await finalizeFxCurrencyPurchaseCreditAfterReversal({
+            companyId,
+            originalJournalEntryId,
+            reversalJournalEntryId: existingId,
+            reason: reason?.trim() || 'Path 21: FX credit journal reversed',
+          });
+        }
+      } catch (fxVoidErr: any) {
+        console.warn(
+          '[ACCOUNTING] Existing reversal found but Path 21 FX credit finalize failed:',
+          fxVoidErr?.message || fxVoidErr
+        );
+      }
       return { id: existingId, alreadyExisted: true };
     }
 
@@ -1823,6 +1848,25 @@ export const accountingService = {
         }
       } catch (rentalVoidErr: any) {
         console.warn('[ACCOUNTING] Reversal posted but rental payment void failed:', rentalVoidErr?.message || rentalVoidErr);
+      }
+      try {
+        const origRef = String((original as any).reference_type || '').toLowerCase();
+        if (origRef === 'fx_currency_purchase') {
+          const { finalizeFxCurrencyPurchaseCreditAfterReversal } = await import(
+            '@/app/services/importFxAgentService'
+          );
+          await finalizeFxCurrencyPurchaseCreditAfterReversal({
+            companyId,
+            originalJournalEntryId,
+            reversalJournalEntryId: String((result as any).id),
+            reason: reason?.trim() || 'Path 21: FX credit journal reversed',
+          });
+        }
+      } catch (fxVoidErr: any) {
+        console.warn(
+          '[ACCOUNTING] Reversal posted but Path 21 FX credit finalize failed:',
+          fxVoidErr?.message || fxVoidErr
+        );
       }
       return { id: (result as any).id, alreadyExisted: false };
     } catch (e: any) {
@@ -3855,14 +3899,18 @@ export const accountingService = {
   /**
    * Supplier AP: **control 2000 only**, same party resolution as `get_contact_party_gl_balances` (RPC `get_supplier_ap_gl_ledger_for_contact`).
    * Convention: credit − debit on AP liability. Falls back to legacy client filter if RPC is missing.
+   * Path 21: operational supplier view excludes Agent FX credit JEs and fx_currency_purchase_settlements payments
+   * (same AP child can hold both roles when a supplier was wrongly used as agent).
    */
   async getSupplierApGlJournalLedger(
     supplierId: string,
     companyId: string,
     branchId?: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    opts?: { partyRole?: 'supplier' | 'agent_fx' | 'all' }
   ): Promise<AccountLedgerEntry[]> {
+    const partyRole = opts?.partyRole ?? 'supplier';
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeBranchId =
       branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
@@ -3871,29 +3919,26 @@ export const accountingService = {
     const startStr = startDate ? startDate.slice(0, 10) : null;
     const endStr = endDate ? endDate.slice(0, 10) : null;
 
-    try {
-      const { data: rpcRaw, error: rpcError } = await supabase.rpc('get_supplier_ap_gl_ledger_for_contact', {
-        p_company_id: companyId,
-        p_supplier_id: supplierId,
-        p_branch_id: safeBranchId,
-        p_start_date: startStr,
-        p_end_date: endStr,
-      });
+    const loadAgentSettlementPaymentIds = async (): Promise<Set<string>> => {
+      if (partyRole === 'all') return new Set();
+      const { data } = await supabase
+        .from('fx_currency_purchase_settlements')
+        .select('payment_id, status, voided_at')
+        .eq('company_id', companyId);
+      return new Set(
+        (data || [])
+          .filter((r: { status?: string | null; voided_at?: string | null }) => {
+            if (r.voided_at) return false;
+            const st = String(r.status || 'active').toLowerCase();
+            return st === 'active' || st === '';
+          })
+          .map((r: { payment_id?: string }) => (r.payment_id ? String(r.payment_id) : ''))
+          .filter(Boolean)
+      );
+    };
 
-      if (rpcError) {
-        console.warn('[ACCOUNTING SERVICE] get_supplier_ap_gl_ledger_for_contact:', rpcError.message);
-        return fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
-      }
-
-      const payload = rpcRaw as { period_opening_balance?: number; rows?: Record<string, unknown>[] } | null;
-      if (!payload || typeof payload !== 'object') {
-        return fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
-      }
-
-      const opening = Number(payload.period_opening_balance ?? 0);
-      const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
-
-      const ledgerEntriesFromRange: AccountLedgerEntry[] = rawRows.map((r) => {
+    const mapRpcRows = (rawRows: Record<string, unknown>[]): AccountLedgerEntry[] =>
+      rawRows.map((r) => {
         const debit = Number(r.debit ?? 0);
         const credit = Number(r.credit ?? 0);
         const refType = r.reference_type != null ? String(r.reference_type) : '';
@@ -3920,9 +3965,63 @@ export const accountingService = {
         };
       });
 
-      if (startStr) {
-        return [
-          {
+    try {
+      // Wave 0: for role views, load full history through endDate so opening matches filtered rows
+      const rpcStart =
+        partyRole !== 'all' && startStr ? null : startStr;
+
+      const [{ data: rpcRaw, error: rpcError }, agentSettlementPaymentIds] = await Promise.all([
+        supabase.rpc('get_supplier_ap_gl_ledger_for_contact', {
+          p_company_id: companyId,
+          p_supplier_id: supplierId,
+          p_branch_id: safeBranchId,
+          p_start_date: rpcStart,
+          p_end_date: endStr,
+        }),
+        loadAgentSettlementPaymentIds(),
+      ]);
+
+      if (rpcError) {
+        console.warn('[ACCOUNTING SERVICE] get_supplier_ap_gl_ledger_for_contact:', rpcError.message);
+        const legacy = await fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
+        if (partyRole === 'all') return legacy;
+        const filtered = filterApRowsByPartyRole(legacy, partyRole, agentSettlementPaymentIds);
+        const { opening, inRange } = splitRoleFilteredApRowsByPeriod(filtered, startStr);
+        const openingRow: AccountLedgerEntry | null = startStr
+          ? {
+              date: startStr,
+              reference_number: '—',
+              description: 'Opening Balance (AP GL)',
+              debit: 0,
+              credit: 0,
+              running_balance: opening,
+              source_module: 'Accounting',
+              journal_entry_id: '',
+              document_type: 'Opening Balance',
+              account_name: '',
+            }
+          : null;
+        const body = openingRow ? [openingRow, ...inRange] : inRange;
+        return recalcApLiabilityRunningBalances(body, opening);
+      }
+
+      const payload = rpcRaw as { period_opening_balance?: number; rows?: Record<string, unknown>[] } | null;
+      if (!payload || typeof payload !== 'object') {
+        const legacy = await fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
+        if (partyRole === 'all') return legacy;
+        const filtered = filterApRowsByPartyRole(legacy, partyRole, agentSettlementPaymentIds);
+        const { opening, inRange } = splitRoleFilteredApRowsByPeriod(filtered, startStr);
+        return recalcApLiabilityRunningBalances(inRange, opening);
+      }
+
+      let ledgerEntriesFromRange: AccountLedgerEntry[] = mapRpcRows(
+        Array.isArray(payload.rows) ? payload.rows : []
+      );
+
+      if (partyRole === 'all') {
+        const opening = Number(payload.period_opening_balance ?? 0);
+        if (startStr) {
+          const openingRow: AccountLedgerEntry = {
             date: startStr,
             reference_number: '—',
             entry_no: undefined,
@@ -3934,12 +4033,35 @@ export const accountingService = {
             journal_entry_id: '',
             document_type: 'Opening Balance',
             account_name: '',
-          },
-          ...ledgerEntriesFromRange,
-        ];
+          };
+          return [openingRow, ...ledgerEntriesFromRange];
+        }
+        return ledgerEntriesFromRange;
       }
 
-      return ledgerEntriesFromRange;
+      ledgerEntriesFromRange = filterApRowsByPartyRole(
+        ledgerEntriesFromRange,
+        partyRole,
+        agentSettlementPaymentIds
+      );
+      const { opening, inRange } = splitRoleFilteredApRowsByPeriod(ledgerEntriesFromRange, startStr);
+      const openingRow: AccountLedgerEntry | null = startStr
+        ? {
+            date: startStr,
+            reference_number: '—',
+            entry_no: undefined,
+            description: 'Opening Balance (AP GL)',
+            debit: 0,
+            credit: 0,
+            running_balance: opening,
+            source_module: 'Accounting',
+            journal_entry_id: '',
+            document_type: 'Opening Balance',
+            account_name: '',
+          }
+        : null;
+      const body = openingRow ? [openingRow, ...inRange] : inRange;
+      return recalcApLiabilityRunningBalances(body, opening);
     } catch (e) {
       console.error('[ACCOUNTING SERVICE] getSupplierApGlJournalLedger:', e);
       return fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);

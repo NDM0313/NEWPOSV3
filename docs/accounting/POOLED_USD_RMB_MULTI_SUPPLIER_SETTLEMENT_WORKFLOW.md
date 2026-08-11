@@ -481,12 +481,25 @@ Each allocation stores frozen pool unit cost, released invoice book PKR, and `fx
 
 ### Wave 0 — Existing Path 21 duplicate/role-report hotfix
 
+**Status (2026-08-11):** Implemented on branch `fix/import-fx-wave-0-correctness`.
+
+| Item | Outcome |
+| --- | --- |
+| Step-1 `client_operation_id` | Additive column + UNIQUE(company_id, client_operation_id) WHERE NOT NULL; RPC arg `p_client_operation_id`; wizard reuses UUID on retry |
+| Step 2/3 retry | `import_fx_client_operations` receipts; apply + china register RPCs |
+| Settlement orphans | `status` active/inactive + void metadata; backfill voided PAY/credit links; payment-void trigger; active-only paid recompute |
+| Role ledgers | Opening/cards from same filtered dataset (`splitRoleFilteredApRowsByPeriod` + GL summary strip); Statement V2 supplier uses `partyRole: 'supplier'` |
+| Search | SearchableSelect already on agent/purchase/wallet/bank/credit |
+| Migration | `migrations/20260811200000_import_fx_wave0_path21_idempotency_settlement_lifecycle.sql` |
+
+Remaining: parallel-tab race before payment insert still possible for Step 2/3 (UI busy + receipt mitigate); Generic Account Ledger stays full-account by design.
+
 - Dependencies: live Path 21  
 - Work: forensic verification; role-separated Supplier/Agent reporting; **Step-1 server idempotency**; searchable selectors; no pooled tables  
 - Risks: opening-balance skew after filter; residual settlement rows after void  
 - Tests: role filter unit tests; double-submit credit test  
 - GO/NO-GO: no active duplicate GL; Step-1 unique client op  
-- Approval: ops hotfix (largely done; idempotency residual)
+- Approval: ops hotfix
 
 ### Wave P1 — Core operational persistence
 

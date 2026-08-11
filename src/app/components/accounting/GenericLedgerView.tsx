@@ -35,6 +35,8 @@ import {
 import { CustomerGlJournalTable } from '@/app/components/customer-ledger-test/CustomerGlJournalTable';
 import { Badge } from '@/app/components/ui/badge';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import type { PartyLedgerRoleView } from '@/app/lib/importFxPartyLedgerRoleFilter';
+import { summarizeRoleFilteredApRows } from '@/app/lib/importFxPartyLedgerRoleFilter';
 
 interface GenericLedgerViewProps {
   ledgerType: LedgerEntityType;
@@ -108,11 +110,25 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   const [workerPaymentDialogOpen, setWorkerPaymentDialogOpen] = useState(false);
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0);
   const [showOpeningJournalHistory, setShowOpeningJournalHistory] = useState(false);
+  /** Path 21: supplier merchandise vs Agent FX operational GL (CoA account ledger unchanged). */
+  const [supplierPartyRole, setSupplierPartyRole] = useState<PartyLedgerRoleView>('supplier');
 
   const glEntriesDisplay = useMemo(
     () => dedupeOlderOpeningJournalRows(glEntries, showOpeningJournalHistory),
     [glEntries, showOpeningJournalHistory]
   );
+
+  const glRoleSummary = useMemo(() => {
+    if (ledgerType !== 'supplier' || statementEngine !== 'gl') return null;
+    const body = glEntriesDisplay.filter(
+      (e) => !String(e.description || '').toLowerCase().includes('opening balance')
+    );
+    const openingRow = glEntriesDisplay.find((e) =>
+      String(e.description || '').toLowerCase().includes('opening balance')
+    );
+    const opening = openingRow ? Number(openingRow.running_balance || 0) : 0;
+    return summarizeRoleFilteredApRows(body, opening);
+  }, [glEntriesDisplay, ledgerType, statementEngine]);
 
   const loadOperationalRef = useRef<() => void>(() => {});
   const loadOperational = useCallback(async () => {
@@ -184,7 +200,8 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                 companyId,
                 branchId ?? undefined,
                 dateRange.from,
-                dateRange.to
+                dateRange.to,
+                { partyRole: supplierPartyRole }
               )
             : await accountingService.getWorkerPartyGlJournalLedger(
                 entityId,
@@ -212,6 +229,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
     dateRange.from,
     dateRange.to,
     balanceRefreshTick,
+    supplierPartyRole,
   ]);
 
   useEffect(() => {
@@ -461,6 +479,32 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
             </div>
           ) : (
             <div className="space-y-2">
+              {ledgerType === 'supplier' && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs text-muted-foreground">Party role:</span>
+                  {(
+                    [
+                      { id: 'supplier' as const, label: 'Supplier (merchandise)' },
+                      { id: 'agent_fx' as const, label: 'Agent FX (Path 21)' },
+                      { id: 'all' as const, label: 'All (unfiltered)' },
+                    ] as const
+                  ).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setSupplierPartyRole(r.id)}
+                      className={cn(
+                        'text-xs px-2.5 py-1 rounded border transition-colors',
+                        supplierPartyRole === r.id
+                          ? 'border-amber-500/80 bg-amber-500/15 text-foreground'
+                          : 'border-border text-muted-foreground hover:border-gray-600'
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -472,6 +516,30 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                   Show all opening-balance journal history (edits/reposts). Off = latest opening JE only for a clearer default view.
                 </span>
               </label>
+              {ledgerType === 'supplier' && glRoleSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Opening</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.openingBalance)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Debit</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.totalDebit)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Credit</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.totalCredit)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Payments</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.paymentsPaid)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Closing</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.closingBalance)}</div>
+                  </div>
+                </div>
+              )}
               <CustomerGlJournalTable
                 entries={glEntriesDisplay}
                 loading={glLoading}

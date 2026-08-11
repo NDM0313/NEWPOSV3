@@ -52,6 +52,8 @@ Prefix map: [`migrations/20260432_erp_customer_receipt_prefix_rcv.sql`](../../mi
 | 20 | Integrity Lab / test pages | [`AccountingIntegrityLabPage.tsx`](../../src/app/components/admin/AccountingIntegrityLabPage.tsx), [`AccountingTestPage.tsx`](../../src/app/components/test/AccountingTestPage.tsx) | `saleService` / `purchaseService` / `testAccountingService` | `payments` | varies | varies | varies | Mixed / legacy | Mixed | Mixed | Lab branch | **Test only** |
 | 21 | Purchases → **Agent FX** (flag ON) | [`ImportFxAgentWizard.tsx`](../../src/app/components/purchases/ImportFxAgentWizard.tsx) | [`importFxAgentService`](../../src/app/services/importFxAgentService.ts): `record_fx_currency_purchase_on_credit` (credit); then `createSupplierPayment` + `apply_fx_currency_purchase_settlement` (agent); then `createSupplierPayment` purchase-linked (China from wallet) | `fx_currency_purchases` + JE; then `payments` + JE | credit: none; settle: `paid` | credit: JE `fx_currency_purchase`; settle: `on_account` / `purchase` | credit id / contact / purchase | credit: `manual_journal`; settle: RPC → `payment` | settle **PAY-**; credit JE via generator | credit JE; settle RPC JE | Session branch | **New RPC (credit) + existing supplier payment** |
 
+**Path 21 cancel:** Void China settle → void agent settle → `voidFxCurrencyPurchaseCredit` (or Journal Reverse on credit JE). Payment cancel alone does not remove the credit JV; reverse finalize voids original + `correction_reversal` and sets credit `status=void`. Settlement link rows are soft-inactivated (`status=inactive`); not deleted. Wave 0: Step-1 `p_client_operation_id` idempotency; Step 2/3 `import_fx_client_operations` receipts.
+
 ---
 
 ## Unified Payment Dialog (`context` prop)
@@ -157,3 +159,4 @@ LIMIT 30;
 
 - Boot stability (chunks): commit `56968836` — separate from payment numbering.
 - Unification implementation: [`.cursor/plans/unify_payment_references_0d47bf25.plan.md`](../../.cursor/plans/unify_payment_references_0d47bf25.plan.md) Phases B–E.
+- China supplier paper ledger (on-behalf / loan / REC PAY via journals today): [`ABU_ILYAS_SUPPLIER_LEDGER_HOWTO.md`](./ABU_ILYAS_SUPPLIER_LEDGER_HOWTO.md).

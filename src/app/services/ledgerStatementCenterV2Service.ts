@@ -405,6 +405,7 @@ function normalizeDocType(t: string): string {
 
 function mapGlReferenceType(refType?: string | null): LedgerStatementV2Row['sourceKind'] {
   const r = normalizeDocType(refType || '');
+  if (r.includes('fx_currency_purchase')) return 'journal';
   if (r.includes('party_discount')) return 'journal';
   if (r.includes('opening')) return 'opening';
   if (r.includes('sale_return') || (r.includes('return') && r.includes('sale'))) return 'return';
@@ -608,6 +609,7 @@ async function loadGlEntries(
       branchScope,
       fromDate,
       toDate,
+      { partyRole: 'supplier' }
     );
   }
   if (statementType === 'worker') {
