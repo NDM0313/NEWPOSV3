@@ -46,6 +46,11 @@ function fail(name, detail = '') {
   console.error('FAIL', name, detail);
 }
 
+async function setSessionCompany(companyId, role = 'admin') {
+  await client.query(`SELECT set_config('app.company_id', $1, false)`, [companyId ?? '']);
+  await client.query(`SELECT set_config('app.user_role', $1, false)`, [role]);
+}
+
 async function counts() {
   const q = async (sql) => Number((await client.query(sql)).rows[0].c);
   return {
@@ -110,6 +115,9 @@ await client.query(
 );
 
 const before = await counts();
+
+// Session company for fail-closed read/write company assert (create still has legacy inline until later)
+await setSessionCompany(companyA, 'admin');
 
 // 1) OFF reject
 await client.query(
@@ -283,6 +291,7 @@ if (cancelCase) {
 }
 
 // list/get ON
+await setSessionCompany(companyA, 'admin');
 const listed = (
   await client.query(`SELECT list_import_fx_cases($1,$2) AS j`, [companyA, branchA])
 ).rows[0].j;
@@ -302,6 +311,7 @@ if (fxGate === 'false' || fxGate == null) ok('fxSettlementAccountingEnabled fals
 else fail('fxSettlementAccountingEnabled false', String(fxGate));
 
 // --- Historical read when Multi Currency OFF ---
+await setSessionCompany(companyA, 'admin');
 await client.query(
   `UPDATE settings SET value = jsonb_set(value, '{multiCurrencyEnabled}', 'false'::jsonb) WHERE company_id = $1`,
   [companyA]
@@ -381,7 +391,7 @@ try {
   else fail('foreign company get not found', e.message);
 }
 
-// Branch filter: other branch id does not return this case
+// Branch filter: other branch id for company-wide admin still filters by id (no leak of other branch cases)
 const listedOtherBranch = (
   await client.query(`SELECT list_import_fx_cases($1,$2) AS j`, [companyA, branchB])
 ).rows[0].j;

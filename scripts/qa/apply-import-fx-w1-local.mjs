@@ -1,5 +1,5 @@
 /**
- * Apply Import FX Path21 → Wave A → Wave 0 → W1 → create-idempotency → history-read
+ * Apply Import FX Path21 → Wave A → Wave 0 → W1 → history-read → security-harness → read-security
  * ONLY to localhost / 127.0.0.1 from .env.db.local.
  * Aborts if host is not local. Never loads .env.local (production).
  *
@@ -57,6 +57,8 @@ const FILES = [
   'migrations/20260811230000_import_fx_case_stage_persistence_w1.sql',
   'migrations/20260812010000_import_fx_case_create_idempotency_w1.sql',
   'migrations/20260812013000_import_fx_case_history_read_when_disabled_w1.sql',
+  'scripts/qa/import-fx-w1-security-harness.sql',
+  'migrations/20260812020000_import_fx_case_read_security_hardening_w1.sql',
 ];
 
 const client = new pg.Client({ connectionString });
