@@ -134,6 +134,8 @@ flowchart TD
 | [`docs/audit/report_source_reconciliation.sql`](../audit/report_source_reconciliation.sql) | Cross-report reconciliation |
 | [`docs/infra/ROZNAMCHA_CASH_BOOK.md`](../infra/ROZNAMCHA_CASH_BOOK.md) | Short Roznamcha policy |
 | [`docs/accounting/2026-06-04_RENTAL_PAYMENT_ROZNAMCHA_FIX.md`](2026-06-04_RENTAL_PAYMENT_ROZNAMCHA_FIX.md) | Rental RCV Roznamcha fix history |
+| [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md) | Canonical Import FX settlement / DB next-spec |
+| [`docs/accounting/POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md) | Pooled USD→CNY multi-supplier design + Path 21 forensic appendix |
 
 ---
 
