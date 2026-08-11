@@ -29,7 +29,7 @@ test('planning events must not post journals', () => {
 });
 
 test('create-case client op: reuse until success then rotate', () => {
-  let key = 'op-1';
+  let key: string | null = 'op-1';
   const onSuccess = () => {
     key = null;
   };

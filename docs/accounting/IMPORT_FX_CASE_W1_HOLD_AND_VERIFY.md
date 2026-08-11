@@ -40,6 +40,7 @@ Harness: `scripts/qa/import-fx-w1-local-harness.sql` + `scripts/qa/import-fx-w1-
 13. `20260812020000_import_fx_case_read_security_hardening_w1.sql` (**fail-closed company + branch auth for reads**)
 14. `20260812030000_import_fx_case_mutation_security_parity_w1.sql` (**fail-closed company + branch auth for mutations**)
 15. `20260812040000_import_fx_case_attachment_security_w1.sql` (**attachment table privilege revoke + parent-case RLS**)
+16. `20260812050000_import_fx_case_table_privilege_lockdown_w1.sql` (**RPC-only lockdown for cases/stages/events/links + helper REVOKE + link target branch check**)
 
 ---
 
@@ -124,6 +125,23 @@ Migration: `20260812040000_import_fx_case_attachment_security_w1.sql`
 Defense-in-depth RLS (if privileges are ever re-granted): SELECT uses `_import_fx_case_attachment_parent_access_ok`; writes use `_import_fx_case_attachment_mutation_ok` (parent access + `multiCurrencyEnabled`); UPDATE WITH CHECK blocks moving `case_id` onto an unauthorized case.
 
 QA: `node scripts/qa/import-fx-w1-attachment-security-qa.mjs` — **18/18 required PASS** (0 skipped; plus defense-in-depth OFF RLS check).
+
+---
+
+## Case shell table lockdown (PASS)
+
+Migration: `20260812050000_import_fx_case_table_privilege_lockdown_w1.sql`
+
+Closes [Bugbot](5a096de3-4016-4bf1-8a53-e7a33ee7831a) finding: direct `authenticated` CRUD on `import_fx_cases` / stages / events / links could bypass SECURITY DEFINER company/branch/MC gates.
+
+| Control | Behavior |
+|---------|----------|
+| Table privileges | REVOKE ALL from PUBLIC/anon/authenticated on cases, stages, events, links |
+| Internal helpers | REVOKE EXECUTE on `_import_fx_case_seed_stages`, `_import_fx_case_derive_operational_status` from PUBLIC/anon/authenticated |
+| Defense-in-depth RLS | Branch via parent case; writes also require Multi Currency ON |
+| `link_import_fx_case_target` | Verifies PURCHASE / FX_CURRENCY_PURCHASE company + branch visibility; contacts company-scoped |
+
+Client path remains `importFxCaseService` RPCs only.
 
 ---
 
@@ -221,3 +239,4 @@ Do **not** implement without separate approval: advances, USD acquisition money,
 3. Live web UI against local requires a non-prod Supabase API stack (not started this pass).
 4. Attachment add/remove has no W1 SECURITY DEFINER RPC — direct table privileges revoked; future waves need a signed-file / controlled attach RPC before re-granting client table access.
 5. Production Supabase Storage bucket policies for Import FX paths were not verified in this localhost gate (`storage.objects` absent locally).
+6. Live browser UI vs non-production API has not been completed (app env still points at production HTTP API).
