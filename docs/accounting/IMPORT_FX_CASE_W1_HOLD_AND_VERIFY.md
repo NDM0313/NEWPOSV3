@@ -39,6 +39,7 @@ Harness: `scripts/qa/import-fx-w1-local-harness.sql` + `scripts/qa/import-fx-w1-
 12. `import-fx-w1-security-harness.sql` (localhost QA stubs only)
 13. `20260812020000_import_fx_case_read_security_hardening_w1.sql` (**fail-closed company + branch auth for reads**)
 14. `20260812030000_import_fx_case_mutation_security_parity_w1.sql` (**fail-closed company + branch auth for mutations**)
+15. `20260812040000_import_fx_case_attachment_security_w1.sql` (**attachment table privilege revoke + parent-case RLS**)
 
 ---
 
@@ -87,11 +88,42 @@ Migration: `20260812030000_import_fx_case_mutation_security_parity_w1.sql`
 | `confirm_import_fx_case_stage` | Yes | Yes | `branch_row_allowed` on case | Yes | None (ARRANGEMENT only) |
 | `cancel_import_fx_case_unposted` | Yes | Yes | `branch_row_allowed` on case | Yes | None |
 | `link_import_fx_case_target` | Yes | Yes | `branch_row_allowed` on case | Yes | None |
-| Attachment mutations | **No dedicated RPC** — table RLS company-scoped only; no W1 attach/detach RPC | — | — | — | — |
+| Attachment mutations | **No W1 RPC** — direct table privileges **revoked** from authenticated; see attachment matrix | — | — | — | — |
 
 NULL-branch **create**: allowed for company members (same as commission/payments INSERT: `branch_id IS NULL OR has_branch_access`). Privileges: revoke `PUBLIC`/`anon`; grant `authenticated` only. Helpers remain non-executable by clients.
 
 QA: `node scripts/qa/import-fx-w1-mutation-security-qa.mjs` — **22/22 PASS** (0 skipped).
+
+---
+
+## Attachment authorization matrix (PASS)
+
+Migration: `20260812040000_import_fx_case_attachment_security_w1.sql`
+
+### Pre-fix findings (localhost)
+
+| Item | Finding |
+|------|---------|
+| Grants to authenticated | SELECT, INSERT, UPDATE, DELETE |
+| Grants to PUBLIC / anon / service_role | None |
+| RLS | Enabled; single `FOR ALL` policy `company_id = get_user_company_id()` only |
+| Branch via parent case | **Missing** — restricted user could read/write attachment rows for other-branch cases in same company |
+| `storage_path` via direct SELECT | **Exposed** |
+| Storage bucket policies | **N/A on localhost** (`storage.objects` absent); production bucket policies not part of this W1 table fix |
+
+### Post-fix contract
+
+| Access path | SELECT metadata | `storage_path` | INSERT/UPDATE/DELETE |
+|-------------|-----------------|----------------|---------------------|
+| Direct table (`authenticated`) | **Denied** (privileges revoked) | Denied | **Denied** (privileges revoked) |
+| `get_import_fx_case` | Allowed after company + parent-case branch auth | **Omitted** from JSON | N/A |
+| Multi Currency OFF | Historical get still returns attachment metadata (read-only) | Omitted | Denied (no table privilege; RLS also requires MC ON if privileges restored) |
+| Cross-company / cross-branch | Denied via get / RLS parent-case helpers | — | Denied |
+| `anon` / PUBLIC | No table privilege | — | No table privilege |
+
+Defense-in-depth RLS (if privileges are ever re-granted): SELECT uses `_import_fx_case_attachment_parent_access_ok`; writes use `_import_fx_case_attachment_mutation_ok` (parent access + `multiCurrencyEnabled`); UPDATE WITH CHECK blocks moving `case_id` onto an unauthorized case.
+
+QA: `node scripts/qa/import-fx-w1-attachment-security-qa.mjs` — **18/18 required PASS** (0 skipped; plus defense-in-depth OFF RLS check).
 
 ---
 
@@ -127,7 +159,9 @@ QA: `node scripts/qa/import-fx-w1-mutation-security-qa.mjs` — **22/22 PASS** (
 
 Including OFF reject mutations, ON create/idempotency, draft/confirm/link/cancel, OFF historical list/get, cross-company blocked, zero-journal proof.
 
-### Zero-journal proof (mutation + read security suites)
+### `import-fx-w1-attachment-security-qa.mjs` — **18/18 PASS** (0 skipped)
+
+### Zero-journal proof (mutation + read + attachment security suites)
 
 ```text
 before: journal_entries=0 journal_entry_lines=0 payments=0
@@ -185,4 +219,5 @@ Do **not** implement without separate approval: advances, USD acquisition money,
 1. Full-repo `npm run migrate` against empty DB still unsuitable (bootstrap marks 02–18 without applying). Local Import FX QA uses the dedicated localhost runner above.
 2. Path 21 full JE posting needs broader ERP helpers than the W1 harness provides.
 3. Live web UI against local requires a non-prod Supabase API stack (not started this pass).
-4. Attachment add/remove has no W1 SECURITY DEFINER RPC — direct table access relies on company RLS only (no branch predicate on attachment policies).
+4. Attachment add/remove has no W1 SECURITY DEFINER RPC — direct table privileges revoked; future waves need a signed-file / controlled attach RPC before re-granting client table access.
+5. Production Supabase Storage bucket policies for Import FX paths were not verified in this localhost gate (`storage.objects` absent locally).

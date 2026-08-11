@@ -60,6 +60,7 @@ const FILES = [
   'scripts/qa/import-fx-w1-security-harness.sql',
   'migrations/20260812020000_import_fx_case_read_security_hardening_w1.sql',
   'migrations/20260812030000_import_fx_case_mutation_security_parity_w1.sql',
+  'migrations/20260812040000_import_fx_case_attachment_security_w1.sql',
 ];
 
 const client = new pg.Client({ connectionString });
