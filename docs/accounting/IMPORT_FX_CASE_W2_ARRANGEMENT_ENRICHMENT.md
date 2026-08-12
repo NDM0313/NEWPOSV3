@@ -187,7 +187,11 @@ W3 (separate approval): financial ADVANCE / USD acquisition confirm + posting. P
 
 ## 22. Commit hash and branch
 
-*(filled after push)*
+| Item | Value |
+|------|-------|
+| Branch | `feat/import-fx-w2-arrangement-enrichment` |
+| Implementation commit | `bf7973c4fa8459cb84f494daeccab04f55224fc0` |
+| Docs hash stamp commit | *(this commit, if separate)* |
 
 ---
 
