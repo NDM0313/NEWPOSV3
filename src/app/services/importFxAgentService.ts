@@ -93,6 +93,108 @@ function throwRpcFailure(row: Record<string, unknown>, fallback: string): never 
   throw new Error(formatImportFxServerError(String(row.error || row.code || fallback), fallback));
 }
 
+async function resolvePaymentReferenceNumber(
+  companyId: string,
+  paymentId: string | null | undefined,
+  fallback: string
+): Promise<string> {
+  if (fallback) return fallback;
+  const id = String(paymentId || '').trim();
+  if (!id) return '';
+  const { data } = await supabase
+    .from('payments')
+    .select('reference_number')
+    .eq('company_id', companyId)
+    .eq('id', id)
+    .maybeSingle();
+  return String((data as { reference_number?: string } | null)?.reference_number || '');
+}
+
+/** Claim client_operation_id before money write; return replay payload when already completed. */
+async function claimImportFxClientOperation(params: {
+  companyId: string;
+  eventType: 'agent_settle' | 'china_settle';
+  clientOperationId: string;
+}): Promise<
+  | { kind: 'claimed' }
+  | {
+      kind: 'replay';
+      paymentId: string;
+      journalEntryId: string;
+      referenceNumber: string;
+      status: string;
+    }
+> {
+  const { data, error } = await supabase.rpc('claim_import_fx_client_operation', {
+    p_company_id: params.companyId,
+    p_event_type: params.eventType,
+    p_client_operation_id: params.clientOperationId,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  const row = parseRpcJson(data);
+  if (row.success === false) {
+    throwRpcFailure(row, 'Import FX operation claim failed');
+  }
+  if (row.idempotent_replay === true) {
+    const result = parseRpcJson(row.result);
+    const paymentId = String(result.payment_id || row.payment_id || '');
+    const referenceNumber = await resolvePaymentReferenceNumber(
+      params.companyId,
+      paymentId,
+      String(result.reference_number || '')
+    );
+    return {
+      kind: 'replay',
+      paymentId,
+      journalEntryId: String(result.journal_entry_id || row.journal_entry_id || ''),
+      referenceNumber,
+      status: String(result.status || ''),
+    };
+  }
+  return { kind: 'claimed' };
+}
+
+async function finalizeImportFxClientOperation(params: {
+  companyId: string;
+  eventType: 'agent_settle' | 'china_settle';
+  clientOperationId: string;
+  resultJson: Record<string, unknown>;
+  fxCurrencyPurchaseId?: string | null;
+  paymentId?: string | null;
+  journalEntryId?: string | null;
+  purchaseId?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc('finalize_import_fx_client_operation', {
+    p_company_id: params.companyId,
+    p_event_type: params.eventType,
+    p_client_operation_id: params.clientOperationId,
+    p_result_json: params.resultJson,
+    p_fx_currency_purchase_id: params.fxCurrencyPurchaseId ?? null,
+    p_payment_id: params.paymentId ?? null,
+    p_journal_entry_id: params.journalEntryId ?? null,
+    p_purchase_id: params.purchaseId ?? null,
+  });
+  if (error) {
+    console.warn('[importFxAgentService] finalize client operation:', error.message);
+  }
+}
+
+/** Clear stuck pending claim after a failed money write so the same UUID can retry. */
+async function releaseImportFxClientOperation(params: {
+  companyId: string;
+  eventType: 'agent_settle' | 'china_settle';
+  clientOperationId: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc('release_import_fx_client_operation', {
+    p_company_id: params.companyId,
+    p_event_type: params.eventType,
+    p_client_operation_id: params.clientOperationId,
+  });
+  if (error) {
+    console.warn('[importFxAgentService] release client operation:', error.message);
+  }
+}
+
 /** Step 1: buy FC from agent on credit — Dr wallet / Cr Agent AP (PKR). */
 export async function recordFxCurrencyPurchaseOnCredit(
   params: RecordFxCurrencyPurchaseOnCreditParams
@@ -190,74 +292,148 @@ export async function settleFxCurrencyPurchaseWithAgent(params: {
 }> {
   await requireImportFxEnabledFromDb(params.companyId);
 
-  if (params.clientOperationId) {
-    const { data: prior } = await supabase
-      .from('import_fx_client_operations')
-      .select('result_json, payment_id, journal_entry_id')
-      .eq('company_id', params.companyId)
-      .eq('event_type', 'agent_settle')
-      .eq('client_operation_id', params.clientOperationId)
-      .maybeSingle();
-    if (prior?.result_json) {
-      const rj = parseRpcJson(prior.result_json);
-      return {
-        paymentId: String(rj.payment_id || prior.payment_id || ''),
-        journalEntryId: String(rj.journal_entry_id || prior.journal_entry_id || ''),
-        referenceNumber: String(rj.reference_number || ''),
-        status: String(rj.status || ''),
-        idempotentReplay: true,
-      };
+  let claimed = false;
+  let paymentCreated = false;
+
+  try {
+    if (params.clientOperationId) {
+      const claim = await claimImportFxClientOperation({
+        companyId: params.companyId,
+        eventType: 'agent_settle',
+        clientOperationId: params.clientOperationId,
+      });
+      if (claim.kind === 'replay') {
+        return {
+          paymentId: claim.paymentId,
+          journalEntryId: claim.journalEntryId,
+          referenceNumber: claim.referenceNumber,
+          status: claim.status,
+          idempotentReplay: true,
+        };
+      }
+      claimed = true;
     }
-  }
 
-  const { data: credit, error: creditErr } = await supabase
-    .from('fx_currency_purchases')
-    .select('id, agent_contact_id, due_amount_pkr, status')
-    .eq('id', params.fxCurrencyPurchaseId)
-    .eq('company_id', params.companyId)
-    .maybeSingle();
-  if (creditErr) throw creditErr;
-  if (!credit) throw new Error('FX currency purchase not found');
-  if (credit.status === 'void' || credit.status === 'paid') {
-    throw new Error(`Cannot settle FX credit in status ${credit.status}`);
-  }
-  const due = Number(credit.due_amount_pkr) || 0;
-  if (!(params.amountPkr > 0) || params.amountPkr > due + 0.009) {
-    throw new Error(`Settlement amount must be between 0 and due (${due})`);
-  }
+    const { data: credit, error: creditErr } = await supabase
+      .from('fx_currency_purchases')
+      .select('id, agent_contact_id, due_amount_pkr, status')
+      .eq('id', params.fxCurrencyPurchaseId)
+      .eq('company_id', params.companyId)
+      .maybeSingle();
+    if (creditErr) throw creditErr;
+    if (!credit) throw new Error('FX currency purchase not found');
+    if (credit.status === 'void' || credit.status === 'paid') {
+      throw new Error(`Cannot settle FX credit in status ${credit.status}`);
+    }
+    const due = Number(credit.due_amount_pkr) || 0;
+    if (!(params.amountPkr > 0) || params.amountPkr > due + 0.009) {
+      throw new Error(`Settlement amount must be between 0 and due (${due})`);
+    }
 
-  const pay = await createSupplierPayment({
-    companyId: params.companyId,
-    branchId: params.branchId,
-    amount: params.amountPkr,
-    paymentMethod: params.paymentMethod || 'bank_transfer',
-    paymentAccountId: params.paymentAccountId,
-    contactId: String(credit.agent_contact_id),
-    paymentDate: params.paymentDate,
-    notes: params.notes ?? 'Agent FX credit settlement (PKR)',
-    attachments: params.attachments ?? null,
-  });
+    const pay = await createSupplierPayment({
+      companyId: params.companyId,
+      branchId: params.branchId,
+      amount: params.amountPkr,
+      paymentMethod: params.paymentMethod || 'bank_transfer',
+      paymentAccountId: params.paymentAccountId,
+      contactId: String(credit.agent_contact_id),
+      paymentDate: params.paymentDate,
+      notes: params.notes ?? 'Agent FX credit settlement (PKR)',
+      attachments: params.attachments ?? null,
+    });
+    paymentCreated = true;
 
-  const { data: applyData, error: applyErr } = await supabase.rpc('apply_fx_currency_purchase_settlement', {
-    p_company_id: params.companyId,
-    p_fx_currency_purchase_id: params.fxCurrencyPurchaseId,
-    p_payment_id: pay.paymentId,
-    p_amount_pkr: params.amountPkr,
-    p_client_operation_id: params.clientOperationId ?? null,
-  });
-  if (applyErr) throw new Error(formatImportFxServerError(applyErr));
-  const applied = parseRpcJson(applyData);
-  if (applied.success === false) {
-    throwRpcFailure(applied, 'Failed to apply FX settlement allocation');
+    const { data: applyData, error: applyErr } = await supabase.rpc('apply_fx_currency_purchase_settlement', {
+      p_company_id: params.companyId,
+      p_fx_currency_purchase_id: params.fxCurrencyPurchaseId,
+      p_payment_id: pay.paymentId,
+      p_amount_pkr: params.amountPkr,
+      p_client_operation_id: params.clientOperationId ?? null,
+    });
+    if (applyErr) {
+      if (params.clientOperationId) {
+        await finalizeImportFxClientOperation({
+          companyId: params.companyId,
+          eventType: 'agent_settle',
+          clientOperationId: params.clientOperationId,
+          fxCurrencyPurchaseId: params.fxCurrencyPurchaseId,
+          paymentId: pay.paymentId,
+          journalEntryId: pay.journalEntryId,
+          resultJson: {
+            success: true,
+            pending: false,
+            payment_id: pay.paymentId,
+            journal_entry_id: pay.journalEntryId,
+            reference_number: pay.referenceNumber,
+            status: '',
+            apply_error: applyErr.message,
+          },
+        });
+      }
+      throw new Error(formatImportFxServerError(applyErr));
+    }
+    const applied = parseRpcJson(applyData);
+    if (applied.success === false) {
+      if (params.clientOperationId) {
+        await finalizeImportFxClientOperation({
+          companyId: params.companyId,
+          eventType: 'agent_settle',
+          clientOperationId: params.clientOperationId,
+          fxCurrencyPurchaseId: params.fxCurrencyPurchaseId,
+          paymentId: pay.paymentId,
+          journalEntryId: pay.journalEntryId,
+          resultJson: {
+            success: true,
+            pending: false,
+            payment_id: pay.paymentId,
+            journal_entry_id: pay.journalEntryId,
+            reference_number: pay.referenceNumber,
+            status: String(applied.status || ''),
+            apply_error: String(applied.error || applied.code || 'apply failed'),
+          },
+        });
+      }
+      throwRpcFailure(applied, 'Failed to apply FX settlement allocation');
+    }
+
+    if (params.clientOperationId) {
+      await finalizeImportFxClientOperation({
+        companyId: params.companyId,
+        eventType: 'agent_settle',
+        clientOperationId: params.clientOperationId,
+        fxCurrencyPurchaseId: params.fxCurrencyPurchaseId,
+        paymentId: pay.paymentId,
+        journalEntryId: pay.journalEntryId,
+        resultJson: {
+          success: true,
+          pending: false,
+          payment_id: pay.paymentId,
+          journal_entry_id: pay.journalEntryId,
+          reference_number: pay.referenceNumber,
+          status: String(applied.status || ''),
+          paid_amount_pkr: applied.paid_amount_pkr,
+          due_amount_pkr: applied.due_amount_pkr,
+        },
+      });
+    }
+
+    return {
+      paymentId: pay.paymentId,
+      journalEntryId: pay.journalEntryId,
+      referenceNumber: pay.referenceNumber,
+      status: String(applied.status || ''),
+      idempotentReplay: applied.idempotent_replay === true,
+    };
+  } catch (err) {
+    if (claimed && !paymentCreated && params.clientOperationId) {
+      await releaseImportFxClientOperation({
+        companyId: params.companyId,
+        eventType: 'agent_settle',
+        clientOperationId: params.clientOperationId,
+      });
+    }
+    throw err;
   }
-
-  return {
-    paymentId: pay.paymentId,
-    journalEntryId: pay.journalEntryId,
-    referenceNumber: pay.referenceNumber,
-    status: String(applied.status || ''),
-    idempotentReplay: applied.idempotent_replay === true,
-  };
 }
 
 /**
@@ -285,86 +461,97 @@ export async function settleChinaPurchaseFromWallet(params: {
 }> {
   await requireImportFxEnabledFromDb(params.companyId);
 
-  if (params.clientOperationId) {
-    const { data: prior } = await supabase
-      .from('import_fx_client_operations')
-      .select('result_json, payment_id, journal_entry_id')
+  let claimed = false;
+  let paymentCreated = false;
+
+  try {
+    if (params.clientOperationId) {
+      const claim = await claimImportFxClientOperation({
+        companyId: params.companyId,
+        eventType: 'china_settle',
+        clientOperationId: params.clientOperationId,
+      });
+      if (claim.kind === 'replay') {
+        return {
+          paymentId: claim.paymentId,
+          journalEntryId: claim.journalEntryId,
+          referenceNumber: claim.referenceNumber,
+          idempotentReplay: true,
+        };
+      }
+      claimed = true;
+    }
+
+    const { data: purchase, error: purErr } = await supabase
+      .from('purchases')
+      .select('id, supplier_id')
+      .eq('id', params.purchaseId)
       .eq('company_id', params.companyId)
-      .eq('event_type', 'china_settle')
-      .eq('client_operation_id', params.clientOperationId)
       .maybeSingle();
-    if (prior?.result_json) {
-      const rj = parseRpcJson(prior.result_json);
-      return {
-        paymentId: String(rj.payment_id || prior.payment_id || ''),
-        journalEntryId: String(rj.journal_entry_id || prior.journal_entry_id || ''),
-        referenceNumber: String(rj.reference_number || ''),
-        idempotentReplay: true,
-      };
+    if (purErr) throw purErr;
+    if (!purchase) throw new Error('Purchase not found');
+
+    const supplierId = purchase.supplier_id != null ? String(purchase.supplier_id) : '';
+    if (params.agentContactId && supplierId && params.agentContactId === supplierId) {
+      throw new Error(
+        'The money-exchange agent cannot be the same party as the purchase supplier.'
+      );
     }
-  }
 
-  const { data: purchase, error: purErr } = await supabase
-    .from('purchases')
-    .select('id, supplier_id')
-    .eq('id', params.purchaseId)
-    .eq('company_id', params.companyId)
-    .maybeSingle();
-  if (purErr) throw purErr;
-  if (!purchase) throw new Error('Purchase not found');
+    const accounts = await accountService.getAllAccounts(params.companyId);
+    const wallet = (accounts || []).find((a: { id?: string }) => a.id === params.walletAccountId) as
+      | { id: string; code?: string; name?: string }
+      | undefined;
+    if (!wallet || !isPartyTtAgentWalletAccount(wallet)) {
+      throw new Error('Payment account must be a TT-agent 12xx wallet');
+    }
 
-  const supplierId = purchase.supplier_id != null ? String(purchase.supplier_id) : '';
-  if (params.agentContactId && supplierId && params.agentContactId === supplierId) {
-    throw new Error(
-      'The money-exchange agent cannot be the same party as the purchase supplier.'
-    );
-  }
-
-  const accounts = await accountService.getAllAccounts(params.companyId);
-  const wallet = (accounts || []).find((a: { id?: string }) => a.id === params.walletAccountId) as
-    | { id: string; code?: string; name?: string }
-    | undefined;
-  if (!wallet || !isPartyTtAgentWalletAccount(wallet)) {
-    throw new Error('Payment account must be a TT-agent 12xx wallet');
-  }
-
-  const pay = await createSupplierPayment({
-    companyId: params.companyId,
-    branchId: params.branchId,
-    amount: params.amountPkr,
-    paymentMethod: params.paymentMethod || 'bank_transfer',
-    paymentAccountId: params.walletAccountId,
-    purchaseId: params.purchaseId,
-    paymentDate: params.paymentDate,
-    notes: params.notes ?? 'Supplier settle from FC wallet (PKR)',
-    attachments: params.attachments ?? null,
-  });
-
-  if (params.clientOperationId) {
-    const { error: regErr } = await supabase.rpc('register_import_fx_client_operation', {
-      p_company_id: params.companyId,
-      p_event_type: 'china_settle',
-      p_client_operation_id: params.clientOperationId,
-      p_payment_id: pay.paymentId,
-      p_journal_entry_id: pay.journalEntryId,
-      p_purchase_id: params.purchaseId,
-      p_result_json: {
-        success: true,
-        payment_id: pay.paymentId,
-        journal_entry_id: pay.journalEntryId,
-        reference_number: pay.referenceNumber,
-      },
+    const pay = await createSupplierPayment({
+      companyId: params.companyId,
+      branchId: params.branchId,
+      amount: params.amountPkr,
+      paymentMethod: params.paymentMethod || 'bank_transfer',
+      paymentAccountId: params.walletAccountId,
+      purchaseId: params.purchaseId,
+      paymentDate: params.paymentDate,
+      notes: params.notes ?? 'Supplier settle from FC wallet (PKR)',
+      attachments: params.attachments ?? null,
     });
-    if (regErr) {
-      console.warn('[importFxAgentService] china settle receipt register:', regErr.message);
-    }
-  }
+    paymentCreated = true;
 
-  return {
-    paymentId: pay.paymentId,
-    journalEntryId: pay.journalEntryId,
-    referenceNumber: pay.referenceNumber,
-  };
+    if (params.clientOperationId) {
+      await finalizeImportFxClientOperation({
+        companyId: params.companyId,
+        eventType: 'china_settle',
+        clientOperationId: params.clientOperationId,
+        paymentId: pay.paymentId,
+        journalEntryId: pay.journalEntryId,
+        purchaseId: params.purchaseId,
+        resultJson: {
+          success: true,
+          pending: false,
+          payment_id: pay.paymentId,
+          journal_entry_id: pay.journalEntryId,
+          reference_number: pay.referenceNumber,
+        },
+      });
+    }
+
+    return {
+      paymentId: pay.paymentId,
+      journalEntryId: pay.journalEntryId,
+      referenceNumber: pay.referenceNumber,
+    };
+  } catch (err) {
+    if (claimed && !paymentCreated && params.clientOperationId) {
+      await releaseImportFxClientOperation({
+        companyId: params.companyId,
+        eventType: 'china_settle',
+        clientOperationId: params.clientOperationId,
+      });
+    }
+    throw err;
+  }
 }
 
 /** Money-exchange agents only (Path 21). Supplier-only contacts are not eligible. */

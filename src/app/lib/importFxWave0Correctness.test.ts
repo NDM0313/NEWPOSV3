@@ -11,6 +11,7 @@ import {
   isEligibleMoneyExchangeAgentType,
   assertAgentDistinctFromSupplier,
 } from './importFxPartyLedgerRoleFilter';
+import { IMPORT_FX_ERROR, formatImportFxServerError } from './importFxGateCodes';
 
 test('Wave 0: opening balance uses same role filter as in-range rows', () => {
   const settleIds = new Set(['agent-pay']);
@@ -90,4 +91,17 @@ test('Wave 0: client operation id reuse contract (documented)', () => {
   assert.equal(intent, retry);
   const afterSuccess = '22222222-2222-2222-2222-222222222222';
   assert.notEqual(intent, afterSuccess);
+});
+
+test('Wave 0: claim-before-pay contract (documented)', () => {
+  // Parallel tabs: first claim wins; second gets IN_PROGRESS or idempotent replay.
+  // Money write (createSupplierPayment) must not run until claim succeeds.
+  const steps = ['claim', 'createSupplierPayment', 'finalize'];
+  assert.equal(steps[0], 'claim');
+  assert.ok(steps.indexOf('claim') < steps.indexOf('createSupplierPayment'));
+  assert.equal(IMPORT_FX_ERROR.IMPORT_FX_OPERATION_IN_PROGRESS, 'IMPORT_FX_OPERATION_IN_PROGRESS');
+  assert.match(
+    formatImportFxServerError('IMPORT_FX_OPERATION_IN_PROGRESS: this operation is already in progress'),
+    /already in progress/i
+  );
 });

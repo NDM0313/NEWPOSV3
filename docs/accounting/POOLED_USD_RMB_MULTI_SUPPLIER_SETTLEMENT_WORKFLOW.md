@@ -39,7 +39,7 @@ These are **expected separate business events**, not duplicates of each other.
 | Payments linked to multiple settlements | **0** |
 | Duplicate `(fx_currency_purchase_id, payment_id)` pairs | **0** |
 | Two JE headers for the same `reference_id` (fx credit) | **0** |
-| `client_operation_id` / Step-1 idempotency column on `fx_currency_purchases` | **Absent** |
+| `client_operation_id` / Step-1 idempotency column on `fx_currency_purchases` | **Present** (Wave 0 — UNIQUE per company when set) |
 
 ### 0.3 Case matrix (known references)
 
@@ -70,8 +70,9 @@ These are **expected separate business events**, not duplicates of each other.
 | Control | Status |
 | --- | --- |
 | UNIQUE `(fx_currency_purchase_id, payment_id)` | Present |
-| Step-1 `client_operation_id` | **Missing** — double confirm can create two credits (evidenced by JV-342/343) |
-| Wizard `submittingRef` / busy | Present (UI only; not server idempotency) |
+| Step-1 `client_operation_id` | **Present** — UNIQUE(company_id, client_operation_id) WHERE NOT NULL; RPC arg on credit |
+| Wizard `submittingRef` / busy | Present (UI only; server claim/idempotency is authoritative) |
+| Step 2/3 claim-before-pay | **Present** — `claim_import_fx_client_operation` before `createSupplierPayment`; finalize/release RPCs |
 | `(company_id, source_type, source_id, posting_type)` unique posting | **Not** enforced for Path 21 credit |
 
 ### 0.6 Forensic verdict
@@ -80,11 +81,11 @@ These are **expected separate business events**, not duplicates of each other.
 | --- | --- |
 | Active true duplicate money posting? | **No** (all audited Path 21 FX credits/payments void). |
 | Historical true double-header for one `reference_id`? | **No**. |
-| Dangerous pattern still open? | **Yes** — Step-1 lacks server idempotency; role-mixed reporting if agent≠`money_exchange` or role filter bypassed; settlement rows not auto-cleared on void. |
+| Dangerous pattern still open? | **Mitigated for Path 21** — Step-1 server idempotency + Step 2/3 claim-before-pay shipped; residual risk if agent≠`money_exchange` or role filter bypassed. |
 | Pooled-workflow implementation status | **NO-GO** until Waves approved; docs-only this task. |
 | Safest correction if live duplicate ever found | Do **not** DELETE. Void China PAY → void agent PAY → void FX credit (JE + correction_reversal pair) per Path 21 cancel order. Document only — do not execute in this task. |
 
-**Wave 0 status note:** Role guards + searchable selectors + UI submit locks + supplier/agent role filters were hotfix-scoped earlier. Step-1 **server** `client_operation_id` uniqueness remains a Wave 0 residual before trusting high-volume FC acquisition.
+**Wave 0 status note:** Role guards + searchable selectors + UI submit locks + supplier/agent role filters + Step-1 `client_operation_id` + settlement lifecycle + Step 2/3 **claim-before-pay** are implemented. Pooled Waves P1–P5 remain approval-gated.
 
 ---
 
@@ -368,7 +369,7 @@ Every future money command receives `client_operation_id` (UUID).
 | Allocation | Same FC open amount cannot be reduced twice |
 | Reversal | Compensating records only; no deletion |
 
-Path 21 residual: add Step-1 idempotency before high-volume use (Wave 0).
+Path 21 residual: Wave 0 Step-1 idempotency + Step 2/3 claim-before-pay shipped; pooled waves remain gated.
 
 ---
 
@@ -481,24 +482,25 @@ Each allocation stores frozen pool unit cost, released invoice book PKR, and `fx
 
 ### Wave 0 — Existing Path 21 duplicate/role-report hotfix
 
-**Status (2026-08-11):** Implemented on branch `fix/import-fx-wave-0-correctness`.
+**Status (2026-08-12):** Implemented on `main` (Wave 0 + claim-before-pay residual).
 
 | Item | Outcome |
 | --- | --- |
 | Step-1 `client_operation_id` | Additive column + UNIQUE(company_id, client_operation_id) WHERE NOT NULL; RPC arg `p_client_operation_id`; wizard reuses UUID on retry |
 | Step 2/3 retry | `import_fx_client_operations` receipts; apply + china register RPCs |
+| Step 2/3 claim-before-pay | `claim_import_fx_client_operation` before `createSupplierPayment`; `finalize_…` / `release_…` on success / pre-pay failure |
 | Settlement orphans | `status` active/inactive + void metadata; backfill voided PAY/credit links; payment-void trigger; active-only paid recompute |
 | Role ledgers | Opening/cards from same filtered dataset (`splitRoleFilteredApRowsByPeriod` + GL summary strip); Statement V2 supplier uses `partyRole: 'supplier'` |
 | Search | SearchableSelect already on agent/purchase/wallet/bank/credit |
-| Migration | `migrations/20260811200000_import_fx_wave0_path21_idempotency_settlement_lifecycle.sql` |
+| Migrations | `20260811200000_import_fx_wave0_path21_idempotency_settlement_lifecycle.sql`; `20260812120000_import_fx_wave0_claim_before_pay.sql` |
 
-Remaining: parallel-tab race before payment insert still possible for Step 2/3 (UI busy + receipt mitigate); Generic Account Ledger stays full-account by design.
+Remaining: Generic Account Ledger stays full-account by design; pooled Waves P1–P5 not started.
 
 - Dependencies: live Path 21  
-- Work: forensic verification; role-separated Supplier/Agent reporting; **Step-1 server idempotency**; searchable selectors; no pooled tables  
-- Risks: opening-balance skew after filter; residual settlement rows after void  
-- Tests: role filter unit tests; double-submit credit test  
-- GO/NO-GO: no active duplicate GL; Step-1 unique client op  
+- Work: forensic verification; role-separated Supplier/Agent reporting; Step-1 server idempotency; Step 2/3 claim-before-pay; searchable selectors; no pooled tables  
+- Risks: opening-balance skew after filter; residual settlement rows after void (inactive lifecycle mitigates reporting)  
+- Tests: role filter unit tests; double-submit / claim contract tests  
+- GO/NO-GO: no active duplicate GL; Step-1 unique client op; Step 2/3 claim before pay  
 - Approval: ops hotfix
 
 ### Wave P1 — Core operational persistence

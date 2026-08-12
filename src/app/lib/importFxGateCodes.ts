@@ -13,6 +13,7 @@ export const IMPORT_FX_ERROR = {
   MULTI_CURRENCY_DISABLED: 'MULTI_CURRENCY_DISABLED',
   IMPORT_FX_CURRENCY_NOT_ACTIVE: 'IMPORT_FX_CURRENCY_NOT_ACTIVE',
   MULTI_CURRENCY_DISABLE_BLOCKED: 'MULTI_CURRENCY_DISABLE_BLOCKED',
+  IMPORT_FX_OPERATION_IN_PROGRESS: 'IMPORT_FX_OPERATION_IN_PROGRESS',
 } as const;
 
 export function formatImportFxServerError(raw: unknown, fallback = 'Import FX request failed'): string {
@@ -33,6 +34,9 @@ export function formatImportFxServerError(raw: unknown, fallback = 'Import FX re
       return `Cannot disable Multi Currency: ${openMatch[1]} open/partial agent FX credit purchase(s) must be paid or voided first.`;
     }
     return 'Cannot disable Multi Currency while Import FX agent credit workflows are still open.';
+  }
+  if (msg.includes(IMPORT_FX_ERROR.IMPORT_FX_OPERATION_IN_PROGRESS)) {
+    return 'This Import FX settlement is already in progress in another tab or request. Wait for it to finish, then retry if needed.';
   }
   return msg || fallback;
 }
