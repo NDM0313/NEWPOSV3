@@ -103,6 +103,15 @@ if (
   ok('ui:indicative_rate_autofill');
 } else fail('ui:indicative_rate_autofill');
 
+if (
+  uiSrc.includes('PLANNED_CURRENCY_PURCHASE_COPY') &&
+  uiSrc.includes('syncPlannedAmounts') &&
+  uiSrc.includes('Keep in') &&
+  uiSrc.includes('Convert / settle')
+) {
+  ok('ui:planned_currency_cascade');
+} else fail('ui:planned_currency_cascade');
+
 const rateHelper = path.join(ROOT, 'src/app/lib/importFxIndicativeRates.ts');
 if (
   fs.existsSync(rateHelper) &&
@@ -112,6 +121,14 @@ if (
 ) {
   ok('file:importFxIndicativeRates_helper');
 } else fail('file:importFxIndicativeRates_helper');
+
+const amountSync = path.join(ROOT, 'src/app/lib/importFxPlannedAmountSync.ts');
+if (
+  fs.existsSync(amountSync) &&
+  fs.readFileSync(amountSync, 'utf8').includes('What are you purchasing?')
+) {
+  ok('file:importFxPlannedAmountSync_helper');
+} else fail('file:importFxPlannedAmountSync_helper');
 
 if (uiSrc.includes('confirmClientOpRef') || uiSrc.includes('confirmClientOp')) {
   ok('ui:confirm_op_retry_ref');

@@ -22,6 +22,7 @@ import { Textarea } from '@/app/components/ui/textarea';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import {
+  normalizeImportDocCurrency,
   resolveActiveImportCurrencies,
   type ImportDocCurrency,
 } from '@/app/lib/importFxHelpers';
@@ -33,6 +34,14 @@ import {
   rateToInputString,
   type IndicativeRateBundle,
 } from '@/app/lib/importFxIndicativeRates';
+import {
+  PLANNED_CURRENCY_NO_CONVERT_COPY,
+  PLANNED_CURRENCY_PURCHASE_COPY,
+  PLANNED_CURRENCY_SETTLE_COPY,
+  pickSyncedAmountsToApply,
+  syncPlannedAmounts,
+  type PlannedAmountDriver,
+} from '@/app/lib/importFxPlannedAmountSync';
 import { formatImportFxServerError } from '@/app/lib/importFxServerGate';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import {
@@ -189,6 +198,10 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const [lastIndicativeQuote, setLastIndicativeQuote] = useState<IndicativeRateBundle | null>(
     null
   );
+  const [amountDriver, setAmountDriver] = useState<PlannedAmountDriver>('usd');
+  const [amountDirtyUsd, setAmountDirtyUsd] = useState(false);
+  const [amountDirtyCny, setAmountDirtyCny] = useState(false);
+  const [amountDirtyPkr, setAmountDirtyPkr] = useState(false);
 
   const createClientOpRef = useRef<string | null>(null);
   const confirmClientOpRef = useRef<string | null>(null);
@@ -255,6 +268,70 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
       : 'Indicative PKR per USD';
   const basePerCnyLabel = formatIndicativeRateLabel(companyBaseCurrency, 'CNY');
   const showBasePerCnyField = companyBaseCurrency !== 'CNY';
+  const purchaseLeg: 'USD' | 'CNY' =
+    normalizeImportDocCurrency(String(plannedCurrency)) === 'CNY' ? 'CNY' : 'USD';
+  const settlementNorm = normalizeImportDocCurrency(String(plannedSettlementCurrency));
+  const settleSameAsPurchase = settlementNorm === purchaseLeg;
+
+  const runAmountSync = useCallback(
+    (opts: {
+      driver: PlannedAmountDriver;
+      forceReplace: boolean;
+      plannedUsd?: string;
+      expectedCny?: string;
+      advancePkr?: string;
+      pkrPerUsd?: string;
+      cnyPerUsd?: string;
+      pkrPerCny?: string;
+      sourceCurrency?: string;
+      settlementCurrency?: string;
+    }) => {
+      const sync = syncPlannedAmounts({
+        sourceCurrency: opts.sourceCurrency ?? String(plannedCurrency),
+        settlementCurrency: opts.settlementCurrency ?? String(plannedSettlementCurrency),
+        driver: opts.driver,
+        plannedUsd: numOrNull(opts.plannedUsd ?? plannedUsd),
+        expectedCny: numOrNull(opts.expectedCny ?? expectedCny),
+        advancePkr: numOrNull(opts.advancePkr ?? expectedAdvanceAmountPkr),
+        pkrPerUsd: numOrNull(opts.pkrPerUsd ?? expectedPkrPerUsd),
+        cnyPerUsd: numOrNull(opts.cnyPerUsd ?? expectedCnyPerUsd),
+        pkrPerCny: numOrNull(opts.pkrPerCny ?? indicativeBasePerCny),
+      });
+      const picked = pickSyncedAmountsToApply({
+        sync,
+        driver: opts.driver,
+        dirtyUsd: amountDirtyUsd,
+        dirtyCny: amountDirtyCny,
+        dirtyPkr: amountDirtyPkr,
+        forceReplace: opts.forceReplace,
+      });
+      if (picked.plannedUsd != null) {
+        setPlannedUsd(picked.plannedUsd);
+        if (opts.forceReplace) setAmountDirtyUsd(false);
+      }
+      if (picked.expectedCny != null) {
+        setExpectedCny(picked.expectedCny);
+        if (opts.forceReplace) setAmountDirtyCny(false);
+      }
+      if (picked.advancePkr != null) {
+        setExpectedAdvanceAmountPkr(picked.advancePkr);
+        if (opts.forceReplace) setAmountDirtyPkr(false);
+      }
+    },
+    [
+      amountDirtyCny,
+      amountDirtyPkr,
+      amountDirtyUsd,
+      expectedAdvanceAmountPkr,
+      expectedCny,
+      expectedCnyPerUsd,
+      expectedPkrPerUsd,
+      indicativeBasePerCny,
+      plannedCurrency,
+      plannedSettlementCurrency,
+      plannedUsd,
+    ]
+  );
 
   const applyIndicativeBundle = useCallback(
     (bundle: IndicativeRateBundle, forceReplace: boolean) => {
@@ -268,6 +345,12 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         currentCnyPerUsd: expectedCnyPerUsd,
         currentBasePerCny: indicativeBasePerCny,
       });
+      const nextPkr = picked.pkrPerUsd ?? expectedPkrPerUsd;
+      const nextCny = picked.cnyPerUsd ?? expectedCnyPerUsd;
+      const nextBase =
+        picked.basePerCny != null && showBasePerCnyField
+          ? picked.basePerCny
+          : indicativeBasePerCny;
       if (picked.pkrPerUsd != null) {
         setExpectedPkrPerUsd(picked.pkrPerUsd);
         if (forceReplace) setRateDirtyPkrPerUsd(false);
@@ -281,14 +364,23 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         if (forceReplace) setRateDirtyBasePerCny(false);
       }
       setLastIndicativeQuote(bundle);
+      runAmountSync({
+        driver: amountDriver,
+        forceReplace,
+        pkrPerUsd: nextPkr,
+        cnyPerUsd: nextCny,
+        pkrPerCny: nextBase,
+      });
     },
     [
+      amountDriver,
       expectedCnyPerUsd,
       expectedPkrPerUsd,
       indicativeBasePerCny,
       rateDirtyBasePerCny,
       rateDirtyCnyPerUsd,
       rateDirtyPkrPerUsd,
+      runAmountSync,
       showBasePerCnyField,
     ]
   );
@@ -467,6 +559,14 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setRateDirtyCnyPerUsd(false);
     setRateDirtyBasePerCny(false);
     setLastIndicativeQuote(null);
+    setAmountDriver(
+      normalizeImportDocCurrency(detailCase.planned_source_currency || 'USD') === 'CNY'
+        ? 'cny'
+        : 'usd'
+    );
+    setAmountDirtyUsd(false);
+    setAmountDirtyCny(false);
+    setAmountDirtyPkr(false);
     setFormErrors([]);
   };
 
@@ -504,6 +604,10 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setRateDirtyCnyPerUsd(false);
     setRateDirtyBasePerCny(false);
     setLastIndicativeQuote(null);
+    setAmountDriver('usd');
+    setAmountDirtyUsd(false);
+    setAmountDirtyCny(false);
+    setAmountDirtyPkr(false);
     setFormErrors([]);
     createClientOpRef.current = null;
     confirmClientOpRef.current = null;
@@ -1070,166 +1174,335 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                       title="3. Planned Currency"
                       hint="Expected amounts and indicative rates. Not financially posted."
                     >
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1 min-w-0">
-                          <Label>Planned source currency</Label>
-                          <Select
-                            value={String(plannedCurrency)}
-                            onValueChange={setPlannedCurrency}
-                            disabled={fieldsLocked}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {activeCurrencies.map((c) => (
-                                <SelectItem key={c.code} value={c.code}>
-                                  {c.label || c.code}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1 min-w-0">
-                          <Label>Planned settlement currency</Label>
-                          <Select
-                            value={String(plannedSettlementCurrency)}
-                            onValueChange={setPlannedSettlementCurrency}
-                            disabled={fieldsLocked}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {activeCurrencies.map((c) => (
-                                <SelectItem key={c.code} value={c.code}>
-                                  {c.label || c.code}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1 min-w-0">
-                          <Label>Expected USD amount</Label>
-                          <Input
-                            value={plannedUsd}
-                            onChange={(e) => setPlannedUsd(e.target.value)}
-                            disabled={fieldsLocked}
-                            readOnly={fieldsLocked}
-                            inputMode="decimal"
-                          />
-                        </div>
-                        <div className="space-y-1 min-w-0">
-                          <Label>Expected CNY amount</Label>
-                          <Input
-                            value={expectedCny}
-                            onChange={(e) => setExpectedCny(e.target.value)}
-                            disabled={fieldsLocked}
-                            readOnly={fieldsLocked}
-                            inputMode="decimal"
-                          />
-                        </div>
-                        <div className="space-y-1 min-w-0 sm:col-span-2 flex flex-wrap items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={fieldsLocked || ratesLoading || readOnly}
-                            onClick={() => void refreshIndicativeRates({ forceReplace: true })}
-                          >
-                            {ratesLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-4 w-4" />
-                            )}
-                            Refresh indicative rates
-                          </Button>
-                          <p className="text-[11px] text-muted-foreground">
-                            {INDICATIVE_RATE_HELPER_COPY} Quoted vs company base{' '}
-                            {companyBaseCurrency || 'PKR'}.
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            {PLANNED_CURRENCY_PURCHASE_COPY}
                           </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {(
+                              [
+                                {
+                                  code: 'USD' as const,
+                                  label: 'US Dollar',
+                                  hint: 'Purchasing USD (planning)',
+                                },
+                                {
+                                  code: 'CNY' as const,
+                                  label: 'RMB (CNY)',
+                                  hint: 'Purchasing RMB (planning)',
+                                },
+                              ] as const
+                            ).map((opt) => (
+                              <button
+                                key={opt.code}
+                                type="button"
+                                disabled={fieldsLocked}
+                                onClick={() => {
+                                  const prevPurchase = purchaseLeg;
+                                  setPlannedCurrency(opt.code);
+                                  setAmountDriver(opt.code === 'CNY' ? 'cny' : 'usd');
+                                  if (settlementNorm === prevPurchase) {
+                                    setPlannedSettlementCurrency(opt.code);
+                                  }
+                                }}
+                                className={cn(
+                                  'rounded-lg border px-3 py-2.5 text-left min-w-0',
+                                  purchaseLeg === opt.code
+                                    ? 'border-orange-600 bg-orange-500/10'
+                                    : 'border-border bg-background'
+                                )}
+                              >
+                                <div className="text-sm font-medium">{opt.label}</div>
+                                <div className="text-[11px] text-muted-foreground">{opt.hint}</div>
+                              </button>
+                            ))}
+                          </div>
                         </div>
+
                         <div className="space-y-1 min-w-0">
-                          <Label>{pkrPerUsdLabel}</Label>
+                          <Label>
+                            {purchaseLeg === 'CNY' ? 'Expected CNY amount' : 'Expected USD amount'}
+                          </Label>
                           <Input
-                            value={expectedPkrPerUsd}
+                            value={purchaseLeg === 'CNY' ? expectedCny : plannedUsd}
                             onChange={(e) => {
-                              setExpectedPkrPerUsd(e.target.value);
-                              setRateDirtyPkrPerUsd(true);
+                              const v = e.target.value;
+                              if (purchaseLeg === 'CNY') {
+                                setExpectedCny(v);
+                                setAmountDirtyCny(true);
+                                setAmountDriver('cny');
+                                runAmountSync({
+                                  driver: 'cny',
+                                  forceReplace: false,
+                                  expectedCny: v,
+                                  sourceCurrency: 'CNY',
+                                });
+                              } else {
+                                setPlannedUsd(v);
+                                setAmountDirtyUsd(true);
+                                setAmountDriver('usd');
+                                runAmountSync({
+                                  driver: 'usd',
+                                  forceReplace: false,
+                                  plannedUsd: v,
+                                  sourceCurrency: 'USD',
+                                });
+                              }
                             }}
                             disabled={fieldsLocked}
                             readOnly={fieldsLocked}
                             inputMode="decimal"
                           />
-                          <p className="text-[11px] text-muted-foreground">
-                            {INDICATIVE_RATE_HELPER_COPY}
-                          </p>
                         </div>
-                        {showBasePerCnyField && (
+
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={fieldsLocked || ratesLoading || readOnly}
+                              onClick={() => void refreshIndicativeRates({ forceReplace: true })}
+                            >
+                              {ratesLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                              Refresh indicative rates
+                            </Button>
+                            <p className="text-[11px] text-muted-foreground">
+                              {INDICATIVE_RATE_HELPER_COPY} Quoted vs company base{' '}
+                              {companyBaseCurrency || 'PKR'}.
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1 min-w-0">
+                              <Label>{pkrPerUsdLabel}</Label>
+                              <Input
+                                value={expectedPkrPerUsd}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setExpectedPkrPerUsd(v);
+                                  setRateDirtyPkrPerUsd(true);
+                                  runAmountSync({
+                                    driver: amountDriver,
+                                    forceReplace: false,
+                                    pkrPerUsd: v,
+                                  });
+                                }}
+                                disabled={fieldsLocked}
+                                readOnly={fieldsLocked}
+                                inputMode="decimal"
+                              />
+                              <p className="text-[11px] text-muted-foreground">
+                                {INDICATIVE_RATE_HELPER_COPY}
+                              </p>
+                            </div>
+                            {showBasePerCnyField && (
+                              <div className="space-y-1 min-w-0">
+                                <Label>{basePerCnyLabel}</Label>
+                                <Input
+                                  value={indicativeBasePerCny}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setIndicativeBasePerCny(v);
+                                    setRateDirtyBasePerCny(true);
+                                    runAmountSync({
+                                      driver: amountDriver,
+                                      forceReplace: false,
+                                      pkrPerCny: v,
+                                    });
+                                  }}
+                                  disabled={fieldsLocked}
+                                  readOnly={fieldsLocked}
+                                  inputMode="decimal"
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                  Display only for planning — not stored separately from W2 rate
+                                  columns.
+                                </p>
+                              </div>
+                            )}
+                            <div className="space-y-1 min-w-0">
+                              <Label>Indicative CNY per USD</Label>
+                              <Input
+                                value={expectedCnyPerUsd}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setExpectedCnyPerUsd(v);
+                                  setRateDirtyCnyPerUsd(true);
+                                  runAmountSync({
+                                    driver: amountDriver,
+                                    forceReplace: false,
+                                    cnyPerUsd: v,
+                                  });
+                                }}
+                                disabled={fieldsLocked}
+                                readOnly={fieldsLocked}
+                                inputMode="decimal"
+                              />
+                              <p className="text-[11px] text-muted-foreground">
+                                {INDICATIVE_RATE_HELPER_COPY}
+                              </p>
+                            </div>
+                          </div>
+                          {lastIndicativeQuote && (
+                            <div className="text-[11px] text-muted-foreground">
+                              Last online quote ({lastIndicativeQuote.baseCurrency}):{' '}
+                              {rateToInputString(lastIndicativeQuote.basePerUsd) || '—'} per USD
+                              {lastIndicativeQuote.basePerCny != null
+                                ? ` · ${rateToInputString(lastIndicativeQuote.basePerCny)} per CNY`
+                                : ''}
+                              {lastIndicativeQuote.cnyPerUsd != null
+                                ? ` · ${rateToInputString(lastIndicativeQuote.cnyPerUsd)} CNY/USD`
+                                : ''}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            {PLANNED_CURRENCY_SETTLE_COPY}
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              disabled={fieldsLocked}
+                              onClick={() => setPlannedSettlementCurrency(purchaseLeg)}
+                              className={cn(
+                                'rounded-lg border px-3 py-2.5 text-left min-w-0',
+                                settleSameAsPurchase
+                                  ? 'border-orange-600 bg-orange-500/10'
+                                  : 'border-border bg-background'
+                              )}
+                            >
+                              <div className="text-sm font-medium">Keep in {purchaseLeg}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {PLANNED_CURRENCY_NO_CONVERT_COPY}
+                              </div>
+                            </button>
+                            {(['USD', 'CNY'] as const)
+                              .filter((code) => code !== purchaseLeg)
+                              .map((code) => {
+                                const meta = activeCurrencies.find((c) => c.code === code);
+                                const label =
+                                  code === 'CNY'
+                                    ? meta?.label || 'RMB (CNY)'
+                                    : meta?.label || 'US Dollar';
+                                return (
+                                  <button
+                                    key={code}
+                                    type="button"
+                                    disabled={fieldsLocked}
+                                    onClick={() => {
+                                      setPlannedSettlementCurrency(code);
+                                      runAmountSync({
+                                        driver: amountDriver,
+                                        forceReplace: false,
+                                        settlementCurrency: code,
+                                      });
+                                    }}
+                                    className={cn(
+                                      'rounded-lg border px-3 py-2.5 text-left min-w-0',
+                                      settlementNorm === code
+                                        ? 'border-orange-600 bg-orange-500/10'
+                                        : 'border-border bg-background'
+                                    )}
+                                  >
+                                    <div className="text-sm font-medium">{label}</div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                      Convert / settle (planning)
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        {settleSameAsPurchase ? (
+                          <p className="text-xs text-muted-foreground">
+                            {PLANNED_CURRENCY_NO_CONVERT_COPY}
+                          </p>
+                        ) : (
                           <div className="space-y-1 min-w-0">
-                            <Label>{basePerCnyLabel}</Label>
+                            <Label>
+                              {settlementNorm === 'CNY'
+                                ? 'Expected CNY amount'
+                                : 'Expected USD amount'}
+                            </Label>
                             <Input
-                              value={indicativeBasePerCny}
+                              value={settlementNorm === 'CNY' ? expectedCny : plannedUsd}
                               onChange={(e) => {
-                                setIndicativeBasePerCny(e.target.value);
-                                setRateDirtyBasePerCny(true);
+                                const v = e.target.value;
+                                if (settlementNorm === 'CNY') {
+                                  setExpectedCny(v);
+                                  setAmountDirtyCny(true);
+                                  setAmountDriver('cny');
+                                  runAmountSync({
+                                    driver: 'cny',
+                                    forceReplace: false,
+                                    expectedCny: v,
+                                    settlementCurrency: 'CNY',
+                                  });
+                                } else {
+                                  setPlannedUsd(v);
+                                  setAmountDirtyUsd(true);
+                                  setAmountDriver('usd');
+                                  runAmountSync({
+                                    driver: 'usd',
+                                    forceReplace: false,
+                                    plannedUsd: v,
+                                    settlementCurrency: settlementNorm || 'USD',
+                                  });
+                                }
                               }}
                               disabled={fieldsLocked}
                               readOnly={fieldsLocked}
                               inputMode="decimal"
                             />
                             <p className="text-[11px] text-muted-foreground">
-                              Display only for planning — not stored separately from W2 rate columns.
+                              Auto-filled from purchase amount × indicative rates. You can change
+                              it.
                             </p>
                           </div>
                         )}
-                        <div className="space-y-1 min-w-0">
-                          <Label>Indicative CNY per USD</Label>
-                          <Input
-                            value={expectedCnyPerUsd}
-                            onChange={(e) => {
-                              setExpectedCnyPerUsd(e.target.value);
-                              setRateDirtyCnyPerUsd(true);
-                            }}
-                            disabled={fieldsLocked}
-                            readOnly={fieldsLocked}
-                            inputMode="decimal"
-                          />
-                          <p className="text-[11px] text-muted-foreground">
-                            {INDICATIVE_RATE_HELPER_COPY}
-                          </p>
-                        </div>
-                        {lastIndicativeQuote && (
-                          <div className="sm:col-span-2 text-[11px] text-muted-foreground">
-                            Last online quote ({lastIndicativeQuote.baseCurrency}):{' '}
-                            {rateToInputString(lastIndicativeQuote.basePerUsd) || '—'} per USD
-                            {lastIndicativeQuote.basePerCny != null
-                              ? ` · ${rateToInputString(lastIndicativeQuote.basePerCny)} per CNY`
-                              : ''}
-                            {lastIndicativeQuote.cnyPerUsd != null
-                              ? ` · ${rateToInputString(lastIndicativeQuote.cnyPerUsd)} CNY/USD`
-                              : ''}
+
+                        <div className="grid grid-cols-1 gap-3">
+                          <div className="space-y-1 min-w-0">
+                            <Label>Expected fees (PKR) — not financially posted</Label>
+                            <Input
+                              value={expectedFees}
+                              onChange={(e) => setExpectedFees(e.target.value)}
+                              disabled={fieldsLocked}
+                              readOnly={fieldsLocked}
+                              inputMode="decimal"
+                            />
                           </div>
-                        )}
-                        <div className="space-y-1 sm:col-span-2 min-w-0">
-                          <Label>Expected fees (PKR) — not financially posted</Label>
-                          <Input
-                            value={expectedFees}
-                            onChange={(e) => setExpectedFees(e.target.value)}
-                            disabled={fieldsLocked}
-                            readOnly={fieldsLocked}
-                            inputMode="decimal"
-                          />
-                        </div>
-                        <div className="space-y-1 sm:col-span-2 min-w-0">
-                          <Label>Planned advance amount (PKR) — not financially posted</Label>
-                          <Input
-                            value={expectedAdvanceAmountPkr}
-                            onChange={(e) => setExpectedAdvanceAmountPkr(e.target.value)}
-                            disabled={fieldsLocked}
-                            readOnly={fieldsLocked}
-                            inputMode="decimal"
-                          />
+                          <div className="space-y-1 min-w-0">
+                            <Label>Planned advance amount (PKR) — not financially posted</Label>
+                            <Input
+                              value={expectedAdvanceAmountPkr}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setExpectedAdvanceAmountPkr(v);
+                                setAmountDirtyPkr(true);
+                                setAmountDriver('pkr');
+                                runAmountSync({
+                                  driver: 'pkr',
+                                  forceReplace: false,
+                                  advancePkr: v,
+                                });
+                              }}
+                              disabled={fieldsLocked}
+                              readOnly={fieldsLocked}
+                              inputMode="decimal"
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                              Enter PKR outlay to reverse-calc USD/CNY from indicative rates.
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </ArrangementSectionCard>

@@ -21,7 +21,7 @@ Deepen the Import FX Case **ARRANGEMENT** stage so operators can capture multi-d
 - Searchable third-party selector (other `money_exchange` contacts ≠ agent)  
 - `funding_mode`: `ADVANCE` | `CREDIT` | `MIXED` (intention only)  
 - Planned source + settlement currencies (RMB→CNY)  
-- Expected USD/CNY amounts, indicative rates (online auto-pick vs company base; manually overridable; not financially posted), expected dates, planned advance PKR amount  
+- Expected USD/CNY amounts, indicative rates (online auto-pick vs company base; purchase→convert cascade; manually overridable; not financially posted), expected dates, planned advance PKR amount  
 - Agent/quote reference + notes  
 - Planning links (purchase/supplier) — context only  
 - Attachment **metadata only**  
@@ -104,10 +104,15 @@ All mutations: `posts_journal: false`.
 
 1. **Parties** — Money Exchange Agent; optional third party (other `money_exchange` only; cannot equal agent). Arrangement type (intention).
 2. **Funding Intention** — Advance planned / Credit planned / Mixed planned. Intention only; not financially posted.
-3. **Planned Currency** — source, settlement, expected USD, expected CNY, indicative rates quoted against **`companies.currency`** (company base), expected fees, planned advance PKR.
-   - Online indicative rates auto-fill from `open.er-api.com` (no API key) when rate fields are empty; **Refresh indicative rates** force-replaces (dirty fields are otherwise preserved).
-   - Stored planning columns remain `expected_pkr_per_usd` and `expected_cny_per_usd`. UI also shows base-relative labels (e.g. Indicative PKR per USD / Indicative PKR per CNY when base is PKR).
-   - Helper copy: `Online indicative rate — not financially posted. You can change it.` Manual override always allowed. **Not financially posted** (W2 contract unchanged).
+3. **Planned Currency** — sequential cascade (planning only):
+   1. **What are you purchasing?** USD or RMB (CNY) → `planned_source_currency`
+   2. Enter purchase amount → `planned_usd_amount` or `expected_cny_amount`
+   3. Online indicative rates auto-fill / refresh (quoted vs `companies.currency`); manual override
+   4. **Convert / settle into?** Keep purchase currency or the other (USD↔CNY) → `planned_settlement_currency`
+   5. Expected settlement amount auto-fills from amount × rates (editable)
+   6. **Planned advance amount (PKR)** reverse-calcs USD/CNY when edited (last-edited amount is driver; dirty fields preserved)
+   - Stored columns unchanged. Helper: `importFxPlannedAmountSync`. **Not financially posted.**
+   - Online rates: `open.er-api.com`; copy: `Online indicative rate — not financially posted. You can change it.`
 4. **Expected Schedule** — arrangement date, advance date, USD acquisition date, expected completion date.
 5. **References** — agent/quote reference, notes, purchase/supplier planning links, attachment metadata/reference (no binary upload).
 
