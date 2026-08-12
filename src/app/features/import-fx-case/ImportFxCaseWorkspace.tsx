@@ -25,7 +25,16 @@ import {
   resolveActiveImportCurrencies,
   type ImportDocCurrency,
 } from '@/app/lib/importFxHelpers';
+import {
+  INDICATIVE_RATE_HELPER_COPY,
+  fetchIndicativeRates,
+  formatIndicativeRateLabel,
+  pickIndicativeFieldsToApply,
+  rateToInputString,
+  type IndicativeRateBundle,
+} from '@/app/lib/importFxIndicativeRates';
 import { formatImportFxServerError } from '@/app/lib/importFxServerGate';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import {
   canEditArrangementType,
   isMoneyStageBlockedInW2,
@@ -109,6 +118,7 @@ function numOrNull(raw: string): number | null {
 export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const { companyId, branchId, user } = useSupabase();
   const { accountingSettings } = useSettings();
+  const { currency: companyBaseCurrency } = useFormatCurrency();
   const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
   const readOnly = !multiCurrencyEnabled;
   const activeCurrencies = useMemo(
@@ -157,6 +167,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const [plannedUsd, setPlannedUsd] = useState('');
   const [expectedPkrPerUsd, setExpectedPkrPerUsd] = useState('');
   const [expectedCnyPerUsd, setExpectedCnyPerUsd] = useState('');
+  const [indicativeBasePerCny, setIndicativeBasePerCny] = useState('');
   const [expectedCny, setExpectedCny] = useState('');
   const [expectedFees, setExpectedFees] = useState('');
   const [expectedArrangementDate, setExpectedArrangementDate] = useState('');
@@ -171,9 +182,18 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const [linkPurchaseId, setLinkPurchaseId] = useState('');
   const [attachmentFileName, setAttachmentFileName] = useState('');
 
+  const [rateDirtyPkrPerUsd, setRateDirtyPkrPerUsd] = useState(false);
+  const [rateDirtyCnyPerUsd, setRateDirtyCnyPerUsd] = useState(false);
+  const [rateDirtyBasePerCny, setRateDirtyBasePerCny] = useState(false);
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const [lastIndicativeQuote, setLastIndicativeQuote] = useState<IndicativeRateBundle | null>(
+    null
+  );
+
   const createClientOpRef = useRef<string | null>(null);
   const confirmClientOpRef = useRef<string | null>(null);
   const attachmentClientOpRef = useRef<string | null>(null);
+  const ratesFetchGenRef = useRef(0);
 
   const thirdPartyOptions = useMemo(
     () => thirdPartyOptionsExcludingAgent(agentOptions, agentId),
@@ -228,6 +248,104 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const fieldsLocked = actions.fieldsLocked;
   const agentName =
     agentOptions.find((a) => a.id === (agentId || caseRow?.agent_contact_id || ''))?.name || null;
+
+  const pkrPerUsdLabel =
+    companyBaseCurrency === 'PKR'
+      ? formatIndicativeRateLabel(companyBaseCurrency, 'USD')
+      : 'Indicative PKR per USD';
+  const basePerCnyLabel = formatIndicativeRateLabel(companyBaseCurrency, 'CNY');
+  const showBasePerCnyField = companyBaseCurrency !== 'CNY';
+
+  const applyIndicativeBundle = useCallback(
+    (bundle: IndicativeRateBundle, forceReplace: boolean) => {
+      const picked = pickIndicativeFieldsToApply({
+        bundle,
+        dirtyPkrPerUsd: rateDirtyPkrPerUsd,
+        dirtyCnyPerUsd: rateDirtyCnyPerUsd,
+        dirtyBasePerCny: rateDirtyBasePerCny,
+        forceReplace,
+        currentPkrPerUsd: expectedPkrPerUsd,
+        currentCnyPerUsd: expectedCnyPerUsd,
+        currentBasePerCny: indicativeBasePerCny,
+      });
+      if (picked.pkrPerUsd != null) {
+        setExpectedPkrPerUsd(picked.pkrPerUsd);
+        if (forceReplace) setRateDirtyPkrPerUsd(false);
+      }
+      if (picked.cnyPerUsd != null) {
+        setExpectedCnyPerUsd(picked.cnyPerUsd);
+        if (forceReplace) setRateDirtyCnyPerUsd(false);
+      }
+      if (picked.basePerCny != null && showBasePerCnyField) {
+        setIndicativeBasePerCny(picked.basePerCny);
+        if (forceReplace) setRateDirtyBasePerCny(false);
+      }
+      setLastIndicativeQuote(bundle);
+    },
+    [
+      expectedCnyPerUsd,
+      expectedPkrPerUsd,
+      indicativeBasePerCny,
+      rateDirtyBasePerCny,
+      rateDirtyCnyPerUsd,
+      rateDirtyPkrPerUsd,
+      showBasePerCnyField,
+    ]
+  );
+
+  const refreshIndicativeRates = useCallback(
+    async (opts?: { forceReplace?: boolean; silent?: boolean }) => {
+      if (fieldsLocked || readOnly) return;
+      const forceReplace = opts?.forceReplace === true;
+      const silent = opts?.silent === true;
+      const gen = ++ratesFetchGenRef.current;
+      setRatesLoading(true);
+      try {
+        const bundle = await fetchIndicativeRates({
+          baseCurrency: companyBaseCurrency || 'PKR',
+          symbols: [String(plannedCurrency), String(plannedSettlementCurrency), 'USD', 'CNY'],
+        });
+        if (gen !== ratesFetchGenRef.current) return;
+        applyIndicativeBundle(bundle, forceReplace);
+        if (!silent) {
+          toast.success('Indicative rates updated — not financially posted');
+        }
+      } catch (e) {
+        if (gen !== ratesFetchGenRef.current) return;
+        const msg = e instanceof Error ? e.message : 'Indicative rate request failed';
+        if (!silent) toast.error(msg);
+      } finally {
+        if (gen === ratesFetchGenRef.current) setRatesLoading(false);
+      }
+    },
+    [
+      applyIndicativeBundle,
+      companyBaseCurrency,
+      fieldsLocked,
+      plannedCurrency,
+      plannedSettlementCurrency,
+      readOnly,
+    ]
+  );
+
+  useEffect(() => {
+    if (!open || fieldsLocked || readOnly) return;
+    const needsSoftFill =
+      !String(expectedPkrPerUsd).trim() ||
+      !String(expectedCnyPerUsd).trim() ||
+      (showBasePerCnyField && !String(indicativeBasePerCny).trim());
+    if (!needsSoftFill) return;
+    void refreshIndicativeRates({ forceReplace: false, silent: true });
+    // Soft-fill once when currencies / workspace open with empty rate fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: currency keys + open/lock only
+  }, [
+    open,
+    fieldsLocked,
+    readOnly,
+    companyBaseCurrency,
+    plannedCurrency,
+    plannedSettlementCurrency,
+  ]);
 
   const loadContacts = useCallback(async () => {
     if (!companyId) return;
@@ -327,6 +445,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setExpectedCnyPerUsd(
       detailCase.expected_cny_per_usd != null ? String(detailCase.expected_cny_per_usd) : ''
     );
+    setIndicativeBasePerCny('');
     setExpectedCny(
       detailCase.expected_cny_amount != null ? String(detailCase.expected_cny_amount) : ''
     );
@@ -344,6 +463,10 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setExpectedDate(detailCase.expected_completion_date || '');
     setAgentReference(detailCase.agent_reference || '');
     setNotes(detailCase.notes || '');
+    setRateDirtyPkrPerUsd(false);
+    setRateDirtyCnyPerUsd(false);
+    setRateDirtyBasePerCny(false);
+    setLastIndicativeQuote(null);
     setFormErrors([]);
   };
 
@@ -364,6 +487,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setPlannedUsd('');
     setExpectedPkrPerUsd('');
     setExpectedCnyPerUsd('');
+    setIndicativeBasePerCny('');
     setExpectedCny('');
     setExpectedFees('');
     setExpectedArrangementDate('');
@@ -376,6 +500,10 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setLinkSupplierId('');
     setLinkPurchaseId('');
     setAttachmentFileName('');
+    setRateDirtyPkrPerUsd(false);
+    setRateDirtyCnyPerUsd(false);
+    setRateDirtyBasePerCny(false);
+    setLastIndicativeQuote(null);
     setFormErrors([]);
     createClientOpRef.current = null;
     confirmClientOpRef.current = null;
@@ -1001,26 +1129,88 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                             inputMode="decimal"
                           />
                         </div>
+                        <div className="space-y-1 min-w-0 sm:col-span-2 flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={fieldsLocked || ratesLoading || readOnly}
+                            onClick={() => void refreshIndicativeRates({ forceReplace: true })}
+                          >
+                            {ratesLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4" />
+                            )}
+                            Refresh indicative rates
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground">
+                            {INDICATIVE_RATE_HELPER_COPY} Quoted vs company base{' '}
+                            {companyBaseCurrency || 'PKR'}.
+                          </p>
+                        </div>
                         <div className="space-y-1 min-w-0">
-                          <Label>Indicative PKR per USD</Label>
+                          <Label>{pkrPerUsdLabel}</Label>
                           <Input
                             value={expectedPkrPerUsd}
-                            onChange={(e) => setExpectedPkrPerUsd(e.target.value)}
+                            onChange={(e) => {
+                              setExpectedPkrPerUsd(e.target.value);
+                              setRateDirtyPkrPerUsd(true);
+                            }}
                             disabled={fieldsLocked}
                             readOnly={fieldsLocked}
                             inputMode="decimal"
                           />
+                          <p className="text-[11px] text-muted-foreground">
+                            {INDICATIVE_RATE_HELPER_COPY}
+                          </p>
                         </div>
+                        {showBasePerCnyField && (
+                          <div className="space-y-1 min-w-0">
+                            <Label>{basePerCnyLabel}</Label>
+                            <Input
+                              value={indicativeBasePerCny}
+                              onChange={(e) => {
+                                setIndicativeBasePerCny(e.target.value);
+                                setRateDirtyBasePerCny(true);
+                              }}
+                              disabled={fieldsLocked}
+                              readOnly={fieldsLocked}
+                              inputMode="decimal"
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                              Display only for planning — not stored separately from W2 rate columns.
+                            </p>
+                          </div>
+                        )}
                         <div className="space-y-1 min-w-0">
                           <Label>Indicative CNY per USD</Label>
                           <Input
                             value={expectedCnyPerUsd}
-                            onChange={(e) => setExpectedCnyPerUsd(e.target.value)}
+                            onChange={(e) => {
+                              setExpectedCnyPerUsd(e.target.value);
+                              setRateDirtyCnyPerUsd(true);
+                            }}
                             disabled={fieldsLocked}
                             readOnly={fieldsLocked}
                             inputMode="decimal"
                           />
+                          <p className="text-[11px] text-muted-foreground">
+                            {INDICATIVE_RATE_HELPER_COPY}
+                          </p>
                         </div>
+                        {lastIndicativeQuote && (
+                          <div className="sm:col-span-2 text-[11px] text-muted-foreground">
+                            Last online quote ({lastIndicativeQuote.baseCurrency}):{' '}
+                            {rateToInputString(lastIndicativeQuote.basePerUsd) || '—'} per USD
+                            {lastIndicativeQuote.basePerCny != null
+                              ? ` · ${rateToInputString(lastIndicativeQuote.basePerCny)} per CNY`
+                              : ''}
+                            {lastIndicativeQuote.cnyPerUsd != null
+                              ? ` · ${rateToInputString(lastIndicativeQuote.cnyPerUsd)} CNY/USD`
+                              : ''}
+                          </div>
+                        )}
                         <div className="space-y-1 sm:col-span-2 min-w-0">
                           <Label>Expected fees (PKR) — not financially posted</Label>
                           <Input
@@ -1297,7 +1487,15 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
               <div>Funding intention: {fundingMode || '—'}</div>
               <div>Expected USD: {plannedUsd || '—'}</div>
               <div>Expected CNY: {expectedCny || '—'}</div>
-              <div>Indicative PKR/USD: {expectedPkrPerUsd || '—'}</div>
+              <div>
+                {pkrPerUsdLabel}: {expectedPkrPerUsd || '—'}
+              </div>
+              {showBasePerCnyField && (
+                <div>
+                  {basePerCnyLabel}: {indicativeBasePerCny || '—'}
+                </div>
+              )}
+              <div>Indicative CNY/USD: {expectedCnyPerUsd || '—'}</div>
               <div>Planned advance PKR: {expectedAdvanceAmountPkr || '—'}</div>
               <div className="pt-2 text-xs">
                 Journal preview: <span className="text-foreground">none (not financially posted)</span>

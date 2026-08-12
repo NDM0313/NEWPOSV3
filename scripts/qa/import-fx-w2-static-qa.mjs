@@ -95,6 +95,24 @@ if (
   ok('ui:five_arrangement_sections');
 } else fail('ui:five_arrangement_sections');
 
+if (
+  uiSrc.includes('Refresh indicative rates') &&
+  uiSrc.includes('fetchIndicativeRates') &&
+  uiSrc.includes('INDICATIVE_RATE_HELPER_COPY')
+) {
+  ok('ui:indicative_rate_autofill');
+} else fail('ui:indicative_rate_autofill');
+
+const rateHelper = path.join(ROOT, 'src/app/lib/importFxIndicativeRates.ts');
+if (
+  fs.existsSync(rateHelper) &&
+  fs
+    .readFileSync(rateHelper, 'utf8')
+    .includes('Online indicative rate — not financially posted. You can change it.')
+) {
+  ok('file:importFxIndicativeRates_helper');
+} else fail('file:importFxIndicativeRates_helper');
+
 if (uiSrc.includes('confirmClientOpRef') || uiSrc.includes('confirmClientOp')) {
   ok('ui:confirm_op_retry_ref');
 } else fail('ui:confirm_op_retry_ref');

@@ -21,7 +21,7 @@ Deepen the Import FX Case **ARRANGEMENT** stage so operators can capture multi-d
 - Searchable third-party selector (other `money_exchange` contacts ≠ agent)  
 - `funding_mode`: `ADVANCE` | `CREDIT` | `MIXED` (intention only)  
 - Planned source + settlement currencies (RMB→CNY)  
-- Expected USD/CNY amounts, indicative rates, expected dates, planned advance PKR amount  
+- Expected USD/CNY amounts, indicative rates (online auto-pick vs company base; manually overridable; not financially posted), expected dates, planned advance PKR amount  
 - Agent/quote reference + notes  
 - Planning links (purchase/supplier) — context only  
 - Attachment **metadata only**  
@@ -104,7 +104,10 @@ All mutations: `posts_journal: false`.
 
 1. **Parties** — Money Exchange Agent; optional third party (other `money_exchange` only; cannot equal agent). Arrangement type (intention).
 2. **Funding Intention** — Advance planned / Credit planned / Mixed planned. Intention only; not financially posted.
-3. **Planned Currency** — source, settlement, expected USD, expected CNY, indicative PKR/USD and CNY/USD, expected fees, planned advance PKR.
+3. **Planned Currency** — source, settlement, expected USD, expected CNY, indicative rates quoted against **`companies.currency`** (company base), expected fees, planned advance PKR.
+   - Online indicative rates auto-fill from `open.er-api.com` (no API key) when rate fields are empty; **Refresh indicative rates** force-replaces (dirty fields are otherwise preserved).
+   - Stored planning columns remain `expected_pkr_per_usd` and `expected_cny_per_usd`. UI also shows base-relative labels (e.g. Indicative PKR per USD / Indicative PKR per CNY when base is PKR).
+   - Helper copy: `Online indicative rate — not financially posted. You can change it.` Manual override always allowed. **Not financially posted** (W2 contract unchanged).
 4. **Expected Schedule** — arrangement date, advance date, USD acquisition date, expected completion date.
 5. **References** — agent/quote reference, notes, purchase/supplier planning links, attachment metadata/reference (no binary upload).
 
