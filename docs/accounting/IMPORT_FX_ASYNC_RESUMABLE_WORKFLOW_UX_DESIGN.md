@@ -738,35 +738,46 @@ Implement only the approved wave:
 - timeline/read model;
 - no new conversion posting.
 
-### Wave W2 — Advance and USD acquisition
+### Wave W2 — ARRANGEMENT enrichment (shipped scope; non-posting)
 
-- agent/third-party advances;
+See [`IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](./IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md).
+
+- deepen ARRANGEMENT planning fields, selectors, links, attachment metadata;
+- idempotent ARRANGEMENT confirm only;
+- **no** journals / payments / wallets;
+- ADVANCE and USD_ACQUISITION remain non-confirmable.
+
+> Historical note: earlier drafts labeled “Wave W2” as Advance/USD **money** posting. That money work is now **W3** under owner approval.
+
+### Wave W3 — Advance and USD acquisition (money; separate approval)
+
+- agent/third-party advances (posted);
 - partial funding;
 - USD acquisition lots;
 - agent credit/prepaid modes.
 
-### Wave W3 — China USD transfer
+### Wave W4 — China USD transfer
 
 - source/destination wallets;
 - transfer confirmation;
 - pending/partial receipt;
 - fees.
 
-### Wave W4 — USD-to-CNY conversion and pool
+### Wave W5 — USD-to-CNY conversion and pool
 
 - conversion lots;
 - wallet quantity movements;
 - effective rate;
 - CNY pool.
 
-### Wave W5 — Supplier allocations
+### Wave W6 — Supplier allocations
 
 - supplier FX open items;
 - multi-supplier allocation;
 - partial settlement;
 - atomic locks.
 
-### Wave W6 — UX and reporting completion
+### Wave W7 — UX and reporting completion
 
 - desktop timeline;
 - mobile steps;

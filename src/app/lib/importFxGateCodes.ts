@@ -14,6 +14,8 @@ export const IMPORT_FX_ERROR = {
   IMPORT_FX_CURRENCY_NOT_ACTIVE: 'IMPORT_FX_CURRENCY_NOT_ACTIVE',
   MULTI_CURRENCY_DISABLE_BLOCKED: 'MULTI_CURRENCY_DISABLE_BLOCKED',
   IMPORT_FX_OPERATION_IN_PROGRESS: 'IMPORT_FX_OPERATION_IN_PROGRESS',
+  IMPORT_FX_CASE_STAGE_W2_ARRANGEMENT_ONLY: 'IMPORT_FX_CASE_STAGE_W2_ARRANGEMENT_ONLY',
+  IMPORT_FX_CASE_STAGE_W1_PLANNING_ONLY: 'IMPORT_FX_CASE_STAGE_W1_PLANNING_ONLY',
 } as const;
 
 export function formatImportFxServerError(raw: unknown, fallback = 'Import FX request failed'): string {
@@ -37,6 +39,12 @@ export function formatImportFxServerError(raw: unknown, fallback = 'Import FX re
   }
   if (msg.includes(IMPORT_FX_ERROR.IMPORT_FX_OPERATION_IN_PROGRESS)) {
     return 'This Import FX settlement is already in progress in another tab or request. Wait for it to finish, then retry if needed.';
+  }
+  if (
+    msg.includes(IMPORT_FX_ERROR.IMPORT_FX_CASE_STAGE_W2_ARRANGEMENT_ONLY) ||
+    msg.includes(IMPORT_FX_ERROR.IMPORT_FX_CASE_STAGE_W1_PLANNING_ONLY)
+  ) {
+    return 'Only Arrangement can be confirmed in W2. Advance and USD acquisition money steps start in W3+.';
   }
   return msg || fallback;
 }
