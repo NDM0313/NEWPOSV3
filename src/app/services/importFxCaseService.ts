@@ -13,6 +13,10 @@ import {
   type ImportFxStageCode,
   type ImportFxStageStatus,
 } from '@/app/lib/importFxCaseHelpers';
+import {
+  assertW2MutationDoesNotPost,
+  stripAttachmentStoragePath,
+} from '@/app/lib/importFxCaseWorkspaceView';
 
 export type { ImportFxStageCode, ImportFxStageStatus, ImportFxFundingMode };
 export { IMPORT_FX_STAGE_ORDER };
@@ -207,6 +211,7 @@ export async function createImportFxCase(
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
   return {
     caseId: String(row.case_id ?? ''),
     caseNo: String(row.case_no ?? ''),
@@ -244,7 +249,7 @@ export async function updateImportFxCaseDraft(params: {
   clearAgentReference?: boolean;
 }): Promise<void> {
   await requireImportFxEnabled(params.companyId);
-  const { error } = await supabase.rpc('update_import_fx_case_draft', {
+  const { data, error } = await supabase.rpc('update_import_fx_case_draft', {
     p_company_id: params.companyId,
     p_case_id: params.caseId,
     p_agent_contact_id: params.agentContactId ?? null,
@@ -273,6 +278,7 @@ export async function updateImportFxCaseDraft(params: {
     p_clear_agent_reference: params.clearAgentReference === true,
   });
   if (error) throw new Error(formatImportFxServerError(error));
+  assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
 }
 
 export async function confirmImportFxCaseStage(params: {
@@ -296,6 +302,7 @@ export async function confirmImportFxCaseStage(params: {
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
   return {
     stageStatus: String(row.stage_status ?? ''),
     operationalStatus: String(row.operational_status ?? ''),
@@ -310,13 +317,14 @@ export async function cancelImportFxCaseUnposted(params: {
   updatedBy?: string | null;
 }): Promise<void> {
   await requireImportFxEnabled(params.companyId);
-  const { error } = await supabase.rpc('cancel_import_fx_case_unposted', {
+  const { data, error } = await supabase.rpc('cancel_import_fx_case_unposted', {
     p_company_id: params.companyId,
     p_case_id: params.caseId,
     p_notes: params.notes ?? null,
     p_updated_by: params.updatedBy ?? null,
   });
   if (error) throw new Error(formatImportFxServerError(error));
+  assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
 }
 
 export async function listImportFxCases(params: {
@@ -374,7 +382,9 @@ export async function getImportFxCase(
     stages: (Array.isArray(row.stages) ? row.stages : []) as ImportFxCaseStage[],
     events: (Array.isArray(row.events) ? row.events : []) as ImportFxCaseEvent[],
     links: (Array.isArray(row.links) ? row.links : []) as ImportFxCaseLink[],
-    attachments: (Array.isArray(row.attachments) ? row.attachments : []) as ImportFxCaseAttachmentMeta[],
+    attachments: (Array.isArray(row.attachments) ? row.attachments : []).map((att) =>
+      stripAttachmentStoragePath(att as Record<string, unknown>)
+    ) as ImportFxCaseAttachmentMeta[],
     readOnly: row.read_only === true,
     multiCurrencyEnabled: row.multi_currency_enabled === true,
   };
@@ -388,7 +398,7 @@ export async function linkImportFxCaseTarget(params: {
   notes?: string | null;
 }): Promise<void> {
   await requireImportFxEnabled(params.companyId);
-  const { error } = await supabase.rpc('link_import_fx_case_target', {
+  const { data, error } = await supabase.rpc('link_import_fx_case_target', {
     p_company_id: params.companyId,
     p_case_id: params.caseId,
     p_link_type: params.linkType,
@@ -396,6 +406,7 @@ export async function linkImportFxCaseTarget(params: {
     p_notes: params.notes ?? null,
   });
   if (error) throw new Error(formatImportFxServerError(error));
+  assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
 }
 
 export async function registerImportFxCaseAttachmentMetadata(params: {
@@ -421,8 +432,10 @@ export async function registerImportFxCaseAttachmentMetadata(params: {
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
+  const cleaned = stripAttachmentStoragePath(row);
   return {
-    attachmentId: String(row.attachment_id ?? ''),
+    attachmentId: String(cleaned.attachment_id ?? row.attachment_id ?? ''),
     idempotentReplay: row.idempotent_replay === true,
   };
 }

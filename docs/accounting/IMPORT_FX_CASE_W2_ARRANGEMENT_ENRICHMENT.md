@@ -1,7 +1,7 @@
 # Import FX Case — W2 Arrangement enrichment
 
 **Branch:** `feat/import-fx-w2-arrangement-enrichment`  
-**Status:** **BLOCKED — LOCALHOST DATABASE NOT CONFIRMED** (implementation complete; live apply/QA not run)  
+**Status:** **W2 CODE/UI COMPLETE — LIVE DB MIGRATION AND DEPLOYMENT DEFERRED**  
 **Gates:** `multiCurrencyEnabled` ops · `fxSettlementAccountingEnabled = false` (Profile A)  
 **Accounting:** **No journals / payments / wallets / AP** — every mutation returns `posts_journal: false`
 
@@ -86,7 +86,64 @@ All mutations: `posts_journal: false`.
 
 ## 8. UI workflow
 
-[`ImportFxCaseWorkspace.tsx`](../../src/app/features/import-fx-case/ImportFxCaseWorkspace.tsx) — ARRANGEMENT enrichment form; money stages show “Available in W3+ — no financial posting in W2”. Planning links + attachment metadata registration. Path 21 Agent FX remains separate.
+[`ImportFxCaseWorkspace.tsx`](../../src/app/features/import-fx-case/ImportFxCaseWorkspace.tsx) with presentational cards in [`ImportFxCaseArrangementPanels.tsx`](../../src/app/features/import-fx-case/ImportFxCaseArrangementPanels.tsx).
+
+### Case header
+
+- Case number (or “New draft”)
+- Arrangement status (Draft / Arranged / Cancelled)
+- Accounting status: **Not Posted**
+- Agent name
+- Planned source → settlement currency
+- Last updated
+- Arrangement confirmed timestamp (or “Not yet”)
+- **Read only** badge when Multi Currency is OFF
+- Prominent notice: `Planning only — no payment or accounting entry has been posted.`
+
+### Arrangement form sections
+
+1. **Parties** — Money Exchange Agent; optional third party (other `money_exchange` only; cannot equal agent). Arrangement type (intention).
+2. **Funding Intention** — Advance planned / Credit planned / Mixed planned. Intention only; not financially posted.
+3. **Planned Currency** — source, settlement, expected USD, expected CNY, indicative PKR/USD and CNY/USD, expected fees, planned advance PKR.
+4. **Expected Schedule** — arrangement date, advance date, USD acquisition date, expected completion date.
+5. **References** — agent/quote reference, notes, purchase/supplier planning links, attachment metadata/reference (no binary upload).
+
+Wording uses Planned / Expected / Intention / Not financially posted. The UI does not use Paid, USD purchased, Advance completed, Settled, or Financially completed.
+
+### Actions
+
+- **Save Draft** (create or update) — busy spinner; exclusive busy guard blocks duplicate clicks
+- **Confirm Arrangement** — same busy/duplicate-click protection; idempotent client operation id
+- **Cancel Unposted Case**
+- **Resume / edit draft** from the case list
+- After confirmation: fields lock, confirmation timestamp shown, accounting remains **Not Posted**, Save/Confirm hidden
+
+### Disabled W3+ stages
+
+ADVANCE, USD_ACQUISITION, China transfer, conversion, pool, allocation, and reconciliation appear as disabled timeline items with:
+
+`Available in W3+ — no financial posting in W2`
+
+No buttons for Pay Advance, Buy USD, Convert Currency, or Settle Supplier. Path 21 Agent FX remains a separate screen.
+
+### Selectors
+
+- Agent search: name, code, phone/reference; money_exchange only; loading / no-results / clear
+- Third party: same list minus the selected agent
+- Purchase planning search: purchase number, supplier invoice/reference, supplier name
+- Keyboard navigation: existing `SearchableSelect` / Command combobox
+
+### Responsive behavior
+
+| Width | Layout |
+|-------|--------|
+| ~390px mobile | Cards stack; timeline is a horizontal chip row; action buttons wrap; dialog `max-h-[95vh]` with inner scroll; `overflow-hidden` on the page shell (no page-level horizontal scroll) |
+| ~1024px tablet | Case list ~1/3, arrangement form ~2/3; timeline chips above the form |
+| ~1440px desktop | List \| timeline \| form \| summary |
+
+Browser screenshot smoke is **deferred** (no production HTTP; no local app session required for this pass).
+
+Path 21 Agent FX remains separate.
 
 ---
 
@@ -251,27 +308,33 @@ This is **database/RPC verification only**. No live UI PASS is claimed. Producti
 
 Expected delta: `0 / 0 / 0 / 0 / 0`. Actual delta: **not measured** (blocked).
 
-### 17.6 Regression / build (no database)
+### 17.6 Code/UI verification (2026-08-12 office PC — no database)
+
+Live DB apply remains **deferred**. It does not block W2 code/UI completion.
 
 | Command | Result |
 |---------|--------|
-| `node scripts/qa/apply-import-fx-w2-local.mjs` | **BLOCKED** exit 2 — `BLOCKED — LOCALHOST DATABASE NOT CONFIRMED` (missing `.env.db.local`) |
-| `node scripts/qa/import-fx-w2-live-rpc-qa.mjs` | **BLOCKED** exit 2 — same |
-| `node scripts/qa/import-fx-w2-static-qa.mjs` | **PASS=15 FAIL=0 SKIPPED=2** |
-| `npx tsx --test src/app/lib/importFxCaseHelpers.test.ts src/app/lib/importFxWave0Correctness.test.ts src/app/lib/importFxWizardHelpers.test.ts src/app/lib/importFxServerGate.test.ts src/app/lib/importFxPath21Hotfix.test.ts src/app/lib/importFxCreditVoidHelpers.test.ts` | **PASS=33 FAIL=0 SKIPPED=0** |
-| W1 `import-fx-w1-live-rpc-qa.mjs` / read / mutation / attachment security | **SKIPPED** (localhost DB not confirmed) |
+| `npx tsx --test src/app/lib/importFxCaseHelpers.test.ts src/app/lib/importFxCaseWorkspaceView.test.ts src/app/lib/importFxWave0Correctness.test.ts src/app/lib/importFxWizardHelpers.test.ts src/app/lib/importFxServerGate.test.ts src/app/lib/importFxPath21Hotfix.test.ts src/app/lib/importFxCreditVoidHelpers.test.ts` | **PASS=50 FAIL=0 SKIPPED=0** |
+| `node scripts/qa/import-fx-w2-static-qa.mjs` | **PASS=21 FAIL=0 SKIPPED=2** |
+| Targeted `tsc --noEmit` filtered to W2 paths | No W2 diagnostics captured (full-project `tsc` exited 134 / OOM on this PC). **`npm run build` PASS** is the type gate used. |
 | `npm run build` | **PASS** (exit 0) |
-
-W1 live/mutation suites now accept `IMPORT_FX_CASE_STAGE_W2_ARRANGEMENT_ONLY` **or** the legacy `W1_PLANNING_ONLY` code (contract update after W2 confirm rewrite; security still requires a money-stage block).
+| Browser screenshot smoke | **DEFERRED** (no production HTTP; no local app session) |
+| Live DB apply / 33 RPC / W1 security | **DEFERRED** — migrations **not applied** |
 
 ### 17.7 Defects found and fixes
 
 | Defect | Fix |
 |--------|-----|
-| Localhost identity unproven | **No migrate.** Stopped with `BLOCKED — LOCALHOST DATABASE NOT CONFIRMED`. |
-| W1 live/mutation QA still asserted only `W1_PLANNING_ONLY` | Accept `W2_ARRANGEMENT_ONLY` as well (would false-fail after W2 apply). |
+| Arrangement form was one congested column | Five section cards + header + responsive grid |
+| Funding/date copy used “not paid” | Advance/Credit/Mixed **planned**; “not financially posted” |
+| Agent search omitted phone | Name + code + phone; money_exchange only |
+| Purchase link omitted supplier/invoice search | Purchase number, invoice, supplier name |
+| Confirmed cases still looked editable | Lock planning fields; show confirmation timestamp; accounting Not Posted |
+| Duplicate Save/Confirm clicks | `createExclusiveBusyGuard` + per-action spinner |
+| Client did not assert `posts_journal` | Service asserts false and strips `storage_path` |
+| SearchableSelect could still open when locked | Optional `disabled` / `loading` |
 
-No W2 SQL contract correction migration was required (nothing was applied).
+No W2 SQL contract correction migration was written (migrations remain unapplied).
 
 ---
 
@@ -280,47 +343,46 @@ No W2 SQL contract correction migration was required (nothing was applied).
 - `migrations/20260812140000_import_fx_case_arrangement_enrichment_w2.sql`
 - `migrations/20260812140100_import_fx_case_attachment_metadata_rpc_w2.sql`
 - `src/app/lib/importFxCaseHelpers.ts` (+ test)
+- `src/app/lib/importFxCaseWorkspaceView.ts` (+ test)
 - `src/app/lib/importFxGateCodes.ts`
 - `src/app/services/importFxCaseService.ts`
 - `src/app/features/import-fx-case/ImportFxCaseWorkspace.tsx`
+- `src/app/features/import-fx-case/ImportFxCaseArrangementPanels.tsx`
+- `src/app/components/ui/searchable-select.tsx` (`disabled` / `loading` only)
 - `scripts/qa/import-fx-w2-static-qa.mjs`
 - `scripts/qa/apply-import-fx-w2-local.mjs`
 - `scripts/qa/import-fx-w2-live-rpc-qa.mjs`
-- `scripts/qa/import-fx-w1-live-rpc-qa.mjs` (accept W2 block code)
-- `scripts/qa/import-fx-w1-mutation-security-qa.mjs` (accept W2 block code)
+- `scripts/qa/import-fx-w1-live-rpc-qa.mjs`
+- `scripts/qa/import-fx-w1-mutation-security-qa.mjs`
 - `docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`
-- `docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md` (successor pointer)
-- `docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md` (W2/W3 rename note)
-- `docs/accounting/PAYMENT_ENTRY_PATHS.md`
-- `docs/accounting/ACCOUNTING_REPORTS_INDEX.md`
-- `.cursor/rules/multi-currency-import-fx.mdc`
 
 ---
 
-## 19. Known limitations / remaining UI and production prerequisites
+## 19. Known limitations / remaining deployment prerequisites
 
-- Restore `.env.db.local` and start existing `newposv3-local-pg` on `localhost:5432/postgres`, then re-run apply + live RPC + W1 security suites. Do **not** recreate the removed local-Supabase staging experiment.
+- **Live DB migration and RPC QA: deferred.** Do not label W2 migrations as applied.
 - Attachment binary upload / signed URLs deferred.
-- Third-party role model uses `money_exchange` only (no separate converter type in contacts).
-- Live UI smoke is **not** claimed. Do not use the production HTTP API for UI QA.
+- Browser screenshot smoke deferred.
+- Third-party role model uses `money_exchange` only.
 - Production / VPS migrate, merge to `main`, W3–W6, COA changes, and financial posting remain unauthorized.
 
 ---
 
 ## 20. W2→W3 handoff
 
-W2 exit: ARRANGEMENT COMPLETED, `accounting_status=NOT_POSTED`, money stages not COMPLETED, zero money postings from case RPCs.  
+**W2 completion boundary:** ARRANGEMENT draft/resume/confirm UI + non-posting RPCs + metadata attachments. Accounting status stays `NOT_POSTED`. Money stages remain disabled.
+
 W3 (separate approval): financial ADVANCE / USD acquisition confirm + posting. Path 21 remains until an approved migration story.
 
 ---
 
 ## 21. Final verification verdict
 
-**BLOCKED — LOCALHOST DATABASE NOT CONFIRMED**
+**W2 CODE/UI COMPLETE — LIVE DB MIGRATION AND DEPLOYMENT DEFERRED**
 
-Implementation + static/unit/build may still PASS on this machine. Live DB apply, 33 RPC scenarios, W1 security harnesses, and financial delta `0/0/0/0/0` are **not** proven.
+Code/UI review and unit/static/build are the completion bar on this office PC. Live DB apply, 33 RPC scenarios, W1 security harnesses, financial delta `0/0/0/0/0`, and production deploy are **not** claimed.
 
-Production, VPS, `supabase.dincouture.pk`, W3–W6, Chart of Accounts, and real financial records were **untouched**.
+Production, VPS, financial posting, Chart of Accounts, and W3–W6 were **untouched**.
 
 ---
 
@@ -331,7 +393,8 @@ Production, VPS, `supabase.dincouture.pk`, W3–W6, Chart of Accounts, and real 
 | Branch | `feat/import-fx-w2-arrangement-enrichment` |
 | Implementation commit | `bf7973c4fa8459cb84f494daeccab04f55224fc0` |
 | Docs hash stamp (pre-live-QA) | `1bce4f2e8f3a1c8c60c7bc2eeb1cceae01a4f9bb` |
-| Live QA evidence commit | `503bffbb09676903acec7316197449dbe5db7b11` |
+| Live QA evidence (blocked preflight) | `503bffbb09676903acec7316197449dbe5db7b11` |
+| UI finalize commit | *(this commit)* |
 | Compare | https://github.com/NDM0313/NEWPOSV3/compare/main...feat/import-fx-w2-arrangement-enrichment |
 
 ---
@@ -340,11 +403,11 @@ Production, VPS, `supabase.dincouture.pk`, W3–W6, Chart of Accounts, and real 
 
 | W2 item | Planned | Implemented | Tested | Notes |
 |---------|--------:|------------:|-------:|-------|
-| W2a schema/RPC | yes | yes | static + unit | Live DB **BLOCKED** (no localhost) |
-| W2b UI | yes | yes | static | No live UI PASS claimed |
-| W2c links UI | yes | yes | static | No live UI PASS claimed |
-| W2d attach meta | yes | yes | static | metadata only; live RPC SKIPPED |
-| W2e tests/docs | yes | yes | unit/static/build | Live RPC/security **BLOCKED** |
-| W2 localhost apply | yes | runner added | **BLOCKED** | `.env.db.local` missing; `:5432` down |
-| W2 live 33 RPC scenarios | yes | runner added | **SKIPPED 33/33** | identity not confirmed |
-| Financial delta 0/0/0/0/0 | yes | n/a | **not measured** | would be FAIL if non-zero after apply |
+| W2a schema/RPC | yes | yes | static + unit | Live DB **deferred** (not applied) |
+| W2b UI | yes | yes | unit view-model + static | Header, 5 sections, wording, busy/lock |
+| W2c links UI | yes | yes | unit + static | Purchase/supplier search + clear |
+| W2d attach meta | yes | yes | static + service strip | metadata only; no upload claim |
+| W2e tests/docs | yes | yes | unit/static/build | Browser smoke deferred |
+| W2 localhost apply | yes | runner exists | **deferred** | not required for code/UI complete |
+| W2 live 33 RPC scenarios | yes | runner exists | **deferred** | not claimed |
+| Financial delta 0/0/0/0/0 | yes | n/a | **deferred** | no migrate this pass |

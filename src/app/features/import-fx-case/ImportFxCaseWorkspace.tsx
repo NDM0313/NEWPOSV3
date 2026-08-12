@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { SearchableSelect } from '@/app/components/ui/searchable-select';
+import { Textarea } from '@/app/components/ui/textarea';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import {
@@ -27,15 +28,30 @@ import {
 import { formatImportFxServerError } from '@/app/lib/importFxServerGate';
 import {
   canEditArrangementType,
-  IMPORT_FX_FUNDING_MODES,
-  IMPORT_FX_STAGE_ORDER,
   isMoneyStageBlockedInW2,
   isW2ConfirmableStage,
-  stageLabel,
   stageStatusTone,
   W2_MONEY_STAGE_BLOCKED_COPY,
   type ImportFxFundingMode,
 } from '@/app/lib/importFxCaseHelpers';
+import {
+  W2_ACTION_BAR_CLASS,
+  W2_FUNDING_INTENTION_OPTIONS,
+  W2_WORKSPACE_GRID_CLASS,
+  W2_WORKSPACE_PANEL_CLASS,
+  W2_WORKSPACE_SHELL_CLASS,
+  createExclusiveBusyGuard,
+  formatMoneyExchangeOption,
+  formatPurchasePlanningOption,
+  isArrangementLocked,
+  matchesPlanningSearch,
+  moneyStageTimelineItems,
+  resolveWorkspaceMode,
+  thirdPartyOptionsExcludingAgent,
+  validateArrangementPlanning,
+  workspaceActions,
+  type W2BusyAction,
+} from '@/app/lib/importFxCaseWorkspaceView';
 import { contactService } from '@/app/services/contactService';
 import { supabase } from '@/lib/supabase';
 import {
@@ -56,14 +72,19 @@ import {
   type ImportFxStageCode,
 } from '@/app/services/importFxCaseService';
 import { cn } from '@/app/components/ui/utils';
+import {
+  ArrangementSectionCard,
+  ImportFxCaseHeaderBar,
+} from './ImportFxCaseArrangementPanels';
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
+type AgentOption = ReturnType<typeof formatMoneyExchangeOption>;
+type PurchaseOption = ReturnType<typeof formatPurchasePlanningOption>;
 type ContactOption = { id: string; name: string };
-type PurchaseOption = { id: string; name: string };
 
 function toneClass(tone: ReturnType<typeof stageStatusTone>): string {
   switch (tone) {
@@ -108,11 +129,23 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const [attachments, setAttachments] = useState<ImportFxCaseAttachmentMeta[]>([]);
   const [activeStage, setActiveStage] = useState<ImportFxStageCode>('ARRANGEMENT');
   const [busy, setBusy] = useState(false);
-  const submittingRef = useRef(false);
+  const [busyAction, setBusyAction] = useState<W2BusyAction>(null);
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const busyGuardRef = useRef(createExclusiveBusyGuard());
 
-  const [agentOptions, setAgentOptions] = useState<ContactOption[]>([]);
+  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<ContactOption[]>([]);
-  const [purchaseOptions, setPurchaseOptions] = useState<PurchaseOption[]>([]);
+  const [purchaseRows, setPurchaseRows] = useState<
+    Array<{
+      id: string;
+      purchase_number?: string | null;
+      invoice_number?: string | null;
+      supplier_id?: string | null;
+      document_currency?: string | null;
+    }>
+  >([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [purchasesLoading, setPurchasesLoading] = useState(false);
 
   const [agentId, setAgentId] = useState('');
   const [thirdPartyId, setThirdPartyId] = useState('');
@@ -143,8 +176,22 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const attachmentClientOpRef = useRef<string | null>(null);
 
   const thirdPartyOptions = useMemo(
-    () => agentOptions.filter((a) => a.id !== agentId),
+    () => thirdPartyOptionsExcludingAgent(agentOptions, agentId),
     [agentOptions, agentId]
+  );
+
+  const purchaseOptions: PurchaseOption[] = useMemo(
+    () =>
+      purchaseRows.map((p) =>
+        formatPurchasePlanningOption({
+          id: p.id,
+          purchaseNumber: p.purchase_number,
+          invoiceNumber: p.invoice_number,
+          supplierName: supplierOptions.find((s) => s.id === p.supplier_id)?.name || null,
+          documentCurrency: p.document_currency,
+        })
+      ),
+    [purchaseRows, supplierOptions]
   );
 
   const arrangementStageStatus = useMemo(
@@ -152,23 +199,47 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     [stages]
   );
 
+  const arrangementLocked = isArrangementLocked({
+    arrangementConfirmedAt: caseRow?.arrangement_confirmed_at ?? null,
+    arrangementStageStatus,
+    operationalStatus: caseRow?.operational_status ?? null,
+  });
+
+  const workspaceMode = resolveWorkspaceMode({
+    multiCurrencyEnabled,
+    selectedCaseId,
+    arrangementLocked: selectedCaseId ? arrangementLocked : false,
+  });
+
+  const actions = workspaceActions({
+    mode: workspaceMode,
+    busy,
+    busyAction,
+    accountingStatus: caseRow?.accounting_status ?? 'NOT_POSTED',
+    operationalStatus: caseRow?.operational_status ?? (selectedCaseId ? 'DRAFT' : null),
+  });
+
   const arrangementTypeEditable = canEditArrangementType({
     operationalStatus: caseRow?.operational_status ?? 'DRAFT',
     arrangementStageStatus,
     arrangementConfirmedAt: caseRow?.arrangement_confirmed_at ?? null,
   });
 
+  const fieldsLocked = actions.fieldsLocked;
+  const agentName =
+    agentOptions.find((a) => a.id === (agentId || caseRow?.agent_contact_id || ''))?.name || null;
+
   const loadContacts = useCallback(async () => {
     if (!companyId) return;
+    setContactsLoading(true);
     try {
       const contacts = await contactService.getContacts(companyId);
       const list = contacts || [];
       const agents = list
         .filter((c: { type?: string }) => String(c.type || '').toLowerCase() === 'money_exchange')
-        .map((c: { id: string; name?: string; code?: string }) => ({
-          id: c.id,
-          name: `${c.name || 'Agent'}${c.code ? ` (${c.code})` : ''}`,
-        }));
+        .map((c: { id: string; name?: string; code?: string; phone?: string; mobile?: string }) =>
+          formatMoneyExchangeOption(c)
+        );
       const suppliers = list
         .filter((c: { type?: string }) => {
           const t = String(c.type || '').toLowerCase();
@@ -183,11 +254,14 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     } catch {
       setAgentOptions([]);
       setSupplierOptions([]);
+    } finally {
+      setContactsLoading(false);
     }
   }, [companyId]);
 
   const loadPurchases = useCallback(async () => {
     if (!companyId) return;
+    setPurchasesLoading(true);
     try {
       const { data, error } = await supabase
         .from('purchases')
@@ -195,41 +269,26 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         .eq('company_id', companyId)
         .limit(50);
       if (error) throw error;
-      const rows = (data || []) as Array<{
-        id: string;
-        purchase_number?: string | null;
-        invoice_number?: string | null;
-        total?: number | null;
-        document_currency?: string | null;
-      }>;
-      setPurchaseOptions(
-        rows.map((p) => ({
-          id: p.id,
-          name: [
-            p.purchase_number || p.invoice_number || p.id.slice(0, 8),
-            p.document_currency,
-            p.total != null ? String(p.total) : null,
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        }))
-      );
+      setPurchaseRows(data || []);
     } catch {
       try {
         const { data } = await supabase
           .from('purchases')
-          .select('id, notes')
+          .select('id, notes, supplier_id')
           .eq('company_id', companyId)
           .limit(50);
-        setPurchaseOptions(
-          (data || []).map((p: { id: string; notes?: string | null }) => ({
+        setPurchaseRows(
+          (data || []).map((p: { id: string; notes?: string | null; supplier_id?: string | null }) => ({
             id: p.id,
-            name: p.notes?.trim() || p.id.slice(0, 8),
+            purchase_number: p.notes,
+            supplier_id: p.supplier_id,
           }))
         );
       } catch {
-        setPurchaseOptions([]);
+        setPurchaseRows([]);
       }
+    } finally {
+      setPurchasesLoading(false);
     }
   }, [companyId]);
 
@@ -285,6 +344,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setExpectedDate(detailCase.expected_completion_date || '');
     setAgentReference(detailCase.agent_reference || '');
     setNotes(detailCase.notes || '');
+    setFormErrors([]);
   };
 
   const resetNewDraftForm = () => {
@@ -316,6 +376,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     setLinkSupplierId('');
     setLinkPurchaseId('');
     setAttachmentFileName('');
+    setFormErrors([]);
     createClientOpRef.current = null;
     confirmClientOpRef.current = null;
     attachmentClientOpRef.current = null;
@@ -335,10 +396,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         applyCaseToForm(detail.case);
         confirmClientOpRef.current = null;
         attachmentClientOpRef.current = null;
-        const firstOpen =
-          detail.stages.find((s) => s.stage_status !== 'COMPLETED' && s.stage_status !== 'CANCELLED')
-            ?.stage_code || 'ARRANGEMENT';
-        setActiveStage(firstOpen);
+        setActiveStage('ARRANGEMENT');
       } catch (e) {
         toast.error(formatImportFxServerError(e));
       } finally {
@@ -362,11 +420,6 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     void loadDetail(selectedCaseId);
   }, [open, selectedCaseId, loadDetail]);
 
-  const activeStageRow = useMemo(
-    () => stages.find((s) => s.stage_code === activeStage) || null,
-    [stages, activeStage]
-  );
-
   const draftPayload = () => ({
     agentContactId: agentId || null,
     thirdPartyContactId: thirdPartyId || null,
@@ -387,21 +440,42 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     expectedAdvanceAmountPkr: numOrNull(expectedAdvanceAmountPkr),
   });
 
-  const runBusy = async (fn: () => Promise<void>) => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
+  const collectValidation = (): boolean => {
+    const errors = validateArrangementPlanning({
+      agentId,
+      thirdPartyId,
+      plannedUsd,
+      expectedCny,
+      expectedPkrPerUsd,
+      expectedCnyPerUsd,
+      expectedFeesPkr: expectedFees,
+      expectedAdvanceAmountPkr,
+    });
+    setFormErrors(errors);
+    if (errors.length) {
+      toast.error(errors[0]);
+      return false;
+    }
+    return true;
+  };
+
+  const runBusy = async (action: W2BusyAction, fn: () => Promise<void>) => {
+    if (!busyGuardRef.current.tryStart()) return;
     setBusy(true);
+    setBusyAction(action);
     try {
       await fn();
     } finally {
-      submittingRef.current = false;
+      busyGuardRef.current.end();
       setBusy(false);
+      setBusyAction(null);
     }
   };
 
   const handleCreate = async () => {
     if (!companyId || readOnly) return;
-    await runBusy(async () => {
+    if (!collectValidation()) return;
+    await runBusy('create', async () => {
       if (!createClientOpRef.current) {
         createClientOpRef.current = crypto.randomUUID();
       }
@@ -418,7 +492,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         toast.success(
           created.idempotentReplay
             ? `Case ${created.caseNo} already created (retry)`
-            : `Case ${created.caseNo} created (draft — not financially posted)`
+            : `Case ${created.caseNo} created as a draft — not financially posted`
         );
         setSelectedCaseId(created.caseId);
         await refreshList();
@@ -429,8 +503,9 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleSaveDraft = async () => {
-    if (!companyId || !selectedCaseId || readOnly) return;
-    await runBusy(async () => {
+    if (!companyId || !selectedCaseId || readOnly || fieldsLocked) return;
+    if (!collectValidation()) return;
+    await runBusy('save', async () => {
       try {
         await updateImportFxCaseDraft({
           companyId,
@@ -444,7 +519,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
           clearAgentReference: !agentReference,
           arrangementType: arrangementTypeEditable ? arrangementType : null,
         });
-        toast.success('Draft saved — no journal posted');
+        toast.success('Draft saved — not financially posted');
         await loadDetail(selectedCaseId);
         await refreshList();
       } catch (e) {
@@ -454,12 +529,13 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleConfirmArrangement = async () => {
-    if (!companyId || !selectedCaseId || readOnly) return;
-    if (!isW2ConfirmableStage(activeStage)) {
+    if (!companyId || !selectedCaseId || readOnly || fieldsLocked) return;
+    if (!isW2ConfirmableStage(activeStage) && activeStage !== 'ARRANGEMENT') {
       toast.error(W2_MONEY_STAGE_BLOCKED_COPY);
       return;
     }
-    await runBusy(async () => {
+    if (!collectValidation()) return;
+    await runBusy('confirm', async () => {
       if (!confirmClientOpRef.current) {
         confirmClientOpRef.current = crypto.randomUUID();
       }
@@ -482,8 +558,8 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         confirmClientOpRef.current = null;
         toast.success(
           result.idempotentReplay
-            ? 'Arrangement already confirmed (no journal)'
-            : `Arrangement confirmed → ${result.operationalStatus} (not financially posted)`
+            ? 'Arrangement already confirmed — not financially posted'
+            : 'Arrangement confirmed — not financially posted'
         );
         await loadDetail(selectedCaseId);
         await refreshList();
@@ -495,7 +571,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
 
   const handleCancel = async () => {
     if (!companyId || !selectedCaseId || readOnly) return;
-    await runBusy(async () => {
+    await runBusy('cancel', async () => {
       try {
         await cancelImportFxCaseUnposted({
           companyId,
@@ -503,7 +579,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
           notes: notes || 'Cancelled unposted case',
           updatedBy: user?.id ?? null,
         });
-        toast.success('Unposted case cancelled');
+        toast.success('Unposted case cancelled — no accounting entry posted');
         await loadDetail(selectedCaseId);
         await refreshList();
       } catch (e) {
@@ -513,8 +589,8 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleLinkSupplier = async () => {
-    if (!companyId || !selectedCaseId || !linkSupplierId || readOnly) return;
-    await runBusy(async () => {
+    if (!companyId || !selectedCaseId || !linkSupplierId || readOnly || fieldsLocked) return;
+    await runBusy('link', async () => {
       try {
         await linkImportFxCaseTarget({
           companyId,
@@ -523,7 +599,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
           linkId: linkSupplierId,
           notes: 'Planning link — intention only',
         });
-        toast.success('Supplier planning link added');
+        toast.success('Supplier planning link added — not financially posted');
         setLinkSupplierId('');
         await loadDetail(selectedCaseId);
       } catch (e) {
@@ -533,8 +609,8 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleLinkPurchase = async () => {
-    if (!companyId || !selectedCaseId || !linkPurchaseId || readOnly) return;
-    await runBusy(async () => {
+    if (!companyId || !selectedCaseId || !linkPurchaseId || readOnly || fieldsLocked) return;
+    await runBusy('link', async () => {
       try {
         await linkImportFxCaseTarget({
           companyId,
@@ -543,7 +619,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
           linkId: linkPurchaseId,
           notes: 'Planning link — intention only',
         });
-        toast.success('Purchase planning link added');
+        toast.success('Purchase planning link added — not financially posted');
         setLinkPurchaseId('');
         await loadDetail(selectedCaseId);
       } catch (e) {
@@ -553,13 +629,13 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   };
 
   const handleRegisterAttachment = async () => {
-    if (!companyId || !selectedCaseId || readOnly) return;
+    if (!companyId || !selectedCaseId || readOnly || fieldsLocked) return;
     const name = attachmentFileName.trim();
     if (!name) {
-      toast.error('Enter a file name for metadata registration');
+      toast.error('Enter a file name or reference for metadata only');
       return;
     }
-    await runBusy(async () => {
+    await runBusy('attach', async () => {
       if (!attachmentClientOpRef.current) {
         attachmentClientOpRef.current = crypto.randomUUID();
       }
@@ -575,8 +651,8 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
         attachmentClientOpRef.current = null;
         toast.success(
           result.idempotentReplay
-            ? 'Attachment metadata already registered'
-            : 'Attachment metadata registered (no upload)'
+            ? 'Attachment reference already registered'
+            : 'Attachment reference registered (metadata only — no file uploaded)'
         );
         setAttachmentFileName('');
         await loadDetail(selectedCaseId);
@@ -596,20 +672,20 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     return `${link.link_type}: ${link.link_id.slice(0, 8)}`;
   };
 
+  const timelineItems = moneyStageTimelineItems();
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-2 md:p-4">
-      <div className="bg-card border border-border rounded-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {readOnly ? 'Import FX Cases — Read Only' : 'Import FX Cases'}
+    <div className={W2_WORKSPACE_SHELL_CLASS}>
+      <div className={W2_WORKSPACE_PANEL_CLASS}>
+        <div className="flex items-start justify-between gap-3 px-3 sm:px-4 py-3 border-b border-border min-w-0">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-foreground truncate">
+              Import FX — Arrangement
             </h2>
             <p className="text-xs text-muted-foreground">
-              {readOnly
-                ? 'Historical Import FX cases only. Enable Multi Currency to create or continue workflows.'
-                : 'Wave W2 — ARRANGEMENT enrichment (planned / expected / intention only). No money journals. Path 21 Agent FX stays separate.'}
+              Planned / expected / intention only. Path 21 Agent FX stays a separate screen.
             </p>
           </div>
           <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} aria-label="Close">
@@ -617,26 +693,14 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
           </Button>
         </div>
 
-        {readOnly && (
-          <div className="mx-4 mt-3 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
-            Multi Currency is currently disabled. Historical Import FX cases are available in
-            read-only mode. Enable Multi Currency to create or continue operational workflows.
-          </div>
-        )}
-
-        <div className="mx-4 mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          No accounting posted — planning events keep <span className="text-foreground">posts_journal = false</span>.
-          Fields below are Planned / Expected / Intention only — not financially posted.
-        </div>
-
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12">
-          <aside className="md:col-span-3 border-r border-border p-3 space-y-2 overflow-y-auto">
-            <div className="flex gap-2">
+        <div className={W2_WORKSPACE_GRID_CLASS}>
+          <aside className="lg:col-span-4 xl:col-span-3 border-b lg:border-b-0 lg:border-r border-border p-3 space-y-2 overflow-y-auto min-w-0">
+            <div className="flex gap-2 min-w-0">
               <Input
-                placeholder="Search case no…"
+                placeholder="Search case number…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-9"
+                className="h-9 min-w-0"
               />
               <Button variant="outline" size="icon" onClick={() => void refreshList()} disabled={loadingList}>
                 {loadingList ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -651,8 +715,8 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="DRAFT">DRAFT</SelectItem>
-                <SelectItem value="ARRANGED">ARRANGED</SelectItem>
+                <SelectItem value="DRAFT">Draft</SelectItem>
+                <SelectItem value="ARRANGED">Arranged</SelectItem>
               </SelectContent>
             </Select>
             {!readOnly && (
@@ -667,15 +731,15 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                   type="button"
                   onClick={() => setSelectedCaseId(c.id)}
                   className={cn(
-                    'w-full text-left rounded-md border px-2 py-2 text-sm transition-colors',
+                    'w-full text-left rounded-md border px-2 py-2 text-sm transition-colors min-w-0',
                     selectedCaseId === c.id
                       ? 'border-orange-600 bg-orange-500/10'
                       : 'border-border hover:bg-muted/50'
                   )}
                 >
-                  <div className="font-medium text-foreground">{c.case_no}</div>
+                  <div className="font-medium text-foreground truncate">{c.case_no}</div>
                   <div className="text-xs text-muted-foreground">
-                    {c.operational_status} · {c.accounting_status}
+                    {c.operational_status === 'DRAFT' ? 'Resume / edit draft' : c.operational_status} · Not Posted
                   </div>
                 </button>
               ))}
@@ -685,450 +749,578 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
             </div>
           </aside>
 
-          <nav className="md:col-span-3 border-r border-border p-3 overflow-y-auto space-y-1">
+          <div className="lg:col-span-8 xl:col-span-9 min-h-0 min-w-0 grid grid-cols-1 xl:grid-cols-9 overflow-y-auto xl:overflow-hidden">
+          <nav className="xl:col-span-2 border-b xl:border-b-0 xl:border-r border-border p-3 overflow-x-auto xl:overflow-y-auto min-w-0">
             <p className="text-xs font-medium text-muted-foreground mb-2">Timeline</p>
-            {IMPORT_FX_STAGE_ORDER.map((s) => {
-              const row = stages.find((x) => x.stage_code === s.code);
-              const status = (row?.stage_status || 'NOT_STARTED') as ImportFxCaseStage['stage_status'];
-              const blocked = isMoneyStageBlockedInW2(s.code);
-              return (
-                <button
-                  key={s.code}
-                  type="button"
-                  onClick={() => setActiveStage(s.code)}
-                  className={cn(
-                    'w-full text-left rounded-md border px-2 py-2 text-sm',
-                    activeStage === s.code ? 'ring-1 ring-orange-600' : '',
-                    toneClass(stageStatusTone(status))
-                  )}
-                >
-                  <div className="font-medium">{s.label}</div>
-                  <div className="text-[11px] opacity-80">
-                    {status}
-                    {blocked ? ' · W3+' : ''}
-                  </div>
-                </button>
-              );
-            })}
+            <div className="flex xl:flex-col gap-2 min-w-0">
+              {timelineItems.map((s) => {
+                const row = stages.find((x) => x.stage_code === s.code);
+                const status = (row?.stage_status || 'NOT_STARTED') as ImportFxCaseStage['stage_status'];
+                return (
+                  <button
+                    key={s.code}
+                    type="button"
+                    onClick={() => setActiveStage(s.code)}
+                    aria-disabled={s.disabled}
+                    className={cn(
+                      'text-left rounded-md border px-2 py-2 text-sm min-w-[10.5rem] xl:min-w-0 shrink-0',
+                      activeStage === s.code ? 'ring-1 ring-orange-600' : '',
+                      s.disabled ? 'opacity-80 cursor-default' : '',
+                      toneClass(stageStatusTone(status))
+                    )}
+                  >
+                    <div className="font-medium">{s.label}</div>
+                    <div className="text-[11px] opacity-80">
+                      {s.code === 'ARRANGEMENT' && status === 'COMPLETED' ? 'Completed' : status}
+                    </div>
+                    {s.helper ? (
+                      <div className="text-[10px] mt-1 leading-snug opacity-90">{s.helper}</div>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
           </nav>
 
-          <main className="md:col-span-4 p-4 overflow-y-auto space-y-4">
+          <main className="xl:col-span-5 p-3 sm:p-4 overflow-y-auto space-y-4 min-w-0">
             {detailLoading && selectedCaseId ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading case…
               </div>
             ) : (
               <>
-                <div>
-                  <h3 className="font-semibold text-foreground">{stageLabel(activeStage)}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {caseRow
-                      ? `${caseRow.case_no} · ops ${caseRow.operational_status} · acct ${caseRow.accounting_status}`
-                      : 'New case — Save creates a draft with no journal.'}
-                  </p>
-                  {activeStageRow && (
-                    <p className="text-xs mt-1 text-muted-foreground">
-                      Stage status: {activeStageRow.stage_status}
-                    </p>
-                  )}
-                </div>
+                <ImportFxCaseHeaderBar
+                  caseNo={caseRow?.case_no || null}
+                  operationalStatus={caseRow?.operational_status || (selectedCaseId ? 'DRAFT' : 'DRAFT')}
+                  accountingStatus={caseRow?.accounting_status || 'NOT_POSTED'}
+                  agentName={agentName}
+                  sourceCurrency={String(plannedCurrency || '')}
+                  settlementCurrency={String(plannedSettlementCurrency || '')}
+                  updatedAt={caseRow?.updated_at || null}
+                  confirmedAt={caseRow?.arrangement_confirmed_at || null}
+                  readOnly={readOnly}
+                />
 
                 {isMoneyStageBlockedInW2(activeStage) ? (
-                  <div className="rounded-lg border border-amber-600/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
-                    {W2_MONEY_STAGE_BLOCKED_COPY}. Use Path 21 <strong>Agent FX</strong> for
-                    same-session credit settle until W3+ money stages ship. No advance or USD money
-                    actions in this workspace.
+                  <div className="rounded-xl border border-amber-600/40 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100 space-y-2">
+                    <p className="font-medium">{W2_MONEY_STAGE_BLOCKED_COPY}</p>
+                    <p className="text-xs opacity-90">
+                      This stage is shown for planning context only. Use Path 21 Agent FX for
+                      same-session agent credit until later waves. No money buttons are available here.
+                    </p>
                   </div>
                 ) : (
-                  <div className={cn('space-y-3', readOnly && 'pointer-events-none opacity-90')}>
-                    <div className="space-y-1">
-                      <Label>Arrangement type (intention)</Label>
-                      <Select
-                        value={arrangementType}
-                        onValueChange={(v) => setArrangementType(v as ImportFxArrangementType)}
-                        disabled={readOnly || (!!selectedCaseId && !arrangementTypeEditable)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="POOLED_USD_CNY">Pooled USD → CNY</SelectItem>
-                          <SelectItem value="PATH_21_AGENT_DUAL_CREDIT">
-                            Path 21 Agent Dual Credit
-                          </SelectItem>
-                          <SelectItem value="AGENT_PREPAID">Agent prepaid</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-4">
+                    {workspaceMode === 'confirmed' && (
+                      <div className="rounded-xl border border-emerald-600/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-950 dark:text-emerald-100">
+                        Arrangement completed at {caseRow?.arrangement_confirmed_at
+                          ? new Date(caseRow.arrangement_confirmed_at).toLocaleString()
+                          : '—'}. Accounting status remains Not Posted.
+                      </div>
+                    )}
 
-                    <div className="space-y-1">
-                      <Label>Funding mode (intention — not paid)</Label>
-                      <Select
-                        value={fundingMode || undefined}
-                        onValueChange={(v) => setFundingMode(v as ImportFxFundingMode)}
-                        disabled={readOnly}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select funding intention…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {IMPORT_FX_FUNDING_MODES.map((m) => (
-                            <SelectItem key={m.value} value={m.value}>
-                              {m.label}
+                    {formErrors.length > 0 && (
+                      <ul className="rounded-lg border border-red-600/40 bg-red-500/10 px-3 py-2 text-sm text-red-800 dark:text-red-200 space-y-1">
+                        {formErrors.map((err) => (
+                          <li key={err}>{err}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <ArrangementSectionCard
+                      title="1. Parties"
+                      hint="Money-exchange contacts only. Agent and third party cannot be the same person."
+                    >
+                      <div className="space-y-1">
+                        <Label>Arrangement type (intention)</Label>
+                        <Select
+                          value={arrangementType}
+                          onValueChange={(v) => setArrangementType(v as ImportFxArrangementType)}
+                          disabled={fieldsLocked || (!!selectedCaseId && !arrangementTypeEditable)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="POOLED_USD_CNY">Pooled USD → CNY (planned)</SelectItem>
+                            <SelectItem value="PATH_21_AGENT_DUAL_CREDIT">
+                              Path 21 agent dual credit (planned)
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label>Agent (money_exchange)</Label>
-                      <SearchableSelect
-                        options={agentOptions}
-                        value={agentId}
-                        onValueChange={(v) => {
-                          setAgentId(v);
-                          if (thirdPartyId === v) setThirdPartyId('');
-                        }}
-                        placeholder="Select agent…"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label>Third party (money_exchange, optional)</Label>
-                      <SearchableSelect
-                        options={thirdPartyOptions}
-                        value={thirdPartyId}
-                        onValueChange={setThirdPartyId}
-                        placeholder="Converter / custodian…"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label>Planned source currency</Label>
-                        <Select
-                          value={String(plannedCurrency)}
-                          onValueChange={setPlannedCurrency}
-                          disabled={readOnly}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeCurrencies.map((c) => (
-                              <SelectItem key={c.code} value={c.code}>
-                                {c.label || c.code}
-                              </SelectItem>
-                            ))}
+                            <SelectItem value="AGENT_PREPAID">Agent prepaid (planned)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1">
-                        <Label>Planned settlement currency</Label>
-                        <Select
-                          value={String(plannedSettlementCurrency)}
-                          onValueChange={setPlannedSettlementCurrency}
-                          disabled={readOnly}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeCurrencies.map((c) => (
-                              <SelectItem key={c.code} value={c.code}>
-                                {c.label || c.code}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label>Planned USD</Label>
-                        <Input
-                          value={plannedUsd}
-                          onChange={(e) => setPlannedUsd(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Expected CNY</Label>
-                        <Input
-                          value={expectedCny}
-                          onChange={(e) => setExpectedCny(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Expected PKR / USD</Label>
-                        <Input
-                          value={expectedPkrPerUsd}
-                          onChange={(e) => setExpectedPkrPerUsd(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Expected CNY / USD</Label>
-                        <Input
-                          value={expectedCnyPerUsd}
-                          onChange={(e) => setExpectedCnyPerUsd(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1 col-span-2">
-                        <Label>Expected fees (PKR) — not financially posted</Label>
-                        <Input
-                          value={expectedFees}
-                          onChange={(e) => setExpectedFees(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label>Expected arrangement date</Label>
-                        <Input
-                          type="date"
-                          value={expectedArrangementDate}
-                          onChange={(e) => setExpectedArrangementDate(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Expected advance date (not paid)</Label>
-                        <Input
-                          type="date"
-                          value={expectedAdvanceDate}
-                          onChange={(e) => setExpectedAdvanceDate(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Expected USD date (not purchased)</Label>
-                        <Input
-                          type="date"
-                          value={expectedUsdDate}
-                          onChange={(e) => setExpectedUsdDate(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Expected completion</Label>
-                        <Input
-                          type="date"
-                          value={expectedDate}
-                          onChange={(e) => setExpectedDate(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                      <div className="space-y-1 col-span-2">
-                        <Label>Expected advance amount (PKR) — not paid</Label>
-                        <Input
-                          value={expectedAdvanceAmountPkr}
-                          onChange={(e) => setExpectedAdvanceAmountPkr(e.target.value)}
-                          disabled={readOnly}
-                          readOnly={readOnly}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label>Agent reference (quote / intention)</Label>
-                      <Input
-                        value={agentReference}
-                        onChange={(e) => setAgentReference(e.target.value)}
-                        disabled={readOnly}
-                        readOnly={readOnly}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label>Notes</Label>
-                      <Input
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        disabled={readOnly}
-                        readOnly={readOnly}
-                      />
-                    </div>
-
-                    {selectedCaseId && (
-                      <div className="space-y-3 pt-3 border-t border-border">
-                        <div className="rounded-lg border border-amber-600/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
-                          Planning links only — do not create supplier payments
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label>Link supplier (planning)</Label>
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <SearchableSelect
-                                options={supplierOptions}
-                                value={linkSupplierId}
-                                onValueChange={setLinkSupplierId}
-                                placeholder="Select supplier…"
-                              />
-                            </div>
-                            {!readOnly && (
-                              <Button
-                                variant="secondary"
-                                disabled={busy || !linkSupplierId}
-                                onClick={() => void handleLinkSupplier()}
-                              >
-                                Link
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label>Link purchase (planning)</Label>
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <SearchableSelect
-                                options={purchaseOptions}
-                                value={linkPurchaseId}
-                                onValueChange={setLinkPurchaseId}
-                                placeholder="Select purchase…"
-                              />
-                            </div>
-                            {!readOnly && (
-                              <Button
-                                variant="secondary"
-                                disabled={busy || !linkPurchaseId}
-                                onClick={() => void handleLinkPurchase()}
-                              >
-                                Link
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-
-                        {links.length > 0 && (
-                          <ul className="space-y-1 text-xs text-muted-foreground">
-                            {links.map((l) => (
-                              <li key={l.id} className="border-b border-border/50 pb-1">
-                                <span className="text-foreground">{l.link_type}</span> · {linkLabel(l)}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-
-                        <div className="space-y-1 pt-2 border-t border-border">
-                          <Label>Attachment file name (metadata only — no upload)</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              value={attachmentFileName}
-                              onChange={(e) => setAttachmentFileName(e.target.value)}
-                              placeholder="e.g. quote-scan.pdf"
-                              disabled={readOnly}
-                              readOnly={readOnly}
+                        <Label>Money Exchange Agent</Label>
+                        <div className="flex gap-2 min-w-0">
+                          <div className="flex-1 min-w-0">
+                            <SearchableSelect
+                              options={agentOptions}
+                              value={agentId}
+                              onValueChange={(v) => {
+                                setAgentId(v);
+                                if (thirdPartyId === v) setThirdPartyId('');
+                              }}
+                              placeholder="Search agent by name, code, or phone…"
+                              searchPlaceholder="Name, code, or phone…"
+                              emptyText="No money-exchange agents found."
+                              loading={contactsLoading}
+                              disabled={fieldsLocked}
+                              filterFn={matchesPlanningSearch}
                             />
-                            {!readOnly && (
-                              <Button
-                                variant="secondary"
-                                disabled={busy || !attachmentFileName.trim()}
-                                onClick={() => void handleRegisterAttachment()}
-                              >
-                                Register metadata
-                              </Button>
-                            )}
                           </div>
-                          {attachments.length > 0 && (
-                            <ul className="space-y-1 text-xs text-muted-foreground mt-2">
-                              {attachments.map((a) => (
-                                <li key={a.id} className="border-b border-border/50 pb-1">
-                                  <span className="text-foreground">{a.file_name || 'unnamed'}</span>
-                                  {a.is_metadata_only !== false
-                                    ? ' · metadata only (no file stored)'
-                                    : ''}
+                          {agentId && !fieldsLocked && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label="Clear agent"
+                              onClick={() => setAgentId('')}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Third party (optional)</Label>
+                        <div className="flex gap-2 min-w-0">
+                          <div className="flex-1 min-w-0">
+                            <SearchableSelect
+                              options={thirdPartyOptions}
+                              value={thirdPartyId}
+                              onValueChange={setThirdPartyId}
+                              placeholder="Search another money-exchange contact…"
+                              searchPlaceholder="Name, code, or phone…"
+                              emptyText="No other money-exchange contacts found."
+                              loading={contactsLoading}
+                              disabled={fieldsLocked}
+                              filterFn={matchesPlanningSearch}
+                            />
+                          </div>
+                          {thirdPartyId && !fieldsLocked && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label="Clear third party"
+                              onClick={() => setThirdPartyId('')}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </ArrangementSectionCard>
+
+                    <ArrangementSectionCard
+                      title="2. Funding Intention"
+                      hint="This records how you expect to fund later. It does not post a payment."
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {W2_FUNDING_INTENTION_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={fieldsLocked}
+                            onClick={() => setFundingMode(opt.value)}
+                            className={cn(
+                              'rounded-lg border px-3 py-2.5 text-left min-w-0',
+                              fundingMode === opt.value
+                                ? 'border-orange-600 bg-orange-500/10'
+                                : 'border-border bg-background'
+                            )}
+                          >
+                            <div className="text-sm font-medium">{opt.label}</div>
+                            <div className="text-[11px] text-muted-foreground">{opt.hint}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </ArrangementSectionCard>
+
+                    <ArrangementSectionCard
+                      title="3. Planned Currency"
+                      hint="Expected amounts and indicative rates. Not financially posted."
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <Label>Planned source currency</Label>
+                          <Select
+                            value={String(plannedCurrency)}
+                            onValueChange={setPlannedCurrency}
+                            disabled={fieldsLocked}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeCurrencies.map((c) => (
+                                <SelectItem key={c.code} value={c.code}>
+                                  {c.label || c.code}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Planned settlement currency</Label>
+                          <Select
+                            value={String(plannedSettlementCurrency)}
+                            onValueChange={setPlannedSettlementCurrency}
+                            disabled={fieldsLocked}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeCurrencies.map((c) => (
+                                <SelectItem key={c.code} value={c.code}>
+                                  {c.label || c.code}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Expected USD amount</Label>
+                          <Input
+                            value={plannedUsd}
+                            onChange={(e) => setPlannedUsd(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Expected CNY amount</Label>
+                          <Input
+                            value={expectedCny}
+                            onChange={(e) => setExpectedCny(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Indicative PKR per USD</Label>
+                          <Input
+                            value={expectedPkrPerUsd}
+                            onChange={(e) => setExpectedPkrPerUsd(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Indicative CNY per USD</Label>
+                          <Input
+                            value={expectedCnyPerUsd}
+                            onChange={(e) => setExpectedCnyPerUsd(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2 min-w-0">
+                          <Label>Expected fees (PKR) — not financially posted</Label>
+                          <Input
+                            value={expectedFees}
+                            onChange={(e) => setExpectedFees(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2 min-w-0">
+                          <Label>Planned advance amount (PKR) — not financially posted</Label>
+                          <Input
+                            value={expectedAdvanceAmountPkr}
+                            onChange={(e) => setExpectedAdvanceAmountPkr(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+                    </ArrangementSectionCard>
+
+                    <ArrangementSectionCard
+                      title="4. Expected Schedule"
+                      hint="Dates are expectations only. They do not complete Advance or USD acquisition."
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <Label>Expected arrangement date</Label>
+                          <Input
+                            type="date"
+                            value={expectedArrangementDate}
+                            onChange={(e) => setExpectedArrangementDate(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                          />
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Expected advance date</Label>
+                          <Input
+                            type="date"
+                            value={expectedAdvanceDate}
+                            onChange={(e) => setExpectedAdvanceDate(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                          />
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Expected USD acquisition date</Label>
+                          <Input
+                            type="date"
+                            value={expectedUsdDate}
+                            onChange={(e) => setExpectedUsdDate(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                          />
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <Label>Expected completion date</Label>
+                          <Input
+                            type="date"
+                            value={expectedDate}
+                            onChange={(e) => setExpectedDate(e.target.value)}
+                            disabled={fieldsLocked}
+                            readOnly={fieldsLocked}
+                          />
+                        </div>
+                      </div>
+                    </ArrangementSectionCard>
+
+                    <ArrangementSectionCard
+                      title="5. References"
+                      hint="Agent reference, notes, planning links, and attachment metadata only."
+                    >
+                      <div className="space-y-1">
+                        <Label>Agent / quote reference</Label>
+                        <Input
+                          value={agentReference}
+                          onChange={(e) => setAgentReference(e.target.value)}
+                          disabled={fieldsLocked}
+                          readOnly={fieldsLocked}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Notes</Label>
+                        <Textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          disabled={fieldsLocked}
+                          readOnly={fieldsLocked}
+                          className="min-h-[72px]"
+                        />
+                      </div>
+
+                      {selectedCaseId && (
+                        <div className="space-y-3 pt-2 border-t border-border">
+                          <p className="text-xs text-muted-foreground">
+                            Planning links are context only. They do not create a supplier settlement.
+                          </p>
+                          <div className="space-y-1">
+                            <Label>Link supplier (planning)</Label>
+                            <div className="flex gap-2 min-w-0">
+                              <div className="flex-1 min-w-0">
+                                <SearchableSelect
+                                  options={supplierOptions}
+                                  value={linkSupplierId}
+                                  onValueChange={setLinkSupplierId}
+                                  placeholder="Search supplier name…"
+                                  searchPlaceholder="Supplier name…"
+                                  emptyText="No suppliers found."
+                                  loading={contactsLoading}
+                                  disabled={fieldsLocked}
+                                />
+                              </div>
+                              {linkSupplierId && !fieldsLocked && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  aria-label="Clear supplier"
+                                  onClick={() => setLinkSupplierId('')}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {!fieldsLocked && (
+                                <Button
+                                  variant="secondary"
+                                  disabled={actions.actionsDisabled || !linkSupplierId}
+                                  onClick={() => void handleLinkSupplier()}
+                                >
+                                  Link
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Link purchase (planning)</Label>
+                            <div className="flex gap-2 min-w-0">
+                              <div className="flex-1 min-w-0">
+                                <SearchableSelect
+                                  options={purchaseOptions}
+                                  value={linkPurchaseId}
+                                  onValueChange={setLinkPurchaseId}
+                                  placeholder="Search purchase, invoice, or supplier…"
+                                  searchPlaceholder="Purchase, invoice, or supplier…"
+                                  emptyText="No purchases found."
+                                  loading={purchasesLoading}
+                                  disabled={fieldsLocked}
+                                  filterFn={matchesPlanningSearch}
+                                />
+                              </div>
+                              {linkPurchaseId && !fieldsLocked && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  aria-label="Clear purchase"
+                                  onClick={() => setLinkPurchaseId('')}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {!fieldsLocked && (
+                                <Button
+                                  variant="secondary"
+                                  disabled={actions.actionsDisabled || !linkPurchaseId}
+                                  onClick={() => void handleLinkPurchase()}
+                                >
+                                  Link
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {links.length > 0 && (
+                            <ul className="space-y-1 text-xs text-muted-foreground">
+                              {links.map((l) => (
+                                <li key={l.id} className="border-b border-border/50 pb-1">
+                                  <span className="text-foreground">{l.link_type}</span> · {linkLabel(l)}
                                 </li>
                               ))}
                             </ul>
                           )}
+                          <div className="space-y-1 pt-2 border-t border-border">
+                            <Label>Attachment reference (metadata only — no file uploaded)</Label>
+                            <div className="flex flex-col sm:flex-row gap-2 min-w-0">
+                              <Input
+                                value={attachmentFileName}
+                                onChange={(e) => setAttachmentFileName(e.target.value)}
+                                placeholder="e.g. quote-scan.pdf"
+                                disabled={fieldsLocked}
+                                readOnly={fieldsLocked}
+                                className="min-w-0"
+                              />
+                              {!fieldsLocked && (
+                                <Button
+                                  variant="secondary"
+                                  disabled={actions.actionsDisabled || !attachmentFileName.trim()}
+                                  onClick={() => void handleRegisterAttachment()}
+                                >
+                                  Register reference
+                                </Button>
+                              )}
+                            </div>
+                            {attachments.length > 0 && (
+                              <ul className="space-y-1 text-xs text-muted-foreground mt-2">
+                                {attachments.map((a) => (
+                                  <li key={a.id} className="border-b border-border/50 pb-1">
+                                    <span className="text-foreground">{a.file_name || 'unnamed'}</span>
+                                    {a.is_metadata_only !== false
+                                      ? ' · metadata only (no file uploaded)'
+                                      : ''}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </ArrangementSectionCard>
                   </div>
                 )}
 
-                {!readOnly && (
-                  <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-                    {!selectedCaseId ? (
-                      <Button onClick={() => void handleCreate()} disabled={busy}>
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                        Create Draft Case
-                      </Button>
-                    ) : (
-                      <>
-                        <Button variant="secondary" onClick={() => void handleSaveDraft()} disabled={busy}>
-                          Save Draft
-                        </Button>
-                        {isW2ConfirmableStage(activeStage) && (
-                          <Button onClick={() => void handleConfirmArrangement()} disabled={busy}>
-                            Confirm Arrangement
-                          </Button>
-                        )}
-                        {caseRow?.accounting_status === 'NOT_POSTED' &&
-                          caseRow.operational_status !== 'CANCELLED' && (
-                            <Button variant="destructive" onClick={() => void handleCancel()} disabled={busy}>
-                              Cancel Unposted
-                            </Button>
-                          )}
-                      </>
-                    )}
-                  </div>
-                )}
-                {readOnly && selectedCaseId && (
-                  <p className="pt-2 border-t border-border text-xs text-muted-foreground">
-                    Read-only history — mutation actions are unavailable while Multi Currency is off.
-                  </p>
-                )}
+                <div className={cn(W2_ACTION_BAR_CLASS, 'pt-2 border-t border-border')}>
+                  {actions.showCreateDraft && (
+                    <Button onClick={() => void handleCreate()} disabled={actions.actionsDisabled}>
+                      {busyAction === 'create' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Draft
+                    </Button>
+                  )}
+                  {actions.showSaveDraft && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handleSaveDraft()}
+                      disabled={actions.actionsDisabled}
+                    >
+                      {actions.saveDraftBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Draft
+                    </Button>
+                  )}
+                  {actions.showConfirmArrangement && (
+                    <Button
+                      onClick={() => void handleConfirmArrangement()}
+                      disabled={actions.actionsDisabled}
+                    >
+                      {actions.confirmBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Confirm Arrangement
+                    </Button>
+                  )}
+                  {actions.showCancelUnposted && (
+                    <Button
+                      variant="destructive"
+                      onClick={() => void handleCancel()}
+                      disabled={actions.actionsDisabled}
+                    >
+                      {busyAction === 'cancel' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Cancel Unposted Case
+                    </Button>
+                  )}
+                  {readOnly && (
+                    <p className="text-xs text-muted-foreground self-center">
+                      Multi Currency is off. History is read-only.
+                    </p>
+                  )}
+                </div>
               </>
             )}
           </main>
 
-          <aside className="md:col-span-2 border-l border-border p-3 overflow-y-auto space-y-3 text-sm">
-            <p className="text-xs font-medium text-muted-foreground">Live summary</p>
+          <aside className="xl:col-span-2 border-t xl:border-t-0 xl:border-l border-border p-3 overflow-y-auto space-y-3 text-sm min-w-0">
+            <p className="text-xs font-medium text-muted-foreground">Summary</p>
             <div className="space-y-1 text-muted-foreground">
               <div>Funding intention: {fundingMode || '—'}</div>
-              <div>Planned USD: {plannedUsd || '—'}</div>
+              <div>Expected USD: {plannedUsd || '—'}</div>
               <div>Expected CNY: {expectedCny || '—'}</div>
-              <div>Expected PKR/USD: {expectedPkrPerUsd || '—'}</div>
-              <div>Expected advance PKR: {expectedAdvanceAmountPkr || '—'}</div>
-              <div>Expected fees PKR: {expectedFees || '—'}</div>
+              <div>Indicative PKR/USD: {expectedPkrPerUsd || '—'}</div>
+              <div>Planned advance PKR: {expectedAdvanceAmountPkr || '—'}</div>
               <div className="pt-2 text-xs">
-                Journal preview: <span className="text-foreground">none (W2 planning)</span>
+                Journal preview: <span className="text-foreground">none (not financially posted)</span>
               </div>
-              <div className="text-xs">Accounting: {caseRow?.accounting_status || 'NOT_POSTED'}</div>
+              <div className="text-xs">Accounting: Not Posted</div>
               <div className="text-xs">posts_journal: false</div>
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Recent events</p>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Timeline / audit</p>
               <ul className="space-y-1 max-h-48 overflow-y-auto">
                 {events.slice(0, 12).map((e) => (
                   <li key={e.id} className="text-[11px] text-muted-foreground border-b border-border/50 pb-1">
                     <span className="text-foreground">{e.event_type}</span>
-                    {e.posts_journal ? ' · JE!' : ' · no JE'}
+                    {e.posts_journal ? ' · journal claimed' : ' · not financially posted'}
                   </li>
                 ))}
-                {events.length === 0 && <li className="text-[11px] text-muted-foreground">No events</li>}
+                {events.length === 0 && (
+                  <li className="text-[11px] text-muted-foreground">No events yet</li>
+                )}
               </ul>
             </div>
           </aside>
+          </div>
         </div>
       </div>
     </div>

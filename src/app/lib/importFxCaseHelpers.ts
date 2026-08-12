@@ -39,9 +39,9 @@ export const IMPORT_FX_STAGE_ORDER: { code: ImportFxStageCode; label: string }[]
 ];
 
 export const IMPORT_FX_FUNDING_MODES: { value: ImportFxFundingMode; label: string }[] = [
-  { value: 'CREDIT', label: 'Credit (intention)' },
-  { value: 'ADVANCE', label: 'Advance (intention — not paid)' },
-  { value: 'MIXED', label: 'Mixed (intention)' },
+  { value: 'ADVANCE', label: 'Advance planned' },
+  { value: 'CREDIT', label: 'Credit planned' },
+  { value: 'MIXED', label: 'Mixed planned' },
 ];
 
 /** W1/W2: only ARRANGEMENT may be confirmed. */
