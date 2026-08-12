@@ -75,9 +75,34 @@ if (uiSrc.includes('confirmClientOpRef') || uiSrc.includes('confirmClientOp')) {
   ok('ui:confirm_op_retry_ref');
 } else fail('ui:confirm_op_retry_ref');
 
-ok('live_db_qa', 'SKIPPED — no Docker/safe office DB target authorized for this pass');
-ok('financial_delta', 'EXPECTED 0/0/0/0/0 when live QA runs; not measured this pass');
+const applyRunner = path.join(ROOT, 'scripts/qa/apply-import-fx-w2-local.mjs');
+const liveRunner = path.join(ROOT, 'scripts/qa/import-fx-w2-live-rpc-qa.mjs');
+if (fs.existsSync(applyRunner) && fs.existsSync(liveRunner)) ok('file:w2_apply_and_live_runners');
+else fail('file:w2_apply_and_live_runners');
+
+const w1Live = fs.readFileSync(path.join(ROOT, 'scripts/qa/import-fx-w1-live-rpc-qa.mjs'), 'utf8');
+const w1Mut = fs.readFileSync(path.join(ROOT, 'scripts/qa/import-fx-w1-mutation-security-qa.mjs'), 'utf8');
+if (w1Live.includes('W2_ARRANGEMENT_ONLY') && w1Mut.includes('W2_ARRANGEMENT_ONLY')) {
+  ok('w1_suites_accept_w2_block_code');
+} else fail('w1_suites_accept_w2_block_code');
+
+results.push({
+  name: 'live_db_qa',
+  pass: true,
+  skipped: true,
+  detail: 'static suite does not connect; use node scripts/qa/import-fx-w2-live-rpc-qa.mjs',
+});
+console.log('SKIPPED live_db_qa static suite does not connect to Postgres');
+results.push({
+  name: 'financial_delta',
+  pass: true,
+  skipped: true,
+  detail: 'measured only by live RPC QA on confirmed localhost',
+});
+console.log('SKIPPED financial_delta measured only by live RPC QA');
 
 const failed = results.filter((r) => !r.pass);
-console.log(`\nW2 static QA: ${results.length - failed.length}/${results.length} PASS`);
+const skipped = results.filter((r) => r.skipped);
+const passed = results.filter((r) => r.pass && !r.skipped);
+console.log(`\nW2 static QA: PASS=${passed.length} FAIL=${failed.length} SKIPPED=${skipped.length}`);
 process.exit(failed.length ? 1 : 0);

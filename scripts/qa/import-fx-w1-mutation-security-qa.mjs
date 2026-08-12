@@ -396,9 +396,9 @@ try {
 await setSession({ companyId: companyA, userId: userAdmin, role: 'admin' });
 try {
   await client.query(`SELECT confirm_import_fx_case_stage($1,$2,'ADVANCE')`, [companyA, caseId]);
-  fail('19 invalid stage transition rejected', 'expected W1_PLANNING_ONLY');
+  fail('19 invalid stage transition rejected', 'expected W2_ARRANGEMENT_ONLY or W1_PLANNING_ONLY');
 } catch (e) {
-  if (String(e.message).includes('W1_PLANNING_ONLY')) ok('19 invalid stage transition rejected');
+  if (/W2_ARRANGEMENT_ONLY|W1_PLANNING_ONLY/.test(String(e.message))) ok('19 invalid stage transition rejected');
   else fail('19 invalid stage transition rejected', e.message);
 }
 
