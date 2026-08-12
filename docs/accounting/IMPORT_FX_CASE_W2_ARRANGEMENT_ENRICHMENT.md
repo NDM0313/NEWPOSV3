@@ -394,7 +394,7 @@ Production, VPS, financial posting, Chart of Accounts, and W3–W6 were **untouc
 | Implementation commit | `bf7973c4fa8459cb84f494daeccab04f55224fc0` |
 | Docs hash stamp (pre-live-QA) | `1bce4f2e8f3a1c8c60c7bc2eeb1cceae01a4f9bb` |
 | Live QA evidence (blocked preflight) | `503bffbb09676903acec7316197449dbe5db7b11` |
-| UI finalize commit | *(this commit)* |
+| UI finalize commit | `7e888ccd6db76ecf86bd13a2c6c4f94959eaf9d9` |
 | Compare | https://github.com/NDM0313/NEWPOSV3/compare/main...feat/import-fx-w2-arrangement-enrichment |
 
 ---
