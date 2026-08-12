@@ -11,6 +11,8 @@ alwaysApply: true
 
 **W2 ARRANGEMENT enrichment (shipped additive; non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md) — money stages remain blocked until W3+.
 
+**W3–W6 money execution UX (design only — not implemented):** [`docs/accounting/IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](docs/accounting/IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md)
+
 **W3+ money / pooled / Phase-3 hold:** separate owner approval required.
 
 **Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)

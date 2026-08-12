@@ -751,12 +751,16 @@ See [`IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](./IMPORT_FX_CASE_W2_ARRANGEM
 
 ### Wave W3 — Advance and USD acquisition (money; separate approval)
 
+Canonical UX (design only): [`IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](./IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md).
+
 - agent/third-party advances (posted);
 - partial funding;
 - USD acquisition lots;
 - agent credit/prepaid modes.
 
 ### Wave W4 — China USD transfer
+
+See W3–W6 UX design (§ China Transfer).
 
 - source/destination wallets;
 - transfer confirmation;
@@ -765,12 +769,16 @@ See [`IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](./IMPORT_FX_CASE_W2_ARRANGEM
 
 ### Wave W5 — USD-to-CNY conversion and pool
 
+See W3–W6 UX design (§ Conversion + CNY Pool).
+
 - conversion lots;
 - wallet quantity movements;
 - effective rate;
 - CNY pool.
 
 ### Wave W6 — Supplier allocations
+
+See W3–W6 UX design (§ Supplier Allocation + Reconciliation). W6 in the case-wave map also covers reconciliation/close UX; supplier allocation UI is specified under W5 in that document.
 
 - supplier FX open items;
 - multi-supplier allocation;

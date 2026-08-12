@@ -403,6 +403,8 @@ Separate by **business role/source**, not only `contact_id`. Generic Account Led
 
 ## 9. Future UI (design only — not implemented)
 
+**Canonical end-to-end case UX (W3–W6):** [`IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](./IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md).
+
 | Screen | Purpose |
 | --- | --- |
 | 1 Buy USD/TT | Agent search, USD wallet, qty, rate, cost, credit/prepaid, fee, JE preview |

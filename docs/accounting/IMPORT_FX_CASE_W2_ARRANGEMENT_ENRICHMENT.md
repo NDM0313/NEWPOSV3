@@ -372,6 +372,8 @@ No W2 SQL contract correction migration was written (migrations remain unapplied
 
 **W2 completion boundary:** ARRANGEMENT draft/resume/confirm UI + non-posting RPCs + metadata attachments. Accounting status stays `NOT_POSTED`. Money stages remain disabled.
 
+W3–W6 money execution UX (design only, not implemented): [`IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](./IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md).
+
 W3 (separate approval): financial ADVANCE / USD acquisition confirm + posting. Path 21 remains until an approved migration story.
 
 ---

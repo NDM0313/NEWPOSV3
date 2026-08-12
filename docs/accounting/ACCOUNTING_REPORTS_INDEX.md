@@ -138,6 +138,7 @@ flowchart TD
 | [`docs/accounting/POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md) | Pooled USD→CNY multi-supplier design + Path 21 forensic appendix |
 | [`docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md) | W1 case shell hold/verify evidence |
 | [`docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md) | W2 ARRANGEMENT enrichment (non-posting); money stages W3+ |
+| [`docs/accounting/IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md) | W3–W6 money execution UX design (docs only; not implemented) |
 
 ---
 

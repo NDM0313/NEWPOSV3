@@ -235,6 +235,8 @@ W2 does **not** confirm ADVANCE/USD or post money. Money execution remains **W3+
 
 Do **not** implement without separate approval: advances / USD acquisition **money** confirm+posting, China transfer, conversion/pool, multi-supplier allocations, mobile case UX completion, FX P&L accounts `1395`/`2295`/`6100`/`7100`.
 
+Canonical money-execution UX (design only): [`IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](./IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md).
+
 ---
 
 ## Remaining blockers / risks
