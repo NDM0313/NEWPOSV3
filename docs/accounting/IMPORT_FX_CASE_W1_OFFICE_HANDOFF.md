@@ -2,8 +2,9 @@
 
 **Date:** 2026-08-12  
 **Branch:** `feat/import-fx-case-w1-persistence`  
-**Tip commit:** `770af42eb60a6f39fc9cb9fd2a86fa1fc95f369c`  
-**Compare / open PR:** https://github.com/NDM0313/NEWPOSV3/compare/main...feat/import-fx-case-w1-persistence?expand=1
+**Evidence tip (owner letter):** `770af42eb60a6f39fc9cb9fd2a86fa1fc95f369c`  
+**Rebased tip on `main` history:** `ba26db6b` (same lockdown commit after rebase) · branch tip / `main` includes handoff at `46a00855`  
+**Compare (historical):** https://github.com/NDM0313/NEWPOSV3/compare/main...feat/import-fx-case-w1-persistence?expand=1
 
 ---
 
@@ -12,41 +13,51 @@
 | Item | Result |
 |------|--------|
 | W1 implementation | Done (non-posting case shell) |
-| Localhost QA gate | **Accepted by owner** for PR merge-readiness only |
+| Localhost QA gate | **Accepted by owner** (2026-08-12 office letter) for **PR merge-readiness only** |
 | Target | `localhost:5432/postgres` · container `newposv3-local-pg` |
 | Suites | **122/122 PASS** |
 | Production build | **PASS** |
 | JE / lines / payments Δ | **0 / 0 / 0** |
-| Production DB / API | **Not touched** (`supabase.dincouture.pk` refused) |
-| Merged to `main` | **No** |
+| Production DB / API for this gate letter | **Not used** (`supabase.dincouture.pk` refused for the localhost gate) |
+| Code on `origin/main` | **Yes** — W1 commits are present on `main` (FF of rebased branch; tip includes `46a00855`). This letter does **not** re-merge and does **not** authorize production deploy. |
 
-Full evidence: [`IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](./IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md)
+Full evidence: [`IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](./IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md) (see **Owner acceptance** section).
 
 ---
 
-## Office — do next (in order)
+## Merge-readiness verdict (owner-accepted)
 
-### 1. Open / update GitHub PR
+**READY for PR / code merge review** on the basis of localhost verification only.
 
-1. Open the compare link above → **Create pull request** (if none exists).  
-2. Base: `main` ← head: `feat/import-fx-case-w1-persistence`.  
-3. Paste summary from “PR body paste” below.  
-4. Authenticate `gh` if you want CLI PR comments: `gh auth login`.
+This acceptance does **not** authorize:
 
-### 2. Human merge review (PR only)
+- production database access  
+- production migration or deployment  
+- Multi Currency enablement in production  
+- treating localhost as production-equivalent  
+- W2–W6 · Phase-3 accounting · money-journal changes  
 
-Confirm in review:
+---
 
-- No journal/payment posting in W1 migrations/RPCs  
-- Multi Currency OFF → historical list/get read-only; mutations blocked  
-- Table + attachment privileges RPC-only (lockdown migrations)  
-- Path 21 Agent FX still separate / unchanged money path  
-- QA harness SQL is **not** in the production migration chain  
+## Manual PR / merge review (human only — do not auto-merge)
 
-Merge recommendation for **code PR only:** READY (localhost gate owner-approved).  
-**Do not** treat merge as production deploy.
+`gh` CLI is often unavailable/unauthenticated in office. Use the browser:
 
-### 3. Production-deployment blockers (still required before any prod migrate)
+1. Open: https://github.com/NDM0313/NEWPOSV3/compare/main...feat/import-fx-case-w1-persistence?expand=1  
+2. If the compare shows **no unique commits** (branch already equal/`main` ahead), W1 is already on `main` — **do not create a duplicate PR**; use the checklist below for post-merge / release review only.  
+3. If a PR still exists or compare shows unique commits, create/update PR: base `main` ← head `feat/import-fx-case-w1-persistence`.  
+4. Paste the “PR body paste” section below into the PR description.  
+5. Human review checklist before clicking Merge (if still open):
+   - No journal/payment posting in W1 migrations/RPCs  
+   - Multi Currency OFF → historical list/get read-only; mutations blocked  
+   - Table + attachment privileges RPC-only (lockdown migrations)  
+   - Path 21 Agent FX still separate / unchanged money path  
+   - QA harness SQL is **not** in the production migration chain  
+6. **Do not** treat any merge as production deploy.
+
+---
+
+## Production-deployment blockers (still required before any prod migrate)
 
 | # | Blocker |
 |---|---------|
@@ -55,9 +66,9 @@ Merge recommendation for **code PR only:** READY (localhost gate owner-approved)
 | 3 | Production Storage bucket policy verification (or N/A with evidence) |
 | 4 | Explicit production migration + deployment approval |
 
-### 4. After PR merge (only when approved)
+After those are satisfied **and** written prod approval exists, apply W1 SQL in repo order on staging first, then production. Do **not** run `scripts/qa/import-fx-w1-*-harness.sql` on staging/production.
 
-Apply on staging first, then production **only with separate written approval**, in repo order:
+Migration order (when prod migrate is separately approved):
 
 1. Path 21 / Wave A / Wave 0 (if not already on target)  
 2. `20260811230000_import_fx_case_stage_persistence_w1.sql`  
@@ -68,13 +79,11 @@ Apply on staging first, then production **only with separate written approval**,
 7. `20260812040000_import_fx_case_attachment_security_w1.sql`  
 8. `20260812050000_import_fx_case_table_privilege_lockdown_w1.sql`  
 
-Do **not** run `scripts/qa/import-fx-w1-*-harness.sql` on staging/production.
-
 ---
 
-## Explicitly not authorized yet
+## Explicitly not authorized by the localhost gate letter
 
-- Production database access / migrate / deploy  
+- Production database access / migrate / deploy under this letter  
 - Multi Currency enablement in production  
 - W2–W6 implementation  
 - Phase-3 accounting / money-journal changes  
@@ -97,12 +106,12 @@ Do **not** run `scripts/qa/import-fx-w1-*-harness.sql` on staging/production.
 - Suites: 122/122 PASS
 - Build: PASS
 - JE/line/payment Δ: 0/0/0
-- Tip: 770af42eb60a6f39fc9cb9fd2a86fa1fc95f369c
+- Evidence tip: 770af42eb60a6f39fc9cb9fd2a86fa1fc95f369c
 - Evidence: docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md
 - Handoff: docs/accounting/IMPORT_FX_CASE_W1_OFFICE_HANDOFF.md
 
-## Production not done
-- No prod migrate/deploy in this PR
+## Production not done under this letter
+- This acceptance does not authorize prod migrate/deploy
 - Staging HTTP UI smoke + Storage review + explicit prod approval still required before production
 
 ## Test plan

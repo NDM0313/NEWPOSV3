@@ -240,3 +240,45 @@ Do **not** implement without separate approval: advances, USD acquisition money,
 4. Attachment add/remove has no W1 SECURITY DEFINER RPC — direct table privileges revoked; future waves need a signed-file / controlled attach RPC before re-granting client table access.
 5. Production Supabase Storage bucket policies for Import FX paths were not verified in this localhost gate (`storage.objects` absent locally).
 6. Live browser UI vs non-production API has not been completed (app env still points at production HTTP API).
+
+---
+
+## Owner acceptance — localhost W1 merge-readiness only (2026-08-12)
+
+**Recorded:** 2026-08-12 (office).  
+**Gate accepted:** isolated Docker DB `localhost:5432/postgres` · container `newposv3-local-pg` — **PR merge-readiness only**.
+
+### Confirmed evidence (this acceptance)
+
+| Check | Result |
+|-------|--------|
+| W1 security / regression suites | **122/122 PASS** (documented in this file) |
+| Production build | **PASS** |
+| JE / journal_entry_lines / payments Δ | **0 / 0 / 0** |
+| Evidence tip commit | `770af42eb60a6f39fc9cb9fd2a86fa1fc95f369c` (`fix: RPC-only lockdown for Import FX case shell tables`) |
+| Rebased equivalent on current history | `ba26db6b` (same message; after rebase onto `main`) |
+
+No destructive or unnecessary migrations were re-run for this acceptance record. Production was not accessed for this gate letter.
+
+### Explicitly **not** authorized by this acceptance
+
+- Production database access  
+- Production migration or deployment  
+- Use of `supabase.dincouture.pk` for this gate  
+- Multi Currency enablement in production  
+- Treating localhost as production-equivalent  
+- W2–W6 implementation  
+- Phase-3 accounting  
+- Money-journal changes  
+
+### Production-deployment blockers (still required)
+
+1. Proper non-production Supabase / VPS staging environment  
+2. Live UI smoke against non-production HTTP API  
+3. Production Storage bucket policy verification (or N/A with evidence)  
+4. Explicit production migration / deployment approval  
+
+### Merge-readiness verdict
+
+**READY for PR merge (code only)** — localhost gate owner-accepted.  
+This verdict does **not** authorize production migrate/deploy. Merge must remain a human action; do not treat merge as production release.
