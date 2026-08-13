@@ -670,7 +670,8 @@ No accounting records are changed by publishing this file.
 | Title | Import FX — Operator Workflow & Gap Analysis |
 | Path | `docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md` |
 | Branch | `feat/import-fx-w2-arrangement-enrichment` |
-| Authored against commit | `84548f77` |
+| Authored against commit | `84548f77` (analysis baseline) |
+| Published in commit | `70004bc5` |
 | Date | 2026-08-13 |
-| Draft PR (W2 feature) | https://github.com/ndm313/NEW-POSV3/pull/23 (do not merge solely for this doc) |
+| Draft PR (W2 feature) | https://github.com/NDM0313/NEWPOSV3/pull/23 (do not merge solely for this doc) |
 | Change type | Documentation / analysis only |
