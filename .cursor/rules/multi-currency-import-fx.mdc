@@ -17,6 +17,8 @@ alwaysApply: true
 
 **W3 Agent Advance + USD acquisition (design only — not shipped):** [`docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — stacked docs branch; **Owner Decision Register OD-1–OD-7 locked** (settings-mapped `AGENT_FX_ADVANCE_CLEARING`; no fee post v1; immutable lots + WA reporting; FIFO advance apply; Path 21 separate; accounting stays `PARTIALLY_POSTED`; hard+soft duplicate guards). Still design-only; no money PR before W2/W2.1; live CoA code pick at provision.
 
+**W3→W6 master implementation plan (docs only — permanent SoT):** [`docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md) — A-to-Z sequencing, journals, entities, gates, prompts; supersedes ASYNC §26 wave split for W4–W6 ordering.
+
 **W3+ money / pooled / Phase-3 hold:** separate owner approval required.
 
 **Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
