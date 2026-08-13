@@ -226,9 +226,14 @@ Repo migration `20260811200000_…` applied on local. `client_operation_id` + `i
 
 ---
 
-## HOLD — W2–W6 / Phase 3
+## Successor — W2 ARRANGEMENT enrichment
 
-Do **not** implement without separate approval: advances, USD acquisition money, China transfer, conversion/pool, multi-supplier allocations, mobile case UX, FX P&L accounts `1395`/`2295`/`6100`/`7100`.
+W2 (non-posting ARRANGEMENT enrichment only) is documented in [`IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](./IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md).  
+W2 does **not** confirm ADVANCE/USD or post money. Money execution remains **W3+**.
+
+## HOLD — W3–W6 / Phase 3
+
+Do **not** implement without separate approval: advances / USD acquisition **money** confirm+posting, China transfer, conversion/pool, multi-supplier allocations, mobile case UX completion, FX P&L accounts `1395`/`2295`/`6100`/`7100`.
 
 ---
 

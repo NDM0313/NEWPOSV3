@@ -41,6 +41,8 @@ interface SearchableSelectProps {
   filterFn?: (option: SearchableSelectOption, search: string) => boolean;
   // Badge color for due balance (customer=red, supplier=orange)
   badgeColor?: 'red' | 'orange';
+  disabled?: boolean;
+  loading?: boolean;
 }
 
 export const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -58,6 +60,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   renderOption,
   filterFn,
   badgeColor = 'orange',
+  disabled = false,
+  loading = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -100,12 +104,13 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   return (
     <div ref={containerRef} className="w-full min-w-0 max-w-[750px]">
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn(
             'w-full justify-between bg-input-background border-border text-foreground hover:bg-popover h-10',
             className
@@ -114,7 +119,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           <div className="flex items-center gap-2 truncate flex-1 min-w-0">
             {icon}
             <span className="truncate text-sm font-medium">
-              {selectedOption ? selectedOption.name : placeholder}
+              {loading
+                ? 'Loading…'
+                : selectedOption
+                  ? selectedOption.name
+                  : placeholder}
             </span>
             {selectedOption && selectedOption.dueBalance > 0 && (
               <span
@@ -166,7 +175,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             }}
           >
             {!showAddNew && filteredOptions.length === 0 && (
-              <CommandEmpty>{emptyText}</CommandEmpty>
+              <CommandEmpty>{loading ? 'Loading…' : emptyText}</CommandEmpty>
             )}
             
             {showAddNew && (

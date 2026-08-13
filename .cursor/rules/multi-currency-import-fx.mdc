@@ -7,7 +7,15 @@ alwaysApply: true
 
 **Canonical UX addendum (async resumable case):** [`docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md`](docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md)
 
-**W1 case persistence (shipped additive) + W2+ hold:** [`docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md)
+**W1 case persistence (shipped additive):** [`docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md)
+
+**W2 ARRANGEMENT enrichment (shipped additive; non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md) — money stages remain blocked until W3+.
+
+**Operator workflow + gap analysis (Path 21 vs Cases, screenshot meaning, issue register):** [`docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md`](docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md) — consult when operators confuse ARRANGED/NOT_POSTED with wallet or AP posting.
+
+**W2.1 operator clarity + assignment (non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md) — agent confirm rules, funding summary, arrangement lock, case assignment.
+
+**W3+ money / pooled / Phase-3 hold:** separate owner approval required.
 
 **Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
 
@@ -35,10 +43,11 @@ While `fxSettlementAccountingEnabled = false` (Profile A): FX difference / conve
 | Workflow | Status | Meaning |
 |----------|--------|---------|
 | **Path 21 — Agent dual credit** | Shipped (flag-gated) | `record_fx_currency_purchase_on_credit` + agent/supplier `createSupplierPayment`; tables `fx_currency_purchases` / `fx_currency_purchase_settlements` |
-| **Import FX Case (W1)** | Shipped shell (flag-gated) | `import_fx_cases` + stages/events; draft/resume/arrangement only; **no money journals** |
-| **Pooled USD→CNY multi-supplier** | Design only (W2+) | Events B–F in pooled workflow doc; one TT/conversion → many supplier allocations |
+| **Import FX Case (W1)** | Shipped shell (flag-gated) | `import_fx_cases` + stages/events; draft/resume/arrangement confirm; **no money journals** |
+| **Import FX Case (W2)** | Shipped enrichment (flag-gated) | ARRANGEMENT planning fields, selectors, links, attachment metadata; money stages still non-confirmable; **no money journals** |
+| **Pooled USD→CNY multi-supplier** | Design only (W3+) | Events B–F in pooled workflow doc; one TT/conversion → many supplier allocations |
 
-Preserve Path 21. Pooled must not silently replace it. Prepaid-agent is additive alongside credit. Do **not** implement W2–W6 or Phase-3 money/FX P&L without separate explicit approval.
+Preserve Path 21. Pooled must not silently replace it. Prepaid-agent is additive alongside credit. Do **not** implement W3–W6 money/FX P&L without separate explicit approval.
 
 ## Current state (truth — do not mis-sell)
 

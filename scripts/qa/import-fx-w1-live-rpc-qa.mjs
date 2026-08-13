@@ -255,7 +255,7 @@ try {
   await client.query(`SELECT confirm_import_fx_case_stage($1,$2,'ADVANCE')`, [companyA, caseId]);
   fail('W2 stage rejected', 'expected exception');
 } catch (e) {
-  if (String(e.message).includes('W1_PLANNING_ONLY')) ok('W2 stage rejected');
+  if (/W2_ARRANGEMENT_ONLY|W1_PLANNING_ONLY/.test(String(e.message))) ok('W2 stage rejected');
   else fail('W2 stage rejected', e.message);
 }
 

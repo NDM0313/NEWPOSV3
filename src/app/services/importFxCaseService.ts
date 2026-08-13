@@ -1,6 +1,6 @@
 /**
- * Import FX Case Wave W1 — resumable case/stage persistence (non-posting).
- * Money events (advance, USD, transfer, conversion, allocation) are later waves.
+ * Import FX Case — W1 shell + W2 ARRANGEMENT enrichment (non-posting).
+ * Money events (advance, USD, transfer, conversion, allocation) begin in W3+.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -8,11 +8,22 @@ import { fetchCompanyImportFxEnabled, formatImportFxServerError } from '@/app/li
 import { normalizeImportDocCurrency } from '@/app/lib/importFxHelpers';
 import {
   IMPORT_FX_STAGE_ORDER,
+  normalizeFundingMode,
+  type ImportFxFundingMode,
   type ImportFxStageCode,
   type ImportFxStageStatus,
 } from '@/app/lib/importFxCaseHelpers';
+import {
+  assertW2MutationDoesNotPost,
+  stripAttachmentStoragePath,
+} from '@/app/lib/importFxCaseWorkspaceView';
+import type {
+  ImportFxAssignmentPriority,
+  ImportFxAssignmentStatus,
+} from '@/app/lib/importFxCaseW21Helpers';
+import { normalizeAdvanceForFundingMode } from '@/app/lib/importFxCaseW21Helpers';
 
-export type { ImportFxStageCode, ImportFxStageStatus };
+export type { ImportFxStageCode, ImportFxStageStatus, ImportFxFundingMode };
 export { IMPORT_FX_STAGE_ORDER };
 
 export type ImportFxArrangementType =
@@ -65,6 +76,23 @@ export interface ImportFxCase {
   expected_fees_pkr: number | null;
   expected_completion_date: string | null;
   notes: string | null;
+  funding_mode?: ImportFxFundingMode | null;
+  planned_settlement_currency?: string | null;
+  agent_reference?: string | null;
+  expected_arrangement_date?: string | null;
+  expected_advance_date?: string | null;
+  expected_usd_acquisition_date?: string | null;
+  expected_advance_amount_pkr?: number | null;
+  arrangement_confirmed_at?: string | null;
+  case_owner_user_id?: string | null;
+  assigned_to_user_id?: string | null;
+  current_action_required?: string | null;
+  assignment_due_at?: string | null;
+  assignment_priority?: ImportFxAssignmentPriority | null;
+  assignment_status?: ImportFxAssignmentStatus | null;
+  reminder_at?: string | null;
+  assignment_updated_at?: string | null;
+  assignment_notes?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -100,6 +128,16 @@ export interface ImportFxCaseLink {
   notes: string | null;
 }
 
+export interface ImportFxCaseAttachmentMeta {
+  id: string;
+  case_id: string;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  is_metadata_only?: boolean;
+  created_at: string;
+}
+
 async function requireImportFxEnabled(companyId: string): Promise<void> {
   const enabled = await fetchCompanyImportFxEnabled(companyId);
   if (!enabled) {
@@ -122,6 +160,11 @@ function parseRpcJson(data: unknown): Record<string, unknown> {
   return {};
 }
 
+function normalizeOptionalCurrency(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return normalizeImportDocCurrency(raw);
+}
+
 export interface CreateImportFxCaseParams {
   companyId: string;
   branchId?: string | null;
@@ -137,8 +180,14 @@ export interface CreateImportFxCaseParams {
   expectedCompletionDate?: string | null;
   notes?: string | null;
   createdBy?: string | null;
-  /** W1 create idempotency: reuse on network retry; rotate only after success or new intent. */
   clientOperationId?: string | null;
+  fundingMode?: ImportFxFundingMode | null;
+  plannedSettlementCurrency?: string | null;
+  agentReference?: string | null;
+  expectedArrangementDate?: string | null;
+  expectedAdvanceDate?: string | null;
+  expectedUsdAcquisitionDate?: string | null;
+  expectedAdvanceAmountPkr?: number | null;
 }
 
 export async function createImportFxCase(
@@ -150,16 +199,13 @@ export async function createImportFxCase(
   idempotentReplay?: boolean;
 }> {
   await requireImportFxEnabled(params.companyId);
-  const currency = params.plannedSourceCurrency
-    ? normalizeImportDocCurrency(params.plannedSourceCurrency)
-    : null;
   const { data, error } = await supabase.rpc('create_import_fx_case', {
     p_company_id: params.companyId,
     p_branch_id: params.branchId ?? null,
     p_arrangement_type: params.arrangementType ?? 'POOLED_USD_CNY',
     p_agent_contact_id: params.agentContactId ?? null,
     p_third_party_contact_id: params.thirdPartyContactId ?? null,
-    p_planned_source_currency: currency,
+    p_planned_source_currency: normalizeOptionalCurrency(params.plannedSourceCurrency),
     p_planned_usd_amount: params.plannedUsdAmount ?? null,
     p_expected_pkr_per_usd: params.expectedPkrPerUsd ?? null,
     p_expected_cny_per_usd: params.expectedCnyPerUsd ?? null,
@@ -169,9 +215,20 @@ export async function createImportFxCase(
     p_notes: params.notes ?? null,
     p_created_by: params.createdBy ?? null,
     p_client_operation_id: params.clientOperationId ?? null,
+    p_funding_mode: normalizeFundingMode(params.fundingMode) ?? null,
+    p_planned_settlement_currency: normalizeOptionalCurrency(params.plannedSettlementCurrency),
+    p_agent_reference: params.agentReference ?? null,
+    p_expected_arrangement_date: params.expectedArrangementDate ?? null,
+    p_expected_advance_date: params.expectedAdvanceDate ?? null,
+    p_expected_usd_acquisition_date: params.expectedUsdAcquisitionDate ?? null,
+    p_expected_advance_amount_pkr: normalizeAdvanceForFundingMode(
+      params.fundingMode,
+      params.expectedAdvanceAmountPkr ?? null
+    ),
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
   return {
     caseId: String(row.case_id ?? ''),
     caseNo: String(row.case_no ?? ''),
@@ -196,17 +253,25 @@ export async function updateImportFxCaseDraft(params: {
   updatedBy?: string | null;
   clearAgent?: boolean;
   clearThirdParty?: boolean;
+  fundingMode?: ImportFxFundingMode | null;
+  plannedSettlementCurrency?: string | null;
+  agentReference?: string | null;
+  expectedArrangementDate?: string | null;
+  expectedAdvanceDate?: string | null;
+  expectedUsdAcquisitionDate?: string | null;
+  expectedAdvanceAmountPkr?: number | null;
+  arrangementType?: ImportFxArrangementType | null;
+  clearFundingMode?: boolean;
+  clearSettlementCurrency?: boolean;
+  clearAgentReference?: boolean;
 }): Promise<void> {
   await requireImportFxEnabled(params.companyId);
-  const currency = params.plannedSourceCurrency
-    ? normalizeImportDocCurrency(params.plannedSourceCurrency)
-    : null;
-  const { error } = await supabase.rpc('update_import_fx_case_draft', {
+  const { data, error } = await supabase.rpc('update_import_fx_case_draft', {
     p_company_id: params.companyId,
     p_case_id: params.caseId,
     p_agent_contact_id: params.agentContactId ?? null,
     p_third_party_contact_id: params.thirdPartyContactId ?? null,
-    p_planned_source_currency: currency,
+    p_planned_source_currency: normalizeOptionalCurrency(params.plannedSourceCurrency),
     p_planned_usd_amount: params.plannedUsdAmount ?? null,
     p_expected_pkr_per_usd: params.expectedPkrPerUsd ?? null,
     p_expected_cny_per_usd: params.expectedCnyPerUsd ?? null,
@@ -217,8 +282,94 @@ export async function updateImportFxCaseDraft(params: {
     p_updated_by: params.updatedBy ?? null,
     p_clear_agent: params.clearAgent === true,
     p_clear_third_party: params.clearThirdParty === true,
+    p_funding_mode: normalizeFundingMode(params.fundingMode) ?? null,
+    p_planned_settlement_currency: normalizeOptionalCurrency(params.plannedSettlementCurrency),
+    p_agent_reference: params.agentReference ?? null,
+    p_expected_arrangement_date: params.expectedArrangementDate ?? null,
+    p_expected_advance_date: params.expectedAdvanceDate ?? null,
+    p_expected_usd_acquisition_date: params.expectedUsdAcquisitionDate ?? null,
+    p_expected_advance_amount_pkr: normalizeAdvanceForFundingMode(
+      params.fundingMode,
+      params.expectedAdvanceAmountPkr ?? null
+    ),
+    p_arrangement_type: params.arrangementType ?? null,
+    p_clear_funding_mode: params.clearFundingMode === true,
+    p_clear_settlement_currency: params.clearSettlementCurrency === true,
+    p_clear_agent_reference: params.clearAgentReference === true,
   });
   if (error) throw new Error(formatImportFxServerError(error));
+  assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
+}
+
+export async function updateImportFxCaseAssignment(params: {
+  companyId: string;
+  caseId: string;
+  caseOwnerUserId?: string | null;
+  assignedToUserId?: string | null;
+  currentActionRequired?: string | null;
+  assignmentDueAt?: string | null;
+  assignmentPriority?: ImportFxAssignmentPriority | null;
+  assignmentStatus?: ImportFxAssignmentStatus | null;
+  reminderAt?: string | null;
+  assignmentNotes?: string | null;
+  updatedBy?: string | null;
+  clearAssignee?: boolean;
+  clearOwner?: boolean;
+  clientOperationId?: string | null;
+}): Promise<{
+  accountingStatus: string;
+  assignmentStatus: string | null;
+  postsJournal: false;
+}> {
+  await requireImportFxEnabled(params.companyId);
+  const { data, error } = await supabase.rpc('update_import_fx_case_assignment', {
+    p_company_id: params.companyId,
+    p_case_id: params.caseId,
+    p_case_owner_user_id: params.caseOwnerUserId ?? null,
+    p_assigned_to_user_id: params.assignedToUserId ?? null,
+    p_current_action_required: params.currentActionRequired ?? null,
+    p_assignment_due_at: params.assignmentDueAt ?? null,
+    p_assignment_priority: params.assignmentPriority ?? null,
+    p_assignment_status: params.assignmentStatus ?? null,
+    p_reminder_at: params.reminderAt ?? null,
+    p_assignment_notes: params.assignmentNotes ?? null,
+    p_updated_by: params.updatedBy ?? null,
+    p_clear_assignee: params.clearAssignee === true,
+    p_clear_owner: params.clearOwner === true,
+    p_client_operation_id: params.clientOperationId ?? null,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
+  return {
+    accountingStatus: String(row.accounting_status ?? 'NOT_POSTED'),
+    assignmentStatus: row.assignment_status != null ? String(row.assignment_status) : null,
+    postsJournal: false,
+  };
+}
+
+export async function completeImportFxCaseAssignment(params: {
+  companyId: string;
+  caseId: string;
+  updatedBy?: string | null;
+  notes?: string | null;
+  clientOperationId?: string | null;
+}): Promise<{ accountingStatus: string; postsJournal: false }> {
+  await requireImportFxEnabled(params.companyId);
+  const { data, error } = await supabase.rpc('complete_import_fx_case_assignment', {
+    p_company_id: params.companyId,
+    p_case_id: params.caseId,
+    p_updated_by: params.updatedBy ?? null,
+    p_assignment_notes: params.notes ?? null,
+    p_client_operation_id: params.clientOperationId ?? null,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
+  return {
+    accountingStatus: String(row.accounting_status ?? 'NOT_POSTED'),
+    postsJournal: false,
+  };
 }
 
 export async function confirmImportFxCaseStage(params: {
@@ -242,6 +393,7 @@ export async function confirmImportFxCaseStage(params: {
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
   return {
     stageStatus: String(row.stage_status ?? ''),
     operationalStatus: String(row.operational_status ?? ''),
@@ -256,13 +408,14 @@ export async function cancelImportFxCaseUnposted(params: {
   updatedBy?: string | null;
 }): Promise<void> {
   await requireImportFxEnabled(params.companyId);
-  const { error } = await supabase.rpc('cancel_import_fx_case_unposted', {
+  const { data, error } = await supabase.rpc('cancel_import_fx_case_unposted', {
     p_company_id: params.companyId,
     p_case_id: params.caseId,
     p_notes: params.notes ?? null,
     p_updated_by: params.updatedBy ?? null,
   });
   if (error) throw new Error(formatImportFxServerError(error));
+  assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
 }
 
 export async function listImportFxCases(params: {
@@ -278,7 +431,6 @@ export async function listImportFxCases(params: {
   readOnly?: boolean;
   multiCurrencyEnabled?: boolean;
 }> {
-  // Historical list allowed when Multi Currency OFF (server enforces company scope).
   const { data, error } = await supabase.rpc('list_import_fx_cases', {
     p_company_id: params.companyId,
     p_branch_id: params.branchId ?? null,
@@ -306,10 +458,10 @@ export async function getImportFxCase(
   stages: ImportFxCaseStage[];
   events: ImportFxCaseEvent[];
   links: ImportFxCaseLink[];
+  attachments: ImportFxCaseAttachmentMeta[];
   readOnly?: boolean;
   multiCurrencyEnabled?: boolean;
 }> {
-  // Historical get allowed when Multi Currency OFF.
   const { data, error } = await supabase.rpc('get_import_fx_case', {
     p_company_id: companyId,
     p_case_id: caseId,
@@ -321,6 +473,9 @@ export async function getImportFxCase(
     stages: (Array.isArray(row.stages) ? row.stages : []) as ImportFxCaseStage[],
     events: (Array.isArray(row.events) ? row.events : []) as ImportFxCaseEvent[],
     links: (Array.isArray(row.links) ? row.links : []) as ImportFxCaseLink[],
+    attachments: (Array.isArray(row.attachments) ? row.attachments : []).map((att) =>
+      stripAttachmentStoragePath(att as Record<string, unknown>)
+    ) as ImportFxCaseAttachmentMeta[],
     readOnly: row.read_only === true,
     multiCurrencyEnabled: row.multi_currency_enabled === true,
   };
@@ -334,7 +489,7 @@ export async function linkImportFxCaseTarget(params: {
   notes?: string | null;
 }): Promise<void> {
   await requireImportFxEnabled(params.companyId);
-  const { error } = await supabase.rpc('link_import_fx_case_target', {
+  const { data, error } = await supabase.rpc('link_import_fx_case_target', {
     p_company_id: params.companyId,
     p_case_id: params.caseId,
     p_link_type: params.linkType,
@@ -342,4 +497,36 @@ export async function linkImportFxCaseTarget(params: {
     p_notes: params.notes ?? null,
   });
   if (error) throw new Error(formatImportFxServerError(error));
+  assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
+}
+
+export async function registerImportFxCaseAttachmentMetadata(params: {
+  companyId: string;
+  caseId: string;
+  fileName: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  notes?: string | null;
+  createdBy?: string | null;
+  clientOperationId?: string | null;
+}): Promise<{ attachmentId: string; idempotentReplay?: boolean }> {
+  await requireImportFxEnabled(params.companyId);
+  const { data, error } = await supabase.rpc('register_import_fx_case_attachment_metadata', {
+    p_company_id: params.companyId,
+    p_case_id: params.caseId,
+    p_file_name: params.fileName,
+    p_mime_type: params.mimeType ?? null,
+    p_file_size: params.fileSize ?? null,
+    p_notes: params.notes ?? null,
+    p_created_by: params.createdBy ?? null,
+    p_client_operation_id: params.clientOperationId ?? null,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
+  const cleaned = stripAttachmentStoragePath(row);
+  return {
+    attachmentId: String(cleaned.attachment_id ?? row.attachment_id ?? ''),
+    idempotentReplay: row.idempotent_replay === true,
+  };
 }
