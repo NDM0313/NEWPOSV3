@@ -52,9 +52,9 @@ test('RMB normalizes to CNY in rate table keys', () => {
 });
 
 test('labels are base-relative', () => {
-  assert.equal(formatIndicativeRateLabel('PKR', 'USD'), 'Indicative PKR per USD');
-  assert.equal(formatIndicativeRateLabel('USD', 'CNY'), 'Indicative USD per CNY');
-  assert.equal(formatIndicativeRateLabel('USD', 'RMB'), 'Indicative USD per CNY');
+  assert.equal(formatIndicativeRateLabel('PKR', 'USD'), 'Indicative PKR per 1 USD');
+  assert.equal(formatIndicativeRateLabel('USD', 'CNY'), 'Indicative USD required per 1 CNY');
+  assert.equal(formatIndicativeRateLabel('USD', 'RMB'), 'Indicative USD required per 1 CNY');
 });
 
 test('dirty guard skips fields unless forceReplace', () => {

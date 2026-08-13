@@ -138,7 +138,12 @@ export function mapOpenErRatesToIndicativeBundle(params: {
 export function formatIndicativeRateLabel(baseCurrency: string, quoteCurrency: string): string {
   const base = normalizeCurrencyCode(baseCurrency) || 'PKR';
   const quote = normalizeImportDocCurrency(quoteCurrency) || quoteCurrency;
-  return `Indicative ${base} per ${quote}`;
+  // W2.1: explicit directional wording (never ambiguous slash forms like CNY/USD).
+  if (base === 'PKR' && quote === 'USD') return 'Indicative PKR per 1 USD';
+  if (base === 'PKR' && quote === 'CNY') return 'Indicative PKR per 1 CNY';
+  if (base === 'USD' && quote === 'CNY') return 'Indicative USD required per 1 CNY';
+  if (base === 'CNY' && quote === 'USD') return 'Indicative CNY received per 1 USD';
+  return `Indicative ${base} per 1 ${quote}`;
 }
 
 export function rateToInputString(n: number | null | undefined): string {

@@ -110,7 +110,7 @@ test('validation messages for same-party and negative amounts/rates', () => {
     expectedCnyPerUsd: '-7',
   });
   assert.ok(negatives.some((m) => /Expected USD amount cannot be negative/.test(m)));
-  assert.ok(negatives.some((m) => /Indicative CNY per USD rate cannot be negative/.test(m)));
+  assert.ok(negatives.some((m) => /CNY received per 1 USD rate cannot be negative/.test(m)));
   assert.deepEqual(validateArrangementPlanning({ plannedUsd: '100', expectedCny: '700' }), []);
 });
 

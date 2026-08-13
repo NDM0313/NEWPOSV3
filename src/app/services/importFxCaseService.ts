@@ -17,6 +17,11 @@ import {
   assertW2MutationDoesNotPost,
   stripAttachmentStoragePath,
 } from '@/app/lib/importFxCaseWorkspaceView';
+import type {
+  ImportFxAssignmentPriority,
+  ImportFxAssignmentStatus,
+} from '@/app/lib/importFxCaseW21Helpers';
+import { normalizeAdvanceForFundingMode } from '@/app/lib/importFxCaseW21Helpers';
 
 export type { ImportFxStageCode, ImportFxStageStatus, ImportFxFundingMode };
 export { IMPORT_FX_STAGE_ORDER };
@@ -79,6 +84,15 @@ export interface ImportFxCase {
   expected_usd_acquisition_date?: string | null;
   expected_advance_amount_pkr?: number | null;
   arrangement_confirmed_at?: string | null;
+  case_owner_user_id?: string | null;
+  assigned_to_user_id?: string | null;
+  current_action_required?: string | null;
+  assignment_due_at?: string | null;
+  assignment_priority?: ImportFxAssignmentPriority | null;
+  assignment_status?: ImportFxAssignmentStatus | null;
+  reminder_at?: string | null;
+  assignment_updated_at?: string | null;
+  assignment_notes?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -207,7 +221,10 @@ export async function createImportFxCase(
     p_expected_arrangement_date: params.expectedArrangementDate ?? null,
     p_expected_advance_date: params.expectedAdvanceDate ?? null,
     p_expected_usd_acquisition_date: params.expectedUsdAcquisitionDate ?? null,
-    p_expected_advance_amount_pkr: params.expectedAdvanceAmountPkr ?? null,
+    p_expected_advance_amount_pkr: normalizeAdvanceForFundingMode(
+      params.fundingMode,
+      params.expectedAdvanceAmountPkr ?? null
+    ),
   });
   if (error) throw new Error(formatImportFxServerError(error));
   const row = parseRpcJson(data);
@@ -271,7 +288,10 @@ export async function updateImportFxCaseDraft(params: {
     p_expected_arrangement_date: params.expectedArrangementDate ?? null,
     p_expected_advance_date: params.expectedAdvanceDate ?? null,
     p_expected_usd_acquisition_date: params.expectedUsdAcquisitionDate ?? null,
-    p_expected_advance_amount_pkr: params.expectedAdvanceAmountPkr ?? null,
+    p_expected_advance_amount_pkr: normalizeAdvanceForFundingMode(
+      params.fundingMode,
+      params.expectedAdvanceAmountPkr ?? null
+    ),
     p_arrangement_type: params.arrangementType ?? null,
     p_clear_funding_mode: params.clearFundingMode === true,
     p_clear_settlement_currency: params.clearSettlementCurrency === true,
@@ -279,6 +299,77 @@ export async function updateImportFxCaseDraft(params: {
   });
   if (error) throw new Error(formatImportFxServerError(error));
   assertW2MutationDoesNotPost(parseRpcJson(data).posts_journal);
+}
+
+export async function updateImportFxCaseAssignment(params: {
+  companyId: string;
+  caseId: string;
+  caseOwnerUserId?: string | null;
+  assignedToUserId?: string | null;
+  currentActionRequired?: string | null;
+  assignmentDueAt?: string | null;
+  assignmentPriority?: ImportFxAssignmentPriority | null;
+  assignmentStatus?: ImportFxAssignmentStatus | null;
+  reminderAt?: string | null;
+  assignmentNotes?: string | null;
+  updatedBy?: string | null;
+  clearAssignee?: boolean;
+  clearOwner?: boolean;
+  clientOperationId?: string | null;
+}): Promise<{
+  accountingStatus: string;
+  assignmentStatus: string | null;
+  postsJournal: false;
+}> {
+  await requireImportFxEnabled(params.companyId);
+  const { data, error } = await supabase.rpc('update_import_fx_case_assignment', {
+    p_company_id: params.companyId,
+    p_case_id: params.caseId,
+    p_case_owner_user_id: params.caseOwnerUserId ?? null,
+    p_assigned_to_user_id: params.assignedToUserId ?? null,
+    p_current_action_required: params.currentActionRequired ?? null,
+    p_assignment_due_at: params.assignmentDueAt ?? null,
+    p_assignment_priority: params.assignmentPriority ?? null,
+    p_assignment_status: params.assignmentStatus ?? null,
+    p_reminder_at: params.reminderAt ?? null,
+    p_assignment_notes: params.assignmentNotes ?? null,
+    p_updated_by: params.updatedBy ?? null,
+    p_clear_assignee: params.clearAssignee === true,
+    p_clear_owner: params.clearOwner === true,
+    p_client_operation_id: params.clientOperationId ?? null,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
+  return {
+    accountingStatus: String(row.accounting_status ?? 'NOT_POSTED'),
+    assignmentStatus: row.assignment_status != null ? String(row.assignment_status) : null,
+    postsJournal: false,
+  };
+}
+
+export async function completeImportFxCaseAssignment(params: {
+  companyId: string;
+  caseId: string;
+  updatedBy?: string | null;
+  notes?: string | null;
+  clientOperationId?: string | null;
+}): Promise<{ accountingStatus: string; postsJournal: false }> {
+  await requireImportFxEnabled(params.companyId);
+  const { data, error } = await supabase.rpc('complete_import_fx_case_assignment', {
+    p_company_id: params.companyId,
+    p_case_id: params.caseId,
+    p_updated_by: params.updatedBy ?? null,
+    p_assignment_notes: params.notes ?? null,
+    p_client_operation_id: params.clientOperationId ?? null,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  const row = parseRpcJson(data);
+  assertW2MutationDoesNotPost(row.posts_journal);
+  return {
+    accountingStatus: String(row.accounting_status ?? 'NOT_POSTED'),
+    postsJournal: false,
+  };
 }
 
 export async function confirmImportFxCaseStage(params: {

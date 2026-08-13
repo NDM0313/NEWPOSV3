@@ -10,6 +10,7 @@ import {
   type ImportFxFundingMode,
   type ImportFxStageCode,
 } from './importFxCaseHelpers';
+import { validateW21ArrangementPlanning } from './importFxCaseW21Helpers';
 
 export const W2_PLANNING_ONLY_NOTICE =
   'Planning only — no payment or accounting entry has been posted.';
@@ -166,32 +167,24 @@ export function validateArrangementPlanning(input: {
   expectedCnyPerUsd?: string;
   expectedFeesPkr?: string;
   expectedAdvanceAmountPkr?: string;
+  arrangementType?: string | null;
+  fundingMode?: string | null;
+  /** W2.1: require agent when confirming agent-dependent arrangement types. */
+  requireAgentIfNeeded?: boolean;
 }): string[] {
-  const errors: string[] = [];
-  const agent = String(input.agentId || '').trim();
-  const third = String(input.thirdPartyId || '').trim();
-  if (agent && third && agent === third) {
-    errors.push('Agent and third party must be different contacts.');
-  }
-  const amounts: Array<[string | undefined, string]> = [
-    [input.plannedUsd, 'Expected USD amount'],
-    [input.expectedCny, 'Expected CNY amount'],
-    [input.expectedPkrPerUsd, 'Indicative PKR per USD rate'],
-    [input.expectedCnyPerUsd, 'Indicative CNY per USD rate'],
-    [input.expectedFeesPkr, 'Expected fees (PKR)'],
-    [input.expectedAdvanceAmountPkr, 'Planned advance amount (PKR)'],
-  ];
-  for (const [raw, label] of amounts) {
-    const t = String(raw || '').trim();
-    if (!t) continue;
-    const n = Number(t);
-    if (!Number.isFinite(n)) {
-      errors.push(`${label} must be a number.`);
-    } else if (n < 0) {
-      errors.push(`${label} cannot be negative.`);
-    }
-  }
-  return errors;
+  return validateW21ArrangementPlanning({
+    arrangementType: input.arrangementType,
+    agentId: input.agentId,
+    thirdPartyId: input.thirdPartyId,
+    fundingMode: input.fundingMode,
+    plannedUsd: input.plannedUsd,
+    expectedCny: input.expectedCny,
+    expectedPkrPerUsd: input.expectedPkrPerUsd,
+    expectedCnyPerUsd: input.expectedCnyPerUsd,
+    expectedFeesPkr: input.expectedFeesPkr,
+    expectedAdvanceAmountPkr: input.expectedAdvanceAmountPkr,
+    requireAgentIfNeeded: input.requireAgentIfNeeded === true,
+  });
 }
 
 export function stripAttachmentStoragePath<T extends Record<string, unknown>>(row: T): Omit<T, 'storage_path'> {

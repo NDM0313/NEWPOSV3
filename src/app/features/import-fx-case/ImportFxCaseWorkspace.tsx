@@ -70,6 +70,18 @@ import {
   workspaceActions,
   type W2BusyAction,
 } from '@/app/lib/importFxCaseWorkspaceView';
+import {
+  W21_HISTORICAL_MISSING_AGENT_WARNING,
+  W21_PATH_CLARITY_AGENT_FX_COPY,
+  W21_PATH_CLARITY_CASE_COPY,
+  W21_PATH_CLARITY_LEAVE_WARNING,
+  W21_PLANNING_NOT_POSTED_BADGE,
+  W21_RATE_LABEL_CNY_PER_USD,
+  W21_WALLET_SOURCE_GUIDANCE,
+  buildFundingSummaryView,
+  isHistoricalConfirmedMissingAgent,
+  normalizeAdvanceForFundingMode,
+} from '@/app/lib/importFxCaseW21Helpers';
 import { contactService } from '@/app/services/contactService';
 import { supabase } from '@/lib/supabase';
 import {
@@ -94,6 +106,7 @@ import {
   ArrangementSectionCard,
   ImportFxCaseHeaderBar,
 } from './ImportFxCaseArrangementPanels';
+import { ImportFxCaseAssignmentPanel } from './ImportFxCaseAssignmentPanel';
 
 type Props = {
   open: boolean;
@@ -262,10 +275,26 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const agentName =
     agentOptions.find((a) => a.id === (agentId || caseRow?.agent_contact_id || ''))?.name || null;
 
+  const fundingSummary = buildFundingSummaryView({
+    fundingMode,
+    plannedUsd: numOrNull(plannedUsd),
+    pkrPerUsd: numOrNull(expectedPkrPerUsd),
+    feesPkr: numOrNull(expectedFees),
+    advancePkr: numOrNull(expectedAdvanceAmountPkr),
+  });
+
+  const missingAgentWarning = isHistoricalConfirmedMissingAgent({
+    arrangementConfirmedAt: caseRow?.arrangement_confirmed_at,
+    arrangementStageStatus,
+    operationalStatus: caseRow?.operational_status,
+    agentContactId: caseRow?.agent_contact_id ?? agentId,
+    arrangementType: caseRow?.arrangement_type ?? arrangementType,
+  });
+
   const pkrPerUsdLabel =
     companyBaseCurrency === 'PKR'
       ? formatIndicativeRateLabel(companyBaseCurrency, 'USD')
-      : 'Indicative PKR per USD';
+      : 'Indicative PKR per 1 USD';
   const basePerCnyLabel = formatIndicativeRateLabel(companyBaseCurrency, 'CNY');
   const showBasePerCnyField = companyBaseCurrency !== 'CNY';
   const purchaseLeg: 'USD' | 'CNY' =
@@ -669,10 +698,13 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
     expectedArrangementDate: expectedArrangementDate || null,
     expectedAdvanceDate: expectedAdvanceDate || null,
     expectedUsdAcquisitionDate: expectedUsdDate || null,
-    expectedAdvanceAmountPkr: numOrNull(expectedAdvanceAmountPkr),
+    expectedAdvanceAmountPkr: normalizeAdvanceForFundingMode(
+      fundingMode,
+      numOrNull(expectedAdvanceAmountPkr)
+    ),
   });
 
-  const collectValidation = (): boolean => {
+  const collectValidation = (opts?: { requireAgent?: boolean }): boolean => {
     const errors = validateArrangementPlanning({
       agentId,
       thirdPartyId,
@@ -681,7 +713,11 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
       expectedPkrPerUsd,
       expectedCnyPerUsd,
       expectedFeesPkr: expectedFees,
-      expectedAdvanceAmountPkr,
+      expectedAdvanceAmountPkr:
+        fundingMode === 'CREDIT' ? '' : expectedAdvanceAmountPkr,
+      arrangementType,
+      fundingMode,
+      requireAgentIfNeeded: opts?.requireAgent === true,
     });
     setFormErrors(errors);
     if (errors.length) {
@@ -766,7 +802,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
       toast.error(W2_MONEY_STAGE_BLOCKED_COPY);
       return;
     }
-    if (!collectValidation()) return;
+    if (!collectValidation({ requireAgent: true })) return;
     await runBusy('confirm', async () => {
       if (!confirmClientOpRef.current) {
         confirmClientOpRef.current = crypto.randomUUID();
@@ -1015,6 +1051,30 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
           </nav>
 
           <main className="xl:col-span-5 p-3 sm:p-4 overflow-y-auto space-y-4 min-w-0">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2 text-xs">
+              <p className="text-sm font-medium text-foreground">Path clarity</p>
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">Import FX Case</p>
+                <p className="text-muted-foreground">{W21_PATH_CLARITY_CASE_COPY}</p>
+                <p className="text-muted-foreground">
+                  Use for multi-day planning, advance/credit/mixed intention, future USD→CNY,
+                  multiple suppliers, and assignment follow-up.
+                </p>
+              </div>
+              <div className="space-y-1 border-t border-border pt-2">
+                <p className="font-medium text-foreground">Agent FX / Path 21</p>
+                <p className="text-muted-foreground">{W21_PATH_CLARITY_AGENT_FX_COPY}</p>
+                <p className="text-muted-foreground">{W21_PATH_CLARITY_LEAVE_WARNING}</p>
+                <p className="text-muted-foreground">{W21_WALLET_SOURCE_GUIDANCE}</p>
+              </div>
+            </div>
+
+            {missingAgentWarning && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                {W21_HISTORICAL_MISSING_AGENT_WARNING}
+              </div>
+            )}
+
             {detailLoading && selectedCaseId ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading case…
@@ -1155,7 +1215,14 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                             key={opt.value}
                             type="button"
                             disabled={fieldsLocked}
-                            onClick={() => setFundingMode(opt.value)}
+                            onClick={() => {
+                              setFundingMode(opt.value);
+                              // Canonical W2.1: CREDIT clears planned advance in the draft form.
+                              if (opt.value === 'CREDIT') {
+                                setExpectedAdvanceAmountPkr('');
+                                setAmountDirtyPkr(false);
+                              }
+                            }}
                             className={cn(
                               'rounded-lg border px-3 py-2.5 text-left min-w-0',
                               fundingMode === opt.value
@@ -1326,7 +1393,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                               </div>
                             )}
                             <div className="space-y-1 min-w-0">
-                              <Label>Indicative CNY per USD</Label>
+                              <Label>{W21_RATE_LABEL_CNY_PER_USD}</Label>
                               <Input
                                 value={expectedCnyPerUsd}
                                 onChange={(e) => {
@@ -1471,7 +1538,7 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
 
                         <div className="grid grid-cols-1 gap-3">
                           <div className="space-y-1 min-w-0">
-                            <Label>Expected fees (PKR) — not financially posted</Label>
+                            <Label>Expected fees (PKR) — {W21_PLANNING_NOT_POSTED_BADGE}</Label>
                             <Input
                               value={expectedFees}
                               onChange={(e) => setExpectedFees(e.target.value)}
@@ -1480,29 +1547,33 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                               inputMode="decimal"
                             />
                           </div>
-                          <div className="space-y-1 min-w-0">
-                            <Label>Planned advance amount (PKR) — not financially posted</Label>
-                            <Input
-                              value={expectedAdvanceAmountPkr}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setExpectedAdvanceAmountPkr(v);
-                                setAmountDirtyPkr(true);
-                                setAmountDriver('pkr');
-                                runAmountSync({
-                                  driver: 'pkr',
-                                  forceReplace: false,
-                                  advancePkr: v,
-                                });
-                              }}
-                              disabled={fieldsLocked}
-                              readOnly={fieldsLocked}
-                              inputMode="decimal"
-                            />
-                            <p className="text-[11px] text-muted-foreground">
-                              Enter PKR outlay to reverse-calc USD/CNY from indicative rates.
-                            </p>
-                          </div>
+                          {fundingSummary.showPlannedAdvance && (
+                            <div className="space-y-1 min-w-0">
+                              <Label>
+                                Planned advance amount (PKR) — {W21_PLANNING_NOT_POSTED_BADGE}
+                              </Label>
+                              <Input
+                                value={expectedAdvanceAmountPkr}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setExpectedAdvanceAmountPkr(v);
+                                  setAmountDirtyPkr(true);
+                                  setAmountDriver('pkr');
+                                  runAmountSync({
+                                    driver: 'pkr',
+                                    forceReplace: false,
+                                    advancePkr: v,
+                                  });
+                                }}
+                                disabled={fieldsLocked}
+                                readOnly={fieldsLocked}
+                                inputMode="decimal"
+                              />
+                              <p className="text-[11px] text-muted-foreground">
+                                Enter PKR outlay to reverse-calc USD/CNY from indicative rates.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </ArrangementSectionCard>
@@ -1768,14 +1839,49 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                   {basePerCnyLabel}: {indicativeBasePerCny || '—'}
                 </div>
               )}
-              <div>Indicative CNY/USD: {expectedCnyPerUsd || '—'}</div>
-              <div>Planned advance PKR: {expectedAdvanceAmountPkr || '—'}</div>
+              <div>
+                {W21_RATE_LABEL_CNY_PER_USD}: {expectedCnyPerUsd || '—'}
+              </div>
+              <div>
+                Expected total PKR cost:{' '}
+                {fundingSummary.expectedTotalPkr != null
+                  ? Math.round(fundingSummary.expectedTotalPkr).toLocaleString()
+                  : '—'}{' '}
+                <span className="text-[10px]">({W21_PLANNING_NOT_POSTED_BADGE})</span>
+              </div>
+              {fundingSummary.showPlannedAdvance && (
+                <div>
+                  Planned advance PKR: {expectedAdvanceAmountPkr || '—'}{' '}
+                  <span className="text-[10px]">({W21_PLANNING_NOT_POSTED_BADGE})</span>
+                </div>
+              )}
+              {fundingSummary.showExpectedAgentCredit && (
+                <div>
+                  Expected agent credit PKR:{' '}
+                  {fundingSummary.expectedAgentCreditPkr != null
+                    ? Math.round(fundingSummary.expectedAgentCreditPkr).toLocaleString()
+                    : '—'}{' '}
+                  <span className="text-[10px]">({W21_PLANNING_NOT_POSTED_BADGE})</span>
+                </div>
+              )}
               <div className="pt-2 text-xs">
                 Journal preview: <span className="text-foreground">none (not financially posted)</span>
               </div>
               <div className="text-xs">Accounting: Not Posted</div>
               <div className="text-xs">posts_journal: false</div>
             </div>
+
+            <ImportFxCaseAssignmentPanel
+              companyId={companyId || ''}
+              caseRow={caseRow}
+              events={events}
+              readOnly={readOnly || !companyId}
+              currentUserId={user?.id ?? null}
+              onUpdated={async () => {
+                if (selectedCaseId) await loadDetail(selectedCaseId);
+              }}
+            />
+
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">Timeline / audit</p>
               <ul className="space-y-1 max-h-48 overflow-y-auto">
