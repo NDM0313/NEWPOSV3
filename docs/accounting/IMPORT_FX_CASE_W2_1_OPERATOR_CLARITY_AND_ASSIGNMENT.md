@@ -178,7 +178,7 @@ W3+ must:
 | Commit | Message |
 |--------|---------|
 | `48662d4d` | `fix: harden Import FX W2 operator workflow` |
-| *(docs commit)* | `docs(accounting): record W2.1 workflow and assignment fixes` |
+| 83c77314 | `docs(accounting): record W2.1 workflow and assignment fixes` |
 
 ---
 
