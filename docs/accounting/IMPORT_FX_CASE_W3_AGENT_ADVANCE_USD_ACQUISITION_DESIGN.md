@@ -1,6 +1,6 @@
 # Import FX Case — W3 Agent Advance & USD/TT Acquisition Design
 
-**Status:** **DESIGN ONLY — NOT SHIPPED**  
+**Status:** **DESIGN ONLY — NOT SHIPPED** · **Owner decisions OD-1–OD-7 LOCKED**  
 **Branch:** `docs/import-fx-w3-advance-usd-acquisition-design` (stacked on W2.1)  
 **Base HEAD:** `0d9d274e` (`feat/import-fx-w2-arrangement-enrichment` / Draft PR #23)  
 **Rule:** **No W3 implementation PR may merge before W2/W2.1.** This document posts **no** accounting.
@@ -13,9 +13,26 @@
 - [`MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](./MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
 - [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md)
 - [`PAYMENT_ENTRY_PATHS.md`](./PAYMENT_ENTRY_PATHS.md)
+- [`coa-developer-center/01_CHART_OF_ACCOUNTS_AUDIT.md`](./coa-developer-center/01_CHART_OF_ACCOUNTS_AUDIT.md)
 - [`.cursor/rules/multi-currency-import-fx.mdc`](../../.cursor/rules/multi-currency-import-fx.mdc)
 
 **Gates:** `multiCurrencyEnabled` (ops) · `fxSettlementAccountingEnabled = false` (Profile A — no FX P&L / Pending FX journals in W3)
+
+---
+
+## Owner Decision Register (LOCKED)
+
+| Decision | Approved choice | Rationale | Implementation constraint |
+|----------|-----------------|-----------|---------------------------|
+| **OD-1** Agent FX Advance control | Control role **`AGENT_FX_ADVANCE_CLEARING`**; display **Agent FX Advance / Settlement Clearing**; **settings-mapped per company** | Need Current Asset to hold unapplied PKR advances separate from Agent AP | Never hardcode account code `1230`. Audit live CoA before assign. Forbidden: `1180`, `1395`, `2295`, `6100`, `7100`. Separate from Agent AP, Supplier AP, FX P&L |
+| **OD-2** Fees | **No fee posting in W3 v1** | Avoid silent capitalize/expense without fee CoA approval | Posted events require fee amount **zero/NULL**. Do not store display-only fee. UI may show “Fee posting available in a later approved wave” |
+| **OD-3** USD wallet costing | **Immutable acquisition lots** (USD qty + PKR carrying); wallet ops reporting = **weighted average**; reverse compensates original lot | Traceable lots for W4; WA for wallet-level views | Never rewrite posted lots. Distinguish source lots vs derived WA. W4 consumes under approved model |
+| **OD-4** Advance application | Default **FIFO — oldest available posted agent advance first**; authorized manual allocation before post only | Predictable default + controlled override | Manual: same company/branch/agent; ≤ available; preview each advance; immutable + audit. No change after post — reverse & repost |
+| **OD-5** Path 21 | **Separate**; W3 requires Import FX case; one event cannot post both paths; **no** `import_fx_case_id` on Path 21 in v1 | Preserve shipped money wizard | Soft similarity warning only. No auto-migration. UI must show which path is used |
+| **OD-6** Accounting status | `NOT_POSTED` → first W3 money → **`PARTIALLY_POSTED`**; further posts stay partial; reversals recompute; **never** set final `POSTED` in W3 | Final close belongs to W6/reconciliation | Operational stage + assignment statuses remain separate |
+| **OD-7** Duplicate protection | **Hard** idempotency + **soft** similarity warning | Prevent double JE without blocking legitimate ops | Soft warn does **not** replace hard `client_operation_id` / unique / atomic / lock / replay |
+
+**Partial reversal (locked):** W3 v1 reverses **entire posted events** only (full compensating JE). Partial amount within an event = reverse whole event + repost corrected event. No in-place amount surgery.
 
 ---
 
@@ -23,20 +40,18 @@
 
 W3 turns an **ARRANGED** Import FX Case into a **money-capable** shell for two **separate** postable events:
 
-1. **Actual Agent Advance** — company pays PKR to a `money_exchange` agent **before** (or independently of) receiving USD/TT.
+1. **Actual Agent Advance** — company pays PKR to a `money_exchange` agent **before** (or independently of) receiving USD/TT.  
 2. **Actual USD/TT Acquisition** — company receives USD quantity into an approved TT wallet at a **PKR carrying cost**, funded by **advance**, **agent credit**, or **mixed**.
-
-These events may occur on **different dates**, **multiple times**, and in **either order** (advance-first or credit-first), within one case.
 
 | Today (W2/W2.1) | W3 (this design) |
 |-----------------|------------------|
 | Planning / assignment only | Posts PKR journals for advance + USD acquisition |
 | `posts_journal: false` | Money RPCs post journals; drafts remain non-posting |
-| Path 21 separate money wizard | Path 21 **preserved**; W3 is case-scoped alternative surface |
+| Path 21 separate money wizard | Path 21 **preserved and unmodified** in W3 v1 |
 
-**Hard exclusions:** China USD transfer, USD→CNY conversion, CNY pool, supplier allocation/payment, Supplier AP movement for FX conversion benefit, Phase-3 FX gain/loss accounts (`1395`/`2295`/`6100`/`7100`).
+**Hard exclusions:** China USD transfer, USD→CNY, CNY pool, supplier allocation/payment, Supplier AP for FX conversion benefit, Phase-3 FX accounts (`1395`/`2295`/`6100`/`7100`), fee posting (OD-2).
 
-**Critical CoA finding:** No shipped **Agent Advance / Prepaid FX clearing** account exists in live migrations/seed. Design docs suggest **`1230` Agent Settlement Clearing/Advance**. Creating or mapping that account is **`OWNER ACCOUNTING APPROVAL REQUIRED`**. Do not invent it in code without approval. Do not reuse Worker Advance **`1180`**. Do not use Phase-3 accounts for advance.
+**Approved control role:** `AGENT_FX_ADVANCE_CLEARING` (settings-mapped). Exact numeric code chosen at provision time after live CoA audit — see §CoA collision audit. **Do not hardcode `1230`.**
 
 ---
 
@@ -44,26 +59,24 @@ These events may occur on **different dates**, **multiple times**, and in **eith
 
 ### 2.1 Advance first
 
-1. Arrangement confirmed (W2).
-2. Company pays PKR 2,000,000 to agent from bank (advance posted).
-3. Days later, agent delivers USD 5,000 at 287.50 → carrying 1,437,500 PKR applied from advance.
-4. Remaining unapplied advance 562,500 PKR stays available for later acquisitions.
+1. Arrangement confirmed (W2).  
+2. Pay PKR 2,000,000 to agent (advance posted → Dr Clearing / Cr Bank).  
+3. Later USD 5,000 @ 287.50 → carrying 1,437,500 applied from advance.  
+4. Remaining unapplied advance 562,500.
 
 ### 2.2 USD on credit first
 
-1. Arrangement confirmed.
-2. Agent delivers USD 10,000 at 287.50 → Dr TT wallet 2,875,000 / Cr Agent AP 2,875,000 (no bank movement yet).
-3. Later agent payment uses **existing approved payment path** (Path 21 Step 2 / `createSupplierPayment`) — referenced by W3, not redesigned here.
+1. Arrangement confirmed.  
+2. USD 10,000 @ 287.50 → Dr TT wallet 2,875,000 / Cr Agent AP 2,875,000.  
+3. Later agent payment via **existing** Path 21 Step 2 / `createSupplierPayment` (reference only; not redesigned).
 
 ### 2.3 Mixed funding
 
-1. Unapplied advance 1,000,000 PKR exists.
-2. Acquire USD 10,000 at 287.50 → carrying 2,875,000.
-3. Apply 1,000,000 from advance; create Agent AP 1,875,000 for remainder.
+Unapplied advance 1,000,000; acquire USD 10,000 carrying 2,875,000 → Cr Clearing 1,000,000 + Cr Agent AP 1,875,000.
 
 ### 2.4 Multiple events
 
-One case may have many advances and many USD acquisitions (partial lots). Case accounting becomes `PARTIALLY_POSTED` until settlement design / later waves close the commercial story (W3 does not require “fully complete”).
+Many advances and many USD lots → accounting stays **`PARTIALLY_POSTED`** (OD-6).
 
 ---
 
@@ -71,65 +84,40 @@ One case may have many advances and many USD acquisitions (partial lots). Case a
 
 | Prerequisite | Rule |
 |--------------|------|
-| Case `operational_status` | Must be `ARRANGED` (or later W3-derived money statuses), not `DRAFT`/`CANCELLED` |
-| `arrangement_confirmed_at` | Required |
-| `agent_contact_id` | Required, active `money_exchange`, same company (W2.1). Historical NULL-agent ARRANGED cases **ineligible** until corrected |
-| Accounting | Starts `NOT_POSTED`; W3 money posts move toward `PARTIALLY_POSTED` / `POSTED` for **case money scope** only |
-| Planned fields | W2 `expected_advance_amount_pkr`, planned USD/rates remain **plan**; W3 posts **actuals** |
-| Assignment | Remains operational; never posts journals |
-| Multi Currency | Must be ON for mutations |
-
-```mermaid
-flowchart LR
-  w2[W2_ARRANGED_NOT_POSTED]
-  w3a[W3_AgentAdvance]
-  w3u[W3_USD_Acquisition]
-  w4[W4_China_Transfer_Conversion]
-  w2 --> w3a
-  w2 --> w3u
-  w3u --> w4
-```
+| Case | `ARRANGED` (+ `arrangement_confirmed_at`) |
+| Agent | Required active `money_exchange` (W2.1); NULL-agent historical ARRANGED **ineligible** |
+| Accounting | Starts `NOT_POSTED`; first W3 money → `PARTIALLY_POSTED` only |
+| Planned W2 fields | Remain plan; W3 posts actuals |
+| Assignment | Operational only |
+| Multi Currency | ON for mutations |
+| Clearing account | Must be configured via settings (`AGENT_FX_ADVANCE_CLEARING`) before advance or ADVANCE/MIXED USD post |
 
 ---
 
 ## 4. Event model
 
-Two first-class event types (multiple rows per case):
+| Event type | Meaning | posts_journal on confirm |
+|------------|---------|--------------------------|
+| `AGENT_ADVANCE` | PKR paid to agent; ↑ unapplied advance | **true** |
+| `USD_ACQUISITION` | Immutable USD lot (qty + carrying PKR) into TT wallet | **true** |
 
-| Event type | Meaning | Posts journal? |
-|------------|---------|----------------|
-| `AGENT_ADVANCE` | PKR paid to agent; increases unapplied advance balance | Yes (on confirm-post) |
-| `USD_ACQUISITION` | USD qty into TT wallet at PKR carrying cost | Yes (on confirm-post) |
+Lifecycle: `DRAFT` → `POSTED` → `REVERSED` (compensating). **No DELETE.**
 
-Lifecycle per event: `DRAFT` → `POSTED` → (`REVERSED` via compensating event). **No DELETE** of posted rows.
+Advance application embedded in USD post (ADVANCE/MIXED) and stored as immutable `ADVANCE_APPLICATION` link rows (FIFO or manual override per OD-4).
 
-Application of advance to a USD acquisition is either:
-
-- embedded in the USD acquisition posting (funding mode ADVANCE/MIXED), or
-- a linked `ADVANCE_APPLICATION` sub-record for audit (recommended).
-
-W3 does **not** invent a third money event for “pay Agent AP” beyond referencing existing supplier-payment / Path 21 Step 2 patterns.
+Fee fields on posted events: **must be NULL/0** (OD-2).
 
 ---
 
-## 5. Proposed tables and relationships (design only — not implemented)
-
-Additive proposals (names illustrative):
+## 5. Proposed tables (design only)
 
 | Table | Purpose |
 |-------|---------|
-| `import_fx_case_advances` | Draft/posted advances: amounts, bank account, dates, JE id, status, `client_operation_id` |
-| `import_fx_case_usd_acquisitions` | Draft/posted USD lots: qty, rate, carrying PKR, wallet, funding split, JE id, status |
-| `import_fx_case_advance_applications` | Links advance ↔ acquisition with applied PKR (immutable when posted) |
+| `import_fx_case_advances` | Draft/posted advances; bank account; JE; `client_operation_id`; fee NULL |
+| `import_fx_case_usd_acquisitions` | Immutable lots: qty, rate, carrying PKR, wallet, funding split, JE |
+| `import_fx_case_advance_applications` | Advance↔acquisition applied PKR; immutable when posted; FIFO or manual audit |
 
-Relationships:
-
-- All FK → `import_fx_cases(id)`, `company_id`, optional `branch_id`
-- `agent_contact_id` must match case agent (or approved override policy — default: must match)
-- `journal_entry_id` on posted rows
-- Events also mirrored into `import_fx_case_events` for timeline
-
-Stage rows `ADVANCE` / `USD_ACQUISITION` update to `IN_PROGRESS` / `PARTIALLY_COMPLETED` / `COMPLETED` from **posted event aggregates**, not from W2 planning alone.
+Reuse: `import_fx_cases` / stages / events; `import_fx_client_operations`; TT `12xx`; Agent AP under **2000**; Cash/Bank. **Do not** add `import_fx_case_id` to Path 21 tables in W3 v1 (OD-5).
 
 ---
 
@@ -137,392 +125,321 @@ Stage rows `ADVANCE` / `USD_ACQUISITION` update to `IN_PROGRESS` / `PARTIALLY_CO
 
 | Artifact | Reuse |
 |----------|-------|
-| `import_fx_cases` / stages / events / links / attachments | Case shell + audit |
-| `import_fx_client_operations` | Idempotency receipts (extend event_type enum) |
-| `accounts` 12xx TT wallets | Destination for USD carrying (`_is_tt_agent_wallet_account`) |
-| Agent AP under **2000** via `_ensure_ap_subaccount_for_contact` | Credit / mixed remainder |
-| `payments` + `record_payment_with_accounting` | **Later** agent AP settle (reference only; Path 21 Step 2) |
-| `fx_currency_purchases` | Path 21 credit lots; optional `import_fx_case_id` **pointer** — do not force W3 to write Path 21 rows unless owner chooses interoperability wave |
-| Cash/Bank liquidity accounts | Credit side of advance |
+| Case shell / events / client ops | Audit + idempotency |
+| TT wallets (`_is_tt_agent_wallet_account`) | USD destination |
+| Agent AP under 2000 | Credit / mixed remainder |
+| Path 21 `fx_currency_purchases` | **Separate path only** — no W3 v1 bridge |
+| Settings JSON | Map `agentFxAdvanceClearingAccountId` (or equivalent) to `AGENT_FX_ADVANCE_CLEARING` |
 
 ---
 
-## 7. Journal matrix
+## 7. Journal matrix (locked)
 
-Official books remain **PKR**. USD quantity is operational metadata on the acquisition + wallet policy.
+Official books **PKR**. USD qty = lot metadata.
 
-| # | Event | Debit | Credit | Notes |
-|---|-------|-------|--------|-------|
-| A1 | Agent advance | **Agent Advance / Clearing** (owner-approved) | Cash/Bank | PKR amount paid |
-| U1 | USD on credit | TT wallet 12xx | Agent AP (2000 child) | Same polarity as Path 21 Step 1 |
-| U2 | USD from advance | TT wallet 12xx | Agent Advance / Clearing | Releases prepaid |
-| U3 | USD mixed | TT wallet 12xx (total carrying) | Advance (applied) + Agent AP (remainder) | Must balance |
-| R* | Reversal | Invert original lines via compensating JE | — | Soft-void; no DELETE |
+| # | Event | Debit | Credit |
+|---|-------|-------|--------|
+| A1 | Agent advance | **Agent FX Advance / Settlement Clearing** | Cash/Bank |
+| U1 | USD fully credit | USD/TT wallet | Agent AP |
+| U2 | USD fully from advance | USD/TT wallet | Agent FX Advance / Settlement Clearing |
+| U3 | USD mixed | USD/TT wallet (full carrying) | Clearing (applied) + Agent AP (remainder) |
+| R* | Full event reverse | Compensating invert of original lines | — |
 
-**Fees:** If collected in W3 UI, post as **separate** approved expense/fee legs only when owner approves fee account mapping; otherwise show fees as **non-posting display** until approved. Default design: fees **visible separately**, posting deferred unless mapped.
-
-**Never in W3:** Supplier AP, inventory, CNY wallet, FX P&L, Pending FX.
-
----
-
-## 8. Advance / Credit / Mixed examples
-
-Assume agent Hamid, bank 1010, TT wallet 1205, approved clearing **1230** (pending owner approval), rate **287.50 PKR per 1 USD**.
-
-### 8.1 Fully advance-funded acquisition
-
-1. Advance post: Dr 1230 2,875,000 / Cr 1010 2,875,000  
-2. Acquire USD 10,000: Dr 1205 2,875,000 / Cr 1230 2,875,000  
-3. Unapplied advance after = 0  
-
-### 8.2 Fully credit-funded acquisition
-
-1. Acquire USD 10,000: Dr 1205 2,875,000 / Cr Agent AP 2,875,000  
-2. No bank movement; Agent Payment Pending  
-
-### 8.3 Mixed acquisition
-
-1. Prior unapplied advance 1,000,000  
-2. Acquire USD 10,000 carrying 2,875,000:  
-   - Dr 1205 2,875,000  
-   - Cr 1230 1,000,000  
-   - Cr Agent AP 1,875,000  
+**Fees:** not posted in W3 v1 (OD-2).  
+**Never:** Supplier AP, inventory, CNY, FX P&L, Pending FX, Worker Advance `1180`.
 
 ### Formulas
 
 ```text
-carrying_pkr          = usd_qty × pkr_per_usd
-advance_applied_pkr   = min(requested_apply, unapplied_advance_balance, carrying_pkr)
-agent_ap_created_pkr  = carrying_pkr − advance_applied_pkr   # CREDIT or MIXED remainder
-unapplied_advance'    = unapplied_advance − advance_applied_pkr
+carrying_pkr         = usd_qty × pkr_per_1_usd
+advance_applied_pkr  = FIFO/manual ≤ unapplied_advance ∧ ≤ carrying_pkr
+agent_ap_created_pkr = carrying_pkr − advance_applied_pkr
+fee_pkr              = NULL or 0   # OD-2
 ```
 
-CREDIT mode: `advance_applied_pkr = 0`, `agent_ap_created_pkr = carrying_pkr`.  
-ADVANCE mode: `advance_applied_pkr = carrying_pkr` (reject if insufficient advance).  
-MIXED: both may be > 0; reject if `advance_applied + ap != carrying`.
+CREDIT: apply = 0. ADVANCE: apply = carrying (reject if insufficient). MIXED: both > 0; `apply + ap = carrying`.
 
 ---
 
-## 9. Partial and multiple-event examples
+## 8. Balanced accounting examples
 
-### 9.1 Multiple advances
+Illustrative labels: bank `1010`, TT wallet `1205`, clearing shown as **Agent FX Advance / Settlement Clearing** (settings-mapped; example code `1230*` only if live-free — see CoA audit). Rate **287.50 PKR per 1 USD**.
 
-| Date | Advance PKR | Unapplied after |
-|------|-------------|-----------------|
+### 8.1 Agent advance
+
+| Side | Account | PKR |
+|------|---------|-----|
+| Dr | Agent FX Advance / Settlement Clearing | 2,000,000 |
+| Cr | Cash/Bank (1010) | 2,000,000 |
+
+Balanced. USD qty: n/a. Unapplied advance = 2,000,000. Accounting → `PARTIALLY_POSTED`.
+
+### 8.2 USD acquisition fully from advance
+
+Prior unapplied 2,875,000. Acquire USD **10,000** @ 287.50 → carrying **2,875,000**.
+
+| Side | Account | PKR | USD qty |
+|------|---------|-----|---------|
+| Dr | USD TT Wallet (1205) | 2,875,000 | +10,000 |
+| Cr | Agent FX Advance / Settlement Clearing | 2,875,000 | — |
+
+Unapplied after = 0. Lot immutable. Wallet WA carrying updates from lots.
+
+### 8.3 USD acquisition fully on credit
+
+| Side | Account | PKR | USD qty |
+|------|---------|-----|---------|
+| Dr | USD TT Wallet | 2,875,000 | +10,000 |
+| Cr | Agent AP | 2,875,000 | — |
+
+Remaining Agent AP = 2,875,000. Agent Payment Pending (ops). No bank.
+
+### 8.4 Mixed USD acquisition
+
+Unapplied advance 1,000,000. Acquire USD 10,000 carrying 2,875,000.
+
+| Side | Account | PKR |
+|------|---------|-----|
+| Dr | USD TT Wallet | 2,875,000 |
+| Cr | Agent FX Advance / Settlement Clearing | 1,000,000 |
+| Cr | Agent AP | 1,875,000 |
+
+USD qty +10,000 on lot. Remaining advance = 0. Remaining Agent AP = 1,875,000. Balanced.
+
+### 8.5 Multiple advances (FIFO)
+
+| Date | Advance posted | Unapplied after |
+|------|----------------|-----------------|
 | D1 | 1,000,000 | 1,000,000 |
 | D2 | 500,000 | 1,500,000 |
 
-Application policy default: **FIFO by advance posting date** against unapplied balance (owner may choose explicit advance selection UI). Distinct from **wallet lot valuation** (WA vs FIFO) — see open decisions.
+Later acquire carrying 1,200,000 ADVANCE mode → consume D1 1,000,000 + D2 200,000 (FIFO). Applications stored immutably. Remaining unapplied = 300,000 (D2 remnant).
 
-### 9.2 Partial USD acquisition
+### 8.6 Partial USD acquisition
 
-Plan: 30,000 USD. First lot: 10,000 USD @ 287.50 → carrying 2,875,000. Case status: **USD Partially Acquired**; stage `USD_ACQUISITION` = `PARTIALLY_COMPLETED`.
+Plan 30,000 USD. Lot1: 10,000 @ 287.50 → carrying 2,875,000 (credit or advance per funding). Ops: **USD Partially Acquired**. Accounting remains `PARTIALLY_POSTED`.
 
-### 9.3 Reversal of a posted advance (no USD applied yet)
+### 8.7 Full reversal — unapplied advance
 
-Compensating JE: Dr Bank / Cr Clearing for original PKR; advance status `REVERSED`; unapplied reduced. If applications exist, reverse applications first (or block reverse until applications reversed).
+Reverse A1: Dr Bank 2,000,000 / Cr Clearing 2,000,000. Event `REVERSED`. Unapplied ↓. Recompute accounting from remaining active posts.
 
-### 9.4 Reversal of USD acquisition
+### 8.8 Full reversal — USD acquisition (mixed)
 
-Invert Dr/Cr of U1/U2/U3; restore advance unapplied and/or Agent AP; wallet qty/carrying reduced; status `REVERSED`. Never delete.
+Invert U3 lines; restore advance applications; restore Agent AP; reduce wallet qty/carrying on lot. Order: reverse acquisition **before** reversing advances it consumed.
 
----
+### 8.9 Partial reversal policy
 
-## 10. Status model
-
-### 10.1 Case-level operational (derived)
-
-Avoid bare `Completed`. Prefer explicit labels:
-
-| Label | Meaning |
-|-------|---------|
-| Arrangement Confirmed | W2 ARRANGED |
-| Advance Not Posted | No posted advances |
-| Advance Partially Posted | Some advances posted; planned/target not met (optional target) |
-| Advance Posted | At least one advance; or all planned advance covered (policy) |
-| USD Pending | No posted acquisitions |
-| USD Partially Acquired | Some USD qty posted |
-| USD Acquired | Target qty met or operator marks acquisition complete for handoff |
-| Agent Payment Pending | Open Agent AP from credit/mixed remains |
-| Partially Reversed | Some events reversed |
-| Reversed | All W3 money events reversed |
-
-### 10.2 Accounting status
-
-| Status | Meaning |
-|--------|---------|
-| `NOT_POSTED` | No W3 money JE |
-| `PARTIALLY_POSTED` | Some advances and/or USD acquisitions posted |
-| `POSTED` | Reserved for later “case money closed” policy — **do not auto-set** on first acquisition |
-| `REVERSED` | All W3 money reversed |
-
-### 10.3 Stage rows
-
-Update `ADVANCE` and `USD_ACQUISITION` stage statuses from aggregates. Do **not** auto-complete W4+ stages.
-
-### 10.4 Assignment (unchanged contract)
-
-Example valid concurrent state:
-
-- Case: ARRANGED / Advance Partially Posted  
-- Accounting: PARTIALLY_POSTED  
-- Stage: USD Acquisition Pending  
-- Task: Obtain TT transfer reference · Assigned · Due date  
-- Task status ≠ accounting status  
+**Not supported as partial JE.** To correct amount: reverse **entire** posted event, then post new correct event (OD partial-reversal lock).
 
 ---
 
-## 11. RPC contracts (design)
+## 9. USD lots vs weighted-average reporting (OD-3)
 
-All SECURITY DEFINER, fail-closed company/branch, Multi Currency ON for mutations.
-
-| RPC (proposed) | Role | posts_journal |
-|----------------|------|---------------|
-| `create_import_fx_case_advance_draft` | Draft advance | false |
-| `update_import_fx_case_advance_draft` | Edit draft | false |
-| `confirm_post_import_fx_case_advance` | Atomic post | **true** |
-| `create_import_fx_case_usd_acquisition_draft` | Draft USD | false |
-| `update_import_fx_case_usd_acquisition_draft` | Edit draft | false |
-| `confirm_post_import_fx_case_usd_acquisition` | Atomic post (includes mix split) | **true** |
-| `reverse_import_fx_case_advance` | Compensating reverse | **true** |
-| `reverse_import_fx_case_usd_acquisition` | Compensating reverse | **true** |
-| `get_import_fx_case_money_overview` | Read balances/history | false |
-
-Each post RPC requires `p_client_operation_id` UNIQUE `(company_id, event_type, client_operation_id)`.
+| Layer | Behavior |
+|-------|----------|
+| **Source lot** | Immutable row: `usd_qty`, `pkr_carrying`, rate, wallet, funding split, JE id |
+| **Wallet WA report** | Derived: `Σ carrying / Σ qty` across active (non-reversed) lots on that wallet |
+| **Reversal** | Compensates **original lot**; does not rewrite lot history |
+| **W4** | Consumes traceable qty/carrying per later approved consumption model |
 
 ---
 
-## 12. Idempotency and locking
+## 10. Status model (OD-6)
 
-- `client_operation_id` required on confirm-post; retry returns original result (`idempotent_replay: true`).
-- `SELECT … FOR UPDATE` on case row, advance row, and (when applying) advance balance aggregates.
-- Duplicate payment/agent reference → **warning** (soft) or hard reject if exact open duplicate within company+agent+amount+date (policy).
-- Stale UI balance: compare `assignment_updated_at` / money overview etag; reject with `IMPORT_FX_CASE_STALE_BALANCE`.
-- Insufficient unapplied advance → `IMPORT_FX_CASE_INSUFFICIENT_ADVANCE`.
-- Wallet must pass TT-agent wallet heuristic / currency policy for USD destination.
-- Agent must be `money_exchange`, active, same company; must match case agent by default.
+### Accounting
 
----
+| Status | Rule |
+|--------|------|
+| `NOT_POSTED` | No active W3 money JE |
+| `PARTIALLY_POSTED` | After **first** valid posted advance or USD acquisition; **stays** here for further W3 posts |
+| `POSTED` | **Forbidden in W3** — reserved for W6 / full reconciliation approval |
+| Recompute | After reverse: if no active W3 money left → `NOT_POSTED`; else `PARTIALLY_POSTED` |
 
-## 13. Reversal model
+### Operational labels (examples)
 
-- Posted events immutable in-place.
-- Reverse creates new event + compensating JE linked via `reversal_of_event_id` / `reversal_of_journal_id`.
-- Order: reverse USD applications/acquisitions that consume an advance **before** reversing that advance.
-- UI: posted receipt is read-only; Reverse action opens confirm dialog with preview of compensating lines.
+Arrangement Confirmed; Advance Not/Partial/Posted; USD Pending/Partial/Acquired; Agent Payment Pending; Partially Reversed; Reversed.  
+**Assignment status** never drives accounting status.
 
 ---
 
-## 14. UI screen specifications
+## 11. Advance application (OD-4)
 
-| # | Screen | Purpose |
-|---|--------|---------|
-| 1 | W3 case money overview | Planned vs actual advance/USD; unapplied advance; open Agent AP; links to Path 21 warning |
-| 2 | Agent Advance entry | Form §15 fields; Save Draft / Confirm & Post |
-| 3 | USD/TT Acquisition entry | Qty, rate, wallet, funding mode |
-| 4 | Advance application | Explicit apply when not embedded (optional) |
-| 5 | Mixed funding allocation | Split editor: advance vs AP; live remaining |
-| 6 | Destination USD wallet selector | TT wallet search; currency validation |
-| 7 | Agent balance summary | Unapplied advance, open AP, recent events |
-| 8 | Accounting preview | Balanced PKR lines before post |
-| 9 | Confirm-and-post dialog | Idempotency token; “posts journal” explicit |
-| 10 | Posted receipt/detail | JE ref, amounts, immutable |
-| 11 | Partial/multiple-event history | Chronological advances + acquisitions |
-| 12 | Reversal/void workflow | Compensating preview |
-| 13 | Audit timeline | Case events + money events |
-| 14 | Responsive layouts | Desktop 3-col; tablet 2-col; mobile stack |
-
-**Distinguish clearly in UI**
-
-| Concept | Source |
-|---------|--------|
-| W2 Planned Advance | `expected_advance_amount_pkr` — not posted |
-| W3 Actual Posted Advance | Sum of posted advances |
-| Remaining unapplied advance | Posted advances − applications |
+1. **Default:** FIFO oldest available posted advance for same company/branch/agent.  
+2. **Manual before post** only if authorized and:
+   - selected advances same company, branch, agent  
+   - total apply ≤ available on each and in aggregate  
+   - accounting preview lists every selected advance  
+   - allocation stored immutably + audit event for override  
+3. **After post:** no reallocation — reverse & repost.
 
 ---
 
-## 15. Accounting previews
+## 12. Path 21 coexistence (OD-5)
 
-Every Confirm & Post dialog shows:
+| Path 21 today | W3 |
+|---------------|-----|
+| Dr TT / Cr Agent AP; pay agent; pay supplier from wallet | Advance + USD acquisition only |
+| No case required | **Import FX case required** |
+| Separate wizard | Separate UI; must label path |
 
-```text
-Dr  <account name>    PKR xxx
-Cr  <account name>    PKR xxx
-Balanced: yes
-posts_journal: true
-client_operation_id: …
-```
-
-Mixed shows three lines. If clearing account not configured → block post with `OWNER ACCOUNTING APPROVAL REQUIRED` / `IMPORT_FX_CASE_ADVANCE_ACCOUNT_NOT_CONFIGURED`.
+**Rules:** one commercial event cannot post both paths; no Path 21 schema bridge in v1; no historical migration; soft warn on similar agent/date/ref/qty/amount/Path21 row.
 
 ---
 
-## 16. Validation / error messages (stable codes)
+## 13. Idempotency & duplicate protection (OD-7)
+
+**Hard**
+
+- `client_operation_id` required on confirm-post  
+- UNIQUE `(company_id, event_type, client_operation_id)`  
+- Atomic RPC + `FOR UPDATE`  
+- Retry → original result (`idempotent_replay`)  
+- No duplicate journal  
+
+**Soft warning (review, not substitute)**
+
+- Same agent + similar date + same external ref and/or same USD qty and/or same PKR/rate and/or possible matching Path 21 event  
+
+---
+
+## 14. CoA collision / compatibility audit (read-only)
+
+| Item | Evidence | Result |
+|------|----------|--------|
+| Role `AGENT_FX_ADVANCE_CLEARING` | Owner OD-1 | **Approved** |
+| Suggested code `1230` in settlement design | Design suggestion only | **Not live-provisioned in migrations** |
+| Migration search for `1230` | No seed/create hits in `migrations/` | No repo-seeded collision found |
+| CoA audit assets | `1100`, `1200`, `1180` cited; TT party `12xx` | `1180` = Worker Advance (**forbidden**) |
+| Phase-3 codes | `1395`/`2295`/`6100`/`7100` | **Forbidden** for W3 advance |
+| Live company CoA | Not queried in this docs task | Exact **`1230` availability UNRESOLVED** until provision-time live audit |
+
+| Nearby / control | Role | W3 use |
+|------------------|------|--------|
+| `1180` | Worker Advance | **Do not use** |
+| `1200` | Inventory | Unrelated |
+| `12xx` named TT | FC wallets | USD destination only — not clearing |
+| `2000` + AP children | Agent/Supplier AP | Credit/mixed AP only |
+| `1230` (if free) | Candidate for clearing | Prefer if unused & consistent |
+| Else | Next free current-asset code | Settings-mapped |
+
+**Settings key (proposed):** `accounting_settings.agentFxAdvanceClearingAccountId` (uuid) resolving role `AGENT_FX_ADVANCE_CLEARING`.
+
+**Implementation rule:** Before creating any account, run live CoA audit per company. Assign `1230` **only if unused**; otherwise next approved current-asset code. **Never hardcode `1230` in RPCs.**
+
+---
+
+## 15. RPC contracts (design)
+
+Unchanged shape from prior design; add validations:
+
+- Fee NULL/0 on post  
+- Clearing account configured for advance / ADVANCE / MIXED  
+- FIFO or validated manual applications  
+- OD-6 status recompute  
+- OD-7 hard idempotency  
+
+| RPC | posts_journal |
+|-----|---------------|
+| `create/update_*_advance_draft` | false |
+| `confirm_post_import_fx_case_advance` | **true** |
+| `create/update_*_usd_acquisition_draft` | false |
+| `confirm_post_import_fx_case_usd_acquisition` | **true** |
+| `reverse_import_fx_case_advance` / `_usd_acquisition` | **true** |
+| `get_import_fx_case_money_overview` | false |
+
+---
+
+## 16. Validation / errors (additions)
 
 | Code | When |
 |------|------|
-| `IMPORT_FX_CASE_NOT_ARRANGED` | Money post before arrangement confirm |
-| `IMPORT_FX_CASE_AGENT_REQUIRED` | Missing/invalid agent |
-| `IMPORT_FX_CASE_AGENT_ROLE_REQUIRED` | Not money_exchange |
-| `IMPORT_FX_CASE_INSUFFICIENT_ADVANCE` | ADVANCE/MIXED apply too high |
-| `IMPORT_FX_CASE_ADVANCE_ACCOUNT_NOT_CONFIGURED` | No owner-approved clearing |
-| `IMPORT_FX_CASE_WALLET_NOT_TT` | Destination fails TT rules |
-| `IMPORT_FX_CASE_STALE_BALANCE` | Concurrent update |
-| `IMPORT_FX_CASE_DUPLICATE_CLIENT_OPERATION` | Handled as idempotent replay |
-| `MULTI_CURRENCY_DISABLED` | Flag off |
-| `IMPORT_FX_CASE_BRANCH_ACCESS_DENIED` | Branch fail-closed |
+| `IMPORT_FX_CASE_ADVANCE_ACCOUNT_NOT_CONFIGURED` | Missing settings-mapped clearing |
+| `IMPORT_FX_CASE_FEE_NOT_ALLOWED` | Non-zero fee on W3 v1 post |
+| `IMPORT_FX_CASE_INSUFFICIENT_ADVANCE` | Apply > available |
+| `IMPORT_FX_CASE_MANUAL_ADVANCE_INVALID` | Manual pick fails OD-4 rules |
+| Soft duplicate | Warning payload; operator must confirm |
 
 ---
 
-## 17. Task-assignment interaction
+## 17. UI notes
 
-W2.1 assignment panel remains the follow-up surface. W3 posting **must not** auto-change assignment status. Suggested operator pattern: after posting advance, set task to `WAITING_AGENT` / “Obtain TT reference” manually or via optional soft-suggest UI (non-blocking).
+- Show path badge: **Import FX Case (W3)** vs **Agent FX (Path 21)**.  
+- Fee field: disabled / “available in a later approved wave”.  
+- Clearing missing: block Confirm & Post with configure message.  
+- Screens 1–14 from prior design remain; previews use role names not hardcoded codes.
 
 ---
 
-## 18. Path 21 coexistence
+## 18. Security
 
-### What Path 21 posts today
+Fail-closed company/branch; `money_exchange` agent; TT wallet validation; RPC-only; Profile A no FX P&L; revoke helpers from anon/authenticated.
 
-1. Dr TT wallet / Cr Agent AP (`record_fx_currency_purchase_on_credit`)  
-2. Dr Agent AP / Cr Bank (`createSupplierPayment` + settlement apply)  
-3. Dr Supplier AP / Cr TT wallet (China settle)
+---
 
-### What W3 posts
+## 19. W3 exclusions
 
-- Advance: Dr Clearing / Cr Bank  
-- USD: Dr TT / Cr Clearing and/or Agent AP  
+China transfer/conversion/pool; supplier allocation/payment; FX P&L; Path 21 redesign/bridge; fee posting; final `POSTED`; silent CoA create without mapped role + live code pick.
 
-### Duplicate prevention
+---
 
-| Rule | Detail |
+## 20. W3 → W4 handoff
+
+Requires ≥1 active posted USD lot with remaining qty + carrying. W4 consumption model separate approval.
+
+---
+
+## 21. Remaining decisions before implementation
+
+| Item | Status |
 |------|--------|
-| Operator | Path clarity: do not post the same commercial FC credit in **both** Agent FX wizard and W3 USD-on-credit |
-| System (future) | Warn/block if open Path 21 credit exists for same company+agent+wallet+amount within N hours without explicit link |
-| Link | Optional `import_fx_case_id` on Path 21 credit is pointer-only; W3 may later offer “Import Path 21 credit into case” **without** rewriting Path 21 |
-
-### Transition strategy
-
-- Keep Path 21 for same-day RMB/USD agent dual-credit settle.  
-- Prefer W3 when multi-day advance, mixed funding, or case audit trail is required.  
-- Do not auto-migrate historical Path 21 rows.
+| Live per-company CoA: is `1230` free? | **Open at provision** (role locked) |
+| Exact settings key naming in `accounting_settings` JSON | Confirm at impl |
+| W2/W2.1 PR #23 merge | **Gate** — no W3 money PR before |
+| Separate owner approval to **implement** money RPCs/UI | Still required (docs ≠ ship) |
+| W4 lot consumption algorithm | Later wave |
 
 ---
 
-## 19. Desktop / tablet / mobile UX
-
-- **Desktop:** Overview + form + preview three columns.  
-- **Tablet:** Overview top; form/preview stacked.  
-- **Mobile:** Single column; sticky Confirm bar; searchable selects full-screen.  
-- Touch targets ≥ 44px; duplicate-submit guards on Confirm & Post.
-
----
-
-## 20. Security model
-
-- Fail-closed `_import_fx_case_assert_company_access` + branch helpers.  
-- Agent `money_exchange` + active.  
-- Wallet TT validation.  
-- RPC-only writes; revoke helper EXECUTE from anon/authenticated.  
-- Attachment metadata remains non-exposing of raw `storage_path` (W1/W2 pattern).  
-- Profile A: no FX P&L auto journals.
-
----
-
-## 21. W3 exclusions
-
-| Excluded | Wave |
-|----------|------|
-| China USD transfer | W4 |
-| USD→CNY conversion / CNY pool | W4 |
-| Supplier allocation / payment | W5 |
-| FX gain/loss / Pending FX accounts | Phase-3 |
-| Redesign/replace Path 21 | Never in W3 |
-| Paying Agent AP (beyond referencing existing payment path) | Out of core W3; document pointer only |
-| Silent CoA creation of 1230/1395/… | Owner approval |
-
----
-
-## 22. W3 → W4 handoff
-
-W4 may begin when:
-
-- At least one **posted** USD acquisition with remaining USD quantity and PKR carrying exists on a TT wallet, and  
-- Operator confirms handoff (or stage `USD_ACQUISITION` marked complete for case policy).
-
-W4 consumes wallet qty/carrying for China transfer and conversion — **not designed here**.
-
----
-
-## 23. Open owner decisions
-
-| ID | Decision | Recommendation |
-|----|----------|----------------|
-| OD-1 | Approve additive Agent Advance/Clearing account (suggested **1230**, settings-mapped) | **Required before prepaid W3 money** |
-| OD-2 | Fee posting account vs display-only fees in W3 | Display-only until mapped |
-| OD-3 | Wallet multi-lot valuation: weighted average vs FIFO | Docs default **WA**; FIFO optional setting |
-| OD-4 | Advance application order when multiple advances | FIFO by post date or explicit pick UI |
-| OD-5 | Whether W3 USD-on-credit should also insert `fx_currency_purchases` for Path 21 parity | Prefer **case-native** table first; optional bridge later |
-| OD-6 | When case `accounting_status` becomes `POSTED` | Not on first event; define close policy later |
-| OD-7 | Hard vs soft duplicate Path 21 / W3 guard | Soft warn v1; hard block v2 |
-
-**`OWNER ACCOUNTING APPROVAL REQUIRED`** applies to OD-1 before any advance-funding implementation.
-
----
-
-## 24. Proposed implementation waves (future — not this task)
+## 22. Proposed implementation waves
 
 | Wave | Work | Gate |
 |------|------|------|
-| W3-D0 | This design + owner CoA decision | Docs |
-| W3-A | Additive clearing account config (no Phase-3) | Owner OD-1 |
-| W3-B | Schema tables + idempotency | After W2/W2.1 merge |
-| W3-C | Post RPCs + JE | Separate money approval |
-| W3-D | UI screens 1–14 | After C |
-| W3-E | Path 21 coexistence guards | After D |
-
-**No W3 PR merges before W2/W2.1.**
+| W3-D0 | Design + **OD lock** (this revision) | Done (docs) |
+| W3-A | Live CoA audit → map/create clearing under role | OD-1 + live code pick |
+| W3-B | Schema + idempotency | After W2/W2.1 merge |
+| W3-C | Post/reverse RPCs + JE | Explicit money approval |
+| W3-D | UI | After C |
+| W3-E | Soft Path 21 duplicate warnings | After D |
 
 ---
 
-## 25. Acceptance checklist (for a future implementation PR)
+## 23. Acceptance checklist (future impl)
 
-- [ ] Advance post balances; increases unapplied  
-- [ ] USD credit / advance / mixed journals balance in PKR  
-- [ ] Insufficient advance rejected  
-- [ ] Idempotent client_operation_id replay  
-- [ ] Reverse restores balances; no DELETE  
-- [ ] NULL-agent historical cases blocked  
-- [ ] No Supplier AP / CNY / FX P&L writes  
-- [ ] Path 21 wizard still works unchanged  
-- [ ] Assignment unchanged by posting  
-- [ ] Clearing account missing → clear error  
-- [ ] Multi Currency OFF rejects mutations  
+- [ ] A1/U1/U2/U3 balance in PKR; USD qty on lots  
+- [ ] Fee non-zero rejected  
+- [ ] FIFO + manual override audit  
+- [ ] Status never auto-`POSTED`  
+- [ ] Reverse whole event only; recompute status  
+- [ ] Hard idempotency; soft warn separate  
+- [ ] Clearing via settings map, not hardcoded 1230  
+- [ ] Path 21 unchanged; no case_id on Path 21 rows  
+- [ ] No Supplier AP / CNY / FX P&L / 1180  
 
 ---
 
-## 26. Files inspected
+## 24. Files inspected (this lock revision)
 
-- Path 21 RPCs/schema: `migrations/20260801190000_fx_currency_purchase_schema.sql`, `20260801190100_fx_currency_purchase_rpcs.sql`, `20260811170000_import_fx_path21_agent_role_guards.sql`, `20260811171000_import_fx_tt_wallet_include_party_tt.sql`, `20260811200000_import_fx_wave0_path21_idempotency_settlement_lifecycle.sql`
-- Client: `src/app/services/importFxAgentService.ts`, `src/app/lib/liquidityPaymentAccount.ts`
-- W2/W2.1 case: `ImportFxCaseWorkspace.tsx`, W2/W2.1 migrations, `importFxCaseW21Helpers.ts`
-- Docs: settlement design, pooled B–F, PAYMENT_ENTRY_PATHS, gap analysis, W2.1 record, operator Cases vs Agent, multi-currency rule
+- Prior W3 design on this branch  
+- `docs/accounting/coa-developer-center/01_CHART_OF_ACCOUNTS_AUDIT.md`  
+- Settlement design CoA table (`1230` suggestion)  
+- Migration grep: no `1230` seed  
+- Path 21 / multi-currency rule / W2.1 handoff  
 
 ---
 
-## 27. Confirmation — this document posts no accounting
+## 25. Confirmation — this document posts no accounting
 
-This file is **design documentation only**. It does **not**:
-
-- create or alter database objects  
-- post or reverse journals or payments  
-- create COA accounts  
-- change Path 21 behavior  
-- deploy to VPS/production  
-- modify Draft PR #23 implementation commits  
-
-Expected live financial delta from publishing this markdown: **none**.
+Documentation only. Does **not** create accounts, journals, payments, migrations, or change PR #23 / Path 21 / production. Live financial delta from this markdown: **none**.
 
 ---
 
@@ -531,6 +448,7 @@ Expected live financial delta from publishing this markdown: **none**.
 | Field | Value |
 |-------|-------|
 | Path | `docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md` |
-| Stacked branch | `docs/import-fx-w3-advance-usd-acquisition-design` |
-| Depends on | W2.1 HEAD `0d9d274e` / PR #23 |
-| Date | 2026-08-13 |
+| Branch | `docs/import-fx-w3-advance-usd-acquisition-design` |
+| Depends on | W2.1 `0d9d274e` / PR #23 |
+| OD lock revision | 2026-08-13 |
+| Commit | *(set after push)* |
