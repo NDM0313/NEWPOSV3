@@ -7,6 +7,8 @@
 
 Canonical companions: [`IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](./IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md) · [`IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md`](./IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md)
 
+**Operator workflow + gap analysis (successor for ops confusion / Path 21 vs Cases):** [`IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md`](./IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md)
+
 ---
 
 ## 1. Business purpose
@@ -377,6 +379,8 @@ No W2 SQL contract correction migration was written (migrations remain unapplied
 ---
 
 ## 20. W2→W3 handoff
+
+**Operator howto (Cases vs Agent FX, RMB supplier pay):** [`IMPORT_FX_CASES_VS_AGENT_FX_OPERATOR_WORKFLOW.md`](IMPORT_FX_CASES_VS_AGENT_FX_OPERATOR_WORKFLOW.md)
 
 **W2 completion boundary:** ARRANGEMENT draft/resume/confirm UI + non-posting RPCs + metadata attachments. Accounting status stays `NOT_POSTED`. Money stages remain disabled.
 
