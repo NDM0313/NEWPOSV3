@@ -9,6 +9,8 @@ Canonical companions: [`IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](./IMPORT_FX_CASE_
 
 **Operator workflow + gap analysis (successor for ops confusion / Path 21 vs Cases):** [`IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md`](./IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md)
 
+**W2.1 operator clarity + assignment (successor fix wave):** [`IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](./IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md)
+
 ---
 
 ## 1. Business purpose

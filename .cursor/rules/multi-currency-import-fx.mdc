@@ -13,6 +13,8 @@ alwaysApply: true
 
 **Operator workflow + gap analysis (Path 21 vs Cases, screenshot meaning, issue register):** [`docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md`](docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md) — consult when operators confuse ARRANGED/NOT_POSTED with wallet or AP posting.
 
+**W2.1 operator clarity + assignment (non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md) — agent confirm rules, funding summary, arrangement lock, case assignment.
+
 **W3+ money / pooled / Phase-3 hold:** separate owner approval required.
 
 **Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)

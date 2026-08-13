@@ -553,20 +553,20 @@ Screenshot **~6.7461** matches **CNY per USD**, not USD/CNY (~0.148) and not PKR
 
 ## 15. Issue register
 
-| ID | Finding | Evidence | Severity | Accounting risk | Recommended fix | Suggested wave |
-|----|---------|----------|----------|-----------------|-----------------|----------------|
-| IFX-GAP-01 | Confirm ARRANGEMENT allowed with blank agent for pooled/agent-style types | `validateArrangementPlanning`; `confirm_import_fx_case_stage` no agent require; `_import_fx_w2_assert_party_contacts` only if set | **High** | Low (no post) — high **ops confusion** | Require `agent_contact_id` for agent/pooled arrangement types on confirm (UI+RPC) | Pre-W3 UX |
-| IFX-GAP-02 | CREDIT still shows/stores Planned advance PKR; mode switch does not clear | `ImportFxCaseWorkspace.tsx` fundingMode click; summary always shows advance | **Medium** | None (planning) | Mode-conditional summary + clear/zero advance on CREDIT; server soft-check | Pre-W3 UX |
-| IFX-GAP-03 | `CNY/USD` slash ambiguity | `expected_cny_per_usd`; summary labels | **Low** | None | Prefer full “CNY per 1 USD” in summary | Docs/UX |
-| IFX-GAP-04 | No task assignment on cases | Schema/UI lack assignee fields; Studio tasks wrong domain | **Medium** | None | Additive columns + events (§11) | Separate UX wave |
-| IFX-GAP-05 | After confirm, UI locks; no reopen; server still allows draft update | `isArrangementLocked` vs `update_import_fx_case_draft` | **Medium** | Low if abused via RPC | Align lock: either expose controlled edit-while-NOT_POSTED or block RPC; add reopen policy | Pre-W3 |
-| IFX-GAP-06 | Operators conflate Cases (plan) with Agent FX (pay) | Dual buttons; short ops doc exists but confusion persists | **High** | **Medium** if they skip Path 21 and assume case paid | Banner on ARRANGED: “Not Posted — use Agent FX for money or wait W3+”; keep this canonical doc | Docs + small UX |
-| IFX-GAP-07 | Wallet balance mis-attributed to W2 case | W2 `posts_journal: false`; Path 21 Dr wallet | **High** (misdiagnosis) | High if someone “fixes” wrong JE | Operator §9 tracing; never reverse W2 | Docs |
-| IFX-GAP-08 | Agent vs supplier role mix risk | Link RPC rejects agent-as-supplier; Path 21 requires `money_exchange` | **Medium** | High if mis-paid | Keep guards; train via ops docs | Ongoing |
-| IFX-GAP-09 | List search is case/status oriented; party search is selector-local | `list_import_fx_cases` search + `matchesPlanningSearch` | **Low** | None | Document; optional list filters later | UX polish |
-| IFX-GAP-10 | Downstream stages show NOT_STARTED with W3+ blocked copy | `W2_MONEY_STAGE_BLOCKED_COPY`; stage list | **Low** | None if copy clear | Strengthen empty-state: “Planning complete — money not started” | UX |
-| IFX-GAP-11 | Screenshot agent blank — NULL vs projection | Needs `get_import_fx_case` for case | **Needs live verification** | Unknown until verified | Read-only SQL/RPC on that case_no | Verify before fix blame |
-| IFX-GAP-12 | Path 21 Step 3 weakly fingerprinted vs ordinary TT purchase payment | PAYMENT_ENTRY_PATHS / settlements table only links Step 2 | **Medium** | Medium for audits | Stronger notes/metadata; reporting filters | Wave 0 follow-up / docs |
+| ID | Finding | Evidence | Severity | Accounting risk | Recommended fix | Suggested wave | **Final status (W2.1)** |
+|----|---------|----------|----------|-----------------|-----------------|----------------|------------------------|
+| IFX-GAP-01 | Confirm ARRANGEMENT allowed with blank agent for pooled/agent-style types | Was optional in UI+RPC | **High** | Low (no post) | Require agent on confirm | Pre-W3 UX | **Fixed in W2.1 code** (live apply deferred) — see [`IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](./IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md) |
+| IFX-GAP-02 | CREDIT still shows/stores Planned advance PKR; mode switch does not clear | Workspace always showed advance | **Medium** | None | Mode-conditional summary + clear on CREDIT | Pre-W3 UX | **Fixed in W2.1 code** (live apply deferred) |
+| IFX-GAP-03 | `CNY/USD` slash ambiguity | Summary slash label | **Low** | None | Explicit “CNY received per 1 USD” | Docs/UX | **Fixed** |
+| IFX-GAP-04 | No task assignment on cases | Schema/UI gap | **Medium** | None | Additive columns + events | UX wave | **Fixed in W2.1 code** (live apply deferred) |
+| IFX-GAP-05 | After confirm, UI locks; server still allowed draft update | UI/RPC mismatch | **Medium** | Low if abused via RPC | `IMPORT_FX_CASE_ARRANGEMENT_LOCKED` | Pre-W3 | **Fixed in W2.1 code** (live apply deferred) |
+| IFX-GAP-06 | Operators conflate Cases (plan) with Agent FX (pay) | Dual buttons | **High** | Medium if skip Path 21 | Path clarity card | Docs + UX | **Fixed (UI copy)** |
+| IFX-GAP-07 | Wallet balance mis-attributed to W2 case | W2 non-posting | **High** (misdiagnosis) | High if wrong JE “fixed” | Wallet guidance in Cases UI | Docs | **Fixed (guidance)**; ledger source UI still later |
+| IFX-GAP-08 | Agent vs supplier role mix risk | Link/Path 21 guards | **Medium** | High if mis-paid | Keep guards | Ongoing | Unchanged / monitored |
+| IFX-GAP-09 | List search case/status oriented | list RPC | **Low** | None | Document | UX polish | Unchanged |
+| IFX-GAP-10 | Downstream stages NOT_STARTED + W3+ copy | Stage list | **Low** | None | Strengthen empty-state | UX | Partially addressed via Path clarity |
+| IFX-GAP-11 | Screenshot agent blank — NULL vs projection | Needs live get | **Needs live verification** | Unknown | Read-only verify | Verify | **Still needs live verification** |
+| IFX-GAP-12 | Path 21 Step 3 weakly fingerprinted | Settlements link Step 2 only | **Medium** | Medium for audits | Stronger notes/reporting | Follow-up | Open (out of W2.1) |
 
 Classifications used: Critical / High / Medium / Low / Documentation only / Needs live verification.
 
