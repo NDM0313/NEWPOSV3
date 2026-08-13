@@ -4,6 +4,7 @@
 **From:** Windows office PC  
 **To:** MacBook Pro  
 **Branch:** `feat/import-fx-w3-advance-usd-demo`  
+**Draft PR:** https://github.com/NDM0313/NEWPOSV3/pull/24  
 **Base:** `origin/main` (includes merged W2 / PR #23)
 
 ---
@@ -32,7 +33,8 @@ git pull origin feat/import-fx-w3-advance-usd-demo
 npm install
 ```
 
-Open the Draft PR on GitHub (title should mention W3 + demo). Review there; **do not merge to `main` until owner sign-off.**
+Open the Draft PR: https://github.com/NDM0313/NEWPOSV3/pull/24  
+Review there; **do not merge to `main` until owner sign-off.**
 
 > Push to `main` triggers [`.github/workflows/deploy-vps.yml`](../../.github/workflows/deploy-vps.yml) auto-deploy (and may run migrations). Keep this as a Draft until ready.
 
