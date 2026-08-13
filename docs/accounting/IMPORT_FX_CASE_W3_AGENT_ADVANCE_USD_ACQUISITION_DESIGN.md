@@ -451,4 +451,4 @@ Documentation only. Does **not** create accounts, journals, payments, migrations
 | Branch | `docs/import-fx-w3-advance-usd-acquisition-design` |
 | Depends on | W2.1 `0d9d274e` / PR #23 |
 | OD lock revision | 2026-08-13 |
-| Commit | *(set after push)* |
+| Commit | `539c9495` |
