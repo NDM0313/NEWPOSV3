@@ -3,7 +3,7 @@
 ## Database and Accounting Entries Design
 
 > **Repo note (canonical next-spec):** Yeh document NEW POSV3 ka **next additive** database / settlement design hai — further Import FX work isi se align hoga.  
-> **W3 case money design (Agent Advance + USD acquisition; docs only):** [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — not shipped; depends on W2/W2.1; owner CoA approval for prepaid clearing.  
+> **W3 case money design (Agent Advance + USD acquisition; docs only):** [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — not shipped; depends on W2/W2.1; **OD-1–OD-7 locked** (role `AGENT_FX_ADVANCE_CLEARING` settings-mapped; exact code e.g. `1230` only if live-free — never hardcode).  
 > **Pooled USD→CNY multi-supplier workflow (companion):** [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md) — event model A–F, Profile-A limits, forensic Path 21 appendix, waves P1–P5 (design only; not implemented).  
 > **Historical shipped references (do not treat as replace targets):** [`MULTI_CURRENCY_IMPORT_FX_ROADMAP.md`](./MULTI_CURRENCY_IMPORT_FX_ROADMAP.md), [`MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md`](./MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md).  
 > Live schema / RPC contracts ko migration ya coding se pehle re-audit karo. Cursor rule: [`.cursor/rules/multi-currency-import-fx.mdc`](../../.cursor/rules/multi-currency-import-fx.mdc).
@@ -185,7 +185,7 @@ Account numbers are examples and must be mapped through configuration, not hard-
 | `1100` | PKR Cash/Bank | Asset | Company payment source |
 | `1210` | USD Operational Wallet | Asset | USD quantity subledger; GL valuation in PKR |
 | `1220` | RMB Operational Wallet | Asset | RMB quantity subledger; GL valuation in PKR |
-| `1230` | Agent Settlement Clearing/Advance | Asset | PKR funded to agent but not yet fully settled |
+| `1230` | Agent Settlement Clearing/Advance | Asset | PKR funded to agent but not yet fully settled. **W3 OD-1:** role `AGENT_FX_ADVANCE_CLEARING` locked; display Agent FX Advance / Settlement Clearing; settings-mapped — assign `1230` only if live CoA free, never hardcode |
 | `2000 / AP-{supplier}` | Supplier AP control/child | Liability | Existing supplier liability structure, posted in PKR |
 | `2000 / AP-{agent}` | Agent AP child | Liability | Existing `money_exchange` agent AP under control 2000 |
 | `1395` | FX Loss Pending Review | Asset/Clearing | **Optional Phase 3 only:** debit difference awaiting approval |
