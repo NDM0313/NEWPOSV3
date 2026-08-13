@@ -37,10 +37,10 @@
 |-------|--------|
 | W1 case shell | Shipped (migrations + RPCs + UI) |
 | Path 21 Agent FX | Shipped money wizard (separate screen) |
-| W2 ARRANGEMENT | Code/UI/docs on `feat/import-fx-w2-arrangement-enrichment` (Draft PR #23); planning only; `posts_journal: false` |
-| W2.1 assignment + validation | Same PR; RPCs `update_import_fx_case_assignment` / `complete_import_fx_case_assignment`; agent required on confirm |
-| Live DB apply (W2/W2.1) | **Deferred / environment-dependent** — UI may 404 if migration not applied |
-| PR #23 → `main` | **Owner merge gate** — do not assume merged until proven on `origin/main` |
+| W2 ARRANGEMENT | **Merged to `main`** via PR #23 (`8a1d57bc`, 2026-08-13); planning only; `posts_journal: false` |
+| W2.1 assignment + validation | **On `main`** (tip ancestry includes `0d9d274e`); RPCs `update_import_fx_case_assignment` / `complete_import_fx_case_assignment`; agent required on confirm |
+| Live DB apply (W2/W2.1) | **Environment-dependent** — auto-deploy workflow may run on `main` push; treat production migrate as separately verified |
+| PR #23 → `main` | **Merged** — proven on `origin/main` |
 | W3–W6 money | **Not implemented** — design only |
 | Phase-3 FX P&L | **Not authorized** (`fxSettlementAccountingEnabled` stays `false`) |
 
