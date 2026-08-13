@@ -665,6 +665,6 @@ SECURITY DEFINER; fixed search_path; EXECUTE authenticated only; revoke PUBLIC/a
 | Branch | `docs/import-fx-w3-to-w6-master-implementation-plan` |
 | Base | W3 design `b141c754` |
 | Date | 2026-08-13 |
-| Commit | *(set after push)* |
+| Commit | 206a2eec |
 
 **This document posts no accounting.** It does not create migrations, journals, CoA accounts, or production changes.
