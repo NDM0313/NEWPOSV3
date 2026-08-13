@@ -171,6 +171,8 @@ W3+ must:
 - Not treat assignment status as accounting status
 - Implement money stages only with separate owner approval
 
+**Canonical W3 design (docs only; not shipped):** [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — Agent Advance + USD/TT Acquisition; stacked branch `docs/import-fx-w3-advance-usd-acquisition-design`; **must not merge before W2/W2.1**.
+
 ---
 
 ## 14. Commit hashes

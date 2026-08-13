@@ -455,7 +455,7 @@ Assignment **never** replaces accounting status and **must not** post journals.
 | Wave | Intent | Accounting | Status |
 |------|--------|------------|--------|
 | **W2 Arrangement** | Plan agent/third party, funding intention, expected values, links, confirm | **None** | **Shipped** (code/UI; live migrate per W2 doc may still be deferred) |
-| **W3 Agent funding & USD acquisition** | Advance / credit / mixed USD acquisition; later agent payment; wallet quantity + PKR carrying | Money events + idempotency | **Planned / unsupported now** |
+| **W3 Agent funding & USD acquisition** | Advance / credit / mixed USD acquisition; later agent payment; wallet quantity + PKR carrying | Money events + idempotency | **Design only** — [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) (not shipped; no merge before W2/W2.1) |
 | **W4 China transfer & USD→CNY** | Move USD; convert; create CNY pool; fees; carrying value; Profile A no FX P&L JE | Money | **Planned** |
 | **W5 Supplier allocation** | Pool → many suppliers/purchases; partials; outstanding CNY; book PKR vs pool cost | Money; Profile A restrictions | **Planned** |
 | **W6 Reconciliation & reporting** | Agent / USD / China USD / CNY pool / supplier ledgers; role separation; reversals | Reporting + audit | **Planned** |

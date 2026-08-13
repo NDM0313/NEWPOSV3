@@ -3,6 +3,7 @@
 ## Database and Accounting Entries Design
 
 > **Repo note (canonical next-spec):** Yeh document NEW POSV3 ka **next additive** database / settlement design hai — further Import FX work isi se align hoga.  
+> **W3 case money design (Agent Advance + USD acquisition; docs only):** [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — not shipped; depends on W2/W2.1; owner CoA approval for prepaid clearing.  
 > **Pooled USD→CNY multi-supplier workflow (companion):** [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md) — event model A–F, Profile-A limits, forensic Path 21 appendix, waves P1–P5 (design only; not implemented).  
 > **Historical shipped references (do not treat as replace targets):** [`MULTI_CURRENCY_IMPORT_FX_ROADMAP.md`](./MULTI_CURRENCY_IMPORT_FX_ROADMAP.md), [`MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md`](./MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md).  
 > Live schema / RPC contracts ko migration ya coding se pehle re-audit karo. Cursor rule: [`.cursor/rules/multi-currency-import-fx.mdc`](../../.cursor/rules/multi-currency-import-fx.mdc).
