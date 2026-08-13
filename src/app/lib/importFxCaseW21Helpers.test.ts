@@ -150,8 +150,10 @@ test('W2.1 assignment overdue and status helpers', () => {
   assert.equal(isAssignmentOverdue({ dueAt: '2020-01-01T00:00:00Z', status: 'DONE' }), false);
 });
 
-test('W2.1 money stages remain blocked; Path clarity copy present', () => {
-  assert.equal(isMoneyStageBlockedInW2('USD_ACQUISITION'), true);
+test('W2.1 money stages: W3 ADVANCE/USD open; W4+ remain blocked; Path clarity copy present', () => {
+  assert.equal(isMoneyStageBlockedInW2('ADVANCE'), false);
+  assert.equal(isMoneyStageBlockedInW2('USD_ACQUISITION'), false);
+  assert.equal(isMoneyStageBlockedInW2('CHINA_USD_TRANSFER'), true);
   assert.equal(isMoneyStageBlockedInW2('ARRANGEMENT'), false);
   assert.match(W2_MONEY_STAGE_BLOCKED_COPY, /W3\+/);
   assert.match(W21_PATH_CLARITY_CASE_COPY, /no wallet or accounting posting/i);

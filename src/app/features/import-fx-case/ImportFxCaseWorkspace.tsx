@@ -1,7 +1,8 @@
 /**
- * Import FX Case workspace (Wave W2).
- * ARRANGEMENT enrichment — draft / resume / confirm planning only.
- * Money stages blocked until W3+. Path 21 Agent FX remains separate.
+ * Import FX Case workspace (Wave W2 + W3 money stages).
+ * ARRANGEMENT enrichment — draft / resume / confirm planning.
+ * W3: Advance / USD Acquisition when server migration installed.
+ * W4+ remain blocked. Path 21 Agent FX remains separate.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -52,6 +53,10 @@ import {
   W2_MONEY_STAGE_BLOCKED_COPY,
   type ImportFxFundingMode,
 } from '@/app/lib/importFxCaseHelpers';
+import { isW3MoneyStage } from '@/app/lib/importFxCaseW3Helpers';
+import { ImportFxCaseW3MoneyPanel } from '@/app/features/import-fx-case/ImportFxCaseW3MoneyPanel';
+import { ImportFxW3DemoEntryLink } from '@/app/features/import-fx-case/ImportFxW3DemoPage';
+import { useAccounting } from '@/app/context/AccountingContext';
 import {
   W2_ACTION_BAR_CLASS,
   W2_FUNDING_INTENTION_OPTIONS,
@@ -140,6 +145,7 @@ function numOrNull(raw: string): number | null {
 export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
   const { companyId, branchId, user } = useSupabase();
   const { accountingSettings } = useSettings();
+  const { accounts } = useAccounting();
   const { currency: companyBaseCurrency } = useFormatCurrency();
   const multiCurrencyEnabled = accountingSettings?.multiCurrencyEnabled === true;
   const readOnly = !multiCurrencyEnabled;
@@ -955,6 +961,9 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
             <p className="text-xs text-muted-foreground">
               Planned / expected / intention only. Path 21 Agent FX stays a separate screen.
             </p>
+            <div className="mt-2">
+              <ImportFxW3DemoEntryLink />
+            </div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} aria-label="Close">
             <X className="h-4 w-4" />
@@ -1093,7 +1102,41 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                   readOnly={readOnly}
                 />
 
-                {isMoneyStageBlockedInW2(activeStage) ? (
+                {isW3MoneyStage(activeStage) ? (
+                  <ImportFxCaseW3MoneyPanel
+                    mode={activeStage === 'ADVANCE' ? 'ADVANCE' : 'USD_ACQUISITION'}
+                    companyId={companyId || ''}
+                    branchId={branchId}
+                    caseId={selectedCaseId || ''}
+                    caseNo={caseRow?.case_no}
+                    agentName={agentName}
+                    plannedAdvancePkr={
+                      expectedAdvanceAmountPkr ? Number(expectedAdvanceAmountPkr) : null
+                    }
+                    plannedUsd={plannedUsd ? Number(plannedUsd) : null}
+                    plannedPkrPerUsd={expectedPkrPerUsd ? Number(expectedPkrPerUsd) : null}
+                    clearingAccountId={accountingSettings.agentFxAdvanceClearingAccountId || null}
+                    accounts={(accounts || []).map((a: any) => ({
+                      id: a.id,
+                      code: a.code,
+                      name: a.name,
+                      type: a.type,
+                      is_group: a.is_group,
+                      is_active: a.is_active,
+                    }))}
+                    userId={user?.id || null}
+                    readOnly={
+                      readOnly ||
+                      !companyId ||
+                      !selectedCaseId ||
+                      caseRow?.operational_status === 'DRAFT' ||
+                      !caseRow?.arrangement_confirmed_at
+                    }
+                    onPosted={() => {
+                      if (selectedCaseId) void loadCaseDetail(selectedCaseId);
+                    }}
+                  />
+                ) : isMoneyStageBlockedInW2(activeStage) ? (
                   <div className="rounded-xl border border-amber-600/40 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100 space-y-2">
                     <p className="font-medium">{W2_MONEY_STAGE_BLOCKED_COPY}</p>
                     <p className="text-xs opacity-90">

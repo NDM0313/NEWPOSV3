@@ -207,6 +207,11 @@ export interface AccountingSettings {
   fxSettlementAccountingEnabled: boolean;
   /** Foreign currencies for import FX document dropdown (PKR always available separately). */
   activeCurrencies: { code: string; label: string }[];
+  /**
+   * W3 OD-1: settings-mapped Agent FX Advance / Settlement Clearing account id.
+   * Never hardcode CoA code 1230; resolve via this UUID per company.
+   */
+  agentFxAdvanceClearingAccountId?: string | null;
   taxCalculationMethod: 'Inclusive' | 'Exclusive';
   defaultTaxRate: number;
 }
@@ -319,7 +324,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateBusinessSettings: noop,
     rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
     updateRentalSettings: noop,
-    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, fxSettlementAccountingEnabled: false, activeCurrencies: [{ code: 'CNY', label: 'RMB (CNY)' }, { code: 'USD', label: 'US Dollar' }], taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
+    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, fxSettlementAccountingEnabled: false, activeCurrencies: [{ code: 'CNY', label: 'RMB (CNY)' }, { code: 'USD', label: 'US Dollar' }], agentFxAdvanceClearingAccountId: null, taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
     updateAccountingSettings: noop,
     defaultAccounts: { paymentMethods: [] },
     updateDefaultAccounts: noop,
@@ -447,6 +452,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     defaultCurrency: 'PKR',
     multiCurrencyEnabled: false,
     fxSettlementAccountingEnabled: false,
+    agentFxAdvanceClearingAccountId: null,
     activeCurrencies: [
       { code: 'CNY', label: 'RMB (CNY)' },
       { code: 'USD', label: 'US Dollar' },
@@ -875,6 +881,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         multiCurrencyEnabled: accountingData.multiCurrencyEnabled || false,
         // Never coerce missing/undefined to true — Phase-3 journal meanings stay off until explicit approval.
         fxSettlementAccountingEnabled: accountingData.fxSettlementAccountingEnabled === true,
+        agentFxAdvanceClearingAccountId: accountingData.agentFxAdvanceClearingAccountId || null,
         activeCurrencies: Array.isArray(accountingData.activeCurrencies) && accountingData.activeCurrencies.length > 0
           ? accountingData.activeCurrencies
           : [

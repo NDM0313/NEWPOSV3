@@ -8,6 +8,8 @@
     "typecheck:mobile": "cd erp-mobile-app && npx tsc -b",
     "dev": "node scripts/run-migrations.js --allow-fail && vite",
     "dev:no-migrate": "vite",
+    "dev:w3-demo": "vite --open /demo/import-fx-w3",
+    "test:import-fx-w3": "npx tsx --test src/app/lib/importFxCaseW3Helpers.test.ts src/app/lib/importFxW3DemoGate.test.ts",
     "migrate": "node scripts/run-migrations.js",
     "restore:backup": "node scripts/restore_company_backup_from_file.mjs",
     "worker-ledger-repair": "node scripts/worker_ledger_repair/run-repair.js",

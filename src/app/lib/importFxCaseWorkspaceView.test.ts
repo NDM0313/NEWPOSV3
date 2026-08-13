@@ -178,11 +178,22 @@ test('Multi Currency OFF is read-only', () => {
   assert.equal(actions.actionsDisabled, true);
 });
 
-test('future money stages are disabled with W3+ copy', () => {
+test('W4+ money stages remain disabled; W3 ADVANCE/USD are selectable', () => {
   const items = moneyStageTimelineItems();
   const arrangement = items.find((i) => i.code === 'ARRANGEMENT');
   assert.equal(arrangement?.disabled, false);
-  for (const code of ['ADVANCE', 'USD_ACQUISITION', 'CHINA_USD_TRANSFER', 'USD_CNY_CONVERSION', 'CNY_POOL', 'SUPPLIER_ALLOCATION', 'RECONCILIATION'] as const) {
+  for (const code of ['ADVANCE', 'USD_ACQUISITION'] as const) {
+    const row = items.find((i) => i.code === code);
+    assert.equal(row?.disabled, false);
+    assert.equal(row?.helper, null);
+  }
+  for (const code of [
+    'CHINA_USD_TRANSFER',
+    'USD_CNY_CONVERSION',
+    'CNY_POOL',
+    'SUPPLIER_ALLOCATION',
+    'RECONCILIATION',
+  ] as const) {
     const row = items.find((i) => i.code === code);
     assert.equal(row?.disabled, true);
     assert.equal(row?.helper, W2_MONEY_STAGE_BLOCKED_COPY);
