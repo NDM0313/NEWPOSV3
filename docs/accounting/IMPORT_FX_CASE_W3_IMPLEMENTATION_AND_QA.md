@@ -1,8 +1,8 @@
 # Import FX Case — W3 Implementation and QA
 
-**Status:** **LOCAL WORKING-TREE IMPLEMENTATION** (no Git commit/push in this task)  
-**Date:** 2026-08-13  
-**Live DB:** **NOT APPLIED** — frontend `.env.local` points at `supabase.dincouture.pk`; no `.env.db.local` / Docker localhost on this machine. Confirm & Post stays fail-closed until W3 RPCs exist on a **non-production** DB.
+**Status:** **LOCALHOST LIVE APPLY + RPC QA PASS (2026-08-14)** · production migrate/deploy still deferred · Draft PR #24 not merged  
+**Date:** 2026-08-14  
+**Live DB:** Applied on `localhost:5432/postgres` (`newposv3-local-pg`) only. See [`IMPORT_FX_W3_FINAL_FINISH_LOCALHOST_2026-08-14.md`](./IMPORT_FX_W3_FINAL_FINISH_LOCALHOST_2026-08-14.md).
 
 **Canonical design:** [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) (OD-1–OD-7 **unchanged / locked**)  
 **Master plan:** [`IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](./IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md)
@@ -74,9 +74,11 @@ Fee must be NULL/0. No Supplier AP, CNY, Phase-3 codes.
 
 | Suite | Result |
 |-------|--------|
-| `src/app/lib/importFxCaseW3Helpers.test.ts` | **5/5 PASS** |
-| Live RPC / production post | **NOT RUN** (production target; unauthorized) |
-| Full `tsc` / vite build | Not required for this report; helpers unit-tested |
+| `src/app/lib/importFxCaseW3Helpers.test.ts` | **PASS** |
+| `node scripts/qa/import-fx-w3-live-rpc-qa.mjs` (localhost) | **10/10 PASS** (2026-08-14) |
+| Advance JE Δ | **+1 entry / +2 lines / 0 payments** per post; reverse adds compensating JE |
+| Demo static | `import-fx-w3-demo-static-qa.mjs` **16/16 PASS** |
+| Production post | **NOT RUN** |
 
 ---
 
