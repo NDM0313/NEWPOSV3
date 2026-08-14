@@ -59,6 +59,7 @@ if (String(connectionString).includes('dincouture') || String(connectionString).
 const FILES = [
   'migrations/20260812140000_import_fx_case_arrangement_enrichment_w2.sql',
   'migrations/20260812140100_import_fx_case_attachment_metadata_rpc_w2.sql',
+  'migrations/20260813120000_import_fx_case_operator_assignment_and_validation_w2_1.sql',
 ];
 
 const W1_REQUIRED = [

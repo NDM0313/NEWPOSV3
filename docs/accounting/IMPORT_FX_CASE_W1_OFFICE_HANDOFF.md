@@ -19,7 +19,8 @@
 | Production build | **PASS** |
 | JE / lines / payments Δ | **0 / 0 / 0** |
 | Production DB / API for this gate letter | **Not used** (`supabase.dincouture.pk` refused for the localhost gate) |
-| Code on `origin/main` | **Yes** — W1 commits are present on `main` (FF of rebased branch; tip includes `46a00855`). This letter does **not** re-merge and does **not** authorize production deploy. |
+| Code on `origin/main` | **Yes** — merged via [PR #22](https://github.com/NDM0313/NEWPOSV3/pull/22) (`merged_at` 2026-08-12). This letter does **not** authorize production deploy. |
+| Follow-up (2026-08-14) | Local `main` fast-forwarded; W2/W2.1 localhost migrate + live RPC QA completed separately (see W2 docs). |
 
 Full evidence: [`IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](./IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md) (see **Owner acceptance** section).
 
@@ -27,7 +28,8 @@ Full evidence: [`IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](./IMPORT_FX_CASE_W1_HOLD
 
 ## Merge-readiness verdict (owner-accepted)
 
-**READY for PR / code merge review** on the basis of localhost verification only.
+**READY for PR / code merge review** on the basis of localhost verification only.  
+**PR merge status:** **DONE** — [PR #22](https://github.com/NDM0313/NEWPOSV3/pull/22) merged to `main`.
 
 This acceptance does **not** authorize:
 
@@ -39,21 +41,19 @@ This acceptance does **not** authorize:
 
 ---
 
-## Manual PR / merge review (human only — do not auto-merge)
+## Manual PR / merge review (historical — PR #22 already merged)
 
-`gh` CLI is often unavailable/unauthenticated in office. Use the browser:
+`gh` CLI is often unavailable/unauthenticated in office. Browser record:
 
-1. Open: https://github.com/NDM0313/NEWPOSV3/compare/main...feat/import-fx-case-w1-persistence?expand=1  
-2. If the compare shows **no unique commits** (branch already equal/`main` ahead), W1 is already on `main` — **do not create a duplicate PR**; use the checklist below for post-merge / release review only.  
-3. If a PR still exists or compare shows unique commits, create/update PR: base `main` ← head `feat/import-fx-case-w1-persistence`.  
-4. Paste the “PR body paste” section below into the PR description.  
-5. Human review checklist before clicking Merge (if still open):
+1. [PR #22](https://github.com/NDM0313/NEWPOSV3/pull/22) — **merged** 2026-08-12 (`merge_commit_sha` / tip includes W1 handoff).  
+2. Compare `main...feat/import-fx-case-w1-persistence` should show **no unique commits** — **do not create a duplicate PR**.  
+3. Human post-merge / release review still uses the checklist below before **production** migrate (separate approval):
    - No journal/payment posting in W1 migrations/RPCs  
    - Multi Currency OFF → historical list/get read-only; mutations blocked  
    - Table + attachment privileges RPC-only (lockdown migrations)  
    - Path 21 Agent FX still separate / unchanged money path  
    - QA harness SQL is **not** in the production migration chain  
-6. **Do not** treat any merge as production deploy.
+4. **Do not** treat code merge as production deploy.
 
 ---
 
