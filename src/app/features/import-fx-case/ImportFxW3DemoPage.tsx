@@ -288,6 +288,7 @@ export function ImportFxW3DemoPage() {
         </div>
 
         {/* Scenario A */}
+        <div id="import-fx-w3-demo-scenario-a">
         <Card title="Scenario A — Agent Advance" accent="border-sky-700/50 bg-sky-950/25">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -372,8 +373,10 @@ export function ImportFxW3DemoPage() {
             </Button>
           </div>
         </Card>
+        </div>
 
         {/* Scenarios B–D */}
+        <div id="import-fx-w3-demo-scenario-usd">
         <Card title="Scenarios B–D — USD Acquisition" accent="border-emerald-700/50 bg-emerald-950/20">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -466,6 +469,7 @@ export function ImportFxW3DemoPage() {
             </Button>
           </div>
         </Card>
+        </div>
 
         {state.lastReceipt && (
           <Card title="Simulated receipt" accent="border-violet-700/50 bg-violet-950/25">
@@ -527,15 +531,78 @@ export function ImportFxW3DemoPage() {
           )}
         </Card>
 
-        <Card title="9. Next Step">
-          <p>
-            After real W3 server migrations exist on a <strong>non-production</strong> database, use the live
-            Import FX workspace Confirm &amp; Post. This demo never enables that path.
-          </p>
-          <p className="text-xs text-amber-200/70 flex items-start gap-1 mt-2">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            Refresh resets demo unless the sessionStorage option above is checked.
-          </p>
+        <Card title="9. Next Step (this demo)" accent="border-violet-700/50 bg-violet-950/20">
+          {(() => {
+            const advCount = state.history.filter((h) => h.kind === 'ADVANCE' && h.status === 'SIMULATED').length;
+            const usdCount = state.history.filter(
+              (h) => h.kind === 'USD_ACQUISITION' && h.status === 'SIMULATED'
+            ).length;
+            const demoDone = advCount > 0 || usdCount > 0;
+            return (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-violet-100">
+                  {demoDone
+                    ? 'Demo loop complete on this page — simulations only (no journals).'
+                    : 'Finish Scenario A and/or B–D with Simulate Post, then use the actions below.'}
+                </p>
+                <ul className="text-xs sm:text-sm space-y-1 list-disc pl-5 text-amber-50/90">
+                  <li>
+                    Simulated advances: <strong>{advCount}</strong>
+                  </li>
+                  <li>
+                    Simulated USD acquisitions: <strong>{usdCount}</strong>
+                  </li>
+                  <li>W4–W6: still disabled (not in this demo)</li>
+                  <li>
+                    Live Import FX Cases → Advance Confirm &amp; Post: deferred until non-prod W3 migrations
+                    (final finish later)
+                  </li>
+                </ul>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      document
+                        .getElementById('import-fx-w3-demo-scenario-a')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      toast.message('Scrolled to Scenario A — Agent Advance');
+                    }}
+                  >
+                    Go to Scenario A
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      document
+                        .getElementById('import-fx-w3-demo-scenario-usd')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      toast.message('Scrolled to USD Acquisition scenarios');
+                    }}
+                  >
+                    Go to USD scenarios
+                  </Button>
+                  <Button type="button" variant="outline" onClick={resetAll}>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reset demo
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled
+                    title="Requires non-production W3 migrations + clearing account — not enabled in Demo Mode"
+                    className="opacity-60"
+                  >
+                    Live Confirm &amp; Post (locked)
+                  </Button>
+                </div>
+                <p className="text-xs text-amber-200/70 flex items-start gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  This demo never posts accounting. For the ERP case list (ARRANGED · Not Posted), log into the
+                  main app → Purchases → Import FX Cases — Advance stays blocked until the live W3 finish pass.
+                </p>
+              </div>
+            );
+          })()}
         </Card>
       </main>
     </div>
