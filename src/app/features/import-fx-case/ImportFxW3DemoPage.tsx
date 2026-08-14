@@ -2,8 +2,9 @@
  * Local-only Import FX W3 Demo UI — in-memory simulation; never posts accounting.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Ban, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -76,6 +77,7 @@ export function ImportFxW3DemoPage() {
   const [usdNotes, setUsdNotes] = useState('');
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
+  const alertRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!activation.allowed) return;
@@ -143,10 +145,22 @@ export function ImportFxW3DemoPage() {
     setState(res.state);
     if (!res.ok) {
       setError(res.error);
+      toast.error(res.error);
+      // Errors used to render only near the top — scroll so the message is visible.
+      requestAnimationFrame(() => {
+        alertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
       return;
     }
-    setFlash(`${label}: ${res.receipt?.message || 'Simulated — no accounting.'}`);
+    const okMsg = `${label}: ${res.receipt?.message || 'Simulated — no accounting.'}`;
+    setFlash(okMsg);
+    toast.success(okMsg);
   };
+
+  const usdAdvanceShortfall =
+    fundingType !== 'CREDIT' && usdPreview.advanceAppliedPkr > availAdv + 1e-9
+      ? usdPreview.advanceAppliedPkr - availAdv
+      : 0;
 
   const resetAll = () => {
     try {
@@ -232,8 +246,10 @@ export function ImportFxW3DemoPage() {
 
         {(error || flash) && (
           <div
-            className={`rounded border px-3 py-2 text-sm ${
-              error ? 'border-red-700 bg-red-950/40 text-red-100' : 'border-emerald-700 bg-emerald-950/30 text-emerald-100'
+            ref={alertRef}
+            role="alert"
+            className={`sticky top-14 z-40 rounded border px-3 py-2 text-sm shadow-lg ${
+              error ? 'border-red-700 bg-red-950/90 text-red-100' : 'border-emerald-700 bg-emerald-950/90 text-emerald-100'
             }`}
           >
             {error || flash}
@@ -404,15 +420,34 @@ export function ImportFxW3DemoPage() {
             <div>Advance applied: PKR {money(usdPreview.advanceAppliedPkr)}</div>
             <div>Agent credit: PKR {money(usdPreview.agentApCreatedPkr)}</div>
             <div>Available demo advance: PKR {money(availAdv)}</div>
+            {usdAdvanceShortfall > 0 && (
+              <p className="text-red-300 flex items-start gap-1 pt-1">
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                Cannot simulate: need PKR {money(usdPreview.advanceAppliedPkr)} advance but only{' '}
+                {money(availAdv)} is available (short PKR {money(usdAdvanceShortfall)}). Switch Funding to
+                “B — USD on Credit”, use Mixed with a smaller advance apply, or Simulate more Advance in
+                Scenario A first.
+              </p>
+            )}
           </div>
           <div className="mt-3">
             <div className="text-xs font-medium mb-1">7. Accounting Preview</div>
             <PreviewLines lines={usdPreview.preview.lines} balanced={usdPreview.preview.balanced} />
           </div>
+          {error && (
+            <div role="alert" className="mt-3 rounded border border-red-700 bg-red-950/50 px-3 py-2 text-sm text-red-100">
+              {error}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 mt-3">
             <Button
               type="button"
-              disabled={state.busy}
+              disabled={state.busy || usdAdvanceShortfall > 0}
+              title={
+                usdAdvanceShortfall > 0
+                  ? `Insufficient demo advance (need ${usdPreview.advanceAppliedPkr}, available ${availAdv})`
+                  : undefined
+              }
               onClick={() =>
                 run('USD acquisition simulated', () =>
                   simulatePostUsdAcquisition(state, {
