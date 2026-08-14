@@ -15,6 +15,14 @@ alwaysApply: true
 
 **W2.1 operator clarity + assignment (non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md) — agent confirm rules, funding summary, arrangement lock, case assignment.
 
+**W3 Agent Advance + USD acquisition (design + local impl — not production-posted):** [`docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — **Owner Decision Register OD-1–OD-7 locked** (settings-mapped `AGENT_FX_ADVANCE_CLEARING`; no fee post v1; immutable lots + WA reporting; FIFO advance apply; Path 21 separate; accounting stays `PARTIALLY_POSTED`; hard+soft duplicate guards). Live CoA code pick at provision.
+
+**W3→W6 master implementation plan (docs only — permanent SoT):** [`docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md) — A-to-Z sequencing, journals, entities, gates, prompts; supersedes ASYNC §26 wave split for W4–W6 ordering.
+
+**W3 implementation QA + local UI Demo Mode:** [`docs/accounting/IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md`](docs/accounting/IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md) — additive migrations/UI; Demo Mode is UX-only; do not post to production without separate approval + non-prod apply.
+
+**MacBook handoff:** [`docs/accounting/IMPORT_FX_W3_MACBOOK_HANDOFF.md`](docs/accounting/IMPORT_FX_W3_MACBOOK_HANDOFF.md)
+
 **W3+ money / pooled / Phase-3 hold:** separate owner approval required.
 
 **Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)

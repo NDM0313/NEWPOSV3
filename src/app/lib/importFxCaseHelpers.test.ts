@@ -14,7 +14,7 @@ import {
 } from './importFxCaseHelpers';
 import { normalizeImportDocCurrency } from './importFxHelpers';
 
-test('W2 only ARRANGEMENT is confirmable', () => {
+test('W2 only ARRANGEMENT is confirmable; W3 stages selectable; W4+ blocked', () => {
   assert.equal(isW2ConfirmableStage('ARRANGEMENT'), true);
   assert.equal(isW1ConfirmableStage('ARRANGEMENT'), true);
   for (const code of [
@@ -27,13 +27,24 @@ test('W2 only ARRANGEMENT is confirmable', () => {
     'RECONCILIATION',
   ] as const) {
     assert.equal(isW2ConfirmableStage(code), false);
+  }
+  assert.equal(isMoneyStageBlockedInW2('ADVANCE'), false);
+  assert.equal(isMoneyStageBlockedInW2('USD_ACQUISITION'), false);
+  for (const code of [
+    'CHINA_USD_TRANSFER',
+    'USD_CNY_CONVERSION',
+    'CNY_POOL',
+    'SUPPLIER_ALLOCATION',
+    'RECONCILIATION',
+  ] as const) {
     assert.equal(isMoneyStageBlockedInW2(code), true);
   }
 });
 
-test('money stages blocked in W1 and W2', () => {
+test('money stages: W1 blocks ADVANCE; W2 helper opens W3 ADVANCE/USD; W4+ still blocked', () => {
   assert.equal(isMoneyStageBlockedInW1('ADVANCE'), true);
-  assert.equal(isMoneyStageBlockedInW2('USD_ACQUISITION'), true);
+  assert.equal(isMoneyStageBlockedInW2('USD_ACQUISITION'), false);
+  assert.equal(isMoneyStageBlockedInW2('CHINA_USD_TRANSFER'), true);
   assert.equal(isMoneyStageBlockedInW1('ARRANGEMENT'), false);
 });
 

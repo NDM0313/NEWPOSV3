@@ -6,11 +6,11 @@
 import {
   IMPORT_FX_STAGE_ORDER,
   W2_MONEY_STAGE_BLOCKED_COPY,
-  isMoneyStageBlockedInW2,
   type ImportFxFundingMode,
   type ImportFxStageCode,
 } from './importFxCaseHelpers';
 import { validateW21ArrangementPlanning } from './importFxCaseW21Helpers';
+import { isPostW3MoneyStageBlocked } from './importFxCaseW3Helpers';
 
 export const W2_PLANNING_ONLY_NOTICE =
   'Planning only — no payment or accounting entry has been posted.';
@@ -257,7 +257,8 @@ export function moneyStageTimelineItems(): Array<{
   helper: string | null;
 }> {
   return IMPORT_FX_STAGE_ORDER.map((s) => {
-    const disabled = isMoneyStageBlockedInW2(s.code);
+    // W3 unlocks ADVANCE + USD_ACQUISITION; W4+ stay blocked (copy still references W3+ until W4 ships).
+    const disabled = isPostW3MoneyStageBlocked(s.code);
     return {
       code: s.code,
       label: s.label,

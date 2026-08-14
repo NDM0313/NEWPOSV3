@@ -58,13 +58,14 @@ export function stageLabel(stageCode: ImportFxStageCode): string {
   return IMPORT_FX_STAGE_ORDER.find((s) => s.code === stageCode)?.label ?? stageCode;
 }
 
-/** Money stages blocked in W1 and W2 (confirm/complete deferred to W3+). */
+/** Money stages blocked in W1 (confirm deferred). W2 keeps W4+ blocked; W3 opens ADVANCE/USD. */
 export function isMoneyStageBlockedInW1(stageCode: ImportFxStageCode): boolean {
   return stageCode !== 'ARRANGEMENT';
 }
 
+/** @deprecated Prefer isPostW3MoneyStageBlocked + isW3MoneyStage for W3 UI. */
 export function isMoneyStageBlockedInW2(stageCode: ImportFxStageCode): boolean {
-  return isMoneyStageBlockedInW1(stageCode);
+  return stageCode !== 'ARRANGEMENT' && stageCode !== 'ADVANCE' && stageCode !== 'USD_ACQUISITION';
 }
 
 export function normalizeFundingMode(raw: string | null | undefined): ImportFxFundingMode | null {

@@ -76,6 +76,11 @@ const StudioProductionDetailPage = lazy(() => import('./components/studio/Studio
 const StudioProductionAddPage = lazy(() => import('./components/studio/StudioProductionAddPage').then(m => ({ default: m.StudioProductionAddPage })));
 const StudioPipelinePage = lazy(() => import('./components/studio/StudioPipelinePage').then(m => ({ default: m.StudioPipelinePage })));
 const AccountingIntegrationDemo = lazy(() => import('./components/accounting/AccountingIntegrationDemo').then(m => ({ default: m.AccountingIntegrationDemo })));
+const ImportFxW3DemoPage = lazy(() =>
+  import('./features/import-fx-case/ImportFxW3DemoPage').then((m) => ({
+    default: m.ImportFxW3DemoPage,
+  }))
+);
 const PurchaseListExample = lazy(() => import('./components/purchases/PurchaseListExample').then(m => ({ default: m.PurchaseListExample })));
 const BespokeWorkOrdersPage = lazy(() => import('./components/bespoke/BespokeWorkOrdersPage').then(m => ({ default: m.BespokeWorkOrdersPage })));
 const ContactSearchTestPage = lazy(() => import('./components/demo/ContactSearchTestPage').then(m => ({ default: m.ContactSearchTestPage })));
@@ -426,6 +431,20 @@ function PermissionV2ThemeSync({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+
+  // Local-only W3 UI Demo — no auth, no Supabase financial providers, no production mutations.
+  if (pathname === '/demo/import-fx-w3' || pathname.startsWith('/demo/import-fx-w3')) {
+    return (
+      <ErrorBoundary>
+        <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
+          <Suspense fallback={<GlobalSuspenseFallback />}>
+            <ImportFxW3DemoPage />
+          </Suspense>
+          <Toaster position="bottom-right" theme="dark" />
+        </ThemeProvider>
+      </ErrorBoundary>
+    );
+  }
 
   // Public contact registration - no login required
   if (pathname === '/register-contact' || pathname.startsWith('/register-contact')) {

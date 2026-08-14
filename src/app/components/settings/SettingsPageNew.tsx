@@ -2240,6 +2240,45 @@ export const SettingsPageNew = () => {
                   {accountingForm.multiCurrencyEnabled && (
                     <div className="bg-input-background p-4 rounded-lg border border-border space-y-3">
                       <div>
+                        <p className="text-foreground font-medium">Agent FX Advance / Settlement Clearing</p>
+                        <p className="text-sm text-muted-foreground">
+                          Used for actual PKR advances paid to FX agents. This account is separate from Agent Payable and Worker Advance.
+                          Do not pick Worker Advance (1180), TT wallets, or AP controls. Exact CoA code is company-specific (never hardcode 1230).
+                        </p>
+                      </div>
+                      <select
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        value={accountingForm.agentFxAdvanceClearingAccountId || ''}
+                        onChange={(e) => {
+                          setAccountingForm({
+                            ...accountingForm,
+                            agentFxAdvanceClearingAccountId: e.target.value || null,
+                          });
+                          setHasUnsavedChanges(true);
+                        }}
+                      >
+                        <option value="">Not configured</option>
+                        {(accounting.accounts || [])
+                          .filter(
+                            (a: any) =>
+                              a &&
+                              !a.is_group &&
+                              a.is_active !== false &&
+                              String(a.type || '').toLowerCase() === 'asset' &&
+                              String(a.code || '').trim() !== '1180'
+                          )
+                          .map((a: any) => (
+                            <option key={a.id} value={a.id}>
+                              {a.code} — {a.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {accountingForm.multiCurrencyEnabled && (
+                    <div className="bg-input-background p-4 rounded-lg border border-border space-y-3">
+                      <div>
                         <p className="text-foreground font-medium">Active foreign currencies</p>
                         <p className="text-sm text-muted-foreground">
                           Shown on Purchase document currency (PKR is always available). Codes are stored uppercase (use CNY for RMB).
