@@ -154,7 +154,7 @@ export function ImportFxW3DemoPage() {
       });
       return;
     }
-    const okMsg = `${label}: ${res.receipt?.message || 'Simulated — no accounting.'}`;
+    const okMsg = `${label}: OK — saved to Event History only (demo). Accounting NOT posted.`;
     setFlash(okMsg);
     toast.success(okMsg);
   };

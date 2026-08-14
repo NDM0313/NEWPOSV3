@@ -214,7 +214,7 @@ export function simulatePostAdvance(state: ImportFxW3DemoState): DemoActionResul
     amountPkr: row.amountPkr,
     clearingBalancePkr: availableDemoAdvancePkr(next) + row.amountPkr,
     timestamp: createdAt,
-    message: 'No database or journal was created',
+    message: 'Demo OK — Event History only; accounting NOT posted',
   };
   next = {
     ...next,
@@ -333,7 +333,7 @@ export function simulatePostUsdAcquisition(
     amountPkr: carryingPkr,
     clearingBalancePkr: availableDemoAdvancePkr({ ...next, advances }),
     timestamp: createdAt,
-    message: 'No database or journal was created',
+    message: 'Demo OK — Event History only; accounting NOT posted',
   };
 
   next = {
@@ -387,7 +387,7 @@ export function simulateReverseAdvance(state: ImportFxW3DemoState, advanceId: st
         amountPkr: row.amountPkr,
         clearingBalancePkr: availableDemoAdvancePkr({ ...state, advances }),
         timestamp: new Date().toISOString(),
-        message: 'No database or journal was created',
+        message: 'Demo OK — Event History only; accounting NOT posted',
       },
     },
   };
@@ -438,7 +438,7 @@ export function simulateReverseUsdAcquisition(
         amountPkr: row.carryingPkr,
         clearingBalancePkr: availableDemoAdvancePkr({ ...state, advances }),
         timestamp: new Date().toISOString(),
-        message: 'No database or journal was created',
+        message: 'Demo OK — Event History only; accounting NOT posted',
       },
     },
   };
