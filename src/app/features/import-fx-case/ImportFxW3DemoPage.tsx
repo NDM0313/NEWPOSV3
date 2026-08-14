@@ -77,6 +77,8 @@ export function ImportFxW3DemoPage() {
   const [usdNotes, setUsdNotes] = useState('');
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
+  const [showDemoConfirmPost, setShowDemoConfirmPost] = useState(false);
+  const [demoConfirmMode, setDemoConfirmMode] = useState<'ADVANCE' | 'USD_ACQUISITION'>('ADVANCE');
   const alertRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -554,8 +556,8 @@ export function ImportFxW3DemoPage() {
                   </li>
                   <li>W4–W6: still disabled (not in this demo)</li>
                   <li>
-                    Live Import FX Cases → Advance Confirm &amp; Post: deferred until non-prod W3 migrations
-                    (final finish later)
+                    Live ERP Confirm &amp; Post (real journals): still deferred — use{' '}
+                    <strong>Confirm &amp; Post (demo)</strong> on this page instead
                   </li>
                 </ul>
                 <div className="flex flex-wrap gap-2">
@@ -588,17 +590,119 @@ export function ImportFxW3DemoPage() {
                   </Button>
                   <Button
                     type="button"
-                    disabled
-                    title="Requires non-production W3 migrations + clearing account — not enabled in Demo Mode"
-                    className="opacity-60"
+                    onClick={() => {
+                      setShowDemoConfirmPost(true);
+                      requestAnimationFrame(() => {
+                        document
+                          .getElementById('import-fx-w3-demo-confirm-post')
+                          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      });
+                      toast.message('Opened demo Confirm & Post — still NOT POSTED to accounting');
+                    }}
                   >
-                    Live Confirm &amp; Post (locked)
+                    Confirm &amp; Post (demo)
                   </Button>
                 </div>
+                {showDemoConfirmPost && (
+                  <div
+                    id="import-fx-w3-demo-confirm-post"
+                    className="rounded-lg border border-violet-500/60 bg-violet-950/40 p-3 space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-violet-50">
+                          Confirm &amp; Post — demo only
+                        </div>
+                        <div className="text-[11px] text-violet-200/80">
+                          Same label as live W3 UI. This control never writes journals or Supabase money RPCs.
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center rounded px-2 py-1 text-[11px] font-bold bg-amber-400 text-zinc-900">
+                        DEMO — NOT POSTED
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={demoConfirmMode === 'ADVANCE' ? 'default' : 'outline'}
+                        onClick={() => setDemoConfirmMode('ADVANCE')}
+                      >
+                        Advance / Funding
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={demoConfirmMode === 'USD_ACQUISITION' ? 'default' : 'outline'}
+                        onClick={() => setDemoConfirmMode('USD_ACQUISITION')}
+                      >
+                        USD Acquisition
+                      </Button>
+                    </div>
+                    {demoConfirmMode === 'ADVANCE' ? (
+                      <p className="text-xs text-amber-50/85">
+                        Uses Scenario A draft (PKR advance ={' '}
+                        {state.draftAdvance.amountPkr || '(empty — enter amount in Scenario A first)'}).
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-50/85">
+                        Uses USD form above ({usdQty} USD @ {pkrPerUsd} PKR, funding {fundingType}). Available
+                        advance PKR {money(availAdv)}.
+                      </p>
+                    )}
+                    {demoConfirmMode === 'USD_ACQUISITION' && usdAdvanceShortfall > 0 && (
+                      <p className="text-xs text-red-300 flex items-start gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        Insufficient demo advance for this funding mode. Switch to Credit or add more advance
+                        first.
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        disabled={
+                          state.busy ||
+                          (demoConfirmMode === 'USD_ACQUISITION' && usdAdvanceShortfall > 0)
+                        }
+                        onClick={() => {
+                          if (demoConfirmMode === 'ADVANCE') {
+                            run('Confirm & Post (demo advance)', () => simulatePostAdvance(state));
+                          } else {
+                            run('Confirm & Post (demo USD)', () =>
+                              simulatePostUsdAcquisition(state, {
+                                postingDate: usdDate,
+                                usdQty: usdN,
+                                pkrPerUsd: rateN,
+                                fundingType,
+                                advanceAppliedPkr:
+                                  fundingType === 'MIXED' ? Number(advanceApply) || 0 : null,
+                                reference: usdRef,
+                                notes: usdNotes,
+                              })
+                            );
+                          }
+                        }}
+                      >
+                        Confirm &amp; Post
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setShowDemoConfirmPost(false)}
+                      >
+                        Hide panel
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-amber-200/70">
+                      Real ERP Confirm &amp; Post (Purchases → Import FX Cases → Advance) stays blocked until
+                      the separate live W3 finish pass on a non-production database.
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-amber-200/70 flex items-start gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  This demo never posts accounting. For the ERP case list (ARRANGED · Not Posted), log into the
-                  main app → Purchases → Import FX Cases — Advance stays blocked until the live W3 finish pass.
+                  Demo Confirm &amp; Post only updates Event History on this page. It does not unlock live
+                  money posting in the main ERP workspace.
                 </p>
               </div>
             );
