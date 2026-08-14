@@ -1,7 +1,7 @@
 # Import FX Case — W2 Arrangement enrichment
 
 **Branch:** `feat/import-fx-w2-arrangement-enrichment`  
-**Status:** **W2 CODE/UI COMPLETE — LIVE DB MIGRATION AND DEPLOYMENT DEFERRED**  
+**Status:** **W2 CODE/UI COMPLETE — LOCALHOST LIVE DB QA PASS (2026-08-14)** · production migrate/deploy still deferred  
 **Gates:** `multiCurrencyEnabled` ops · `fxSettlementAccountingEnabled = false` (Profile A)  
 **Accounting:** **No journals / payments / wallets / AP** — every mutation returns `posts_journal: false`
 
@@ -196,15 +196,15 @@ Metadata RPC only. `storage_path` never returned. Opaque `metadata-only://w2/...
 
 **None.** W2 RPCs must not insert into `journal_entries`, `journal_entry_lines`, `payments`, `wallet_movements`, or supplier settlement/allocation tables.
 
-Live financial before/after counts were **not measured** on 2026-08-12 because localhost Postgres was not confirmed. Expected when live QA runs: **0 / 0 / 0 / 0 / 0**.
+Live financial before/after counts (localhost `newposv3-local-pg`, 2026-08-14): **0 / 0 / 0 / 0 / 0**.
 
 ---
 
 ## 16. Migration order
 
-Path 21 → Wave A → Wave 0 → W1 → **W2 enrichment → W2 attachment metadata**.
+Path 21 → Wave A → Wave 0 → W1 → **W2 enrichment → W2 attachment metadata → W2.1 assignment/validation**.
 
-Apply W2 only with: `node scripts/qa/apply-import-fx-w2-local.mjs` (`.env.db.local`, host `localhost`/`127.0.0.1`, port `5432`, database `postgres`). Does **not** load harness SQL or `.env.local`.
+Apply W2(+W2.1) with: `node scripts/qa/apply-import-fx-w2-local.mjs` (`.env.db.local`, host `localhost`/`127.0.0.1`, port `5432`, database `postgres`). Does **not** load harness SQL or `.env.local`.
 
 ---
 
@@ -257,81 +257,52 @@ Reviewed `migrations/20260812140000_import_fx_case_arrangement_enrichment_w2.sql
 
 No security or accounting defect found that required stopping a migrate. **Apply itself was not executed.**
 
-### 17.3 Applied migration results
+### 17.3 Applied migration results (localhost 2026-08-14)
 
 | Migration | Applied on localhost? | `schema_migrations` |
 |-----------|----------------------|---------------------|
-| `20260812140000_import_fx_case_arrangement_enrichment_w2.sql` | **NOT APPLIED** | not recorded |
-| `20260812140100_import_fx_case_attachment_metadata_rpc_w2.sql` | **NOT APPLIED** | not recorded |
+| `20260812140000_import_fx_case_arrangement_enrichment_w2.sql` | **YES** | recorded |
+| `20260812140100_import_fx_case_attachment_metadata_rpc_w2.sql` | **YES** | recorded |
+| `20260813120000_import_fx_case_operator_assignment_and_validation_w2_1.sql` | **YES** | recorded |
+| `20260812120000_import_fx_wave0_claim_before_pay.sql` | **YES** | recorded |
 
-### 17.4 Live W2 RPC QA (33 scenarios)
+Target: `localhost:5432/postgres` · `newposv3-local-pg`. Production / `supabase.dincouture.pk` **not** used.
+
+### 17.4 Live W2 RPC QA (33 scenarios + financial proof)
 
 Command: `node scripts/qa/import-fx-w2-live-rpc-qa.mjs`
 
-**SKIPPED / BLOCKED** — runner aborted before any RPC. All 33 scenarios untested on a live database:
+**2026-08-14:** **PASS=38 FAIL=0** (includes multi-stage “27 later stage …” rows + financial delta check). JE/lines/payments/wallet/settle Δ = **0/0/0/0/0**.
 
-1. Create enriched ARRANGEMENT draft — SKIPPED  
-2. Read all new fields — SKIPPED  
-3. Update editable planning fields — SKIPPED  
-4. Funding mode ADVANCE (intention only) — SKIPPED  
-5. Funding mode CREDIT — SKIPPED  
-6. Funding mode MIXED — SKIPPED  
-7. Invalid funding mode rejected — SKIPPED  
-8. RMB normalized to CNY — SKIPPED  
-9. Negative planned amount rejected — SKIPPED  
-10. Negative rate rejected — SKIPPED  
-11. Unauthorized agent role rejected — SKIPPED  
-12. Agent and third party cannot be the same — SKIPPED  
-13. Cross-company agent rejected — SKIPPED  
-14. Cross-branch target rejected — SKIPPED  
-15. Authorized purchase/supplier planning link — SKIPPED  
-16. Planning link creates no supplier settlement — SKIPPED  
-17. Attachment metadata registration — SKIPPED  
-18. Attachment metadata retry idempotent — SKIPPED  
-19. `storage_path` absent from client response — SKIPPED  
-20. Direct attachment-table access unavailable — SKIPPED  
-21. ARRANGEMENT confirmation — SKIPPED  
-22. Same confirmation operation ID replay — SKIPPED  
-23. Confirmation event not duplicated — SKIPPED  
-24. Confirmed ARRANGEMENT type lock — SKIPPED  
-25. ADVANCE confirmation rejected — SKIPPED  
-26. USD_ACQUISITION confirmation rejected — SKIPPED  
-27. Every later money stage rejected — SKIPPED  
-28. Multi Currency OFF list/get readable — SKIPPED  
-29. Multi Currency OFF mutations rejected — SKIPPED  
-30. Cross-company case access rejected — SKIPPED  
-31. Unauthorized branch access rejected — SKIPPED  
-32. Path 21 behavior unchanged — SKIPPED  
-33. Every W2 mutation `posts_journal: false` — SKIPPED  
+QA seed fix: branches insert placeholders corrected (`$4,$5` for company B). Scenario 24 accepts W2.1 `IMPORT_FX_CASE_ARRANGEMENT_LOCKED` (and legacy `ARRANGEMENT_TYPE_LOCKED`).
 
-Live counts: **PASS=0 FAIL=0 SKIPPED=33**
+Companion static/unit (same day): `import-fx-w2-static-qa.mjs` **PASS=25 SKIPPED=2**; related unit suite **80/80 PASS**.
+
+Live counts: **PASS=38 FAIL=0 SKIPPED=0**
 
 This is **database/RPC verification only**. No live UI PASS is claimed. Production HTTP API was not used.
 
-### 17.5 Financial-table before/after
+### 17.5 Financial-table before/after (localhost 2026-08-14)
 
 | Table | Before | After | Delta |
 |-------|-------:|------:|------:|
-| `journal_entries` | n/a | n/a | **not measured** |
-| `journal_entry_lines` | n/a | n/a | **not measured** |
-| `payments` | n/a | n/a | **not measured** |
-| `wallet_movements` (if present) | n/a | n/a | **not measured** |
-| supplier settlement/allocation (if present) | n/a | n/a | **not measured** |
+| `journal_entries` | 0 | 0 | **0** |
+| `journal_entry_lines` | 0 | 0 | **0** |
+| `payments` | 0 | 0 | **0** |
+| `wallet_movements` (if present) | 0 | 0 | **0** |
+| supplier settlement/allocation (if present) | 0 | 0 | **0** |
 
-Expected delta: `0 / 0 / 0 / 0 / 0`. Actual delta: **not measured** (blocked).
+Expected delta: `0 / 0 / 0 / 0 / 0`. Actual delta: **0 / 0 / 0 / 0 / 0**.
 
-### 17.6 Code/UI verification (2026-08-12 office PC — no database)
-
-Live DB apply remains **deferred**. It does not block W2 code/UI completion.
+### 17.6 Code/UI verification
 
 | Command | Result |
 |---------|--------|
-| `npx tsx --test src/app/lib/importFxCaseHelpers.test.ts src/app/lib/importFxCaseWorkspaceView.test.ts src/app/lib/importFxWave0Correctness.test.ts src/app/lib/importFxWizardHelpers.test.ts src/app/lib/importFxServerGate.test.ts src/app/lib/importFxPath21Hotfix.test.ts src/app/lib/importFxCreditVoidHelpers.test.ts` | **PASS=50 FAIL=0 SKIPPED=0** |
-| `node scripts/qa/import-fx-w2-static-qa.mjs` | **PASS=21 FAIL=0 SKIPPED=2** |
-| Targeted `tsc --noEmit` filtered to W2 paths | No W2 diagnostics captured (full-project `tsc` exited 134 / OOM on this PC). **`npm run build` PASS** is the type gate used. |
-| `npm run build` | **PASS** (exit 0) |
-| Browser screenshot smoke | **DEFERRED** (no production HTTP; no local app session) |
-| Live DB apply / 33 RPC / W1 security | **DEFERRED** — migrations **not applied** |
+| Related unit suite (2026-08-14, incl. W2.1 / rates / planned sync) | **PASS=80 FAIL=0** |
+| `node scripts/qa/import-fx-w2-static-qa.mjs` (2026-08-14) | **PASS=25 FAIL=0 SKIPPED=2** |
+| `node scripts/qa/import-fx-w2-live-rpc-qa.mjs` | **PASS=38 FAIL=0** |
+| Browser screenshot smoke | **DEFERRED** (no non-prod HTTP API) |
+| Production migrate/deploy | **NOT DONE** — separate approval required |
 
 ### 17.7 Defects found and fixes
 
@@ -372,11 +343,11 @@ No W2 SQL contract correction migration was written (migrations remain unapplied
 
 ## 19. Known limitations / remaining deployment prerequisites
 
-- **Live DB migration and RPC QA: deferred.** Do not label W2 migrations as applied.
+- Localhost live DB migrate + RPC QA: **done 2026-08-14** (see §17.3–17.4). Production / VPS migrate still deferred.
 - Attachment binary upload / signed URLs deferred.
-- Browser screenshot smoke deferred.
+- Browser screenshot smoke deferred (no non-prod HTTP API).
 - Third-party role model uses `money_exchange` only.
-- Production / VPS migrate, merge to `main`, W3–W6, COA changes, and financial posting remain unauthorized.
+- Production migrate, W3–W6 money posting, and COA changes remain unauthorized without separate approval.
 
 ---
 
@@ -392,11 +363,11 @@ W3 (separate approval): financial ADVANCE / USD acquisition confirm + posting. P
 
 ## 21. Final verification verdict
 
-**W2 CODE/UI COMPLETE — LIVE DB MIGRATION AND DEPLOYMENT DEFERRED**
+**W2 CODE/UI COMPLETE — LOCALHOST LIVE DB QA PASS (2026-08-14)**
 
-Code/UI review and unit/static/build are the completion bar on this office PC. Live DB apply, 33 RPC scenarios, W1 security harnesses, financial delta `0/0/0/0/0`, and production deploy are **not** claimed.
+Code/UI + localhost migrate + live RPC (38/38) + financial Δ 0/0/0/0/0 + static/unit gates are green. Production deploy, staging HTTP UI smoke, and Storage review remain **not** claimed.
 
-Production, VPS, financial posting, Chart of Accounts, and W3–W6 were **untouched**.
+Production, VPS, financial posting, Chart of Accounts, and W3–W6 money stages were **untouched** in this localhost pass.
 
 ---
 

@@ -118,7 +118,7 @@ await client.query(`INSERT INTO companies (id, name) VALUES ($1,'W2 QA A'), ($2,
   companyB,
 ]);
 await client.query(
-  `INSERT INTO branches (id, company_id, name) VALUES ($1,$2,'A1'), ($3,$2,'A2'), ($4,$3,'B1')`,
+  `INSERT INTO branches (id, company_id, name) VALUES ($1,$2,'A1'), ($3,$2,'A2'), ($4,$5,'B1')`,
   [branchA1, companyA, branchA2, branchB, companyB]
 );
 await client.query(
@@ -468,10 +468,17 @@ try {
       )`,
       [companyA, caseId]
     );
-    fail('24 confirmed ARRANGEMENT type locked', 'expected ARRANGEMENT_TYPE_LOCKED');
+    fail('24 confirmed ARRANGEMENT type locked', 'expected ARRANGEMENT_LOCKED or ARRANGEMENT_TYPE_LOCKED');
   } catch (e) {
-    if (String(e.message).includes('ARRANGEMENT_TYPE_LOCKED')) ok('24 confirmed ARRANGEMENT fields lock according to contract');
-    else fail('24 confirmed ARRANGEMENT fields lock', e.message);
+    const msg = String(e.message);
+    // W2.1 raises ARRANGEMENT_LOCKED first when operational_status=ARRANGED;
+    // older W2 contract used ARRANGEMENT_TYPE_LOCKED for type changes only.
+    if (
+      msg.includes('ARRANGEMENT_LOCKED') ||
+      msg.includes('ARRANGEMENT_TYPE_LOCKED')
+    ) {
+      ok('24 confirmed ARRANGEMENT fields lock according to contract');
+    } else fail('24 confirmed ARRANGEMENT fields lock', e.message);
   }
 
   for (const stage of MONEY_STAGES) {

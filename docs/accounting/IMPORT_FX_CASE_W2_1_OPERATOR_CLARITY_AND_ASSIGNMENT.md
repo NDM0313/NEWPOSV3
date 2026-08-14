@@ -1,7 +1,7 @@
 # Import FX Case — W2.1 Operator clarity, validation & assignment
 
 **Branch:** `feat/import-fx-w2-arrangement-enrichment`  
-**Status:** **W2.1 CODE/UI/MIGRATION WRITTEN — LIVE DB APPLY DEFERRED**  
+**Status:** **W2.1 CODE/UI/MIGRATION WRITTEN — LOCALHOST APPLY DONE (2026-08-14)** · production migrate still deferred  
 **Gates:** `multiCurrencyEnabled` ops · `fxSettlementAccountingEnabled = false` (Profile A)  
 **Accounting:** **No journals / payments / wallets / AP** — every mutation returns `posts_journal: false`  
 **Path 21:** Unchanged money path
@@ -186,15 +186,15 @@ W3+ must:
 
 | Gap ID | Before | Fix | Tests | Final status |
 |--------|--------|-----|-------|--------------|
-| IFX-GAP-01 | Confirm without agent | UI+RPC agent required; historical warning | Unit matrix + blank agent | **Fixed (code); live apply deferred** |
-| IFX-GAP-02 | CREDIT showed advance | Hide/clear advance; summary rules | CREDIT/ADVANCE/MIXED unit | **Fixed (code); live apply deferred** |
+| IFX-GAP-01 | Confirm without agent | UI+RPC agent required; historical warning | Unit matrix + blank agent | **Fixed — localhost migrate applied 2026-08-14** |
+| IFX-GAP-02 | CREDIT showed advance | Hide/clear advance; summary rules | CREDIT/ADVANCE/MIXED unit | **Fixed — localhost migrate applied 2026-08-14** |
 | IFX-GAP-03 | Ambiguous CNY/USD | Explicit directional labels | Rate label unit | **Fixed** |
-| IFX-GAP-04 | No assignment | Columns + RPCs + panel | Helper + service wiring; live RPC deferred | **Fixed (code); live apply deferred** |
-| IFX-GAP-05 | RPC editable after confirm | `IMPORT_FX_CASE_ARRANGEMENT_LOCKED` | UI lock unit; RPC in migration | **Fixed (code); live apply deferred** |
+| IFX-GAP-04 | No assignment | Columns + RPCs + panel | Helper + service wiring | **Fixed — localhost migrate applied 2026-08-14** |
+| IFX-GAP-05 | RPC editable after confirm | `IMPORT_FX_CASE_ARRANGEMENT_LOCKED` | UI lock unit + live scenario 24 | **Fixed — proven on localhost live QA** |
 | IFX-GAP-06/07 | Path/wallet confusion | Path clarity + wallet guidance card | Copy unit tests | **Fixed (docs/UI)** |
 
 ---
 
-## Zero-accounting proof (static)
+## Zero-accounting proof (static + localhost live)
 
-W2.1 migration and client assignment/confirm/draft paths do not insert into `journal_entries`, `journal_entry_lines`, `payments`, wallet movement tables, Agent/Supplier AP, settlements, or conversions. Expected live financial delta after authorized apply remains **0 / 0 / 0 / 0 / 0** — not live-proven in this environment.
+W2.1 migration and client assignment/confirm/draft paths do not insert into `journal_entries`, `journal_entry_lines`, `payments`, wallet movement tables, Agent/Supplier AP, settlements, or conversions. Localhost live W2 suite (2026-08-14) measured financial delta **0 / 0 / 0 / 0 / 0**.
