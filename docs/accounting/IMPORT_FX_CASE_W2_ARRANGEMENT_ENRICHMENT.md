@@ -388,11 +388,11 @@ Production, VPS, financial posting, Chart of Accounts, and W3–W6 money stages 
 
 | W2 item | Planned | Implemented | Tested | Notes |
 |---------|--------:|------------:|-------:|-------|
-| W2a schema/RPC | yes | yes | static + unit | Live DB **deferred** (not applied) |
+| W2a schema/RPC | yes | yes | static + unit + live | Localhost applied 2026-08-14 |
 | W2b UI | yes | yes | unit view-model + static | Header, 5 sections, wording, busy/lock |
 | W2c links UI | yes | yes | unit + static | Purchase/supplier search + clear |
-| W2d attach meta | yes | yes | static + service strip | metadata only; no upload claim |
-| W2e tests/docs | yes | yes | unit/static/build | Browser smoke deferred |
-| W2 localhost apply | yes | runner exists | **deferred** | not required for code/UI complete |
-| W2 live 33 RPC scenarios | yes | runner exists | **deferred** | not claimed |
-| Financial delta 0/0/0/0/0 | yes | n/a | **deferred** | no migrate this pass |
+| W2d attach meta | yes | yes | static + live | metadata only; no upload claim |
+| W2e tests/docs | yes | yes | unit/static/live | Browser smoke deferred |
+| W2 localhost apply | yes | yes | **PASS** | `apply-import-fx-w2-local.mjs` (+ W2.1) |
+| W2 live 33 RPC scenarios | yes | yes | **PASS=38** | includes financial proof row |
+| Financial delta 0/0/0/0/0 | yes | yes | **PASS** | localhost live measured |
