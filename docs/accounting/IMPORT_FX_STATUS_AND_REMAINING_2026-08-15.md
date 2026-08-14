@@ -2,6 +2,7 @@
 
 **Branch:** `main`  
 **Last W3 merge:** PR [#24](https://github.com/NDM0313/NEWPOSV3/pull/24) · `5ef895f0`  
+**UA ship commit:** [`d6ee2835`](https://github.com/NDM0313/NEWPOSV3/commit/d6ee2835) (pushed `main` · 2026-08-15)  
 **This doc:** UA polish + Advance UX ship + open backlog after VPS sync.
 
 ---
@@ -25,7 +26,7 @@
 |------|--------|
 | W3 SQL on VPS (`…180000` / `…180100`) | Applied + ledgered (prior session) |
 | W3 RPCs (`post_import_fx_agent_advance`, USD + reverses) | Present on `supabase-db` |
-| Frontend deploy | Expect GitHub Actions **Deploy to VPS** on this push (or manual `git pull` + deploy) |
+| Frontend deploy | **Done** — VPS `git pull` → `d6ee2835` + `deploy/vps-redeploy-erp.sh`; `https://erp.dincouture.pk` HTTP 200 (2026-08-15) |
 | Full `run-migrations-vps.sh` chain | **Still broken** after Aug 1 settings ledger fix — next fail: `20260801190100_fx_currency_purchase_rpcs.sql` (`record_fx_currency_purchase_on_credit` not unique). W3 was applied out-of-band; other PENDING import-fx files may already exist as objects but are not all in `schema_migrations` |
 
 ---
