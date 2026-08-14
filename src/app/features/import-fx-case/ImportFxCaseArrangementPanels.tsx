@@ -23,7 +23,7 @@ export function ArrangementSectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-4 space-y-3 min-w-0">
+    <section className="bg-muted/40 border border-border rounded-xl p-4 space-y-3 min-w-0">
       <div>
         <h4 className="text-sm font-semibold text-foreground">{title}</h4>
         {hint ? <p className="text-xs text-muted-foreground mt-0.5">{hint}</p> : null}

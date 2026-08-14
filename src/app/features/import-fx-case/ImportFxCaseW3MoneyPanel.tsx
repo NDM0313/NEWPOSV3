@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { useSettings } from '@/app/context/SettingsContext';
 import {
   buildAdvanceJournalPreview,
   buildUsdAcquisitionJournalPreview,
@@ -28,6 +29,7 @@ import {
 import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
 import { isPartyTtAgentWalletAccount } from '@/app/lib/liquidityPaymentAccount';
 import { ImportFxW3DemoEntryLink } from '@/app/features/import-fx-case/ImportFxW3DemoPage';
+import type { ImportFxCaseAttachmentMeta } from '@/app/services/importFxCaseService';
 
 type AccountOpt = {
   id: string;
@@ -53,10 +55,26 @@ type Props = {
   userId?: string | null;
   readOnly?: boolean;
   onPosted?: () => void;
+  attachments?: ImportFxCaseAttachmentMeta[];
+  onRegisterAttachment?: (fileName: string) => Promise<void> | void;
+  attachmentBusy?: boolean;
 };
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+export const W3_SOFT_PATH21_REF_TIP =
+  'External reference filled — if this was already posted via Agent FX / Path 21, do not double-post.';
+
+function isClearingCandidate(a: AccountOpt): boolean {
+  return (
+    !!a &&
+    !a.is_group &&
+    a.is_active !== false &&
+    String(a.type || '').toLowerCase() === 'asset' &&
+    String(a.code || '').trim() !== '1180'
+  );
 }
 
 export function ImportFxCaseW3MoneyPanel(props: Props) {
@@ -74,13 +92,20 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     userId,
     readOnly,
     onPosted,
+    attachments = [],
+    onRegisterAttachment,
+    attachmentBusy,
   } = props;
+
+  const { updateAccountingSettings } = useSettings();
 
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [installMsg, setInstallMsg] = useState('');
   const [overview, setOverview] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearingSaving, setClearingSaving] = useState(false);
+  const [attachName, setAttachName] = useState('');
 
   // Advance form
   const [advDate, setAdvDate] = useState(todayIsoDate());
@@ -107,10 +132,13 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     () => accounts.filter((a) => isPartyTtAgentWalletAccount(a as any) && a.is_active !== false),
     [accounts]
   );
+  const clearingCandidates = useMemo(() => accounts.filter(isClearingCandidate), [accounts]);
 
   const clearingLabel = useMemo(() => {
     const a = accounts.find((x) => x.id === clearingAccountId);
-    return a ? `${a.code || ''} ${a.name || ''}`.trim() || 'Agent FX Advance / Settlement Clearing' : 'Agent FX Advance / Settlement Clearing (not configured)';
+    return a
+      ? `${a.code || ''} ${a.name || ''}`.trim() || 'Agent FX Advance / Settlement Clearing'
+      : 'Agent FX Advance / Settlement Clearing (not configured)';
   }, [accounts, clearingAccountId]);
 
   const refresh = async () => {
@@ -157,14 +185,67 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     agentApCreatedPkr: split.agentApCreatedPkr,
   });
 
-  const softPath21Warn =
-    Boolean(usdRef || advRef) &&
-    'Possible matching Agent FX / Path 21 transaction found. Review before posting.';
+  const softPath21Tip =
+    mode === 'ADVANCE'
+      ? Boolean(advRef.trim()) && W3_SOFT_PATH21_REF_TIP
+      : Boolean(usdRef.trim()) && W3_SOFT_PATH21_REF_TIP;
+
+  const advConfirmBlockedReason = (() => {
+    if (readOnly) return 'Blocked: case is read-only';
+    if (!clearingAccountId) return 'Blocked: clearing account not set';
+    if (!(Number(advAmount) > 0)) return 'Blocked: enter a positive PKR amount';
+    if (!paymentSourceId) return 'Blocked: select payment source (Cash/Bank)';
+    if (!advPreview.balanced) return 'Blocked: journal preview is not balanced';
+    return null;
+  })();
+
+  const usdConfirmBlockedReason = (() => {
+    if (readOnly) return 'Blocked: case is read-only';
+    if ((fundingType === 'ADVANCE' || fundingType === 'MIXED') && !clearingAccountId) {
+      return 'Blocked: clearing account not set (required for ADVANCE/MIXED)';
+    }
+    if (!(Number(usdQty) > 0) || !(Number(pkrPerUsd) > 0)) {
+      return 'Blocked: USD quantity and PKR/USD rate required';
+    }
+    if (!walletId) return 'Blocked: select destination USD/TT wallet';
+    if (!usdPreview.balanced) return 'Blocked: journal preview is not balanced';
+    return null;
+  })();
+
+  const handleClearingChange = async (accountId: string) => {
+    if (readOnly || clearingSaving) return;
+    setClearingSaving(true);
+    try {
+      await updateAccountingSettings({
+        agentFxAdvanceClearingAccountId: accountId || null,
+      });
+      toast.success(
+        accountId
+          ? 'Clearing account saved — Confirm & Post can unlock'
+          : 'Clearing account cleared'
+      );
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save clearing account');
+    } finally {
+      setClearingSaving(false);
+    }
+  };
+
+  const handleRegisterAttach = async () => {
+    if (!onRegisterAttachment || readOnly) return;
+    const name = attachName.trim();
+    if (!name) {
+      toast.error('Enter a file name or reference (metadata only)');
+      return;
+    }
+    await onRegisterAttachment(name);
+    setAttachName('');
+  };
 
   const runPostAdvance = async () => {
     if (readOnly || busy) return;
     if (!clearingAccountId) {
-      toast.error('Configure Agent FX Advance / Settlement Clearing in Settings before posting.');
+      toast.error('Configure Agent FX Advance / Settlement Clearing before posting.');
       return;
     }
     if (!paymentSourceId || !(Number(advAmount) > 0)) {
@@ -256,9 +337,12 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     return (
       <div className="rounded-xl border border-amber-600/40 bg-amber-500/10 p-4 text-sm space-y-2">
         <p className="font-medium">{W3_MIGRATION_NOT_INSTALLED}</p>
-        <p className="text-xs opacity-90">{installMsg || 'Apply W3 migrations to a non-production database to enable Confirm & Post.'}</p>
         <p className="text-xs opacity-90">
-          Frontend currently must not post to production. Local apply: create `.env.db.local` (localhost only) then run the W3 local apply script when available.
+          {installMsg || 'Apply W3 migrations to a non-production database to enable Confirm & Post.'}
+        </p>
+        <p className="text-xs opacity-90">
+          Frontend currently must not post to production. Local apply: create `.env.db.local` (localhost only)
+          then run the W3 local apply script when available.
         </p>
         <div className="pt-1">
           <ImportFxW3DemoEntryLink />
@@ -281,6 +365,66 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
   const advances = (overview?.advances as any[]) || [];
   const acquisitions = (overview?.acquisitions as any[]) || [];
 
+  const attachmentBlock = onRegisterAttachment ? (
+    <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2 min-w-0">
+      <p className="text-sm font-medium text-foreground">Attachments</p>
+      <p className="text-[11px] text-muted-foreground">
+        Metadata reference only — no file is uploaded in this pass.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2 min-w-0">
+        <Input
+          value={attachName}
+          onChange={(e) => setAttachName(e.target.value)}
+          placeholder="e.g. advance-receipt.pdf"
+          disabled={readOnly || busy || attachmentBusy}
+          className="min-w-0"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={readOnly || busy || attachmentBusy || !attachName.trim()}
+          onClick={() => void handleRegisterAttach()}
+        >
+          {attachmentBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Register reference
+        </Button>
+      </div>
+      {attachments.length > 0 && (
+        <ul className="space-y-1 text-xs text-muted-foreground">
+          {attachments.map((a) => (
+            <li key={a.id} className="border-b border-border/50 pb-1">
+              <span className="text-foreground">{a.file_name || 'unnamed'}</span>
+              {a.is_metadata_only !== false ? ' · metadata only' : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  ) : null;
+
+  const clearingPicker = (
+    <div className="space-y-1 sm:col-span-2">
+      <Label>Agent FX Advance / Settlement Clearing</Label>
+      <select
+        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+        value={clearingAccountId || ''}
+        onChange={(e) => void handleClearingChange(e.target.value)}
+        disabled={readOnly || busy || clearingSaving}
+      >
+        <option value="">Not configured — Confirm & Post disabled</option>
+        {clearingCandidates.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.code} — {a.name}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] text-muted-foreground">
+        Same setting as Settings → Accounting. Asset accounts only; do not pick Worker Advance (1180) or TT
+        wallets.
+      </p>
+    </div>
+  );
+
   return (
     <div className="space-y-4 min-w-0">
       {mode === 'ADVANCE' && (
@@ -291,18 +435,18 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
             <div>Actual posted advance: {postedAdv}</div>
             <div>Unapplied advance: {unapplied}</div>
             <div className="text-xs text-muted-foreground">{W3_CLEARING_HELP}</div>
-            {!clearingAccountId && (
-              <p className="text-amber-700 dark:text-amber-300 text-xs">
-                Clearing account not configured — drafts/previews allowed; Confirm & Post disabled. Set Settings →
-                Accounting → Agent FX Advance / Settlement Clearing.
-              </p>
-            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {clearingPicker}
             <div className="space-y-1">
               <Label>Posting date</Label>
-              <Input type="date" value={advDate} onChange={(e) => setAdvDate(e.target.value)} disabled={readOnly || busy} />
+              <Input
+                type="date"
+                value={advDate}
+                onChange={(e) => setAdvDate(e.target.value)}
+                disabled={readOnly || busy}
+              />
             </div>
             <div className="space-y-1">
               <Label>Actual PKR amount</Label>
@@ -339,6 +483,8 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
             </div>
           </div>
 
+          {attachmentBlock}
+
           <div className="rounded-lg border border-border p-3 text-xs space-y-1">
             <p className="font-medium text-sm">Accounting preview</p>
             {advPreview.lines.map((l, i) => (
@@ -347,24 +493,33 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
               </div>
             ))}
             <div>Balanced: {advPreview.balanced ? 'yes' : 'no'} · posts_journal: true</div>
-            {softPath21Warn && <p className="text-amber-700 dark:text-amber-300">{softPath21Warn}</p>}
+            {softPath21Tip && (
+              <p className="text-muted-foreground border-t border-border/60 pt-1 mt-1">{softPath21Tip}</p>
+            )}
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              disabled={readOnly || busy || !clearingAccountId || !advPreview.balanced}
-              onClick={() => setConfirmOpen(true)}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Confirm & Post Agent Advance
-            </Button>
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={readOnly || busy || Boolean(advConfirmBlockedReason)}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Confirm & Post Agent Advance
+              </Button>
+            </div>
+            {advConfirmBlockedReason && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">{advConfirmBlockedReason}</p>
+            )}
           </div>
 
           {confirmOpen && (
-            <div className="rounded-lg border border-orange-600/50 bg-orange-500/10 p-3 space-y-2 text-sm">
+            <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 space-y-2 text-sm">
               <p className="font-medium">This is an actual financial posting.</p>
-              <p>Agent: {agentName || '—'} · PKR {advAmount}</p>
+              <p>
+                Agent: {agentName || '—'} · PKR {advAmount}
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" disabled={busy} onClick={() => void runPostAdvance()}>
                   Post now
@@ -378,51 +533,56 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">Advance history</p>
-            {advances.filter((a) => a.status === 'POSTED').map((a) => (
-              <div key={a.id} className="rounded-md border border-border p-2 text-xs flex flex-wrap gap-2 justify-between">
-                <span>
-                  {a.posting_date} · PKR {a.amount_pkr} · remaining {a.remaining_unapplied_pkr} · JE{' '}
-                  {a.journal_entry_id || '—'}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  disabled={readOnly || busy || Number(a.remaining_unapplied_pkr) < Number(a.amount_pkr)}
-                  title={
-                    Number(a.remaining_unapplied_pkr) < Number(a.amount_pkr)
-                      ? 'Blocked: advance has applications'
-                      : 'Reverse full event'
-                  }
-                  onClick={() => {
-                    void (async () => {
-                      setBusy(true);
-                      try {
-                        const res = await reverseImportFxAgentAdvance({
-                          companyId,
-                          advanceId: a.id,
-                          clientOperationId: crypto.randomUUID(),
-                          createdBy: userId,
-                        });
-                        if ((res as any).success === false) {
-                          toast.error(String((res as any).code || (res as any).error || 'Reverse failed'));
-                        } else {
-                          toast.success('Advance reversed');
-                          await refresh();
-                          onPosted?.();
-                        }
-                      } catch (e: any) {
-                        toast.error(e?.message || 'Reverse failed');
-                      } finally {
-                        setBusy(false);
-                      }
-                    })();
-                  }}
+            {advances
+              .filter((a) => a.status === 'POSTED')
+              .map((a) => (
+                <div
+                  key={a.id}
+                  className="rounded-md border border-border p-2 text-xs flex flex-wrap gap-2 justify-between"
                 >
-                  Reverse
-                </Button>
-              </div>
-            ))}
+                  <span>
+                    {a.posting_date} · PKR {a.amount_pkr} · remaining {a.remaining_unapplied_pkr} · JE{' '}
+                    {a.journal_entry_id || '—'}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={readOnly || busy || Number(a.remaining_unapplied_pkr) < Number(a.amount_pkr)}
+                    title={
+                      Number(a.remaining_unapplied_pkr) < Number(a.amount_pkr)
+                        ? 'Blocked: advance has applications'
+                        : 'Reverse full event'
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        setBusy(true);
+                        try {
+                          const res = await reverseImportFxAgentAdvance({
+                            companyId,
+                            advanceId: a.id,
+                            clientOperationId: crypto.randomUUID(),
+                            createdBy: userId,
+                          });
+                          if ((res as any).success === false) {
+                            toast.error(String((res as any).code || (res as any).error || 'Reverse failed'));
+                          } else {
+                            toast.success('Advance reversed');
+                            await refresh();
+                            onPosted?.();
+                          }
+                        } catch (e: any) {
+                          toast.error(e?.message || 'Reverse failed');
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Reverse
+                  </Button>
+                </div>
+              ))}
           </div>
         </>
       )}
@@ -436,9 +596,15 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {(fundingType === 'ADVANCE' || fundingType === 'MIXED') && clearingPicker}
             <div className="space-y-1">
               <Label>Acquisition date</Label>
-              <Input type="date" value={usdDate} onChange={(e) => setUsdDate(e.target.value)} disabled={readOnly || busy} />
+              <Input
+                type="date"
+                value={usdDate}
+                onChange={(e) => setUsdDate(e.target.value)}
+                disabled={readOnly || busy}
+              />
             </div>
             <div className="space-y-1">
               <Label>Funding method</Label>
@@ -455,11 +621,21 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
             </div>
             <div className="space-y-1">
               <Label>USD quantity</Label>
-              <Input type="number" value={usdQty} onChange={(e) => setUsdQty(e.target.value)} disabled={readOnly || busy} />
+              <Input
+                type="number"
+                value={usdQty}
+                onChange={(e) => setUsdQty(e.target.value)}
+                disabled={readOnly || busy}
+              />
             </div>
             <div className="space-y-1">
               <Label>PKR per 1 USD</Label>
-              <Input type="number" value={pkrPerUsd} onChange={(e) => setPkrPerUsd(e.target.value)} disabled={readOnly || busy} />
+              <Input
+                type="number"
+                value={pkrPerUsd}
+                onChange={(e) => setPkrPerUsd(e.target.value)}
+                disabled={readOnly || busy}
+              />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Destination USD/TT wallet</Label>
@@ -498,6 +674,8 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
             </div>
           </div>
 
+          {attachmentBlock}
+
           <div className="rounded-lg border border-border p-3 text-xs space-y-1">
             <div>Total PKR carrying (server will recompute): {carrying}</div>
             <div>Advance applied: {split.advanceAppliedPkr}</div>
@@ -509,19 +687,26 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
               </div>
             ))}
             <div>Balanced: {usdPreview.balanced ? 'yes' : 'no'} · fee: 0 · posts_journal: true</div>
-            {softPath21Warn && <p className="text-amber-700 dark:text-amber-300">{softPath21Warn}</p>}
+            {softPath21Tip && (
+              <p className="text-muted-foreground border-t border-border/60 pt-1 mt-1">{softPath21Tip}</p>
+            )}
           </div>
 
-          <Button
-            type="button"
-            disabled={readOnly || busy || !usdPreview.balanced}
-            onClick={() => setConfirmOpen(true)}
-          >
-            Confirm & Post USD Acquisition
-          </Button>
+          <div className="space-y-1.5">
+            <Button
+              type="button"
+              disabled={readOnly || busy || Boolean(usdConfirmBlockedReason)}
+              onClick={() => setConfirmOpen(true)}
+            >
+              Confirm & Post USD Acquisition
+            </Button>
+            {usdConfirmBlockedReason && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">{usdConfirmBlockedReason}</p>
+            )}
+          </div>
 
           {confirmOpen && (
-            <div className="rounded-lg border border-orange-600/50 bg-orange-500/10 p-3 space-y-2 text-sm">
+            <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 space-y-2 text-sm">
               <p className="font-medium">This is an actual financial posting.</p>
               <p>
                 USD {usdQty} @ {pkrPerUsd} → PKR {carrying} · {fundingType}
@@ -539,46 +724,51 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">Posted acquisitions</p>
-            {acquisitions.filter((a) => a.status === 'POSTED').map((a) => (
-              <div key={a.id} className="rounded-md border border-border p-2 text-xs flex flex-wrap gap-2 justify-between">
-                <span>
-                  {a.acquisition_date} · USD {a.usd_quantity} · PKR {a.carrying_pkr} · {a.funding_type} · JE{' '}
-                  {a.journal_entry_id || '—'}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  disabled={readOnly || busy}
-                  onClick={() => {
-                    void (async () => {
-                      setBusy(true);
-                      try {
-                        const res = await reverseImportFxUsdAcquisition({
-                          companyId,
-                          acquisitionId: a.id,
-                          clientOperationId: crypto.randomUUID(),
-                          createdBy: userId,
-                        });
-                        if ((res as any).success === false) {
-                          toast.error(String((res as any).code || (res as any).error || 'Reverse failed'));
-                        } else {
-                          toast.success('USD acquisition reversed');
-                          await refresh();
-                          onPosted?.();
-                        }
-                      } catch (e: any) {
-                        toast.error(e?.message || 'Reverse failed');
-                      } finally {
-                        setBusy(false);
-                      }
-                    })();
-                  }}
+            {acquisitions
+              .filter((a) => a.status === 'POSTED')
+              .map((a) => (
+                <div
+                  key={a.id}
+                  className="rounded-md border border-border p-2 text-xs flex flex-wrap gap-2 justify-between"
                 >
-                  Reverse
-                </Button>
-              </div>
-            ))}
+                  <span>
+                    {a.acquisition_date} · USD {a.usd_quantity} · PKR {a.carrying_pkr} · {a.funding_type} · JE{' '}
+                    {a.journal_entry_id || '—'}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    disabled={readOnly || busy}
+                    onClick={() => {
+                      void (async () => {
+                        setBusy(true);
+                        try {
+                          const res = await reverseImportFxUsdAcquisition({
+                            companyId,
+                            acquisitionId: a.id,
+                            clientOperationId: crypto.randomUUID(),
+                            createdBy: userId,
+                          });
+                          if ((res as any).success === false) {
+                            toast.error(String((res as any).code || (res as any).error || 'Reverse failed'));
+                          } else {
+                            toast.success('USD acquisition reversed');
+                            await refresh();
+                            onPosted?.();
+                          }
+                        } catch (e: any) {
+                          toast.error(e?.message || 'Reverse failed');
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Reverse
+                  </Button>
+                </div>
+              ))}
           </div>
         </>
       )}

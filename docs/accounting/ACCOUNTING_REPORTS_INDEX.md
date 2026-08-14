@@ -141,6 +141,8 @@ flowchart TD
 | [`docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) | W3 Agent Advance + USD acquisition design; OD-1–OD-7 locked |
 | [`docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md) | Permanent A-to-Z W3→W6 Import FX implementation roadmap (docs only) |
 | [`docs/accounting/IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md`](IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md) | W3 implementation + Demo Mode QA (live prod post blocked until approved) |
+| [`docs/accounting/IMPORT_FX_CASE_GUIDED_UA_SHELL.md`](IMPORT_FX_CASE_GUIDED_UA_SHELL.md) | Guided step-by-step Cases workspace chrome (UI only; drawers + Arrange 1–5) |
+| [`docs/accounting/IMPORT_FX_STATUS_AND_REMAINING_2026-08-15.md`](IMPORT_FX_STATUS_AND_REMAINING_2026-08-15.md) | Post-W3 UA ship + VPS notes + remaining backlog (P0–P2) |
 | [`docs/accounting/IMPORT_FX_W3_MACBOOK_HANDOFF.md`](IMPORT_FX_W3_MACBOOK_HANDOFF.md) | Windows→MacBook handoff: branch, demo, remaining tasks, VPS later checklist |
 
 ---

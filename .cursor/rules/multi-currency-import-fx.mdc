@@ -15,6 +15,10 @@ alwaysApply: true
 
 **W2.1 operator clarity + assignment (non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md) — agent confirm rules, funding summary, arrangement lock, case assignment.
 
+**Guided UA shell (UI only):** [`docs/accounting/IMPORT_FX_CASE_GUIDED_UA_SHELL.md`](docs/accounting/IMPORT_FX_CASE_GUIDED_UA_SHELL.md) — one active task, Arrange steps 1–5, Cases/Context drawers; no RPC/schema change.
+
+**Status + remaining backlog (2026-08-15):** [`docs/accounting/IMPORT_FX_STATUS_AND_REMAINING_2026-08-15.md`](docs/accounting/IMPORT_FX_STATUS_AND_REMAINING_2026-08-15.md) — UA/theme/schedule/Advance UX shipped; VPS migrate-chain + W4–W6 open.
+
 **W3 Agent Advance + USD acquisition (design + local impl — not production-posted):** [`docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — **Owner Decision Register OD-1–OD-7 locked** (settings-mapped `AGENT_FX_ADVANCE_CLEARING`; no fee post v1; immutable lots + WA reporting; FIFO advance apply; Path 21 separate; accounting stays `PARTIALLY_POSTED`; hard+soft duplicate guards). Live CoA code pick at provision.
 
 **W3→W6 master implementation plan (docs only — permanent SoT):** [`docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md) — A-to-Z sequencing, journals, entities, gates, prompts; supersedes ASYNC §26 wave split for W4–W6 ordering.

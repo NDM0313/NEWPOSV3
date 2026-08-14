@@ -6,10 +6,19 @@ import {
   W2_ACTION_BAR_CLASS,
   W2_FORBIDDEN_MONEY_ACTIONS,
   W2_FUNDING_INTENTION_OPTIONS,
+  W2_GUIDED_BODY_CLASS,
+  W2_GUIDED_FOOTER_CLASS,
+  W2_GUIDED_MAIN_CLASS,
   W2_PLANNING_ONLY_NOTICE,
   W2_WORKSPACE_GRID_CLASS,
+  W2_WORKSPACE_PANEL_CLASS,
   W2_WORKSPACE_SHELL_CLASS,
+  addDaysIso,
+  applyScheduleQuickPlan,
   assertW2MutationDoesNotPost,
+  buildScheduleCascade,
+  cascadeFromArrangementChange,
+  clampArrangementStep,
   containsForbiddenMoneyActionCopy,
   createExclusiveBusyGuard,
   formatAccountingStatusLabel,
@@ -17,12 +26,17 @@ import {
   formatMoneyExchangeOption,
   formatPlannedCurrencyPair,
   formatPurchasePlanningOption,
+  guidedProgressItems,
+  guidedTaskCopy,
   isArrangementLocked,
   matchesPlanningSearch,
   moneyStageTimelineItems,
+  resolveScheduleFieldChip,
   resolveWorkspaceMode,
   stripAttachmentStoragePath,
   thirdPartyOptionsExcludingAgent,
+  todayIsoDate,
+  validateArrangementGuidedStep,
   validateArrangementPlanning,
   workspaceActions,
 } from './importFxCaseWorkspaceView';
@@ -218,10 +232,74 @@ test('storage_path is stripped from attachment metadata', () => {
   assert.equal(cleaned.file_name, 'quote.pdf');
 });
 
+test('Confirm Arrangement is stage-scoped to arrangement review step', () => {
+  const base = {
+    mode: 'edit-draft' as const,
+    busy: false,
+    accountingStatus: 'NOT_POSTED',
+    operationalStatus: 'DRAFT',
+  };
+  const onStep3 = workspaceActions({ ...base, activeStage: 'ARRANGEMENT', arrangementStep: 3 });
+  assert.equal(onStep3.showConfirmArrangement, false);
+  assert.equal(onStep3.showSaveDraft, true);
+  const onReview = workspaceActions({ ...base, activeStage: 'ARRANGEMENT', arrangementStep: 5 });
+  assert.equal(onReview.showConfirmArrangement, true);
+  assert.equal(onReview.showCancelUnposted, true);
+  const onAdvance = workspaceActions({ ...base, activeStage: 'ADVANCE', arrangementStep: 5 });
+  assert.equal(onAdvance.showConfirmArrangement, false);
+  assert.equal(onAdvance.showSaveDraft, false);
+  assert.equal(onAdvance.showCancelUnposted, false);
+});
+
+test('guided progress: locked money until arranged; current stage highlighted', () => {
+  const draft = guidedProgressItems({ activeStage: 'ARRANGEMENT', arrangementLocked: false });
+  assert.equal(draft.find((i) => i.code === 'ARRANGEMENT')?.state, 'current');
+  assert.equal(draft.find((i) => i.code === 'ADVANCE')?.state, 'locked');
+  assert.equal(draft.find((i) => i.code === 'USD_ACQUISITION')?.state, 'locked');
+  assert.equal(draft.find((i) => i.code === 'LATER')?.state, 'locked');
+
+  const advance = guidedProgressItems({ activeStage: 'ADVANCE', arrangementLocked: true });
+  assert.equal(advance.find((i) => i.code === 'ARRANGEMENT')?.state, 'done');
+  assert.equal(advance.find((i) => i.code === 'ADVANCE')?.state, 'current');
+  assert.equal(advance.find((i) => i.code === 'USD_ACQUISITION')?.state, 'upcoming');
+});
+
+test('arrangement guided step validation and task copy', () => {
+  assert.equal(clampArrangementStep(0), 1);
+  assert.equal(clampArrangementStep(9), 5);
+  assert.deepEqual(
+    validateArrangementGuidedStep(1, { agentId: 'a1', thirdPartyId: 'a1' }),
+    ['Agent and third party must be different contacts.']
+  );
+  assert.ok(validateArrangementGuidedStep(2, { fundingMode: '' }).length > 0);
+  assert.deepEqual(validateArrangementGuidedStep(2, { fundingMode: 'CREDIT' }), []);
+  const copy = guidedTaskCopy({
+    activeStage: 'ARRANGEMENT',
+    arrangementStep: 1,
+    arrangementLocked: false,
+  });
+  assert.equal(copy.title, 'Parties');
+  assert.match(copy.why, /planning only/i);
+  const money = guidedTaskCopy({
+    activeStage: 'USD_ACQUISITION',
+    arrangementStep: 5,
+    arrangementLocked: true,
+  });
+  assert.equal(money.title, 'Buy USD');
+});
+
 test('responsive layout classes stack on mobile and wrap actions', () => {
-  assert.match(W2_WORKSPACE_GRID_CLASS, /grid-cols-1/);
-  assert.match(W2_WORKSPACE_GRID_CLASS, /lg:grid-cols-12/);
-  assert.match(W2_WORKSPACE_SHELL_CLASS, /overflow-hidden/);
+  assert.match(W2_WORKSPACE_GRID_CLASS, /flex-col/);
+  assert.match(W2_GUIDED_BODY_CLASS, /flex-col/);
+  assert.match(W2_GUIDED_MAIN_CLASS, /overflow-y-auto/);
+  assert.match(W2_GUIDED_MAIN_CLASS, /\bp-5\b/);
+  assert.match(W2_GUIDED_FOOTER_CLASS, /border-t/);
+  assert.match(W2_WORKSPACE_PANEL_CLASS, /max-w-\[700px\]/);
+  assert.match(W2_WORKSPACE_PANEL_CLASS, /rounded-2xl/);
+  assert.match(W2_WORKSPACE_PANEL_CLASS, /shadow-2xl/);
+  assert.match(W2_WORKSPACE_PANEL_CLASS, /ring-1/);
+  assert.match(W2_WORKSPACE_SHELL_CLASS, /backdrop-blur-md/);
+  assert.match(W2_WORKSPACE_SHELL_CLASS, /bg-black\/70/);
   assert.match(W2_ACTION_BAR_CLASS, /flex-wrap/);
   assert.match(W2_ACTION_BAR_CLASS, /flex-col/);
 });
@@ -237,4 +315,74 @@ test('header helpers: currency pair and last updated', () => {
   assert.equal(formatPlannedCurrencyPair(null, null), '— → —');
   assert.equal(formatLastUpdated(null), '—');
   assert.notEqual(formatLastUpdated('2026-08-12T10:00:00.000Z'), '—');
+});
+
+test('schedule cascade and quick plans fill expected offsets', () => {
+  assert.equal(addDaysIso('2026-08-14', 3), '2026-08-17');
+  assert.equal(addDaysIso('2026-08-30', 3), '2026-09-02');
+  assert.equal(addDaysIso('bad', 1), '');
+  const cascade = buildScheduleCascade('2026-08-14');
+  assert.deepEqual(cascade, {
+    arrangement: '2026-08-14',
+    advance: '2026-08-17',
+    usd: '2026-08-21',
+    completion: '2026-08-28',
+  });
+  const fixed = new Date(2026, 7, 14); // local Aug 14
+  assert.equal(todayIsoDate(fixed), '2026-08-14');
+  const todayPlan = applyScheduleQuickPlan('today', fixed);
+  assert.deepEqual(todayPlan, {
+    arrangement: '2026-08-14',
+    advance: '2026-08-17',
+    usd: '2026-08-21',
+    completion: '2026-08-28',
+  });
+  const week = applyScheduleQuickPlan('this_week', fixed);
+  assert.deepEqual(week, {
+    arrangement: '2026-08-14',
+    advance: '2026-08-16',
+    usd: '2026-08-19',
+    completion: '2026-08-21',
+  });
+  assert.deepEqual(applyScheduleQuickPlan('clear', fixed), {
+    arrangement: '',
+    advance: '',
+    usd: '',
+    completion: '',
+  });
+});
+
+test('cascadeFromArrangementChange respects force vs empty-only', () => {
+  const forced = cascadeFromArrangementChange({
+    arrangeIso: '2026-08-14',
+    current: {
+      arrangement: '2026-08-01',
+      advance: '2026-08-02',
+      usd: '2026-08-03',
+      completion: '2026-08-04',
+    },
+    forceCascade: true,
+  });
+  assert.equal(forced.advance, '2026-08-17');
+  const soft = cascadeFromArrangementChange({
+    arrangeIso: '2026-08-14',
+    current: {
+      arrangement: '',
+      advance: '2026-08-02',
+      usd: '',
+      completion: '',
+    },
+    forceCascade: false,
+  });
+  assert.equal(soft.advance, '2026-08-02');
+  assert.equal(soft.usd, '2026-08-21');
+  assert.equal(
+    resolveScheduleFieldChip({
+      chipId: 'same_arrange',
+      field: 'advance',
+      arrangeIso: '2026-08-14',
+      now: new Date(2026, 7, 1),
+    }),
+    '2026-08-14'
+  );
 });
