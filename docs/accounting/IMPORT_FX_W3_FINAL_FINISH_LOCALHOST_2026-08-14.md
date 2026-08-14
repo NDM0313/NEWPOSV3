@@ -37,3 +37,11 @@ Demo Mode remains the safe browser check without journals.
 - Multi Currency enablement in production  
 - W4–W6 money stages  
 - Live browser Confirm & Post against `supabase.dincouture.pk`
+
+## Owner approval — merge to main (2026-08-14)
+
+Owner: **next task approve / complete**.
+
+Merging Draft PR #24 to `main` triggers [`.github/workflows/deploy-vps.yml`](../../.github/workflows/deploy-vps.yml) → `deploy/deploy.sh` → `deploy/run-migrations-vps.sh`, which **will attempt to apply W3 migration SQL on the VPS database**.
+
+Localhost live QA already passed (10/10). Multi Currency remains an ops setting (not auto-enabled by these migrations).
