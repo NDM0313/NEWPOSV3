@@ -19,6 +19,11 @@ DROP FUNCTION IF EXISTS public.create_import_fx_case(
   uuid, uuid, text, uuid, uuid, text, numeric, numeric, numeric, numeric, numeric, date, text, uuid
 );
 
+-- Intermediate signature from older W2 DROP list (15 args) if still present.
+DROP FUNCTION IF EXISTS public.create_import_fx_case(
+  uuid, uuid, text, uuid, uuid, text, numeric, numeric, numeric, numeric, numeric, date, text, uuid, uuid
+);
+
 COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit(
   uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid, uuid
 ) IS
