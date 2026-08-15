@@ -10,10 +10,19 @@ DROP FUNCTION IF EXISTS public.record_fx_currency_purchase_on_credit(
   uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid
 );
 
+DROP FUNCTION IF EXISTS public.apply_fx_currency_purchase_settlement(
+  uuid, uuid, uuid, numeric
+);
+
 COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit(
   uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid, uuid
 ) IS
   'Path 21 Wave 0: Dr TT wallet / Cr Agent AP. Optional p_client_operation_id for idempotent retry. money_exchange-only agent.';
+
+COMMENT ON FUNCTION public.apply_fx_currency_purchase_settlement(
+  uuid, uuid, uuid, numeric, uuid
+) IS
+  'Wave 0: allocate agent PAY to FX credit; active settlements only; optional client_operation_id replay.';
 
 INSERT INTO public.schema_migrations (name) VALUES
   ('20260801190100_fx_currency_purchase_rpcs.sql'),

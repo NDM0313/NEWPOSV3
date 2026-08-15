@@ -561,7 +561,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION public.apply_fx_currency_purchase_settlement IS
+COMMENT ON FUNCTION public.apply_fx_currency_purchase_settlement(uuid, uuid, uuid, numeric) IS
   'After agent PKR payment (createSupplierPayment), allocate to fx_currency_purchases. Requires multiCurrencyEnabled.';
 
 GRANT EXECUTE ON FUNCTION public.apply_fx_currency_purchase_settlement(uuid, uuid, uuid, numeric)

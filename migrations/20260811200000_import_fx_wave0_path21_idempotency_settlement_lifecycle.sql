@@ -683,7 +683,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION public.apply_fx_currency_purchase_settlement IS
+COMMENT ON FUNCTION public.apply_fx_currency_purchase_settlement(uuid, uuid, uuid, numeric, uuid) IS
   'Wave 0: allocate agent PAY to FX credit; active settlements only; optional client_operation_id replay.';
 
 GRANT EXECUTE ON FUNCTION public.apply_fx_currency_purchase_settlement(uuid, uuid, uuid, numeric, uuid)
