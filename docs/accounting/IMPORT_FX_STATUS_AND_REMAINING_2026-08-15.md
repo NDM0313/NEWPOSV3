@@ -27,7 +27,7 @@
 | W3 SQL on VPS (`…180000` / `…180100`) | Applied + ledgered (prior session) |
 | W3 RPCs (`post_import_fx_agent_advance`, USD + reverses) | Present on `supabase-db` |
 | Frontend deploy | **Done** — VPS `git pull` → `d6ee2835` + `deploy/vps-redeploy-erp.sh`; `https://erp.dincouture.pk` HTTP 200 (2026-08-15) |
-| Full `run-migrations-vps.sh` chain | **Still broken** after Aug 1 settings ledger fix — next fail: `20260801190100_fx_currency_purchase_rpcs.sql` (`record_fx_currency_purchase_on_credit` not unique). W3 was applied out-of-band; other PENDING import-fx files may already exist as objects but are not all in `schema_migrations` |
+| Full `run-migrations-vps.sh` chain | **Fixed 2026-08-15** — qualified Path 21 / W1 COMMENTs, re-runnable W1 RLS policies, repair + overload cleanup migrations. Chain ends `[migrate] Done.` on VPS @ `82e3499f`+ |
 
 ---
 
