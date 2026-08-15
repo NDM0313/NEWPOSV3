@@ -35,7 +35,7 @@
 
 ### P0 — ops / correctness
 
-1. **Fix VPS migrate chain** — make `fx_currency_purchase_rpcs` idempotent (drop overloaded signatures / `CREATE OR REPLACE` with full args), then mark or re-run pending Import FX migrations so `schema_migrations` matches reality.
+1. **Fix VPS migrate chain** — ~~make `fx_currency_purchase_rpcs` idempotent~~ **DONE 2026-08-15:** qualified `COMMENT ON FUNCTION` signatures + [`20260815140000_import_fx_vps_migrate_chain_repair.sql`](../../migrations/20260815140000_import_fx_vps_migrate_chain_repair.sql) (drop legacy 10-arg overload + ledger-mark already-applied Import FX files).
 2. **Smoke Confirm & Post on prod** — clearing account set → advance post → JE appears → reverse once on a throwaway case (owner-supervised).
 3. **Non-prod HTTP staging** — still missing; live browser Confirm against prod remains high-risk without a clone.
 

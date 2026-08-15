@@ -231,7 +231,9 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit IS
+COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit(
+  uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid
+) IS
   'Path 21: Dr TT wallet / Cr Agent AP (PKR). Agent must be money_exchange; optional linked purchase supplier must differ. Wave A gates preserved.';
 
 GRANT EXECUTE ON FUNCTION public.record_fx_currency_purchase_on_credit(

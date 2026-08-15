@@ -530,7 +530,9 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit IS
+COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit(
+  uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid, uuid
+) IS
   'Path 21 Wave 0: Dr TT wallet / Cr Agent AP. Optional p_client_operation_id for idempotent retry. money_exchange-only agent.';
 
 GRANT EXECUTE ON FUNCTION public.record_fx_currency_purchase_on_credit(

@@ -171,7 +171,9 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
-COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit IS
+COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit(
+  uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid
+) IS
   'Dual-credit FX: Dr TT-agent wallet / Cr Agent AP in PKR. Does not use record_payment_with_accounting.';
 
 GRANT EXECUTE ON FUNCTION public.record_fx_currency_purchase_on_credit(
