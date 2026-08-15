@@ -22,6 +22,10 @@ REVOKE ALL ON TABLE public.import_fx_case_links FROM PUBLIC, anon, authenticated
 -- C) Defense-in-depth RLS: parent branch + MC ON for writes (if privileges restored)
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS import_fx_cases_company ON public.import_fx_cases;
+DROP POLICY IF EXISTS import_fx_cases_select ON public.import_fx_cases;
+DROP POLICY IF EXISTS import_fx_cases_insert ON public.import_fx_cases;
+DROP POLICY IF EXISTS import_fx_cases_update ON public.import_fx_cases;
+DROP POLICY IF EXISTS import_fx_cases_delete ON public.import_fx_cases;
 CREATE POLICY import_fx_cases_select ON public.import_fx_cases
   FOR SELECT TO authenticated
   USING (
@@ -60,6 +64,8 @@ CREATE POLICY import_fx_cases_delete ON public.import_fx_cases
   );
 
 DROP POLICY IF EXISTS import_fx_case_stages_company ON public.import_fx_case_stages;
+DROP POLICY IF EXISTS import_fx_case_stages_select ON public.import_fx_case_stages;
+DROP POLICY IF EXISTS import_fx_case_stages_write ON public.import_fx_case_stages;
 CREATE POLICY import_fx_case_stages_select ON public.import_fx_case_stages
   FOR SELECT TO authenticated
   USING (
@@ -95,6 +101,8 @@ CREATE POLICY import_fx_case_stages_write ON public.import_fx_case_stages
   );
 
 DROP POLICY IF EXISTS import_fx_case_events_company ON public.import_fx_case_events;
+DROP POLICY IF EXISTS import_fx_case_events_select ON public.import_fx_case_events;
+DROP POLICY IF EXISTS import_fx_case_events_write ON public.import_fx_case_events;
 CREATE POLICY import_fx_case_events_select ON public.import_fx_case_events
   FOR SELECT TO authenticated
   USING (
@@ -130,6 +138,8 @@ CREATE POLICY import_fx_case_events_write ON public.import_fx_case_events
   );
 
 DROP POLICY IF EXISTS import_fx_case_links_company ON public.import_fx_case_links;
+DROP POLICY IF EXISTS import_fx_case_links_select ON public.import_fx_case_links;
+DROP POLICY IF EXISTS import_fx_case_links_write ON public.import_fx_case_links;
 CREATE POLICY import_fx_case_links_select ON public.import_fx_case_links
   FOR SELECT TO authenticated
   USING (
