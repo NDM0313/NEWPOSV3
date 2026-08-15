@@ -400,7 +400,9 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.create_import_fx_case IS
+COMMENT ON FUNCTION public.create_import_fx_case(
+  uuid, uuid, text, uuid, uuid, text, numeric, numeric, numeric, numeric, numeric, date, text, uuid
+) IS
   'W1: create Import FX Case + seed stages. No journal.';
 
 CREATE OR REPLACE FUNCTION public.update_import_fx_case_draft(
@@ -486,7 +488,9 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.update_import_fx_case_draft IS
+COMMENT ON FUNCTION public.update_import_fx_case_draft(
+  uuid, uuid, uuid, uuid, text, numeric, numeric, numeric, numeric, numeric, date, text, uuid, boolean, boolean
+) IS
   'W1: update draft case fields. No journal.';
 
 CREATE OR REPLACE FUNCTION public.confirm_import_fx_case_stage(
@@ -629,7 +633,9 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.confirm_import_fx_case_stage IS
+COMMENT ON FUNCTION public.confirm_import_fx_case_stage(
+  uuid, uuid, text, text, boolean, uuid, uuid
+) IS
   'W1: confirm ARRANGEMENT planning stage only. Never posts a journal.';
 
 CREATE OR REPLACE FUNCTION public.cancel_import_fx_case_unposted(

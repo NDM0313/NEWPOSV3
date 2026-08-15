@@ -85,7 +85,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.claim_import_fx_client_operation IS
+COMMENT ON FUNCTION public.claim_import_fx_client_operation(uuid, text, uuid) IS
   'Wave 0: reserve client_operation_id before money write; replay returns prior result.';
 
 GRANT EXECUTE ON FUNCTION public.claim_import_fx_client_operation(uuid, text, uuid)
@@ -193,7 +193,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.release_import_fx_client_operation IS
+COMMENT ON FUNCTION public.release_import_fx_client_operation(uuid, text, uuid) IS
   'Wave 0: clear pending claim after failed settle so retry can re-claim.';
 
 GRANT EXECUTE ON FUNCTION public.release_import_fx_client_operation(uuid, text, uuid)

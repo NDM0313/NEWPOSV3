@@ -14,6 +14,11 @@ DROP FUNCTION IF EXISTS public.apply_fx_currency_purchase_settlement(
   uuid, uuid, uuid, numeric
 );
 
+-- W1 short create overload — W2 long signature is canonical when both exist.
+DROP FUNCTION IF EXISTS public.create_import_fx_case(
+  uuid, uuid, text, uuid, uuid, text, numeric, numeric, numeric, numeric, numeric, date, text, uuid
+);
+
 COMMENT ON FUNCTION public.record_fx_currency_purchase_on_credit(
   uuid, uuid, uuid, uuid, text, numeric, numeric, text, uuid, uuid, uuid
 ) IS
