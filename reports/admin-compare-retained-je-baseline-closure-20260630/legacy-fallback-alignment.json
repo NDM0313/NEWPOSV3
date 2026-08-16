@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-06-30T12:00:00.000Z",
+  "fix_type": "code_only_legacy_fallback_alignment",
+  "files_changed": [
+    "src/app/lib/partyLedgerLegacyJournalMatch.ts",
+    "src/app/services/accountingService.ts",
+    "src/app/lib/partyDiscountLegacyLedgerMatch.test.ts",
+    "src/app/lib/unifiedLedgerCompareScopeGuard.test.ts",
+    "package.json"
+  ],
+  "change_summary": "Include party_discount JEs in hybrid customer AR matcher (reference_id = contactId) and supplier AP matcher. No DB mutation, no synthetic rows.",
+  "data_mutation": false,
+  "waiver_required": false
+}

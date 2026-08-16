@@ -1,0 +1,24 @@
+{
+  "run_at": "2026-06-20T14:00:00.000Z",
+  "status": "NETWORK_BLOCKED",
+  "reason": "Staging Supabase Cloud host wrwljqzckmnmuphwhslt.supabase.co DNS ENOTFOUND from this environment. VPS host (supabase.dincouture.pk) intentionally rejected by staging guard. Migrations not applied.",
+  "staging_target": {
+    "supabase_host": "wrwljqzckmnmuphwhslt.supabase.co",
+    "db_host": "db.wrwljqzckmnmuphwhslt.supabase.co",
+    "staging_guard": "UNIFIED_LEDGER_STAGING=1",
+    "vps_blocked": true
+  },
+  "companies_count": 0,
+  "summary": {
+    "strict_pass_count": 0,
+    "strict_fail_count": 0,
+    "branch_attribution_risk_total": 0
+  },
+  "companies": [],
+  "remediation": [
+    "Reactivate or recreate Supabase Cloud staging project, OR provide a reachable staging clone URL.",
+    "Update .env.local with staging DATABASE_URL + SUPABASE_SERVICE_ROLE_KEY (not VPS).",
+    "Run: node scripts/apply-unified-ledger-phase-15-migrations.mjs",
+    "Run diagnostics and tie-out scripts with staging guards."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "generated": "2026-06-29",
+  "fullMonitoring": "FULL_MONITORING_BLOCKED_MISSING_QA_PASSWORDS",
+  "loaderGuard": {
+    "dinChina": 6,
+    "dinBridal": 6,
+    "dinCouture": 6,
+    "otherCompanyLoaders": 0
+  },
+  "migrationsRun": false,
+  "glMutations": false,
+  "result": "PARTIAL"
+}

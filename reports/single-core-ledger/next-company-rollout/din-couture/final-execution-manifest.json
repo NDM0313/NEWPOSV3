@@ -1,0 +1,32 @@
+{
+  "status": "DIN_COUTURE_COMPLETE_UNIFIED_LOADERS_LIVE",
+  "generated_at": "2026-06-27T13:25:00Z",
+  "latest_main_commit_at_start": "d0225fb4",
+  "target_company": "DIN COUTURE",
+  "target_company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+  "finance_sign_off": "reports/single-core-ledger/din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md",
+  "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md",
+  "golden_fixtures": "reports/single-core-ledger/din-couture/golden-fixtures.json",
+  "golden_capture": "PASS",
+  "flags_changed": true,
+  "sql_executed": true,
+  "loaders_enabled": [
+    "unified_ledger_loader_ledger_v2",
+    "unified_ledger_loader_account_statement",
+    "unified_ledger_loader_trial_balance",
+    "unified_ledger_loader_party_ledger",
+    "unified_ledger_loader_roznamcha"
+  ],
+  "din_couture_flags_on": 12,
+  "din_couture_loaders_on": 5,
+  "monitoring": "PASS",
+  "din_china_regression": "PASS",
+  "din_bridal_regression": "PASS",
+  "other_company_loaders_on": 0,
+  "tests_build": "245/245 PASS, build PASS",
+  "deploy_status": "skipped_flags_only",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "fx_app_touched": false,
+  "credentials_committed": false
+}

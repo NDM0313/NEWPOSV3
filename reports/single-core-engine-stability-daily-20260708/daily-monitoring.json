@@ -1,0 +1,27 @@
+{
+  "run": "STABILITY_DAY8_DAILY_MONITORING",
+  "classification": "STABILITY_SAMPLE_FAIL",
+  "stability_sample_label": 8,
+  "run_local_datetime": "2026-07-02T17:03:03+05:00",
+  "monitoring_completed_at": "2026-07-02T12:09:27.887Z",
+  "calendar_days_elapsed_since_window_start": 1,
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T12-03-36-782Z.json",
+  "overall": "FAIL",
+  "din_china": "FAIL",
+  "din_china_admin_compare_9_9": "NOT_REACHED",
+  "din_bridal": "FAIL",
+  "din_couture": "FAIL",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "production_mutation": false,
+  "diagnosis": {
+    "primary": "monitoring_bug",
+    "failure": "Playwright timeout waiting for Roznamcha nav button",
+    "fixture_drift": false,
+    "live_business_activity": false,
+    "real_regression": false,
+    "fixture_refresh_recommended": false,
+    "operator_approval_required_before_fixture_refresh": true
+  }
+}

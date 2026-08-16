@@ -1,0 +1,10 @@
+{
+  "run": "FINAL_FIXTURE_VALUES",
+  "operator_approval": "Nadeem Khan 2026-07-02",
+  "trial_balance_debit_credit_pkr": 22390400,
+  "roznamcha_cash_in_pkr": 2026850,
+  "roznamcha_cash_out_pkr": 917780,
+  "roznamcha_closing_pkr": 1109070,
+  "golden_party_closing_pkr": 530000,
+  "delta_explanation": "orphan_cleanup_phantom_cash_minus_90000"
+}

@@ -1,0 +1,9 @@
+{
+  "run": "ORPHAN_CLEANUP_RECHECK",
+  "generated_at": "2026-07-02T07:12:12.963Z",
+  "rcv_0081": { "voided": true, "je_0209_void": true, "lines": 0, "allocations": 0 },
+  "rcv_0082": { "voided": true, "je_0210_void": true, "lines": 0, "allocations": 0 },
+  "gl_lines_created": 0,
+  "trial_balance_impact": false,
+  "verdict": "STABLE"
+}

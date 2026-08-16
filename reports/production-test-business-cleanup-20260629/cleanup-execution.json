@@ -1,0 +1,26 @@
+{
+  "generated": "2026-06-29",
+  "result": "DELETED",
+  "method": "scoped_sql_transaction_vps",
+  "deleted": {
+    "userBranches": 1,
+    "contacts": 1,
+    "accounts": 36,
+    "products": 4,
+    "productCategories": 4,
+    "units": 4,
+    "documentSequences": 11,
+    "documentSequencesGlobal": 22,
+    "erpDocumentSequences": 10,
+    "modulesConfig": 10,
+    "settings": 3,
+    "businessSettings": 1,
+    "roles": 0,
+    "branches": 1,
+    "publicUsers": 1,
+    "companies": 1,
+    "authIdentities": 1,
+    "authUsers": 1
+  },
+  "specialHandling": "contacts.is_default cleared before delete"
+}

@@ -131,8 +131,8 @@ export const SalesDashboard = () => {
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Sales</h2>
-          <p className="text-gray-400 text-sm">Track your sales and customer orders.</p>
+          <h2 className="text-2xl font-bold text-foreground">Sales</h2>
+          <p className="text-muted-foreground text-sm">Track your sales and customer orders.</p>
         </div>
         <Button 
           onClick={() => openDrawer('addSale')}
@@ -157,7 +157,7 @@ export const SalesDashboard = () => {
           value={`$${monthlySales.toLocaleString()}`}
           subtitle="This Month"
           icon={Calendar}
-          highlightColor="text-green-400"
+          highlightColor="text-[var(--erp-money-positive)]"
         />
         <GlassCard 
           title="Total Profit" 
@@ -176,11 +176,11 @@ export const SalesDashboard = () => {
       </div>
 
       {/* Table Section */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-950/50 text-gray-400 font-medium border-b border-gray-800">
+            <thead className="bg-muted/40 text-muted-foreground font-medium border-b border-border">
               <tr>
                 <th className="px-6 py-4"></th>
                 <th className="px-6 py-4">Date</th>
@@ -198,55 +198,55 @@ export const SalesDashboard = () => {
                 <th className="px-6 py-4 text-center">Total Items</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {mockSales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-gray-800/50 transition-colors group">
+                <tr key={sale.id} className="hover:bg-muted/50 transition-colors group">
                   <td className="px-6 py-4">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-gray-500 hover:text-white"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
                         >
                           <MoreVertical size={16} />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
+                      <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
                         <DropdownMenuItem 
-                          className="hover:bg-gray-800 cursor-pointer"
+                          className="hover:bg-muted cursor-pointer"
                           onClick={() => handleViewDetails(sale.id)}
                         >
                           <Eye size={14} className="mr-2" />
                           View Details
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          className="hover:bg-gray-800 cursor-pointer"
+                          className="hover:bg-muted cursor-pointer"
                           onClick={() => handleEditSale(sale.id)}
                         >
                           <Edit size={14} className="mr-2" />
                           Edit Sale
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          className="hover:bg-gray-800 cursor-pointer"
+                          className="hover:bg-muted cursor-pointer"
                           onClick={() => handlePrintInvoice(sale.id)}
                         >
                           <FileText size={14} className="mr-2" />
                           Print Invoice
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          className="hover:bg-gray-800 cursor-pointer"
+                          className="hover:bg-muted cursor-pointer"
                           onClick={() => handleAddPayment(sale.id)}
                         >
                           <DollarSign size={14} className="mr-2" />
                           Add Payment
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <Truck size={14} className="mr-2" />
                           Update Shipping
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          className="hover:bg-gray-800 cursor-pointer text-red-400"
+                          className="hover:bg-muted cursor-pointer text-red-400"
                           onClick={() => handleDeleteSale(sale.id)}
                         >
                           <Trash2 size={14} className="mr-2" />
@@ -255,27 +255,27 @@ export const SalesDashboard = () => {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
-                  <td className="px-6 py-4 text-gray-400">
+                  <td className="px-6 py-4 text-muted-foreground">
                     {new Date(sale.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </td>
                   <td className="px-6 py-4">
-                    <span className="font-medium text-white">{sale.invoiceNo}</span>
+                    <span className="font-medium text-foreground">{sale.invoiceNo}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="font-medium text-white">{sale.customerName}</p>
-                      <p className="text-xs text-gray-500">{sale.customer}</p>
+                      <p className="font-medium text-foreground">{sale.customerName}</p>
+                      <p className="text-xs text-muted-foreground">{sale.customer}</p>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <Phone size={12} className="text-gray-500" />
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Phone size={12} className="text-muted-foreground" />
                       <span className="text-sm">{sale.contactNumber}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <MapPin size={12} className="text-gray-500" />
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin size={12} className="text-muted-foreground" />
                       <span className="text-sm">{sale.location}</span>
                     </div>
                   </td>
@@ -290,10 +290,10 @@ export const SalesDashboard = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm text-gray-300">{sale.paymentMethod}</span>
+                    <span className="text-sm text-muted-foreground">{sale.paymentMethod}</span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <span className="font-medium text-white">${sale.total.toLocaleString()}</span>
+                    <span className="font-medium text-foreground">${sale.total.toLocaleString()}</span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <span className="text-emerald-400 font-medium">${sale.paid.toLocaleString()}</span>
@@ -301,12 +301,12 @@ export const SalesDashboard = () => {
                   <td className="px-6 py-4 text-right">
                     {sale.due > 0 ? (
                       <span className="text-red-400 font-medium">${sale.due.toLocaleString()}</span>
-                    ) : <span className="text-gray-600">-</span>}
+                    ) : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="px-6 py-4 text-right">
                     {sale.returnDue > 0 ? (
                       <span className="text-orange-400 font-medium">${sale.returnDue.toLocaleString()}</span>
-                    ) : <span className="text-gray-600">-</span>}
+                    ) : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className={cn(
@@ -319,8 +319,8 @@ export const SalesDashboard = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-300">
-                      <Package size={12} className="text-gray-500" />
+                    <div className="flex items-center justify-center gap-1 text-muted-foreground">
+                      <Package size={12} className="text-muted-foreground" />
                       <span className="font-medium">{sale.items}</span>
                     </div>
                   </td>
@@ -348,12 +348,12 @@ export const SalesDashboard = () => {
 const GlassCard = ({ title, value, subtitle, icon: Icon, highlightColor }: any) => (
   <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-xl shadow-lg relative overflow-hidden">
     <div className="absolute top-0 right-0 p-4 opacity-10">
-      <Icon size={48} className="text-white" />
+      <Icon size={48} className="text-foreground" />
     </div>
-    <p className="text-gray-400 text-sm font-medium">{title}</p>
+    <p className="text-muted-foreground text-sm font-medium">{title}</p>
     <div className="flex items-end gap-3 mt-1 mb-2">
-      <h3 className={cn("text-3xl font-bold", highlightColor || "text-white")}>{value}</h3>
+      <h3 className={cn("text-3xl font-bold", highlightColor || "text-foreground")}>{value}</h3>
     </div>
-    <p className="text-gray-500 text-xs">{subtitle}</p>
+    <p className="text-muted-foreground text-xs">{subtitle}</p>
   </div>
 );

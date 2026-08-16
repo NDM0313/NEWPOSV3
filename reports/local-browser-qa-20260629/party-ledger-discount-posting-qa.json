@@ -1,0 +1,10 @@
+{
+  "generated": "2026-06-29",
+  "environmentClassification": "PRODUCTION_LIVE",
+  "status": "BLOCKED_PRODUCTION_MUTATION_NOT_APPROVED",
+  "result": "BLOCKED",
+  "customerDiscountPosted": false,
+  "supplierDiscountPosted": false,
+  "testReferences": [],
+  "rollbackRequired": false
+}

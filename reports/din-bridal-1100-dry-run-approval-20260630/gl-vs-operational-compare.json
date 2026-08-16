@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-06-30T14:30:00.000Z",
+  "gl_control_1100_net": -136500,
+  "party_ar_subledger_sum": 2151800,
+  "party_ar_contact_count": 132,
+  "control_vs_party_sub_accounts": "residual isolated on control; not in party sum",
+  "difference_explanation": "Sale cancellation reversals credited control 1100 instead of AR-CUS0056/AR-CUS0012; party ledgers still show original sale receivables",
+  "is_real_receivable": false,
+  "is_orphan_control_balance": true,
+  "should_move_to_party": true,
+  "should_remain_opening_control": false,
+  "is_reporting_mapping_only": false,
+  "recommended_treatment": "Reclass credits from 1100 to correct party AR accounts (same pattern as rental 1100 gl_correction)"
+}

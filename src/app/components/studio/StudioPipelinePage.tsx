@@ -198,17 +198,17 @@ export const StudioPipelinePage = () => {
       <div
         onClick={() => handleOpenDetail(item)}
         className={cn(
-          "rounded-xl border p-4 cursor-pointer transition-all hover:border-gray-600 bg-gray-900/80",
+          "rounded-xl border p-4 cursor-pointer transition-all hover:border-gray-600 bg-card",
           alert === 'overdue' && "border-red-700/50 bg-red-950/20",
           alert === 'near' && "border-yellow-700/50 bg-yellow-950/10"
         )}
       >
         <div className="flex items-start justify-between gap-2 mb-2">
-          <p className="font-mono font-bold text-white text-sm">{item.invoiceNo}</p>
+          <p className="font-mono font-bold text-foreground text-sm">{item.invoiceNo}</p>
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800 shrink-0"
+            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
             onClick={(e) => {
               e.stopPropagation();
               handleOpenDetail(item);
@@ -218,19 +218,19 @@ export const StudioPipelinePage = () => {
             <Edit2 size={16} />
           </Button>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-300 mb-1">
-          <User size={14} className="text-gray-500 shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+          <User size={14} className="text-muted-foreground shrink-0" />
           {item.customerName}
         </div>
-        <div className="text-xs text-gray-500 mb-2">{item.fabricSummary} • {item.meters}m</div>
-        <div className="flex items-center gap-2 text-xs text-gray-400 mb-2">
+        <div className="text-xs text-muted-foreground mb-2">{item.fabricSummary} • {item.meters}m</div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
           <Calendar size={12} />
           Deadline: {formatDateSafe(item.deliveryDeadline, 'dd MMM yyyy')}
           {alert === 'overdue' && <AlertTriangle size={12} className="text-red-400" />}
           {alert === 'near' && <Clock size={12} className="text-yellow-400" />}
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-400">{formatCurrency(item.totalAmount)}</span>
+          <span className="text-muted-foreground">{formatCurrency(item.totalAmount)}</span>
           {item.balanceDue > 0 && (
             <span className="text-orange-400 font-medium">Due: {formatCurrency(item.balanceDue)}</span>
           )}
@@ -263,7 +263,7 @@ export const StudioPipelinePage = () => {
           <PipelineCard key={`${item.source}-${item.id}`} item={item} />
         ))}
         {items.length === 0 && (
-          <div className="text-center py-8 text-gray-500 text-sm">No items</div>
+          <div className="text-center py-8 text-muted-foreground text-sm">No items</div>
         )}
       </div>
     </div>
@@ -285,15 +285,15 @@ export const StudioPipelinePage = () => {
           <Button
             variant="ghost"
             size="sm"
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
             onClick={() => setCurrentView('studio-sales-list-new')}
           >
             <ChevronLeft size={20} className="mr-1" />
             Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-white">Studio Production Pipeline</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Work done, pending, aur production stages – Edit button se sale form open</p>
+            <h1 className="text-2xl font-bold text-foreground">Studio Production Pipeline</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Work done, pending, aur production stages – Edit button se sale form open</p>
           </div>
         </div>
         <Button
@@ -301,7 +301,7 @@ export const StudioPipelinePage = () => {
           size="sm"
           onClick={() => loadData()}
           disabled={loading}
-          className="border-gray-600 text-gray-300 hover:bg-gray-800"
+          className="border-gray-600 text-muted-foreground hover:bg-muted"
         >
           {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : <RotateCw size={16} className="mr-2" />}
           Refresh
@@ -310,26 +310,26 @@ export const StudioPipelinePage = () => {
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
             <Circle size={16} />
             Not Started
           </div>
-          <p className="text-2xl font-bold text-white">{notStarted.length}</p>
+          <p className="text-2xl font-bold text-foreground">{notStarted.length}</p>
         </div>
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
             <Clock size={16} />
             In Progress
           </div>
-          <p className="text-2xl font-bold text-white">{inProgress.length}</p>
+          <p className="text-2xl font-bold text-foreground">{inProgress.length}</p>
         </div>
         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-green-400 text-sm mb-1">
+          <div className="flex items-center gap-2 text-[var(--erp-money-positive)] text-sm mb-1">
             <CheckCircle2 size={16} />
             Completed
           </div>
-          <p className="text-2xl font-bold text-white">{completed.length}</p>
+          <p className="text-2xl font-bold text-foreground">{completed.length}</p>
         </div>
       </div>
 
@@ -340,7 +340,7 @@ export const StudioPipelinePage = () => {
           icon={Circle}
           count={notStarted.length}
           items={notStarted}
-          colorClass="bg-gray-800/50 text-gray-400"
+          colorClass="bg-muted/50 text-muted-foreground"
         />
         <PipelineColumn
           title="In Progress"
@@ -354,7 +354,7 @@ export const StudioPipelinePage = () => {
           icon={CheckCircle2}
           count={completed.length}
           items={completed}
-          colorClass="bg-green-500/20 text-green-400"
+          colorClass="bg-green-500/20 text-[var(--erp-money-positive)]"
         />
       </div>
     </div>

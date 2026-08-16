@@ -300,6 +300,12 @@ export interface MobileBarcodeLabelSettings {
   maxLabelsPerSheet: number;
   /** When printing from purchase PO, default qty = line quantity sum. */
   defaultLabelsFromPurchaseQty: boolean;
+  /** Physical sticker width in mm. */
+  labelWidthMm?: number;
+  /** Physical sticker height in mm. */
+  labelHeightMm?: number;
+  /** When true, A4 print uses fixed mm size per label. */
+  useFixedLabelSize?: boolean;
 }
 
 export const DEFAULT_BARCODE_LABEL: MobileBarcodeLabelSettings = {
@@ -315,14 +321,31 @@ export const DEFAULT_BARCODE_LABEL: MobileBarcodeLabelSettings = {
   a4Columns: 3,
   maxLabelsPerSheet: 30,
   defaultLabelsFromPurchaseQty: true,
+  labelWidthMm: 65,
+  labelHeightMm: 25,
+  useFixedLabelSize: true,
 };
+
+function clampLabelWidthMm(n: number): number {
+  return Math.max(20, Math.min(120, Math.round(n)));
+}
+
+function clampLabelHeightMm(n: number): number {
+  return Math.max(10, Math.min(80, Math.round(n)));
+}
 
 function parseBarcodeLabelSettings(raw: Record<string, unknown>): MobileBarcodeLabelSettings {
   const cols = Number(raw.a4Columns);
   const legacyBiz = raw.showBusinessName !== false;
   const showCompany =
     raw.showCompanyName !== undefined ? raw.showCompanyName !== false : legacyBiz;
-  return {
+  const hasWidth = raw.labelWidthMm != null && Number.isFinite(Number(raw.labelWidthMm));
+  const hasHeight = raw.labelHeightMm != null && Number.isFinite(Number(raw.labelHeightMm));
+  const useFixed =
+    raw.useFixedLabelSize === true ||
+    (raw.useFixedLabelSize !== false && hasWidth && hasHeight);
+
+  const result: MobileBarcodeLabelSettings = {
     labelLayout: raw.labelLayout === 'a4' ? 'a4' : 'thermal',
     showName: raw.showName !== false,
     showPrice: raw.showPrice !== false,
@@ -335,7 +358,17 @@ function parseBarcodeLabelSettings(raw: Record<string, unknown>): MobileBarcodeL
     a4Columns: cols >= 2 && cols <= 4 ? cols : 3,
     maxLabelsPerSheet: Math.max(6, Math.min(60, Number(raw.maxLabelsPerSheet) || 30)),
     defaultLabelsFromPurchaseQty: raw.defaultLabelsFromPurchaseQty !== false,
+    useFixedLabelSize: useFixed,
   };
+
+  if (hasWidth) result.labelWidthMm = clampLabelWidthMm(Number(raw.labelWidthMm));
+  if (hasHeight) result.labelHeightMm = clampLabelHeightMm(Number(raw.labelHeightMm));
+  if (useFixed) {
+    if (result.labelWidthMm == null) result.labelWidthMm = DEFAULT_BARCODE_LABEL.labelWidthMm;
+    if (result.labelHeightMm == null) result.labelHeightMm = DEFAULT_BARCODE_LABEL.labelHeightMm;
+  }
+
+  return result;
 }
 
 export async function getMobileBarcodeLabelSettings(
@@ -392,10 +425,64 @@ export interface ModuleToggles {
 
 const DEFAULT_MODULE_TOGGLES: ModuleToggles = {
   rentalModuleEnabled: true,
-  studioModuleEnabled: true,
+  studioModuleEnabled: false,
   accountingModuleEnabled: true,
   posModuleEnabled: true,
 };
+
+// --- Default payment accounts (mirrors web settings[key='default_accounts']) ---
+
+export interface DefaultPaymentMethodSetting {
+  id?: string;
+  method: string;
+  enabled?: boolean;
+  defaultAccount?: string;
+}
+
+export interface DefaultAccountsSettings {
+  paymentMethods: DefaultPaymentMethodSetting[];
+}
+
+const FALLBACK_DEFAULT_ACCOUNTS: DefaultAccountsSettings = {
+  paymentMethods: [
+    { id: '1', method: 'Cash', enabled: true, defaultAccount: '' },
+    { id: '2', method: 'Bank', enabled: true, defaultAccount: '' },
+    { id: '3', method: 'Mobile Wallet', enabled: true, defaultAccount: '' },
+  ],
+};
+
+export async function getDefaultAccounts(
+  companyId: string | null,
+): Promise<{ data: DefaultAccountsSettings | null; error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) {
+    return { data: null, error: null };
+  }
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('company_id', companyId)
+    .eq('key', 'default_accounts')
+    .maybeSingle();
+  if (error) return { data: null, error: error.message };
+  let raw = data?.value;
+  if (raw == null) return { data: FALLBACK_DEFAULT_ACCOUNTS, error: null };
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return { data: FALLBACK_DEFAULT_ACCOUNTS, error: null };
+    }
+  }
+  const obj = raw as { paymentMethods?: DefaultPaymentMethodSetting[] };
+  return {
+    data: {
+      paymentMethods: obj.paymentMethods?.length
+        ? obj.paymentMethods
+        : FALLBACK_DEFAULT_ACCOUNTS.paymentMethods,
+    },
+    error: null,
+  };
+}
 
 // --- Enable Packing (per-company toggle). Mirrors web: settings[key='enable_packing'].value === true ---
 
@@ -498,7 +585,7 @@ export async function getModuleConfigs(
   return {
     data: {
       rentalModuleEnabled: map.get('rentals') ?? true,
-      studioModuleEnabled: map.get('studio') ?? true,
+      studioModuleEnabled: map.get('studio') ?? false,
       accountingModuleEnabled: map.get('accounting') ?? true,
       posModuleEnabled: map.get('pos') ?? true,
     },

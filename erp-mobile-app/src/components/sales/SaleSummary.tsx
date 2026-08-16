@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, FileText, Upload, X, Calendar, Loader2 } from 'lucide-react';
+import { ArrowLeft, FileText, Upload, X, Loader2 } from 'lucide-react';
 import type { SaleData } from './SalesModule';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString, localDatePlusDays } from '../../utils/localDate';
+import { DateTimeInputField, DateInputField } from '../shared/DateTimePicker';
 import type { Branch } from '../../api/branches';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 import { SaleExtrasPanel } from './SaleExtrasPanel';
+import { CustomSearchableSheet, NumericInput } from '../common';
+import type { SalesmanRow } from '../../api/users';
 import {
   hasInclusiveBespokeParents,
   isStockOnlyBespokeLine,
   saleExtrasPanelActive,
   sumExtraExpenses,
 } from '../../lib/saleTotals';
+import {
+  mergeCustomerBillRefIntoNotes,
+  stripCustomerBillRefLine,
+} from '../../utils/saleNotesComposition';
 
 const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -29,6 +36,9 @@ interface SaleSummaryProps {
   onPickedBranchChange?: (branchId: string) => void;
   branchSelectionError?: string | null;
   branchReady?: boolean;
+  canPickSalesman?: boolean;
+  salesmen?: SalesmanRow[];
+  salesmenLoading?: boolean;
 }
 
 export function SaleSummary({
@@ -43,6 +53,9 @@ export function SaleSummary({
   onPickedBranchChange,
   branchSelectionError,
   branchReady = true,
+  canPickSalesman = false,
+  salesmen = [],
+  salesmenLoading = false,
 }: SaleSummaryProps) {
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState(
@@ -53,6 +66,9 @@ export function SaleSummary({
   const [attachments, setAttachments] = useState<File[]>(saleData.attachmentFiles ?? []);
   const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const [commissionPctInput, setCommissionPctInput] = useState(
+    saleData.commissionPercent != null ? String(saleData.commissionPercent) : '',
+  );
   useEffect(() => {
     setDiscountValue(saleData.discount ? String(saleData.discount) : '');
   }, [saleData.discount]);
@@ -68,6 +84,18 @@ export function SaleSummary({
   useEffect(() => {
     setAttachments(saleData.attachmentFiles ?? []);
   }, [saleData.attachmentFiles]);
+
+  useEffect(() => {
+    setCommissionPctInput(
+      saleData.commissionPercent != null ? String(saleData.commissionPercent) : '',
+    );
+  }, [saleData.commissionPercent]);
+
+  const commissionNum = parseFloat(commissionPctInput);
+  const commissionValid =
+    !saleData.salesmanId ||
+    commissionPctInput.trim() === '' ||
+    (Number.isFinite(commissionNum) && commissionNum >= 0 && commissionNum <= 100);
 
   const syncAttachments = (files: File[]) => {
     setAttachments(files);
@@ -93,8 +121,35 @@ export function SaleSummary({
     const d = discountType === 'amount' ? parseFloat(discountValue) || 0 : (saleData.subtotal * (parseFloat(discountValue) || 0)) / 100;
     onUpdate({ discount: d });
   };
-  const applyNotes = () => onUpdate({ notes });
-  const applyBillRef = () => onUpdate({ billRef });
+  const applyNotes = () => onUpdate({ notes: mergeCustomerBillRefIntoNotes(billRef, notes) });
+  const applyBillRef = () => {
+    const mergedNotes = mergeCustomerBillRefIntoNotes(billRef, notes);
+    setNotes(mergedNotes);
+    onUpdate({ billRef, notes: mergedNotes });
+  };
+
+  const handleBillRefChange = (value: string) => {
+    setBillRef(value);
+    const mergedNotes = mergeCustomerBillRefIntoNotes(value, stripCustomerBillRefLine(notes));
+    setNotes(mergedNotes);
+    onUpdate({ billRef: value, notes: mergedNotes });
+  };
+
+  const handleNotesChange = (value: string) => {
+    setNotes(value);
+  };
+
+  const flushSummaryFields = () => {
+    const mergedNotes = mergeCustomerBillRefIntoNotes(billRef, notes);
+    setNotes(mergedNotes);
+    onUpdate({ billRef, notes: mergedNotes });
+    return mergedNotes;
+  };
+
+  const handleProceed = () => {
+    flushSummaryFields();
+    onProceedToPayment();
+  };
 
   const extrasActive = saleExtrasPanelActive(saleData.saleType, saleData.documentStatus);
   const inclusiveBespoke = hasInclusiveBespokeParents(saleData.products);
@@ -143,17 +198,19 @@ export function SaleSummary({
         </div>
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Invoice date</label>
-          <div className="flex items-center gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
-            <Calendar className="w-5 h-5 text-[#6B7280] shrink-0" />
-            <input
-              type="date"
-              max={localNowDateString()}
-              value={saleData.saleDate ?? localNowDateString()}
-              onChange={(e) => onUpdate({ saleDate: e.target.value })}
-              className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none"
-            />
-          </div>
+          <DateTimeInputField
+            label="Invoice date & time"
+            required
+            value={
+              saleData.saleDate?.includes('T')
+                ? saleData.saleDate
+                : saleData.saleDate
+                  ? `${saleData.saleDate}T${localNowDateTimeString().slice(11, 16)}`
+                  : localNowDateTimeString()
+            }
+            onChange={(v) => onUpdate({ saleDate: v })}
+            max={localNowDateTimeString().slice(0, 10)}
+          />
           <p className="text-xs text-[#6B7280] mt-2">Uses your device calendar (not UTC midnight).</p>
         </div>
 
@@ -242,7 +299,7 @@ export function SaleSummary({
           <input
             type="text"
             value={billRef}
-            onChange={(e) => setBillRef(e.target.value)}
+            onChange={(e) => handleBillRefChange(e.target.value)}
             onBlur={applyBillRef}
             placeholder="Customer bill / REF # (optional)"
             className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
@@ -253,7 +310,7 @@ export function SaleSummary({
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Notes</h3>
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => handleNotesChange(e.target.value)}
             onBlur={applyNotes}
             placeholder="Optional notes..."
             rows={2}
@@ -290,6 +347,88 @@ export function SaleSummary({
             <p className="text-xs text-[#6B7280]">
               Order / quotation: stock aur payment baad mein. Final: payment abhi.
             </p>
+            {(saleData.documentStatus ?? 'order') === 'order' && (
+              <div className="pt-2">
+                <DateInputField
+                  label="Delivery Date"
+                  value={saleData.deadlineDate || localDatePlusDays(7)}
+                  onChange={(v) => onUpdate({ deadlineDate: v })}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {canPickSalesman && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-[#9CA3AF] mb-1">Salesman</p>
+              <p className="text-xs text-[#6B7280] mb-2">Optional — assign commission to a salesperson</p>
+              <CustomSearchableSheet
+                label=""
+                sheetTitle="Salesman"
+                value={saleData.salesmanId ?? ''}
+                onChange={(id) => {
+                  if (!id) {
+                    onUpdate({ salesmanId: null, commissionPercent: null });
+                    setCommissionPctInput('');
+                    return;
+                  }
+                  const picked = salesmen.find((s) => s.id === id);
+                  const defPct = picked?.defaultCommissionPercent ?? null;
+                  onUpdate({
+                    salesmanId: id,
+                    commissionPercent: defPct,
+                  });
+                  setCommissionPctInput(defPct != null ? String(defPct) : '');
+                }}
+                options={[
+                  { value: '', label: '— None —' },
+                  ...salesmen.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    description: s.role || undefined,
+                  })),
+                ]}
+                placeholder={salesmenLoading ? 'Loading salesmen…' : 'Search salesman…'}
+                searchPlaceholder="Search…"
+                hint={
+                  salesmen.length === 0 && !salesmenLoading
+                    ? 'No salesmen configured. Enable "can be salesman" in user permissions.'
+                    : undefined
+                }
+                zIndexClass="z-[100]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Commission %</label>
+              <NumericInput
+                value={commissionPctInput}
+                onChange={(v) => {
+                  setCommissionPctInput(v);
+                  const n = parseFloat(v);
+                  onUpdate({
+                    commissionPercent:
+                      v.trim() === '' || !Number.isFinite(n) ? null : Math.min(100, Math.max(0, n)),
+                  });
+                }}
+                allowDecimal
+                min={0}
+                max={100}
+                placeholder="0"
+                disabled={!saleData.salesmanId}
+              />
+              {saleData.salesmanId && commissionNum > 0 && Number.isFinite(commissionNum) && (
+                <p className="text-xs text-[#10B981] mt-1">
+                  Commission amount: Rs.{' '}
+                  {Math.round(saleData.subtotal * (commissionNum / 100)).toLocaleString()} on Rs.{' '}
+                  {saleData.subtotal.toLocaleString()} subtotal
+                </p>
+              )}
+              {!commissionValid && (
+                <p className="text-xs text-[#EF4444] mt-1">Enter a percentage between 0 and 100.</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -402,8 +541,8 @@ export function SaleSummary({
       {createPortal(
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
           <button
-            onClick={onProceedToPayment}
-            disabled={!branchReady}
+            onClick={handleProceed}
+            disabled={!branchReady || !commissionValid}
             className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#9CA3AF] rounded-lg font-medium text-white transition-colors"
           >
             {saleData.saleType === 'studio' || (saleData.documentStatus ?? 'order') !== 'final'

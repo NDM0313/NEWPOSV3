@@ -125,7 +125,7 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
             {onClose && (
               <button
                 onClick={onClose}
-                className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 flex items-center gap-2"
+                className="bg-gray-600 text-foreground px-4 py-2 rounded-lg hover:bg-muted flex items-center gap-2"
               >
                 <span>Close</span>
               </button>

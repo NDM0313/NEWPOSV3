@@ -27,7 +27,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function SalesReport({ onBack, companyId, branchId, user, isStudio, reportRefreshEpoch = 0 }: SalesReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<SalesReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRow, setSelectedRow] = useState<SalesReportRow | null>(null);
@@ -79,7 +79,7 @@ export function SalesReport({ onBack, companyId, branchId, user, isStudio, repor
         sharing={preview.loading}
         gradient="indigo"
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
       <ReportShell loading={loading} empty={!loading && rows.length === 0} emptyLabel="No sales in this range.">

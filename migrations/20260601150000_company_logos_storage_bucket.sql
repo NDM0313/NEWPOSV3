@@ -2,8 +2,8 @@
 -- Fixes web Settings → Company logo: "Bucket 'company-logos' not found".
 
 INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
-SELECT gen_random_uuid(), 'company-logos', false, now(), now()
-WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'company-logos');
+SELECT 'company-logos', 'company-logos', false, now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'company-logos');
 
 DO $$
 BEGIN

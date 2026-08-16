@@ -56,6 +56,29 @@ export async function getBranches(
   return { data: list, error: null };
 }
 
+/** Branch-level cash/bank account overrides for payment default resolution. */
+export async function getBranchPaymentDefaults(
+  branchId: string,
+): Promise<{ cashId: string | null; bankId: string | null }> {
+  if (!isSupabaseConfigured || !branchId?.trim()) {
+    return { cashId: null, bankId: null };
+  }
+  const { data, error } = await supabase
+    .from('branches')
+    .select('default_cash_account_id, default_bank_account_id')
+    .eq('id', branchId)
+    .maybeSingle();
+  if (error || !data) return { cashId: null, bankId: null };
+  const row = data as {
+    default_cash_account_id?: string | null;
+    default_bank_account_id?: string | null;
+  };
+  return {
+    cashId: row.default_cash_account_id ?? null,
+    bankId: row.default_bank_account_id ?? null,
+  };
+}
+
 /** Create a branch (e.g. when company has none, to allow first sale). Requires company_id. */
 export async function createBranch(companyId: string, name: string = 'Main', code?: string): Promise<{ data: Branch | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };

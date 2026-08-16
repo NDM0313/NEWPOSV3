@@ -1,0 +1,65 @@
+{
+  "appliedAt": "2026-06-15T16:05:20.916Z",
+  "phase": 7.5,
+  "rows": [
+    {
+      "invoiceNo": "DC-0041",
+      "ok": true,
+      "updated": true,
+      "saleAfter": {
+        "total": 323594,
+        "discount_amount": 13540,
+        "paid_amount": 323594,
+        "due_amount": 0,
+        "payment_status": "paid"
+      },
+      "jeAfter": {
+        "arDebit": 323594,
+        "revenueCredit": 337134,
+        "discountDebit": 13540
+      }
+    },
+    {
+      "invoiceNo": "DC-0004",
+      "ok": true,
+      "updated": true,
+      "saleAfter": {
+        "total": 100000,
+        "discount_amount": 35218,
+        "paid_amount": 0,
+        "due_amount": 0,
+        "payment_status": "paid"
+      },
+      "jeAfter": {
+        "arDebit": 100000,
+        "revenueCredit": 135218,
+        "discountDebit": 35218
+      }
+    },
+    {
+      "invoiceNo": "DC-0002",
+      "ok": true,
+      "updated": true,
+      "saleAfter": {
+        "total": 1093124,
+        "discount_amount": 100000,
+        "paid_amount": 1028700,
+        "due_amount": 64424,
+        "payment_status": "partial"
+      },
+      "jeAfter": {
+        "arDebit": 1093124,
+        "revenueCredit": 1193124,
+        "discountDebit": 100000
+      }
+    }
+  ],
+  "updated": 3,
+  "skipped": 0,
+  "errors": [],
+  "ok": true,
+  "stats": {
+    "updated": 3,
+    "skipped": 0
+  }
+}

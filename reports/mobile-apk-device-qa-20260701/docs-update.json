@@ -1,0 +1,24 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "docs-update",
+  "generated_at": "2026-07-01T11:10:00.000Z",
+  "apk_status": "BUILT_INTERNAL_QA",
+  "device_qa_result": "BLOCKED_DEVICE_QA",
+  "device_qa_blocker": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE",
+  "roles_tested": [],
+  "apk_path": "erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk",
+  "apk_sha256": "8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00",
+  "play_store_released": false,
+  "public_released": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "feature_flag_changes": false,
+  "production_mutations": false,
+  "next_actions": [
+    "connect Android device via adb and install debug APK",
+    "complete Admin/Manager/Salesman device QA checklists",
+    "public release only with separate approval after QA passes",
+    "supplier Party Discount PKR 1 QA separate",
+    "R8 blocked 2-4 weeks"
+  ]
+}

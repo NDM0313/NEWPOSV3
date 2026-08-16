@@ -313,32 +313,32 @@ export function StudioDashboard() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-950 text-white p-6 flex items-center justify-center">
+            <div className="min-h-screen bg-input-background text-foreground p-6 flex items-center justify-center">
                 <div className="text-center">
-                    <div className="text-lg text-gray-400">Loading production jobs...</div>
+                    <div className="text-lg text-muted-foreground">Loading production jobs...</div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white p-6 space-y-6">
+        <div className="min-h-screen bg-input-background text-foreground p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Studio Production Dashboard</h1>
-                    <p className="text-sm text-gray-400 mt-1">Din Collection - Fabric Processing & Manufacturing</p>
+                    <h1 className="text-2xl font-bold text-foreground">Studio Production Dashboard</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Din Collection - Fabric Processing & Manufacturing</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <Button variant="outline" className="border-gray-700 text-gray-300 h-9">
+                    <Button variant="outline" className="border-border text-muted-foreground h-9">
                         <Filter size={14} className="mr-2" />
                         Filter
                     </Button>
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                         <Input 
                             placeholder="Search job cards..."
-                            className="pl-9 bg-gray-900 border-gray-800 text-white h-9 w-64"
+                            className="pl-9 bg-card border-border text-foreground h-9 w-64"
                         />
                     </div>
                 </div>
@@ -354,10 +354,10 @@ export function StudioDashboard() {
                         <Card 
                             key={card.status}
                             onClick={() => setFilterStatus(filterStatus === card.status ? 'all' : card.status)}
-                            className={`bg-gray-900 border cursor-pointer transition-all ${
+                            className={`bg-card border cursor-pointer transition-all ${
                                 isActive 
                                     ? `border-${card.color}-500 bg-${card.color}-500/10` 
-                                    : 'border-gray-800 hover:border-gray-700'
+                                    : 'border-border hover:border-border'
                             }`}
                         >
                             <div className="p-4">
@@ -369,8 +369,8 @@ export function StudioDashboard() {
                                         {card.count}
                                     </div>
                                 </div>
-                                <div className="text-sm font-medium text-gray-300">{card.title}</div>
-                                <div className="text-xs text-gray-500 mt-1">Active Jobs</div>
+                                <div className="text-sm font-medium text-muted-foreground">{card.title}</div>
+                                <div className="text-xs text-muted-foreground mt-1">Active Jobs</div>
                             </div>
                         </Card>
                     );
@@ -382,15 +382,15 @@ export function StudioDashboard() {
                 {/* Production Queue Table - Left 2/3 */}
                 <div className="col-span-2 space-y-4">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-white">Production Queue</h2>
-                        <Badge className="bg-gray-800 text-gray-300">
+                        <h2 className="text-lg font-semibold text-foreground">Production Queue</h2>
+                        <Badge className="bg-muted text-muted-foreground">
                             {filteredJobs.length} Jobs
                         </Badge>
                     </div>
 
-                    <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+                    <div className="bg-card border border-border rounded-lg overflow-hidden">
                         {/* Table Header */}
-                        <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-800/50 border-b border-gray-800 text-xs font-semibold text-gray-400 uppercase">
+                        <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase">
                             <div className="col-span-2">Job Card</div>
                             <div className="col-span-3">Customer</div>
                             <div className="col-span-3">Fabric Type</div>
@@ -399,7 +399,7 @@ export function StudioDashboard() {
                         </div>
 
                         {/* Table Body */}
-                        <div className="divide-y divide-gray-800">
+                        <div className="divide-y divide-border">
                             {filteredJobs.map((job) => {
                                 const isSelected = selectedJob === job.id;
                                 
@@ -410,11 +410,11 @@ export function StudioDashboard() {
                                         className={`grid grid-cols-12 gap-4 px-4 py-4 cursor-pointer transition-all ${
                                             isSelected 
                                                 ? 'bg-blue-500/10 border-l-2 border-l-blue-500' 
-                                                : 'hover:bg-gray-800/50'
+                                                : 'hover:bg-muted/50'
                                         }`}
                                     >
                                         <div className="col-span-2">
-                                            <div className="font-medium text-white text-sm">{job.id}</div>
+                                            <div className="font-medium text-foreground text-sm">{job.id}</div>
                                             <div className="flex items-center gap-1 mt-1">
                                                 {job.priority === 'high' && (
                                                     <Badge className="bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0">
@@ -429,15 +429,15 @@ export function StudioDashboard() {
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="col-span-3 text-sm text-gray-300">
+                                        <div className="col-span-3 text-sm text-muted-foreground">
                                             {job.customer}
                                         </div>
-                                        <div className="col-span-3 text-sm text-gray-400">
+                                        <div className="col-span-3 text-sm text-muted-foreground">
                                             {job.fabricType}
                                         </div>
                                         <div className="col-span-3">
                                             <div className="flex items-center gap-2">
-                                                <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                                     <div 
                                                         className={`h-full ${
                                                             job.status === 'completed' ? 'bg-green-500' :
@@ -448,17 +448,17 @@ export function StudioDashboard() {
                                                         style={{ width: `${job.progress}%` }}
                                                     />
                                                 </div>
-                                                <span className="text-xs text-gray-400 min-w-[35px]">
+                                                <span className="text-xs text-muted-foreground min-w-[35px]">
                                                     {job.progress}%
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                                                 <Clock size={10} />
                                                 {job.deadline}
                                             </div>
                                         </div>
                                         <div className="col-span-1 flex items-center justify-end">
-                                            <ChevronRight size={16} className={isSelected ? 'text-blue-400' : 'text-gray-600'} />
+                                            <ChevronRight size={16} className={isSelected ? 'text-blue-400' : 'text-muted-foreground'} />
                                         </div>
                                     </div>
                                 );
@@ -469,16 +469,16 @@ export function StudioDashboard() {
 
                 {/* Production Flow - Right 1/3 */}
                 <div className="col-span-1">
-                    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 sticky top-6">
-                        <h2 className="text-lg font-semibold text-white mb-4">Production Flow</h2>
+                    <div className="bg-card border border-border rounded-lg p-4 sticky top-6">
+                        <h2 className="text-lg font-semibold text-foreground mb-4">Production Flow</h2>
                         
                         {selectedJobData ? (
                             <div className="space-y-6">
                                 {/* Job Header */}
-                                <div className="pb-4 border-b border-gray-800">
-                                    <div className="font-bold text-white">{selectedJobData.id}</div>
-                                    <div className="text-sm text-gray-400">{selectedJobData.customer}</div>
-                                    <div className="text-xs text-gray-500 mt-1">{selectedJobData.fabricType}</div>
+                                <div className="pb-4 border-b border-border">
+                                    <div className="font-bold text-foreground">{selectedJobData.id}</div>
+                                    <div className="text-sm text-muted-foreground">{selectedJobData.customer}</div>
+                                    <div className="text-xs text-muted-foreground mt-1">{selectedJobData.fabricType}</div>
                                 </div>
 
                                 {/* Vertical Stepper */}
@@ -491,35 +491,35 @@ export function StudioDashboard() {
                                                     ? 'bg-purple-500' 
                                                     : selectedJobData.stages.dyeing.status === 'in-progress'
                                                     ? 'bg-purple-500 animate-pulse'
-                                                    : 'bg-gray-800'
+                                                    : 'bg-muted'
                                             }`}>
-                                                <Palette size={14} className="text-white" />
+                                                <Palette size={14} className="text-foreground" />
                                             </div>
                                             <div className="flex-1">
                                                 <div className="text-sm font-semibold text-purple-400 mb-2">Dyeing (Dahair)</div>
                                                 {selectedJobData.stages.dyeing.worker && (
                                                     <div className="space-y-2">
-                                                        <div className="bg-gray-800/50 rounded p-2">
-                                                            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                        <div className="bg-muted/50 rounded p-2">
+                                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                 <User size={10} />
-                                                                <span className="text-gray-500">Worker</span>
+                                                                <span className="text-muted-foreground">Worker</span>
                                                             </div>
-                                                            <div className="text-xs text-white">{selectedJobData.stages.dyeing.worker}</div>
+                                                            <div className="text-xs text-foreground">{selectedJobData.stages.dyeing.worker}</div>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2">
-                                                            <div className="bg-gray-800/50 rounded p-2">
-                                                                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                            <div className="bg-muted/50 rounded p-2">
+                                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                     <Ruler size={10} />
-                                                                    <span className="text-gray-500">Material</span>
+                                                                    <span className="text-muted-foreground">Material</span>
                                                                 </div>
-                                                                <div className="text-xs text-white">{selectedJobData.stages.dyeing.material}</div>
+                                                                <div className="text-xs text-foreground">{selectedJobData.stages.dyeing.material}</div>
                                                             </div>
-                                                            <div className="bg-gray-800/50 rounded p-2">
-                                                                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                            <div className="bg-muted/50 rounded p-2">
+                                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                     <DollarSign size={10} />
-                                                                    <span className="text-gray-500">Cost</span>
+                                                                    <span className="text-muted-foreground">Cost</span>
                                                                 </div>
-                                                                <div className="text-xs text-white">Rs. {selectedJobData.stages.dyeing.cost?.toLocaleString()}</div>
+                                                                <div className="text-xs text-foreground">Rs. {selectedJobData.stages.dyeing.cost?.toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -532,7 +532,7 @@ export function StudioDashboard() {
                                             </div>
                                         </div>
                                         {/* Connector Line */}
-                                        <div className="absolute left-4 top-8 bottom-0 w-px bg-gray-800 -mb-6"></div>
+                                        <div className="absolute left-4 top-8 bottom-0 w-px bg-muted -mb-6"></div>
                                     </div>
 
                                     {/* Handwork Stage */}
@@ -543,35 +543,35 @@ export function StudioDashboard() {
                                                     ? 'bg-pink-500' 
                                                     : selectedJobData.stages.handwork.status === 'in-progress'
                                                     ? 'bg-pink-500 animate-pulse'
-                                                    : 'bg-gray-800'
+                                                    : 'bg-muted'
                                             }`}>
-                                                <Sparkles size={14} className="text-white" />
+                                                <Sparkles size={14} className="text-foreground" />
                                             </div>
                                             <div className="flex-1">
                                                 <div className="text-sm font-semibold text-pink-400 mb-2">Handwork</div>
                                                 {selectedJobData.stages.handwork.worker ? (
                                                     <div className="space-y-2">
-                                                        <div className="bg-gray-800/50 rounded p-2">
-                                                            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                        <div className="bg-muted/50 rounded p-2">
+                                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                 <User size={10} />
-                                                                <span className="text-gray-500">Worker</span>
+                                                                <span className="text-muted-foreground">Worker</span>
                                                             </div>
-                                                            <div className="text-xs text-white">{selectedJobData.stages.handwork.worker}</div>
+                                                            <div className="text-xs text-foreground">{selectedJobData.stages.handwork.worker}</div>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2">
-                                                            <div className="bg-gray-800/50 rounded p-2">
-                                                                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                            <div className="bg-muted/50 rounded p-2">
+                                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                     <Ruler size={10} />
-                                                                    <span className="text-gray-500">Material</span>
+                                                                    <span className="text-muted-foreground">Material</span>
                                                                 </div>
-                                                                <div className="text-xs text-white">{selectedJobData.stages.handwork.material}</div>
+                                                                <div className="text-xs text-foreground">{selectedJobData.stages.handwork.material}</div>
                                                             </div>
-                                                            <div className="bg-gray-800/50 rounded p-2">
-                                                                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                            <div className="bg-muted/50 rounded p-2">
+                                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                     <DollarSign size={10} />
-                                                                    <span className="text-gray-500">Cost</span>
+                                                                    <span className="text-muted-foreground">Cost</span>
                                                                 </div>
-                                                                <div className="text-xs text-white">Rs. {selectedJobData.stages.handwork.cost?.toLocaleString()}</div>
+                                                                <div className="text-xs text-foreground">Rs. {selectedJobData.stages.handwork.cost?.toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                         {selectedJobData.stages.handwork.status === 'completed' && (
@@ -581,12 +581,12 @@ export function StudioDashboard() {
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <div className="text-xs text-gray-500 italic">Pending</div>
+                                                    <div className="text-xs text-muted-foreground italic">Pending</div>
                                                 )}
                                             </div>
                                         </div>
                                         {/* Connector Line */}
-                                        <div className="absolute left-4 top-8 bottom-0 w-px bg-gray-800 -mb-6"></div>
+                                        <div className="absolute left-4 top-8 bottom-0 w-px bg-muted -mb-6"></div>
                                     </div>
 
                                     {/* Stitching Stage */}
@@ -597,35 +597,35 @@ export function StudioDashboard() {
                                                     ? 'bg-blue-500' 
                                                     : selectedJobData.stages.stitching.status === 'in-progress'
                                                     ? 'bg-blue-500 animate-pulse'
-                                                    : 'bg-gray-800'
+                                                    : 'bg-muted'
                                             }`}>
-                                                <Scissors size={14} className="text-white" />
+                                                <Scissors size={14} className="text-foreground" />
                                             </div>
                                             <div className="flex-1">
                                                 <div className="text-sm font-semibold text-blue-400 mb-2">Stitching (Tailor)</div>
                                                 {selectedJobData.stages.stitching.worker ? (
                                                     <div className="space-y-2">
-                                                        <div className="bg-gray-800/50 rounded p-2">
-                                                            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                        <div className="bg-muted/50 rounded p-2">
+                                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                 <User size={10} />
-                                                                <span className="text-gray-500">Worker</span>
+                                                                <span className="text-muted-foreground">Worker</span>
                                                             </div>
-                                                            <div className="text-xs text-white">{selectedJobData.stages.stitching.worker}</div>
+                                                            <div className="text-xs text-foreground">{selectedJobData.stages.stitching.worker}</div>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2">
-                                                            <div className="bg-gray-800/50 rounded p-2">
-                                                                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                            <div className="bg-muted/50 rounded p-2">
+                                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                     <Ruler size={10} />
-                                                                    <span className="text-gray-500">Material</span>
+                                                                    <span className="text-muted-foreground">Material</span>
                                                                 </div>
-                                                                <div className="text-xs text-white">{selectedJobData.stages.stitching.material}</div>
+                                                                <div className="text-xs text-foreground">{selectedJobData.stages.stitching.material}</div>
                                                             </div>
-                                                            <div className="bg-gray-800/50 rounded p-2">
-                                                                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                                                            <div className="bg-muted/50 rounded p-2">
+                                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                                                                     <DollarSign size={10} />
-                                                                    <span className="text-gray-500">Cost</span>
+                                                                    <span className="text-muted-foreground">Cost</span>
                                                                 </div>
-                                                                <div className="text-xs text-white">Rs. {selectedJobData.stages.stitching.cost?.toLocaleString()}</div>
+                                                                <div className="text-xs text-foreground">Rs. {selectedJobData.stages.stitching.cost?.toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                         {selectedJobData.stages.stitching.status === 'completed' && (
@@ -635,7 +635,7 @@ export function StudioDashboard() {
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <div className="text-xs text-gray-500 italic">Pending</div>
+                                                    <div className="text-xs text-muted-foreground italic">Pending</div>
                                                 )}
                                             </div>
                                         </div>
@@ -645,7 +645,7 @@ export function StudioDashboard() {
                         ) : (
                             <div className="text-center py-12">
                                 <AlertCircle className="mx-auto text-gray-700 mb-3" size={32} />
-                                <div className="text-sm text-gray-500">Select a job card to view production flow</div>
+                                <div className="text-sm text-muted-foreground">Select a job card to view production flow</div>
                             </div>
                         )}
                     </div>

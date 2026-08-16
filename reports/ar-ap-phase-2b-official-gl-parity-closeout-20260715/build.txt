@@ -1,0 +1,2 @@
+﻿npm run build: PASS (local pre-deploy)
+VPS docker build erp: PASS (deploy-erp image built)

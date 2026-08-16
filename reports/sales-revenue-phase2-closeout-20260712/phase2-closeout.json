@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-07-11T19:55:12.987Z",
+  "approval": "APPROVE_SALES_REVENUE_4000_4100_RECLASS_PHASE2 — operator closeout without blanket DIN CHINA transfer",
+  "play_store": "SKIPPED per operator",
+  "companies": [
+    {
+      "id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "name": "DIN COUTURE",
+      "audit": [
+        {
+          "code": "4000",
+          "line_count": 1,
+          "total_credit": 21250,
+          "total_debit": 0,
+          "net_revenue": 21250
+        },
+        {
+          "code": "4100",
+          "line_count": 0,
+          "total_credit": 0,
+          "total_debit": 0,
+          "net_revenue": 0
+        }
+      ],
+      "recommendation": {
+        "reclass_amount": 0,
+        "transfer_je": "NONE",
+        "verdict": "COMPLETE — no 4100 activity; native sales on 4000 only"
+      }
+    },
+    {
+      "id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "name": "DIN BRIDAL",
+      "audit": [
+        {
+          "code": "4000",
+          "line_count": 35,
+          "total_credit": 1080700,
+          "total_debit": 136950,
+          "net_revenue": 943750
+        },
+        {
+          "code": "4100",
+          "line_count": 0,
+          "total_credit": 0,
+          "total_debit": 0,
+          "net_revenue": 0
+        }
+      ],
+      "recommendation": {
+        "reclass_amount": 0,
+        "transfer_je": "NONE",
+        "verdict": "COMPLETE — no 4100 activity; native sales on 4000 only"
+      }
+    },
+    {
+      "id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "name": "DIN CHINA",
+      "audit": [
+        {
+          "code": "4000",
+          "line_count": 5,
+          "total_credit": 1574100,
+          "total_debit": 500,
+          "net_revenue": 1573600
+        },
+        {
+          "code": "4100",
+          "line_count": 96,
+          "total_credit": 50745224.98,
+          "total_debit": 1059903,
+          "net_revenue": 49685321.98
+        }
+      ],
+      "recommendation": {
+        "reclass_amount": 0,
+        "transfer_je": "NONE — preserve imported 4100 historical per locked policy",
+        "verdict": "COMPLETE — 4100 retained as DC-import historical; new native on 4000",
+        "audit_4100_net": 49685321.98,
+        "audit_4000_net": 1573600
+      }
+    }
+  ],
+  "overall": "COMPLETE"
+}

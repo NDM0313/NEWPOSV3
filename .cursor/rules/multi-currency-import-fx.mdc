@@ -1,0 +1,99 @@
+---
+description: Multi-currency in this ERP means China import purchasing FX (RMB/USD + agents) — not a separate FX exchange app. Gate operational FX on multiCurrencyEnabled; FX gain/loss journals need separate fxSettlementAccountingEnabled.
+alwaysApply: true
+---
+
+# Multi-currency — import purchasing FX (NEW POSV3)
+
+**Canonical UX addendum (async resumable case):** [`docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md`](docs/accounting/IMPORT_FX_ASYNC_RESUMABLE_WORKFLOW_UX_DESIGN.md)
+
+**W1 case persistence (shipped additive):** [`docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md`](docs/accounting/IMPORT_FX_CASE_W1_HOLD_AND_VERIFY.md)
+
+**W2 ARRANGEMENT enrichment (shipped additive; non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md) — money stages remain blocked until W3+.
+
+**Operator workflow + gap analysis (Path 21 vs Cases, screenshot meaning, issue register):** [`docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md`](docs/accounting/IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md) — consult when operators confuse ARRANGED/NOT_POSTED with wallet or AP posting.
+
+**W2.1 operator clarity + assignment (non-posting):** [`docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](docs/accounting/IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md) — agent confirm rules, funding summary, arrangement lock, case assignment.
+
+**Guided UA shell (UI only):** [`docs/accounting/IMPORT_FX_CASE_GUIDED_UA_SHELL.md`](docs/accounting/IMPORT_FX_CASE_GUIDED_UA_SHELL.md) — one active task, Arrange steps 1–5, Cases/Context drawers; no RPC/schema change.
+
+**Status + remaining backlog (2026-08-15):** [`docs/accounting/IMPORT_FX_STATUS_AND_REMAINING_2026-08-15.md`](docs/accounting/IMPORT_FX_STATUS_AND_REMAINING_2026-08-15.md) — UA/theme/schedule/Advance UX shipped; VPS migrate-chain + W4–W6 open.
+
+**W3 Agent Advance + USD acquisition (design + local impl — not production-posted):** [`docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](docs/accounting/IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — **Owner Decision Register OD-1–OD-7 locked** (settings-mapped `AGENT_FX_ADVANCE_CLEARING`; no fee post v1; immutable lots + WA reporting; FIFO advance apply; Path 21 separate; accounting stays `PARTIALLY_POSTED`; hard+soft duplicate guards). Live CoA code pick at provision.
+
+**W3→W6 master implementation plan (docs only — permanent SoT):** [`docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](docs/accounting/IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md) — A-to-Z sequencing, journals, entities, gates, prompts; supersedes ASYNC §26 wave split for W4–W6 ordering.
+
+**W3 implementation QA + local UI Demo Mode:** [`docs/accounting/IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md`](docs/accounting/IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md) — additive migrations/UI; Demo Mode is UX-only; do not post to production without separate approval + non-prod apply.
+
+**MacBook handoff:** [`docs/accounting/IMPORT_FX_W3_MACBOOK_HANDOFF.md`](docs/accounting/IMPORT_FX_W3_MACBOOK_HANDOFF.md)
+
+**W3+ money / pooled / Phase-3 hold:** separate owner approval required.
+
+**Canonical next-spec (DB + settlement + activation):** [`docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](docs/accounting/MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
+
+**Pooled USD→CNY multi-supplier workflow (design only):** [`docs/accounting/POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](docs/accounting/POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md)
+
+**Historical shipped references (do not rewrite as source of truth):**
+- [`docs/accounting/MULTI_CURRENCY_IMPORT_FX_ROADMAP.md`](docs/accounting/MULTI_CURRENCY_IMPORT_FX_ROADMAP.md)
+- [`docs/accounting/MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md`](docs/accounting/MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md)
+
+## Roman Urdu intent (product)
+
+Yeh ERP ka multi-currency **China import / wholesaler purchasing** ke liye hai: purchases aksar **RMB (CNY)** ya **USD** mein; books base **PKR**. Payment paths: (1) **Path 21** PKR → money-exchange **agent** → FC wallet → supplier; (2) **Pooled** PKR → USD buy → China USD → USD→CNY conversion → shared CNY pool → **multiple** supplier allocations (design; not shipped). Retail POS multi-currency nahi. Settings flag OFF = aaj jaisa single-currency PKR.
+
+## Two gates (mandatory)
+
+| Setting | Role |
+|---------|------|
+| `accounting_settings.multiCurrencyEnabled` | Master gate for **operational** Import FX only (foreign purchase, agent FX, FC wallets, settlement currency, related reports) |
+| `accounting_settings.fxSettlementAccountingEnabled` | Separate Phase-3 gate for FX gain/loss / pending FX **journal meanings**. Default **`false`**. Must never auto-enable when Multi Currency turns ON |
+
+While `fxSettlementAccountingEnabled = false` (Profile A): FX difference / conversion benefit may be calculated, stored, displayed, and raised as `FX_REVIEW_REQUIRED` — **no** automatic Pending FX or P&L journal post. Do **not** shift conversion benefit into Supplier AP.
+
+## Two workflows (do not conflate)
+
+| Workflow | Status | Meaning |
+|----------|--------|---------|
+| **Path 21 — Agent dual credit** | Shipped (flag-gated) | `record_fx_currency_purchase_on_credit` + agent/supplier `createSupplierPayment`; tables `fx_currency_purchases` / `fx_currency_purchase_settlements` |
+| **Import FX Case (W1)** | Shipped shell (flag-gated) | `import_fx_cases` + stages/events; draft/resume/arrangement confirm; **no money journals** |
+| **Import FX Case (W2)** | Shipped enrichment (flag-gated) | ARRANGEMENT planning fields, selectors, links, attachment metadata; money stages still non-confirmable; **no money journals** |
+| **Pooled USD→CNY multi-supplier** | Design only (W3+) | Events B–F in pooled workflow doc; one TT/conversion → many supplier allocations |
+
+Preserve Path 21. Pooled must not silently replace it. Prepaid-agent is additive alongside credit. Do **not** implement W3–W6 money/FX P&L without separate explicit approval.
+
+## Current state (truth — do not mis-sell)
+
+- Settings toggle **Multi Currency Enabled** + **`activeCurrencies`** persist in `accounting_settings` JSON via [`SettingsContext`](src/app/context/SettingsContext.tsx) / [`settingsService`](src/app/services/settingsService.ts).
+- **`fxSettlementAccountingEnabled`** is an internal JSON key defaulting to `false` (no Phase-3 Settings toggle until explicit approval).
+- **Flag ON:** PurchaseForm is **currency-first** — grid Price/Total bind to FC when doc currency ≠ PKR; PKR `unit_price`/`total` computed as FC × rate for GL. Nullable FX columns persist. Agent dual-credit wizard + RPCs (Path 21). TT-agent wallets in payments. UI may show RMB; DB stores ISO **CNY**.
+- **Flag OFF:** PKR-only UI; FX columns left null; wizard/RPCs must reject non-PKR Import FX even if UI is bypassed. Do not switch OFF while open FX workflows, non-zero FC wallet quantity, unsettled foreign allocations, or pending FX-accounting exceptions remain. **Exception (W1 audit):** historical `list_import_fx_cases` / `get_import_fx_case` remain readable when Multi Currency is OFF, but **only after** fail-closed company authorization (`get_user_company_id`) and canonical branch authorization (`has_branch_access` / company-wide roles). OFF never relaxes tenant or branch isolation; mutations stay `MULTI_CURRENCY_DISABLED`.
+- **W1 mutations (create/draft/confirm/cancel/link):** Must use the same fail-closed `_import_fx_case_assert_company_access` + branch helpers as reads. Do not restore fail-open `WHEN OTHERS` / NULL-session-company allow paths on mutation RPCs.
+- **W1 attachments:** Do not grant authenticated direct `SELECT/INSERT/UPDATE/DELETE` on `import_fx_case_attachments` without parent-case branch RLS and a controlled RPC that omits `storage_path` (or uses signed URLs). Historical OFF reads go through `get_import_fx_case` only.
+- Display uses [`companies.currency`](src/app/hooks/useFormatCurrency.ts) for base; FC labels from `activeCurrencies`. Supplier ledger may gain an **operational FC view**; official GL/AP remains PKR.
+- Reuse existing `purchases` / `payments` FX columns, `fx_currency_purchases`, `fx_currency_purchase_settlements`, AP control **2000**, supplier/agent AP children, and **12xx** TT wallets.
+
+Related but **not** an FX engine: named TT-agent wallets (e.g. `HAMID IK RMB`) + liquidity excludes; OCR note overlays like `RMB 7000x42.8`; `sale_shipments` USD rate (studio shipping only).
+
+## Not this product
+
+Single Core Ledger / audit docs that mark **“FX / multi-currency app” OUT_OF_SCOPE** mean a **separate exchange product**. Do **not** build a parallel FX trading app inside this ERP. Import purchasing FX (above) is the in-scope meaning when the user asks for multi-currency here.
+
+## Ledgers and idempotency
+
+- Supplier vs Agent operational reports must separate by **business role/source**, not only `contact_id`. Agent must be `money_exchange`; agent ≠ merchandise supplier.
+- Rows, summary cards, and exports for a party role view must use the **same filtered dataset** (Wave 0: role-scoped opening via filtered pre-period activity).
+- Path 21 Step-1 requires `client_operation_id` (UNIQUE per company when set). Step 2/3 use `import_fx_client_operations` receipts. Settlement links use `status` active/inactive (no DELETE).
+- Future pooled money commands still require `client_operation_id` with UNIQUE `(company_id, event_type, client_operation_id)`.
+
+## Implementation constraints
+
+Follow [`.cursor/rules/system-lockdown-safety.mdc`](system-lockdown-safety.mdc): additive schema only; no destructive money-table ALTER / dual-entry rewrite without confirmation.
+
+1. Gate UI/behavior on `multiCurrencyEnabled === true`; OFF = current PKR-only behavior. Server/RPC must re-check the flag (UI gating is not security).
+2. Document currency options = PKR + `activeCurrencies` (admin-editable); do not hardcode only CNY/USD in the form. Normalize UI **RMB** → stored **CNY**.
+3. Keep **PKR** as company base for reporting, inventory value, and COGS; store document currency + rate + foreign + base amounts when flag ON.
+4. Dual-credit agent path: **do not** overload `record_payment_with_accounting` for FC credit (that RPC always Dr AP / Cr liquidity). Use `record_fx_currency_purchase_on_credit` (Dr wallet / Cr Agent AP). Agent settle + China settle reuse `createSupplierPayment`. Preserve Path 21; add prepaid-agent alongside it when implementing settlement design.
+5. Contact type `money_exchange` gets AP under 2000 via `_ensure_ap_subaccount_for_contact`.
+6. Do **not** claim or post FX gain/loss / dual-currency TB / pending FX accounts (`1395`/`2295`/`6100`/`7100`) unless `fxSettlementAccountingEnabled === true` after explicit Phase-3 approval.
+7. Do **not** credit conversion benefit to Supplier AP or invent hidden Profile-A balancing legs; see pooled workflow Profile-A blocked gap.
+8. Do **not** implement Waves P1–P5 / Phase-3 without separate explicit approval. Documentation-only tasks must not ship money-path migrations.

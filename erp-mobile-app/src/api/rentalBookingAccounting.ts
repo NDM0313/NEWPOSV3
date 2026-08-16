@@ -53,6 +53,12 @@ export const rentalPartyRevenueFingerprint = (companyId: string, rentalId: strin
 export const rentalPartyPaymentFingerprint = (companyId: string, rentalPaymentId: string) =>
   `rental_party_payment:${companyId}:${rentalPaymentId}`;
 
+export const rentalPartyPenaltyChargeFingerprint = (companyId: string, rentalId: string) =>
+  `rental_party_penalty_charge:${companyId}:${rentalId}`;
+
+export const rentalPartyPenaltyPaymentFingerprint = (companyId: string, rentalPaymentId: string) =>
+  `rental_party_penalty_payment:${companyId}:${rentalPaymentId}`;
+
 /** Same stable key + fingerprint as web `rentalPartyArAccounting` (party devaluation JE). */
 export function rentalDevaluationExpenseStableKey(
   expenses: Array<{ description?: string; amount?: number }>
@@ -85,7 +91,7 @@ async function journalFingerprintExists(companyId: string, fingerprint: string):
   return !!(data as { id?: string } | null)?.id;
 }
 
-async function resolveReceivablePostingAccountIdMobile(companyId: string, contactId: string): Promise<string | null> {
+async function getArControlAccountId(companyId: string): Promise<string | null> {
   const { data: ctrl } = await supabase
     .from('accounts')
     .select('id')
@@ -93,18 +99,43 @@ async function resolveReceivablePostingAccountIdMobile(companyId: string, contac
     .eq('code', '1100')
     .eq('is_active', true)
     .maybeSingle();
-  const rootId = (ctrl as { id?: string } | null)?.id;
-  if (!rootId) return null;
-  const { data: sub } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('linked_contact_id', contactId)
-    .eq('parent_id', rootId)
-    .eq('is_active', true)
-    .limit(1)
-    .maybeSingle();
-  return (sub as { id?: string } | null)?.id ?? rootId;
+  return (ctrl as { id?: string } | null)?.id ?? null;
+}
+
+/** Ensure AR-CUS* sub-ledger exists; never fall back to control 1100 for named customers. */
+async function resolveReceivablePostingAccountIdMobile(
+  companyId: string,
+  contactId: string
+): Promise<{ arId: string | null; error: string | null }> {
+  if (!contactId) {
+    return { arId: null, error: 'Customer contact id is required for AR posting.' };
+  }
+  const { data, error } = await supabase.rpc('ensure_party_subledgers_for_contact', {
+    p_contact_id: contactId,
+  });
+  if (error) return { arId: null, error: error.message };
+  const result = data as { success?: boolean; error?: string; ar_account_id?: string } | null;
+  if (!result?.success) {
+    return { arId: null, error: result?.error ?? 'Could not resolve customer AR sub-account.' };
+  }
+  const arId = result.ar_account_id ?? null;
+  if (!arId) return { arId: null, error: 'Customer receivable account not found.' };
+
+  const controlId = await getArControlAccountId(companyId);
+  if (controlId && arId === controlId) {
+    return {
+      arId: null,
+      error: 'Named customer must post to AR sub-ledger (AR-CUS*), not control account 1100.',
+    };
+  }
+  const { data: acc } = await supabase.from('accounts').select('code').eq('id', arId).maybeSingle();
+  if (String((acc as { code?: string } | null)?.code || '').trim() === '1100') {
+    return {
+      arId: null,
+      error: 'Named customer must post to AR sub-ledger (AR-CUS*), not control account 1100.',
+    };
+  }
+  return { arId, error: null };
 }
 
 async function resolveRentalIncomeAccountIdMobile(companyId: string): Promise<string | null> {
@@ -153,9 +184,9 @@ export async function postRentalPartyRevenueJournalMobile(params: {
   if (rentalCharges <= 0) return { error: null };
   const fp = rentalPartyRevenueFingerprint(companyId, rentalId);
   if (await journalFingerprintExists(companyId, fp)) return { error: null };
-  const arId = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+  const { arId, error: arErr } = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
   const incId = await resolveRentalIncomeAccountIdMobile(companyId);
-  if (!arId || !incId) return { error: 'AR or Rental Income account not found.' };
+  if (arErr || !arId || !incId) return { error: arErr ?? 'AR or Rental Income account not found.' };
   const desc = `Rental charges — ${customerName}`;
   const res = await createJournalEntry({
     companyId,
@@ -231,8 +262,10 @@ export async function postRentalAdvanceJournalMobile(
       return { journalEntryId: (existing as { id?: string } | null)?.id ?? null, error: null };
     }
 
-    const arId = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
-    if (!arId) return { journalEntryId: null, error: 'Customer receivable account not found.' };
+    const { arId, error: arErr } = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+    if (arErr || !arId) {
+      return { journalEntryId: null, error: arErr ?? 'Customer receivable account not found.' };
+    }
 
     const towardRent = Math.min(amount, Math.max(0, rentalCharges));
     const afterRent = Math.max(0, amount - towardRent);
@@ -351,6 +384,117 @@ export async function postRentalExpenseJournalMobile(
     return { journalEntryId: null, error: null };
   }
   return { journalEntryId: row.journal_entry_id ?? null, error: null };
+}
+
+/** Dr AR / Cr Rental Income (charge) + Dr payment / Cr AR (receipt) for return penalty. */
+export async function postRentalPartyPenaltySettlementMobile(params: {
+  companyId: string;
+  branchId: string;
+  rentalId: string;
+  rentalPaymentId: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  paymentAccountId: string;
+  entryDate: string;
+  userId: string | null;
+}): Promise<{ chargeJournalEntryId: string | null; receiptJournalEntryId: string | null; error: string | null }> {
+  if (!isSupabaseConfigured) {
+    return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: 'Not configured.' };
+  }
+  const {
+    companyId,
+    branchId,
+    rentalId,
+    rentalPaymentId,
+    customerId,
+    customerName,
+    amount,
+    paymentAccountId,
+    entryDate,
+    userId,
+  } = params;
+  if (amount <= 0) return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: null };
+
+  const { arId, error: arErr } = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+  const incId = await resolveRentalIncomeAccountIdMobile(companyId);
+  if (arErr || !arId || !incId) {
+    return {
+      chargeJournalEntryId: null,
+      receiptJournalEntryId: null,
+      error: arErr ?? 'AR or Rental Income account not found.',
+    };
+  }
+
+  const chargeFp = rentalPartyPenaltyChargeFingerprint(companyId, rentalId);
+  let chargeJournalEntryId: string | null = null;
+  if (await journalFingerprintExists(companyId, chargeFp)) {
+    const { data: existing } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('action_fingerprint', chargeFp)
+      .maybeSingle();
+    chargeJournalEntryId = (existing as { id?: string } | null)?.id ?? null;
+  } else {
+    const chargeDesc = `Rental penalty / damage — ${customerName}`;
+    const chargeRes = await createJournalEntry({
+      companyId,
+      branchId: branchId === 'all' ? null : branchId,
+      entryDate: entryDate.slice(0, 10),
+      description: chargeDesc,
+      referenceType: 'rental',
+      referenceId: rentalId,
+      actionFingerprint: chargeFp,
+      userId,
+      lines: [
+        { accountId: arId, debit: amount, credit: 0, description: chargeDesc },
+        { accountId: incId, debit: 0, credit: amount, description: chargeDesc },
+      ],
+    });
+    if (chargeRes.error) {
+      return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: chargeRes.error };
+    }
+    chargeJournalEntryId = chargeRes.data?.id ?? null;
+  }
+
+  const receiptFp = rentalPartyPenaltyPaymentFingerprint(companyId, rentalPaymentId);
+  let receiptJournalEntryId: string | null = null;
+  if (await journalFingerprintExists(companyId, receiptFp)) {
+    const { data: existing } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('action_fingerprint', receiptFp)
+      .maybeSingle();
+    receiptJournalEntryId = (existing as { id?: string } | null)?.id ?? null;
+  } else {
+    const receiptDesc = `Rental penalty receipt — ${customerName}`;
+    const receiptRes = await createJournalEntry({
+      companyId,
+      branchId: branchId === 'all' ? null : branchId,
+      entryDate: entryDate.slice(0, 10),
+      description: receiptDesc,
+      referenceType: 'rental',
+      referenceId: rentalId,
+      actionFingerprint: receiptFp,
+      userId,
+      lines: [
+        { accountId: paymentAccountId, debit: amount, credit: 0, description: receiptDesc },
+        { accountId: arId, debit: 0, credit: amount, description: receiptDesc },
+      ],
+    });
+    if (receiptRes.error) {
+      return { chargeJournalEntryId, receiptJournalEntryId: null, error: receiptRes.error };
+    }
+    receiptJournalEntryId = receiptRes.data?.id ?? null;
+  }
+
+  if (receiptJournalEntryId) {
+    await linkRentalPaymentJournalEntry(rentalPaymentId, receiptJournalEntryId);
+  }
+
+  return { chargeJournalEntryId, receiptJournalEntryId, error: null };
 }
 
 export async function linkRentalPaymentJournalEntry(

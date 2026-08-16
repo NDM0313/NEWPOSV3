@@ -1,0 +1,31 @@
+{
+  "runAt": "2026-07-01T15:44:33.069Z",
+  "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "dryRun": false,
+  "decision": "SAFE_CANCEL_HIDE_BOTH_ORPHAN_RECEIPTS",
+  "voidReason": "Duplicate failed web receipt retry artifact — no posted double-entry lines. Soft-hidden per operator request.",
+  "results": [
+    {
+      "reference": "RCV-0081",
+      "paymentId": "a7c11a0f-17df-4ade-97f7-f51678f5dbd8",
+      "applied": true,
+      "voidedJeIds": [
+        "e858cfbf-aa05-4797-af44-1bdec3d2e509"
+      ],
+      "voidedAt": "2026-07-01T15:44:30.193Z",
+      "voidReason": "Duplicate failed web receipt retry artifact — no posted double-entry lines. Soft-hidden per operator request."
+    },
+    {
+      "reference": "RCV-0082",
+      "paymentId": "485ce156-743a-4988-8889-acfb22ded18c",
+      "applied": true,
+      "voidedJeIds": [
+        "81b2d254-c695-4c58-bdf8-0d61bd78a839"
+      ],
+      "voidedAt": "2026-07-01T15:44:32.259Z",
+      "voidReason": "Duplicate failed web receipt retry artifact — no posted double-entry lines. Soft-hidden per operator request."
+    }
+  ],
+  "allApplied": true,
+  "anyBlocked": false
+}

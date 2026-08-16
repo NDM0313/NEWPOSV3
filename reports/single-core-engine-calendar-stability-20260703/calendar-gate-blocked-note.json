@@ -1,0 +1,21 @@
+{
+  "status": "BLOCKED_CALENDAR_GATE",
+  "committed": false,
+  "required_local_date": "2026-07-03",
+  "attempts": [
+    {
+      "attempt": 1,
+      "run_local_datetime": "2026-07-02T18:45:16+05:00",
+      "actual_local_date": "2026-07-02",
+      "result": "BLOCKED"
+    },
+    {
+      "attempt": 2,
+      "run_local_datetime": "2026-07-02T19:15:30+05:00",
+      "actual_local_date": "2026-07-02",
+      "result": "BLOCKED"
+    }
+  ],
+  "calendar_day2_pass_artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T12-55-47-086Z.json",
+  "calendar_day2_evidence_commit": "eabab401"
+}

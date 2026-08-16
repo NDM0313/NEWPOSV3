@@ -1,0 +1,9 @@
+{
+  "run": "PHASE_3B_E_POST_INVESTIGATION_MONITORING",
+  "generated_at": "2026-06-29T13:15:00.000Z",
+  "overall": "PASS",
+  "profiles": { "din-china": "PASS", "din-bridal": "PASS", "din-couture": "PASS" },
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence_ref": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T13-05-08-557Z.json"
+}

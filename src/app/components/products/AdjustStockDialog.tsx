@@ -293,17 +293,17 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
 
   if (isCombo) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
-        <div className="w-full max-w-md bg-[#0B0F17] border border-gray-800 rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
-          <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between rounded-t-xl">
+      <div className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
+        <div className="w-full max-w-md bg-background border border-border rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
+          <div className="px-6 py-5 border-b border-border bg-background flex items-center justify-between rounded-t-xl">
             <div className="flex items-center gap-3">
               <Box size={20} className="text-orange-500" />
               <div>
-                <h2 className="text-lg font-semibold text-white">Adjust Stock</h2>
-                <p className="text-xs text-gray-400">{product.name}</p>
+                <h2 className="text-lg font-semibold text-foreground">Adjust Stock</h2>
+                <p className="text-xs text-muted-foreground">{product.name}</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white hover:bg-gray-800">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground hover:bg-muted">
               <X size={20} />
             </Button>
           </div>
@@ -315,8 +315,8 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
               </p>
             </div>
           </div>
-          <div className="px-6 py-4 border-t border-gray-800 flex justify-end">
-            <Button variant="outline" onClick={onClose} className="bg-gray-800 border-gray-700 text-white">
+          <div className="px-6 py-4 border-t border-border flex justify-end">
+            <Button variant="outline" onClick={onClose} className="bg-muted border-border text-foreground">
               Close
             </Button>
           </div>
@@ -326,22 +326,22 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-[#0B0F17] border border-gray-800 rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
-        <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between rounded-t-xl">
+    <div className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-background border border-border rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
+        <div className="px-6 py-5 border-b border-border bg-background flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
               <Box size={20} className="text-orange-500" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">Adjust Stock</h2>
-              <p className="text-xs text-gray-400">
+              <h2 className="text-lg font-semibold text-foreground">Adjust Stock</h2>
+              <p className="text-xs text-muted-foreground">
                 {product.name}
                 {isVariable ? ' (with variations)' : ''}
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white hover:bg-gray-800">
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground hover:bg-muted">
             <X size={20} />
           </Button>
         </div>
@@ -349,18 +349,18 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
         <div className="p-6 space-y-6">
           {(showBranchSelect || loadingBranches) && (
             <div>
-              <Label className="text-sm text-gray-400 mb-2 flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
                 <MapPin size={14} />
                 Branch / Location
               </Label>
               {loadingBranches ? (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
                   <Loader2 size={16} className="animate-spin" />
                   Loading branches...
                 </div>
               ) : showBranchSelect ? (
                 <Select value={adjustBranchId ?? ''} onValueChange={(v) => setAdjustBranchId(v)}>
-                  <SelectTrigger className="w-full bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger className="w-full bg-muted border-border text-foreground">
                     <SelectValue placeholder="Select branch" />
                   </SelectTrigger>
                   <SelectContent>
@@ -373,7 +373,7 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                   </SelectContent>
                 </Select>
               ) : adjustBranchId ? (
-                <p className="text-sm text-gray-300 py-1">
+                <p className="text-sm text-muted-foreground py-1">
                   {branches.find((b) => b.id === adjustBranchId)?.name ?? 'Branch'}
                 </p>
               ) : null}
@@ -382,12 +382,12 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
 
           {isVariable && (
             <div>
-              <Label className="text-sm text-gray-400 mb-2 flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
                 <Layers size={14} />
                 Select variation
               </Label>
               {loadingVariations ? (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
                   <Loader2 size={16} className="animate-spin" />
                   Loading variations...
                 </div>
@@ -397,7 +397,7 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                 <select
                   value={selectedVariationId ?? ''}
                   onChange={(e) => setSelectedVariationId(e.target.value || null)}
-                  className="w-full rounded-lg bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg bg-muted border border-border text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Choose variation...</option>
                   {variations.map((v) => (
@@ -415,8 +415,8 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             </div>
           )}
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-2">
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground mb-2">
               Current Stock
               {isVariable && selectedVariation ? ` (${selectedVariation.sku || selectedVariation.name || 'selected'})` : ''}
               {adjustBranchId && showBranchSelect
@@ -424,24 +424,24 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                 : ''}
             </p>
             {isVariable && !selectedVariationId && variations.length > 0 ? (
-              <p className="text-sm text-gray-500">Select a variation above</p>
+              <p className="text-sm text-muted-foreground">Select a variation above</p>
             ) : stockDisplay === null ? (
-              <Loader2 size={24} className="text-gray-500 animate-spin" />
+              <Loader2 size={24} className="text-muted-foreground animate-spin" />
             ) : (
-              <p className={`text-3xl font-bold ${stockDisplay === 0 ? 'text-red-400' : 'text-green-400'}`}>
+              <p className={`text-3xl font-bold ${stockDisplay === 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]'}`}>
                 {stockDisplay}
               </p>
             )}
           </div>
 
           <div>
-            <Label className="text-sm text-gray-400 mb-3 block">Adjustment Type</Label>
+            <Label className="text-sm text-muted-foreground mb-3 block">Adjustment Type</Label>
             <div className="flex gap-2">
               <Button
                 variant={adjustmentType === 'increase' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAdjustmentType('increase')}
-                className={adjustmentType === 'increase' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-800 border-gray-700'}
+                className={adjustmentType === 'increase' ? 'bg-green-600 hover:bg-green-700' : 'bg-muted border-border'}
               >
                 <Plus size={16} className="mr-1" />
                 Increase
@@ -450,7 +450,7 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                 variant={adjustmentType === 'decrease' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAdjustmentType('decrease')}
-                className={adjustmentType === 'decrease' ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-800 border-gray-700'}
+                className={adjustmentType === 'decrease' ? 'bg-red-600 hover:bg-red-700' : 'bg-muted border-border'}
               >
                 <Minus size={16} className="mr-1" />
                 Decrease
@@ -459,7 +459,7 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                 variant={adjustmentType === 'set' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAdjustmentType('set')}
-                className={adjustmentType === 'set' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-800 border-gray-700'}
+                className={adjustmentType === 'set' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-muted border-border'}
               >
                 Set To
               </Button>
@@ -467,7 +467,7 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           </div>
 
           <div>
-            <Label htmlFor="quantity" className="text-sm text-gray-400 mb-2 block">
+            <Label htmlFor="quantity" className="text-sm text-muted-foreground mb-2 block">
               {adjustmentType === 'increase'
                 ? 'Quantity to Add'
                 : adjustmentType === 'decrease'
@@ -475,13 +475,13 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                   : 'New Stock Quantity'}
             </Label>
             <div className="relative">
-              <Box className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <Box className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
               <Input
                 id="quantity"
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="pl-10 bg-gray-800 border-gray-700 text-white"
+                className="pl-10 bg-muted border-border text-foreground"
                 placeholder="0"
                 step="1"
                 min="0"
@@ -490,14 +490,14 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           </div>
 
           <div>
-            <Label htmlFor="reason" className="text-sm text-gray-400 mb-2 block">
+            <Label htmlFor="reason" className="text-sm text-muted-foreground mb-2 block">
               Reason (Optional)
             </Label>
             <Textarea
               id="reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="bg-gray-800 border-gray-700 text-white"
+              className="bg-muted border-border text-foreground"
               placeholder="e.g., Stock received, Damaged items, Stock audit..."
               rows={3}
             />
@@ -505,21 +505,21 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
 
           {quantity && stockDisplay !== null && (
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-              <p className="text-xs text-gray-400 mb-2">Stock Change Preview</p>
+              <p className="text-xs text-muted-foreground mb-2">Stock Change Preview</p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-300">Current:</span>
-                  <span className="text-sm font-semibold text-white">{stockDisplay}</span>
+                  <span className="text-sm text-muted-foreground">Current:</span>
+                  <span className="text-sm font-semibold text-foreground">{stockDisplay}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {adjustmentType === 'increase' && <TrendingUp size={16} className="text-green-400" />}
+                  {adjustmentType === 'increase' && <TrendingUp size={16} className="text-[var(--erp-money-positive)]" />}
                   {adjustmentType === 'decrease' && <TrendingDown size={16} className="text-red-400" />}
-                  <span className="text-sm text-gray-400">{stockChange}</span>
+                  <span className="text-sm text-muted-foreground">{stockChange}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-300">New:</span>
+                  <span className="text-sm text-muted-foreground">New:</span>
                   <span
-                    className={`text-lg font-bold ${newStock === 0 ? 'text-red-400' : newStock < stockDisplay ? 'text-yellow-400' : 'text-green-400'}`}
+                    className={`text-lg font-bold ${newStock === 0 ? 'text-red-400' : newStock < stockDisplay ? 'text-yellow-400' : 'text-[var(--erp-money-positive)]'}`}
                   >
                     {newStock}
                   </span>
@@ -538,12 +538,12 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-800 bg-[#111827] rounded-b-xl flex items-center justify-end gap-3">
+        <div className="px-6 py-4 border-t border-border bg-background rounded-b-xl flex items-center justify-end gap-3">
           <Button
             variant="outline"
             onClick={onClose}
             disabled={saving}
-            className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+            className="bg-muted border-border text-foreground hover:bg-muted"
           >
             Cancel
           </Button>

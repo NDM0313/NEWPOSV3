@@ -1,0 +1,40 @@
+{
+  "status": "POST_BASELINE_PARTIAL_COMPLETE_BLOCKED_ITEMS_REMAIN",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "latest_main_commit_at_start": "0a818da25eb1d1e72343a0398eb6124e4ab36bef",
+  "completed_items": [
+    "remaining-phase-matrix",
+    "remaining-screens-audit",
+    "r7-design-only-closure",
+    "r8-retirement-readiness",
+    "three-company-monitoring-automation",
+    "operational-monitoring-runbook",
+    "final-readonly-verification",
+    "master-docs-update"
+  ],
+  "blocked_items": [
+    { "id": "next-company", "reason": "BLOCKED_NEEDS_FINANCE_SIGNOFF" },
+    { "id": "R7", "reason": "BLOCKED_NEEDS_MIGRATION_APPROVAL" },
+    { "id": "R8", "reason": "BLOCKED_R8_RETIREMENT" },
+    { "id": "balance-sheet-unified-loader", "reason": "OPTIONAL_FUTURE" },
+    { "id": "pl-unified-loader", "reason": "OPTIONAL_FUTURE" },
+    { "id": "cash-flow-unified-loader", "reason": "OPTIONAL_FUTURE" },
+    { "id": "mobile-parity", "reason": "OPTIONAL_FUTURE" }
+  ],
+  "safe_source_changes": true,
+  "runtime_deployed": false,
+  "migrations_run": false,
+  "r7_applied": false,
+  "r8_started": false,
+  "gl_mutations": false,
+  "fx_app_touched": false,
+  "credentials_committed": false,
+  "din_china_flags_on": 12,
+  "din_bridal_flags_on": 12,
+  "din_couture_flags_on": 12,
+  "other_company_loaders_on": 0,
+  "monitoring": "PASS",
+  "monitoring_evidence": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+  "credential_hardening_complete": true,
+  "credential_hardening_evidence": "reports/single-core-ledger/operational-monitoring/credential-hardening-report.md"
+}

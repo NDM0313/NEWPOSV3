@@ -1,0 +1,13 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "repo-safety",
+  "generated_at": "2026-07-01T14:00:00.000Z",
+  "branch": "main",
+  "head": "594ab11e2516df3c34651bf5a89faaf479efabdc",
+  "origin_main": "594ab11e2516df3c34651bf5a89faaf479efabdc",
+  "audit_commits_present": { "c3e87efd": true, "594ab11e": true },
+  "operator_approval": "Nadeem Khan 2026-07-01 fixture-only",
+  "credentials_staged": false,
+  "apk_staged": false,
+  "safety_verdict": "PASS"
+}

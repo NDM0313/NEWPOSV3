@@ -1,0 +1,12 @@
+{
+  "run_at": "2026-06-20T13:26:45.189Z",
+  "status": "BLOCKED",
+  "reason": "PG failed: The server does not support SSL connections; Supabase credentials missing or RPC unavailable",
+  "companies_count": 0,
+  "summary": {
+    "strict_pass_count": 0,
+    "strict_fail_count": 0,
+    "branch_attribution_risk_total": 0
+  },
+  "companies": []
+}

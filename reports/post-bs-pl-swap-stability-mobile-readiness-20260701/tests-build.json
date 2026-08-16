@@ -1,0 +1,9 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "tests-build",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "unified_ledger": { "command": "npm run test:unified-ledger", "pass": 328, "fail": 0, "status": "PASS" },
+  "unit": { "command": "npm run test:unit", "pass": 122, "fail": 0, "status": "PASS" },
+  "build": { "command": "npm run build", "status": "PASS" },
+  "overall": "PASS"
+}

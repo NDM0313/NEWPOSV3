@@ -1,0 +1,64 @@
+{
+  "run": "PHASE_3B_POST_DEPLOY_SMOKE",
+  "generated_at": "2026-06-29T11:50:53.618Z",
+  "production_url": "https://erp.dincouture.pk",
+  "user_email": "din@yahoo.com",
+  "overall": "PASS",
+  "checks": [
+    {
+      "check": "app loads",
+      "result": "PASS",
+      "notes": "https://erp.dincouture.pk"
+    },
+    {
+      "check": "login",
+      "result": "PASS",
+      "notes": "din@yahoo.com"
+    },
+    {
+      "check": "cash flow page loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle visible (admin)",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle default OFF",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "legacy output visible before preview",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview panel loads when ON",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "PREVIEW_ONLY label",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "NEEDS_FINANCE_GOLDEN label",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "compare totals render",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "no material page errors",
+      "result": "PASS",
+      "notes": ""
+    }
+  ]
+}

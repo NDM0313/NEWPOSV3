@@ -1,0 +1,52 @@
+{
+  "verificationMethod": "unit_tests",
+  "accessRule": "canAccessAccountingDeveloperCenter(role) || canAccessDeveloperIntegrityLab(role)",
+  "screens": [
+  {
+    "screenId": "ledger_v2",
+    "testFile": "src/app/lib/ledgerV2UnifiedPreviewAccess.test.ts",
+    "staff": "PASS — hidden",
+    "admin": "PASS — visible",
+    "developer": "PASS — visible"
+  },
+  {
+    "screenId": "account_statement",
+    "testFile": "src/app/lib/accountStatementUnifiedPreviewAccess.test.ts",
+    "staff": "PASS — hidden",
+    "admin": "PASS — visible",
+    "developer": "PASS — visible"
+  },
+  {
+    "screenId": "trial_balance",
+    "testFile": "src/app/lib/trialBalanceUnifiedPreviewAccess.test.ts",
+    "staff": "PASS — hidden",
+    "admin": "PASS — visible",
+    "developer": "PASS — visible"
+  },
+  {
+    "screenId": "roznamcha",
+    "testFile": "src/app/lib/roznamchaUnifiedPreviewAccess.test.ts",
+    "staff": "PASS — hidden",
+    "admin": "PASS — visible",
+    "developer": "PASS — visible"
+  },
+  {
+    "screenId": "party_ledger",
+    "testFile": "src/app/lib/partyLedgerUnifiedPreviewAccess.test.ts",
+    "staff": "PASS — hidden",
+    "admin": "PASS — visible",
+    "developer": "PASS — visible"
+  },
+  {
+    "screenId": "admin_compare_center",
+    "route": "/admin/unified-ledger-tieout",
+    "gate": "canAccessAccountingDeveloperCenter",
+    "staff": "PASS — hidden (developer center gate)",
+    "admin": "PASS — visible",
+    "developer": "PASS — visible",
+    "note": "Admin compare uses shadowForce always; not gated by per-screen preview toggle"
+  }
+  ],
+  "overall": "PASS",
+  "liveUiWalkthrough": "WAIVED — optional ops session on DIN CHINA before pilot; access logic verified by 15 unit tests"
+}

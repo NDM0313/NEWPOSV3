@@ -1,0 +1,33 @@
+{
+  "run": "R5-DIN-BRIDAL-finance-signoff-controlled-rollout",
+  "generated_at": "2026-06-27T12:00:00Z",
+  "main_commit": "56912254",
+  "target_company": "DIN BRIDAL",
+  "target_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "reference_company": "DIN CHINA",
+  "reference_company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "gates": {
+    "finance_signoff_present": true,
+    "finance_signoff_path": "reports/single-core-ledger/din-bridal/finance-signoff-unified-ledger-rollout-2026-06-27.md",
+    "finance_signoff_valid": true,
+    "operator_approval_present": true,
+    "qa_browser_email_present": false,
+    "qa_browser_password_present": false
+  },
+  "production_readonly_audit": {
+    "din_bridal_unified_flags_on": 0,
+    "din_china_unified_flags_on": 12,
+    "din_china_loaders_on": 5,
+    "other_company_loaders_on": 0,
+    "din_couture_unified_flags_on": 0,
+    "audit_pass": true,
+    "audit_sql": "scripts/single-core-ledger/r3-readonly-expansion-audit.sql"
+  },
+  "stopped_at_step": 4,
+  "status": "R5_BLOCKED_DIN_BRIDAL_GOLDEN_CAPTURE_CREDENTIALS_REQUIRED",
+  "sql_executed": false,
+  "flags_changed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "fx_app_touched": false
+}

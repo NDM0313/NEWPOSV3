@@ -29,14 +29,14 @@ interface StudioOrderCardProps {
 const STATUS_CONFIG = {
   pending: { color: 'bg-orange-500/10 text-orange-400 border-orange-500/20', label: 'Pending', icon: Clock },
   'in-progress': { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20', label: 'In Progress', icon: Play },
-  completed: { color: 'bg-green-500/10 text-green-400 border-green-500/20', label: 'Completed', icon: CheckCircle },
+  completed: { color: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20', label: 'Completed', icon: CheckCircle },
   delivered: { color: 'bg-purple-500/10 text-purple-400 border-purple-500/20', label: 'Delivered', icon: Check }
 };
 
 const WORKFLOW_STATUS_CONFIG = {
   pending: { color: 'bg-orange-500/10 text-orange-400 border-orange-500/20', label: 'Pending', icon: Clock },
   'in-progress': { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20', label: 'In Progress', icon: Play },
-  completed: { color: 'bg-green-500/10 text-green-400 border-green-500/20', label: 'Completed', icon: CheckCircle }
+  completed: { color: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20', label: 'Completed', icon: CheckCircle }
 };
 
 export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewTrace, onUpdate }) => {
@@ -84,22 +84,22 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
   const progress = getWorkflowProgress();
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-all">
+    <div className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-all">
       {/* Header */}
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-lg font-bold text-white">{order.invoiceNumber}</h3>
+              <h3 className="text-lg font-bold text-foreground">{order.invoiceNumber}</h3>
               <Badge className={`${statusConfig.color} border`}>
                 <StatusIcon size={12} className="mr-1" />
                 {statusConfig.label}
               </Badge>
-              <Badge className="bg-gray-800 text-gray-400 border-gray-700 text-xs">
+              <Badge className="bg-muted text-muted-foreground border-border text-xs">
                 {progress.completed}/{progress.total} Steps
               </Badge>
             </div>
-            <div className="flex items-center gap-4 text-sm text-gray-400">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <User size={14} />
                 {order.customerName}
@@ -115,8 +115,8 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-bold text-white mb-1">₹{order.totalAmount.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">{new Date(order.date).toLocaleDateString('en-GB')}</div>
+            <div className="text-2xl font-bold text-foreground mb-1">₹{order.totalAmount.toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">{new Date(order.date).toLocaleDateString('en-GB')}</div>
           </div>
         </div>
 
@@ -168,7 +168,7 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
             variant="outline"
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-750"
+            className="bg-muted border-border text-muted-foreground hover:bg-gray-750"
           >
             {isExpanded ? <ChevronUp size={14} className="mr-1" /> : <ChevronDown size={14} className="mr-1" />}
             {isExpanded ? 'Hide' : 'Show'} Details
@@ -177,7 +177,7 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
             variant="outline"
             size="sm"
             onClick={onViewTrace}
-            className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-750"
+            className="bg-muted border-border text-muted-foreground hover:bg-gray-750"
           >
             <Eye size={14} className="mr-1" />
             View Trace
@@ -187,30 +187,30 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div className="border-t border-gray-800 bg-gray-800/50 p-6">
+        <div className="border-t border-border bg-muted/50 p-6">
           <div className="grid grid-cols-3 gap-6">
             {/* Fabric Details */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-400 mb-3">Fabric Details</h4>
+              <h4 className="text-sm font-semibold text-muted-foreground mb-3">Fabric Details</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Type:</span>
-                  <span className="text-white">{order.fabric.type}</span>
+                  <span className="text-muted-foreground">Type:</span>
+                  <span className="text-foreground">{order.fabric.type}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Quantity:</span>
-                  <span className="text-white">{order.fabric.quantity} meters</span>
+                  <span className="text-muted-foreground">Quantity:</span>
+                  <span className="text-foreground">{order.fabric.quantity} meters</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Price:</span>
-                  <span className="text-white">₹{order.fabric.price.toLocaleString()}</span>
+                  <span className="text-muted-foreground">Price:</span>
+                  <span className="text-foreground">₹{order.fabric.price.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
             {/* Customization */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-400 mb-3">Customization</h4>
+              <h4 className="text-sm font-semibold text-muted-foreground mb-3">Customization</h4>
               <div className="space-y-2 text-sm">
                 {order.customization.lace && (
                   <div className="flex items-center gap-2">
@@ -229,14 +229,14 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
                 <div className="flex gap-2">
                   {order.customization.colors.primary && (
                     <div
-                      className="w-8 h-8 rounded border-2 border-gray-700"
+                      className="w-8 h-8 rounded border-2 border-border"
                       style={{ backgroundColor: order.customization.colors.primary }}
                       title="Primary Color"
                     />
                   )}
                   {order.customization.colors.secondary && (
                     <div
-                      className="w-8 h-8 rounded border-2 border-gray-700"
+                      className="w-8 h-8 rounded border-2 border-border"
                       style={{ backgroundColor: order.customization.colors.secondary }}
                       title="Secondary Color"
                     />
@@ -247,15 +247,15 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
 
             {/* Timeline */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-400 mb-3">Timeline</h4>
+              <h4 className="text-sm font-semibold text-muted-foreground mb-3">Timeline</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Created:</span>
-                  <span className="text-white">{new Date(order.createdAt).toLocaleString('en-GB')}</span>
+                  <span className="text-muted-foreground">Created:</span>
+                  <span className="text-foreground">{new Date(order.createdAt).toLocaleString('en-GB')}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Updated:</span>
-                  <span className="text-white">{new Date(order.updatedAt).toLocaleString('en-GB')}</span>
+                  <span className="text-muted-foreground">Updated:</span>
+                  <span className="text-foreground">{new Date(order.updatedAt).toLocaleString('en-GB')}</span>
                 </div>
               </div>
             </div>
@@ -265,11 +265,11 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
 
       {/* Assign Worker Modal */}
       {showAssignModal && (
-        <div className="border-t border-gray-800 bg-gray-800/30 p-4">
+        <div className="border-t border-border bg-accent/30 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-sm font-semibold text-white mb-1">Assign Worker - {showAssignModal.dept}</h4>
-              <p className="text-xs text-gray-400">Select a worker to assign this task</p>
+              <h4 className="text-sm font-semibold text-foreground mb-1">Assign Worker - {showAssignModal.dept}</h4>
+              <p className="text-xs text-muted-foreground">Select a worker to assign this task</p>
             </div>
             <div className="flex gap-2">
               <select
@@ -278,7 +278,7 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
                     handleWorkflowUpdate(showAssignModal.dept as any, 'in-progress', e.target.value);
                   }
                 }}
-                className="px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-white text-sm"
+                className="px-3 py-1.5 bg-card border border-border rounded text-foreground text-sm"
               >
                 <option value="">Select Worker</option>
                 <option value="Ali Hassan">Ali Hassan</option>
@@ -290,7 +290,7 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
                 variant="outline"
                 size="sm"
                 onClick={() => setShowAssignModal(null)}
-                className="bg-gray-900 border-gray-700 text-gray-300"
+                className="bg-card border-border text-muted-foreground"
               >
                 Cancel
               </Button>
@@ -327,7 +327,7 @@ const WorkflowStep: React.FC<WorkflowStepProps> = ({ icon: Icon, label, status, 
         <span className="text-xs">{config.label}</span>
       </div>
       {assignedTo && (
-        <div className="text-xs text-gray-400 mb-2">
+        <div className="text-xs text-muted-foreground mb-2">
           Assigned: {assignedTo}
         </div>
       )}
@@ -343,13 +343,13 @@ const WorkflowStep: React.FC<WorkflowStepProps> = ({ icon: Icon, label, status, 
         {status === 'in-progress' && (
           <button
             onClick={onComplete}
-            className="flex-1 px-2 py-1 bg-green-500/20 hover:bg-green-500/30 rounded text-xs text-green-400 transition-all"
+            className="flex-1 px-2 py-1 bg-green-500/20 hover:bg-green-500/30 rounded text-xs text-[var(--erp-money-positive)] transition-all"
           >
             Complete
           </button>
         )}
         {status === 'completed' && (
-          <div className="flex-1 px-2 py-1 bg-green-500/20 rounded text-xs text-green-400 text-center">
+          <div className="flex-1 px-2 py-1 bg-green-500/20 rounded text-xs text-[var(--erp-money-positive)] text-center">
             ✓ Done
           </div>
         )}

@@ -1,0 +1,11 @@
+{
+  "phase": "2.9A-3",
+  "check": "post-deploy-flags-readonly",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "timestampUtc": null,
+  "sql": "SELECT feature_key, enabled FROM feature_flags WHERE company_id = '30bd8592-3384-4f34-899a-f3907e336485' AND feature_key LIKE 'unified_ledger%'",
+  "rows": [],
+  "expected": "0 rows",
+  "productionDbMutation": "NONE",
+  "result": null
+}

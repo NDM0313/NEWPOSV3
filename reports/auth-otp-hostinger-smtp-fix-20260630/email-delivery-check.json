@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-06-30T11:48:30.000Z",
+  "test_email_masked": "k***+otp-infra-20260630@gmail.com",
+  "signup_http_status": 200,
+  "autoconfirm_disabled_confirmed": true,
+  "email_confirmed_at_set_on_signup": false,
+  "immediate_session_granted": false,
+  "auth_audit_action": "user_confirmation_requested",
+  "smtp_errors_in_auth_logs": false,
+  "smtp_port": 587,
+  "company_created": false,
+  "company_count": 0,
+  "test_auth_user_id": "2765ad0a-5b3a-4237-b06c-b417b2cf5a84",
+  "test_auth_user_cleanup": "DELETED (auth.users + auth.identities)",
+  "inbox_verified_by_automation": false,
+  "infra_delivery_assessment": "PASS — confirmation requested, no SMTP errors on port 587"
+}

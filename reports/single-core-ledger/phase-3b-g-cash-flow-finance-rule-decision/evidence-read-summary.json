@@ -1,0 +1,19 @@
+{
+  "run": "PHASE_3B_G_EVIDENCE_READ",
+  "evidenceCommits": {
+    "phase3bD": "07b82ccb",
+    "phase3bE": "1ea08c02",
+    "phase3bF": "14e12671",
+    "deployedRuntime": "5433ac2c"
+  },
+  "sources": [
+    "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/production-row-export-capture.md",
+    "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/diff-reports/din-china/sample-row-diff-report.json",
+    "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/diff-reports/din-bridal/sample-row-diff-report.json",
+    "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/finance-rule-confirmation-pack.md",
+    "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/finance-review-pack.md"
+  ],
+  "companiesRequiringDecision": ["DIN CHINA", "DIN BRIDAL"],
+  "financeStatus": "PENDING",
+  "loaderSwapApproved": false
+}

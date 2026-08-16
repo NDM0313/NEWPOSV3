@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-06-30T14:30:00.000Z",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "company_name": "DIN BRIDAL",
+  "branches": [
+    {"id": "cc920703-97a0-43a4-95d4-9262996c2af7", "name": "Main Branch", "code": "HQ"},
+    {"id": "61de6ff4-849a-4971-9911-7ed17b4d871e", "name": "Stitch and Style", "code": "BR-0002"}
+  ],
+  "control_account": {
+    "id": "5ba1a722-875c-490a-a30a-868b46c8dff9",
+    "code": "1100",
+    "name": "Accounts Receivable",
+    "balance": -136500,
+    "parent_id": null,
+    "linked_contact_id": null
+  },
+  "control_1100_je_net": -136500,
+  "party_ar_sub_accounts_count": 66,
+  "residual_location": "control_account_directly",
+  "residual_not_in_child_ar": true
+}

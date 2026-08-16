@@ -1,0 +1,21 @@
+{
+  "phase": "3B-L",
+  "run": "repo-safety-snapshot",
+  "generated_at": "2026-06-29T17:00:00.000Z",
+  "branch": "main",
+  "head_commit": "2ea498e6",
+  "head_message": "docs(accounting): prepare Cash Flow finance signoff pack",
+  "origin_main_includes_3b_k": true,
+  "staged_files": [],
+  "phase_scope": "loader_swap_readiness_planning_only",
+  "loader_swap_approved": false,
+  "deploy_planned": false,
+  "excluded_dirty_files": [
+    "graphify-out/GRAPH_REPORT.md",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.*",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/*",
+    "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.*",
+    "reports/single-core-ledger/final-production-ops-handoff/final-office-pc-local-status.*",
+    "scripts/single-core-ledger/*.mjs (untracked helpers)"
+  ]
+}

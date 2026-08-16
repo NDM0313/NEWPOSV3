@@ -1,0 +1,37 @@
+{
+  "appliedAtUtc": "2026-06-30T15:07:00.000Z",
+  "mechanism": "scoped gl_correction additive JEs (sale-reversal-1100-leakage fingerprint)",
+  "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "totalAmountPkr": 136500,
+  "corrections": [
+    {
+      "correctionEntryNo": "JV-000209",
+      "correctionJeId": "97b8c7d0-8fa5-4c21-859f-781647c5097e",
+      "sourceEntryNo": "JE-0155",
+      "sourceJeId": "aaf56fb6-44ea-42c9-9be4-05e4f3cbe8f2",
+      "sourceLineId": "4dfdc6ba-f895-4efd-89c5-253a4429322f",
+      "invoiceNo": "HQ-SL-0001",
+      "customer": "Miss NAGHMANA RAJA",
+      "partyAccount": "AR-CUS0056",
+      "debitAccount": "1100",
+      "creditAccount": "AR-CUS0056",
+      "amountPkr": 78750,
+      "actionFingerprint": "developer_repair:gl_correction:sale-reversal-1100-leakage:4dfdc6ba-f895-4efd-89c5-253a4429322f"
+    },
+    {
+      "correctionEntryNo": "JV-000210",
+      "correctionJeId": "374d57ad-a1b7-4f3c-8d23-6d7b70060ee3",
+      "sourceEntryNo": "JE-0157",
+      "sourceJeId": "75f4d1e6-9f29-4922-9436-76f35542e17c",
+      "sourceLineId": "428ae1a5-2aea-4953-afc8-d93e372fc479",
+      "invoiceNo": "HQ-SL-0002",
+      "customer": "ASIM",
+      "partyAccount": "AR-CUS0012",
+      "debitAccount": "1100",
+      "creditAccount": "AR-CUS0012",
+      "amountPkr": 57750,
+      "actionFingerprint": "developer_repair:gl_correction:sale-reversal-1100-leakage:428ae1a5-2aea-4953-afc8-d93e372fc479"
+    }
+  ],
+  "control1100JeNetAfter": 0
+}

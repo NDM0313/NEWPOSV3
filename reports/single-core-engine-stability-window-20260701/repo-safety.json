@@ -1,0 +1,13 @@
+{
+  "run": "SINGLE_CORE_ENGINE_STABILITY_WINDOW_START",
+  "task": "repo-safety",
+  "generated_at": "2026-07-01T15:15:00.000Z",
+  "branch": "main",
+  "head": "f9d46e3f7b6f00b48a2d75927b9cd3ef0ac1f9f1",
+  "origin_main": "f9d46e3f7b6f00b48a2d75927b9cd3ef0ac1f9f1",
+  "in_sync": true,
+  "pull_required": false,
+  "credentials_staged": false,
+  "apk_staged": false,
+  "prior_evidence": "f9d46e3f docs(accounting): add din bridal golden refresh push verification"
+}

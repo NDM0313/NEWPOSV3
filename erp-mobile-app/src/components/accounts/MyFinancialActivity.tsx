@@ -1,5 +1,6 @@
 import type { User } from '../../types';
 import { TransactionsTimeline } from './reports/TransactionsTimeline';
+import type { CopyTransactionPrefill } from '../../lib/copyTransactionPrefill';
 
 interface MyFinancialActivityProps {
   onBack: () => void;
@@ -7,6 +8,7 @@ interface MyFinancialActivityProps {
   companyId: string | null;
   branchId?: string | null;
   reportRefreshEpoch?: number;
+  onCopyTransaction?: (prefill: CopyTransactionPrefill) => void;
 }
 
 export function MyFinancialActivity({
@@ -15,6 +17,7 @@ export function MyFinancialActivity({
   companyId,
   branchId,
   reportRefreshEpoch = 0,
+  onCopyTransaction,
 }: MyFinancialActivityProps) {
   return (
     <TransactionsTimeline
@@ -24,12 +27,13 @@ export function MyFinancialActivity({
       includeOwnExpenses
       readOnly
       hideDatePresets={['week', 'quarter', 'year', 'custom']}
-      defaultDatePreset="month"
+      defaultDatePreset="currentFinancialYear"
       companyId={companyId}
       branchId={branchId}
       onBack={onBack}
       reportRefreshEpoch={reportRefreshEpoch}
       userName={user.name}
+      onCopyTransaction={onCopyTransaction}
     />
   );
 }

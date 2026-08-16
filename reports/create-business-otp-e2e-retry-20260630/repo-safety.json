@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-06-30T14:00:00.000Z",
+  "run_name": "CREATE BUSINESS OTP E2E RETRY",
+  "branch": "main",
+  "head": "a2a64496d1b1c3b6d8dd3bded6a333ccfd919666",
+  "origin_main": "a2a64496d1b1c3b6d8dd3bded6a333ccfd919666",
+  "prior_evidence_commit": "a2a64496",
+  "staged_files": [],
+  "credentials_staged": false,
+  "qa_create_business_otp_email_set": true,
+  "qa_create_business_otp_password_set": true,
+  "qa_create_business_otp_code_set": false,
+  "email_valid_for_otp_qa": false,
+  "rejection_reason": "PRODUCTION_COMPANY_EMAIL",
+  "test_email_masked": "d***@yahoo.com",
+  "matches_monitoring_account": "din-china",
+  "signup_attempted": false,
+  "status": "BLOCKED_PREFLIGHT"
+}

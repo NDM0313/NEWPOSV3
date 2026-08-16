@@ -26,7 +26,7 @@ export const DeleteConfirmationModal = ({
       />
 
       {/* Modal Content */}
-      <div className="relative w-full max-w-md bg-[#1F2937] border border-gray-700 rounded-xl shadow-2xl p-6 transform transition-all animate-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-6 transform transition-all animate-in zoom-in-95 duration-200">
         <div className="flex flex-col items-center text-center space-y-4">
           
           {/* Icon */}
@@ -38,9 +38,9 @@ export const DeleteConfirmationModal = ({
 
           {/* Text */}
           <div className="space-y-2">
-            <h3 className="text-xl font-bold text-white">Delete Contact?</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">
-              Are you sure you want to delete <span className="font-bold text-white">{contactName}</span>? 
+            <h3 className="text-xl font-bold text-foreground">Delete Contact?</h3>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Are you sure you want to delete <span className="font-bold text-foreground">{contactName}</span>? 
               All associated transactions will be unlinked.
             </p>
           </div>
@@ -50,7 +50,7 @@ export const DeleteConfirmationModal = ({
             <Button 
               variant="ghost" 
               onClick={onClose}
-              className="w-full bg-gray-800/50 hover:bg-gray-800 text-gray-300 hover:text-white border border-gray-700"
+              className="w-full bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
             >
               Cancel
             </Button>

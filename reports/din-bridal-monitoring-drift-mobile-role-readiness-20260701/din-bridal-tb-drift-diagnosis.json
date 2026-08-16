@@ -1,0 +1,26 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "din-bridal-tb-drift-diagnosis",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "diagnosis_method": "read-only browser monitoring (unified TB loader) + historical run comparison",
+  "golden_total_debit_pkr": 22056075,
+  "golden_total_credit_pkr": 22056075,
+  "current_total_debit_pkr": 22215400,
+  "current_total_credit_pkr": 22215400,
+  "delta_pkr": 159325,
+  "debit_equals_credit": true,
+  "loader": "unified",
+  "account_level_delta_rows": "not_available_without_authenticated_rpc_in_this_run",
+  "bs_pl_mobile_goldens_match": true,
+  "bs_pl_evidence": "reports/mobile-apk-manual-admin-qa-20260701/admin-manual-qa.json — DIN BRIDAL BS 13521792 P&L 119992 PASS on device",
+  "linked_factors": {
+    "1100_option_c_apply": "not_cause — golden refreshed post-apply; monitoring PASS through 2026-07-01T11:32Z",
+    "bs_pl_loader_swap": "not_cause — party/TB loaders unified and balanced; din-china/din-couture PASS",
+    "monitoring_expected_flag_count": "unchanged — 18/18 ON",
+    "stale_fixture": "partial — fixture frozen 2026-06-30 while production posted after",
+    "new_transaction_after_fixture": "primary — +80k at ~11:58 UTC; additional +79,325 TB by 12:31",
+    "report_basis_mismatch": "unlikely — official_gl unified loader; debit=credit maintained"
+  },
+  "classification_hint": "NEW_UNAPPROVED_DATA_DRIFT"
+}

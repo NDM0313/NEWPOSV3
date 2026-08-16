@@ -1,0 +1,8 @@
+{
+  "run": "BS_PL_RUNTIME_WIRING_SWAP",
+  "phase": "final-flag-state",
+  "bsPlFlagsOn": true,
+  "companies": 3,
+  "keysPerCompany": 4,
+  "rollbackScript": "scripts/single-core-ledger/disable-bs-pl-loader-flags.sql"
+}

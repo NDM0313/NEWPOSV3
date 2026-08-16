@@ -1,0 +1,10 @@
+{
+  "generated": "2026-06-29",
+  "result": "PARTIAL_PASS",
+  "wizardLoads": true,
+  "validationWorks": true,
+  "otpVerify": "BLOCKED_EMAIL_ACCESS",
+  "resendOtp": "NOT_TESTED",
+  "newBusinessCreated": false,
+  "serviceRoleInFrontend": false
+}

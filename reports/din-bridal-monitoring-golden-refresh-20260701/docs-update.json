@@ -1,0 +1,15 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "docs-update",
+  "generated_at": "2026-07-01T14:42:00.000Z",
+  "files_updated": [
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md",
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md",
+    "docs/MOBILE_RELEASE_PLAN.md"
+  ],
+  "production_mutation": false,
+  "migrations": false,
+  "feature_flags_changed": false,
+  "release_gate": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES"
+}

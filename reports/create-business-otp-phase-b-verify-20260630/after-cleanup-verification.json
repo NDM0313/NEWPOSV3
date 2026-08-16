@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-30T14:08:00.000Z",
+  "status": "PASS",
+  "test_auth_user_absent": true,
+  "test_company_absent": true,
+  "orphan_rows": false,
+  "production_companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+  "transaction_tables_touched": false
+}

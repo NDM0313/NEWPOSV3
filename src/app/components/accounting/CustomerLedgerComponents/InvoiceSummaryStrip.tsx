@@ -137,28 +137,28 @@ export const InvoiceSummaryStrip: React.FC<InvoiceSummaryStripProps> = ({
   }, [ledgerEntries, saleDetailsMap]);
 
   return (
-    <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex-shrink-0">
+    <div className="bg-card border-b border-border px-6 py-4 flex-shrink-0">
       <div className="grid grid-cols-2 gap-8">
         {/* Invoices Summary */}
         <div>
-          <div className="text-xs font-semibold text-gray-400 uppercase mb-3">Invoices Summary</div>
+          <div className="text-xs font-semibold text-muted-foreground uppercase mb-3">Invoices Summary</div>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-              <span className="text-gray-400">Total Invoices</span>
-              <span className="text-white font-semibold">{summary.totalInvoices}</span>
+            <div className="flex justify-between items-center border-b border-border pb-2">
+              <span className="text-muted-foreground">Total Invoices</span>
+              <span className="text-foreground font-semibold">{summary.totalInvoices}</span>
             </div>
-            <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-              <span className="text-gray-400">Total Invoice Amount</span>
-              <span className="text-white font-semibold">
+            <div className="flex justify-between items-center border-b border-border pb-2">
+              <span className="text-muted-foreground">Total Invoice Amount</span>
+              <span className="text-foreground font-semibold">
                 Rs {summary.totalInvoiceAmount.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
               </span>
             </div>
-            <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-              <span className="text-gray-400">Total Payment Received</span>
-              <span className="text-white font-semibold">
+            <div className="flex justify-between items-center border-b border-border pb-2">
+              <span className="text-muted-foreground">Total Payment Received</span>
+              <span className="text-foreground font-semibold">
                 Rs {summary.totalPaymentReceived.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -166,8 +166,8 @@ export const InvoiceSummaryStrip: React.FC<InvoiceSummaryStripProps> = ({
               </span>
             </div>
             <div className="flex justify-between items-center pt-2">
-              <span className="text-gray-400 font-semibold">Pending Amount</span>
-              <span className="text-white font-bold text-lg">
+              <span className="text-muted-foreground font-semibold">Pending Amount</span>
+              <span className="text-foreground font-bold text-lg">
                 Rs {summary.pendingAmount.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -179,19 +179,19 @@ export const InvoiceSummaryStrip: React.FC<InvoiceSummaryStripProps> = ({
 
         {/* Payment Status */}
         <div>
-          <div className="text-xs font-semibold text-gray-400 uppercase mb-3">Payment Status</div>
+          <div className="text-xs font-semibold text-muted-foreground uppercase mb-3">Payment Status</div>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-              <span className="text-gray-400">Fully Paid Invoices</span>
-              <span className="text-white font-semibold">{summary.fullyPaidCount}</span>
+            <div className="flex justify-between items-center border-b border-border pb-2">
+              <span className="text-muted-foreground">Fully Paid Invoices</span>
+              <span className="text-foreground font-semibold">{summary.fullyPaidCount}</span>
             </div>
-            <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-              <span className="text-gray-400">Partially Paid</span>
-              <span className="text-white font-semibold">{summary.partiallyPaidCount}</span>
+            <div className="flex justify-between items-center border-b border-border pb-2">
+              <span className="text-muted-foreground">Partially Paid</span>
+              <span className="text-foreground font-semibold">{summary.partiallyPaidCount}</span>
             </div>
             <div className="flex justify-between items-center pt-2">
-              <span className="text-gray-400">Unpaid</span>
-              <span className="text-white font-semibold">{summary.unpaidCount}</span>
+              <span className="text-muted-foreground">Unpaid</span>
+              <span className="text-foreground font-semibold">{summary.unpaidCount}</span>
             </div>
           </div>
         </div>
