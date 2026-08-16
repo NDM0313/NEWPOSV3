@@ -36,13 +36,14 @@ import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButto
 import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../utils/transactionDisplayDate';
 import { formatLedgerLinePresentation, toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
 import { effectiveNetLedgerPresentation } from '../../../lib/ledgerEffectiveNet';
+import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
   companyId: string | null;
   initialAccountId?: string | null;
   user: User;
-  /** Selected app branch — ledger lines match web when scoped (includes NULL branch_id JEs). */
+  /** App branch — used for DateRangeBar FY resolution only; GL loaders use all-branches (web parity). */
   branchId?: string | null;
   filterTypes?: ('cash' | 'bank' | 'mobile_wallet' | 'asset' | 'liability' | 'equity' | 'income' | 'expense')[];
   titleOverride?: string;
@@ -147,7 +148,7 @@ export function AccountLedgerReport({
           const rpcRes = await getSupplierApGlLedgerLinesForContact(
             companyId,
             cid,
-            branchId ?? null,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
             range.from || undefined,
             range.to || undefined,
           );
@@ -163,7 +164,7 @@ export function AccountLedgerReport({
             selected.id,
             range.from || undefined,
             range.to || undefined,
-            branchId ?? null,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
           );
           if (cancelled) return;
           const fbHasData = fb.lines.length > 0 || Math.abs(fb.openingBalance) >= 0.005;
@@ -187,7 +188,7 @@ export function AccountLedgerReport({
           const rpcRes = await getCustomerArGlLedgerLinesForContact(
             companyId,
             cid,
-            branchId ?? null,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
             range.from || undefined,
             range.to || undefined,
           );
@@ -203,7 +204,7 @@ export function AccountLedgerReport({
             selected.id,
             range.from || undefined,
             range.to || undefined,
-            branchId ?? null,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
           );
           if (cancelled) return;
           const fbHasData = fb.lines.length > 0 || Math.abs(fb.openingBalance) >= 0.005;
@@ -230,7 +231,7 @@ export function AccountLedgerReport({
           const unified = await rpcGetUnifiedAccountLedger({
             companyId,
             accountId: selected.id,
-            branchId: branchId ?? null,
+            branchId: ACCOUNT_LEDGER_ALL_BRANCHES,
             dateFrom: range.from,
             dateTo: range.to,
             basis: 'official_gl',
@@ -265,7 +266,7 @@ export function AccountLedgerReport({
           selected.id,
           range.from || undefined,
           range.to || undefined,
-          branchId ?? null,
+          ACCOUNT_LEDGER_ALL_BRANCHES,
         );
         if (cancelled) return;
         setOpening(res.openingBalance);
@@ -289,7 +290,7 @@ export function AccountLedgerReport({
     return () => {
       cancelled = true;
     };
-  }, [companyId, selected, range.from, range.to, branchId, ledgerRefreshNonce]);
+  }, [companyId, selected, range.from, range.to, ledgerRefreshNonce]);
 
   useEffect(() => {
     if (!selected) return;
@@ -308,13 +309,18 @@ export function AccountLedgerReport({
     [lines, opening, apLiabilityStyle],
   );
 
+  /** Prefer net presentation; if net hid every row, fall back to raw so activity is not falsely "opening only". */
+  const netViewHidAll = lines.length > 0 && presentedLedger.lines.length === 0;
+  const displayLines = netViewHidAll ? lines : presentedLedger.lines;
+  const displayClosing = netViewHidAll
+    ? lines[lines.length - 1]?.runningBalance ?? opening
+    : presentedLedger.closingBalance;
+
   const totals = useMemo(() => {
-    const displayLines = presentedLedger.lines;
     const debit = displayLines.reduce((s, l) => s + l.debit, 0);
     const credit = displayLines.reduce((s, l) => s + l.credit, 0);
-    const closing = presentedLedger.closingBalance;
-    return { debit, credit, closing };
-  }, [presentedLedger]);
+    return { debit, credit, closing: displayClosing };
+  }, [displayLines, displayClosing]);
 
   type Granularity = 'none' | 'week' | 'month';
   const granularity: Granularity = useMemo(() => {
@@ -328,14 +334,14 @@ export function AccountLedgerReport({
   }, [range.from, range.to, lines.length]);
 
   const groupedLines = useMemo(() => {
-    const chronologic = presentedLedger.lines;
-    const displayLines = dateSort === 'desc' ? [...chronologic].reverse() : chronologic;
-    if (displayLines.length === 0) {
+    const chronologic = displayLines;
+    const ordered = dateSort === 'desc' ? [...chronologic].reverse() : chronologic;
+    if (ordered.length === 0) {
       return [{ key: 'all', label: '', lines: [], closingBalance: totals.closing }];
     }
     if (granularity === 'none') {
       const dayMap = new Map<string, LedgerLine[]>();
-      for (const line of displayLines) {
+      for (const line of ordered) {
         const key = getTransactionEventDateKey(line.date, line.createdAt) || 'unknown';
         const arr = dayMap.get(key) ?? [];
         arr.push(line);
@@ -379,7 +385,7 @@ export function AccountLedgerReport({
       return ymd.slice(0, 7);
     };
 
-    for (const line of displayLines) {
+    for (const line of ordered) {
       const eventDate = getTransactionEventDateKey(line.date, line.createdAt) || line.date;
       const key = granularity === 'month' ? monthKey(eventDate) : weekKey(eventDate);
       const existing = groups.get(key);
@@ -392,7 +398,7 @@ export function AccountLedgerReport({
     }
     const arr = Array.from(groups.values());
     return dateSort === 'desc' ? arr : [...arr].reverse();
-  }, [presentedLedger.lines, granularity, totals.closing, dateSort]);
+  }, [displayLines, granularity, totals.closing, dateSort]);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -467,9 +473,7 @@ export function AccountLedgerReport({
   ];
 
   const detailSubtitle =
-    (branchId && branchId !== 'all' && branchId !== 'default'
-      ? `${selected.code} · ${selected.type} · this branch + company-wide entries`
-      : `${selected.code} · ${selected.type}`) +
+    `${selected.code} · ${selected.type} · all branches` +
     (selected.linkedContactId &&
     !ledgerFallbackNotice &&
     (selected.type === 'payable' || selected.type === 'liability')
@@ -530,7 +534,7 @@ export function AccountLedgerReport({
       </ReportHeader>
 
       {/* Floating running balance footer so the current balance is always visible. */}
-      {!detailLoading && presentedLedger.lines.length > 0 && (
+      {!detailLoading && displayLines.length > 0 && (
         <div className="fixed left-3 right-3 bottom-3 z-40 rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur shadow-lg px-4 py-2 flex items-center justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-[#9CA3AF]">Running balance</p>
@@ -552,13 +556,20 @@ export function AccountLedgerReport({
           </div>
         </div>
       )}
+      {netViewHidAll && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            Net view hid paired reversal rows — showing full GL activity for this period.
+          </div>
+        </div>
+      )}
 
       <ReportShell
         loading={detailLoading}
-        empty={!detailLoading && isTrulyEmptyLedger(presentedLedger.lines.length, opening)}
+        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening)}
         emptyLabel="No ledger activity for this period."
       >
-        {isOpeningOnlyPeriod(presentedLedger.lines.length, opening) ? (
+        {isOpeningOnlyPeriod(lines.length, opening) ? (
           <LedgerPeriodEmptyCard
             opening={opening}
             periodLabel={dateRangeLabel(range.from, range.to)}
@@ -569,7 +580,7 @@ export function AccountLedgerReport({
           <ReportSectionTitle
             title="Ledger activity"
             subtitle={dateRangeLabel(range.from, range.to)}
-            right={`${presentedLedger.lines.length} entries`}
+            right={`${displayLines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
             {groupedLines.map((group) => (

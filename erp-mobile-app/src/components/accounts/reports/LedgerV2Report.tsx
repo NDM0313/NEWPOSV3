@@ -20,10 +20,12 @@ import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
 import { getAccountLedgerLines } from '../../../api/reports';
 import type { UnifiedLedgerRow } from '../../../types/unifiedReports';
 import { formatLedgerLinePresentation } from '../../../lib/ledgerLinePresentation';
+import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
 
 interface LedgerV2ReportProps {
   onBack: () => void;
   companyId: string | null;
+  /** App branch — FY resolution on DateRangeBar only; loaders use all-branches. */
   branchId?: string | null;
   reportRefreshEpoch?: number;
 }
@@ -84,7 +86,7 @@ export function LedgerV2Report({
         const unified = await rpcGetUnifiedAccountLedger({
           companyId,
           accountId: selected.id,
-          branchId,
+          branchId: ACCOUNT_LEDGER_ALL_BRANCHES,
           dateFrom: range.from,
           dateTo: range.to,
           basis: 'official_gl',
@@ -99,7 +101,13 @@ export function LedgerV2Report({
           setLoaderSource('unified');
         }
       } else {
-        const legacy = await getAccountLedgerLines(companyId, selected.id, range.from, range.to, branchId);
+        const legacy = await getAccountLedgerLines(
+          companyId,
+          selected.id,
+          range.from,
+          range.to,
+          ACCOUNT_LEDGER_ALL_BRANCHES,
+        );
         if (cancelled) return;
         if (legacy.error) setError(legacy.error);
         setRows(
@@ -132,7 +140,7 @@ export function LedgerV2Report({
     return () => {
       cancelled = true;
     };
-  }, [companyId, selected, range.from, range.to, branchId, reportRefreshEpoch]);
+  }, [companyId, selected, range.from, range.to, reportRefreshEpoch]);
 
   const filtered = accounts.filter(
     (a) =>

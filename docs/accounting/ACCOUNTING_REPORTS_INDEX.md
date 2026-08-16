@@ -19,6 +19,7 @@ Deep-dive documentation for three reports in **Accounting Dashboard** (`Accounti
 3. [**Account Ledger — references & missing payments**](ACCOUNT_LEDGER_DATA_SOURCES_AND_REFERENCES.md) — REN vs RCV ref column; advance receipts not showing
 4. [**Customer vs Account — import gap**](CUSTOMER_STATEMENT_VS_ACCOUNT_IMPORT_GAP.md) — Customer empty / Account full after journal imports; no matcher widen; repair audit SQL
 5. [**List pagination — shipped vs remaining**](LIST_PAGINATION_REMAINING_TASKS_2026-07-15.md) — Ledger V2 / shared pager default 50; next waves for other statement lists
+6. [**Mobile Account Ledger — all-branches scope**](MOBILE_ACCOUNT_LEDGER_ALL_BRANCHES_SCOPE.md) — false “Opening only” when loaders used app branch; match web company-wide statement
 
 ---
 

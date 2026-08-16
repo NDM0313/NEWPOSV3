@@ -11,6 +11,7 @@ import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
+import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
 
 export type AccountKind = 'cash' | 'bank' | 'wallet';
 
@@ -20,7 +21,7 @@ interface AccountSummaryReportProps {
   user: User;
   kind: AccountKind;
   onViewLedger?: (accountId: string) => void;
-  /** Ledger movements scoped like web account ledger (includes NULL branch_id JEs). */
+  /** App branch — FY on DateRangeBar only; movement loaders use all-branches (web parity). */
   branchId?: string | null;
   reportRefreshEpoch?: number;
 }
@@ -90,7 +91,7 @@ export function AccountSummaryReport({
               a.id,
               range.from || undefined,
               range.to || undefined,
-              branchId ?? null,
+              ACCOUNT_LEDGER_ALL_BRANCHES,
             );
             const debit = lines.reduce((s, l) => s + l.debit, 0);
             const credit = lines.reduce((s, l) => s + l.credit, 0);
@@ -111,7 +112,7 @@ export function AccountSummaryReport({
     return () => {
       cancelled = true;
     };
-  }, [companyId, accounts, range.from, range.to, branchId, movementsRefreshNonce]);
+  }, [companyId, accounts, range.from, range.to, movementsRefreshNonce]);
 
   useEffect(() => {
     const onVis = () => {
