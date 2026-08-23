@@ -20,6 +20,7 @@ import {
   deserializeDemoState,
   previewAdvanceDemo,
   previewUsdDemo,
+  runDemoW31Scenario,
   saveDemoAdvanceDraft,
   serializeDemoState,
   simulatePostAdvance,
@@ -29,6 +30,7 @@ import {
   type ImportFxW3DemoState,
 } from '@/app/lib/importFxW3DemoStore';
 import type { ImportFxW3FundingType } from '@/app/lib/importFxCaseW3Helpers';
+import { W31_ROUTING_QUESTION } from '@/app/lib/importFxCaseW31Helpers';
 
 function money(n: number) {
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -274,7 +276,9 @@ export function ImportFxW3DemoPage() {
           </Card>
           <Card title="3. USD Acquisition">
             <div>Simulated lots: {state.acquisitions.filter((a) => a.status === 'SIMULATED').length}</div>
-            <div>Wallet USD qty (simulated): {money(state.walletUsdQty)}</div>
+            <div>Company wallet USD (sim): {money(state.walletUsdQty)}</div>
+            <div>Held by agent USD (sim): {money(state.agentHeldUsdQty)}</div>
+            <div>Held by third party USD (sim): {money(state.thirdPartyHeldUsdQty)}</div>
           </Card>
           <Card title="4. Available Advance">
             <div className="text-lg font-semibold">PKR {money(availAdv)}</div>
@@ -282,10 +286,13 @@ export function ImportFxW3DemoPage() {
           </Card>
           <Card title="5. Agent Credit">
             <div>Agent AP preview (simulated): PKR {money(state.agentApPreviewPkr)}</div>
+            <div className="text-[11px] text-amber-200/70">Separate from custody quantity</div>
           </Card>
-          <Card title="6. USD Wallet Quantity">
-            <div>Demo USD TT Wallet: {money(state.walletUsdQty)} USD</div>
-            <div>Carrying on open sims: see history</div>
+          <Card title="6. Custody positions (operational)">
+            <div>Open positions: {state.custodyPositions.filter((c) => c.status === 'OPEN').length}</div>
+            <div className="text-[11px] text-amber-200/70">
+              Custody ≠ Supplier AP. DEMO — NOT POSTED.
+            </div>
           </Card>
         </div>
 
@@ -473,12 +480,62 @@ export function ImportFxW3DemoPage() {
         </Card>
         </div>
 
+        <div id="import-fx-w3-demo-scenario-w31">
+          <Card title="W3.1 Custody & Routing scenarios" accent="border-cyan-700/50 bg-cyan-950/20">
+            <p className="text-xs text-cyan-100/90 mb-2">
+              {W31_ROUTING_QUESTION} — all buttons are DEMO — NOT POSTED. No database, journal, payment or
+              supplier settlement was created.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['AGENT_HOLD_50K', '1) Hold 50k by agent'],
+                  ['COMPANY_WALLET_50K', '2) Company wallet 50k'],
+                  ['THIRD_PARTY_50K', '3) Third party 50k'],
+                  ['SPLIT_10_8_5_27', '4) Split 10+8+5+27'],
+                  ['SUPPLIER_INTERMEDIARY', '5) Supplier as intermediary'],
+                  ['OVER_ALLOCATION', '6) Over-allocation (expect fail)'],
+                  ['DUPLICATE_REPLAY', '7) Duplicate submit replay'],
+                  ['REVERSE_BLOCKED', '8) Reverse blocked after consume'],
+                ] as const
+              ).map(([key, label]) => (
+                <Button
+                  key={key}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={state.busy}
+                  onClick={() =>
+                    run(label, () => runDemoW31Scenario(state, key))
+                  }
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            {state.custodyPositions.length > 0 && (
+              <div className="mt-3 text-xs space-y-1">
+                <div className="font-medium">Custody positions (operational)</div>
+                {state.custodyPositions.map((c) => (
+                  <div key={c.id}>
+                    {c.holderType} · {c.holderLabel} · USD {money(c.usdQty)} · PKR {money(c.pkrCarrying)} ·{' '}
+                    {c.status}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
         {state.lastReceipt && (
           <Card title="Simulated receipt" accent="border-violet-700/50 bg-violet-950/25">
             <div>Event: {state.lastReceipt.eventNo}</div>
             <div>Fake journal preview: {state.lastReceipt.journalPreviewRef}</div>
             <div>PKR amount: {money(state.lastReceipt.amountPkr)}</div>
             <div>Clearing balance (simulated): {money(state.lastReceipt.clearingBalancePkr)}</div>
+            {state.lastReceipt.replayed && (
+              <div className="text-amber-200 font-medium">Idempotent replay — original result returned</div>
+            )}
             <div>Timestamp: {state.lastReceipt.timestamp}</div>
             <div className="font-semibold text-violet-200">{state.lastReceipt.message}</div>
           </Card>
@@ -504,8 +561,18 @@ export function ImportFxW3DemoPage() {
                       <div className="text-amber-100/80">
                         {h.kind === 'ADVANCE'
                           ? `PKR ${money(h.amountPkr)} · rem ${money(h.remainingUnappliedPkr)}`
-                          : `USD ${money(h.usdQty)} · carry PKR ${money(h.carryingPkr)} · ${h.fundingType}`}
+                          : `USD ${money(h.usdQty)} · carry PKR ${money(h.carryingPkr)} · ${h.fundingType}${
+                              h.routingLabel ? ` · ${h.routingLabel}` : ''
+                            }`}
                       </div>
+                      {h.kind === 'USD_ACQUISITION' && (
+                        <div className="text-[11px] text-cyan-200/80">
+                          {(h.statusLabels || []).join(' · ')}
+                          {h.distributionLines?.length
+                            ? ` · ${h.distributionLines.length} instruction(s); supplierApReduced=${h.supplierApReduced}`
+                            : ''}
+                        </div>
+                      )}
                       <div className="text-[11px]">{h.journalPreviewRef} · posts_journal: false</div>
                     </div>
                     {h.status === 'SIMULATED' && (

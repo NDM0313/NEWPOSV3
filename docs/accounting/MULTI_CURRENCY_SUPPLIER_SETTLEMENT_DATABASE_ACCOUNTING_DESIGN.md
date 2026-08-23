@@ -3,6 +3,7 @@
 ## Database and Accounting Entries Design
 
 > **Repo note (canonical next-spec):** Yeh document NEW POSV3 ka **next additive** database / settlement design hai — further Import FX work isi se align hoga.  
+> **W3.1 custody/routing (local amendment):** [`IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md`](./IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md) — operational holder positions + distribution instructions; Supplier AP settlement remains W5.  
 > **Pooled USD→CNY multi-supplier workflow (companion):** [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md) — event model A–F, Profile-A limits, forensic Path 21 appendix, waves P1–P5 (design only; not implemented).  
 > **Historical shipped references (do not treat as replace targets):** [`MULTI_CURRENCY_IMPORT_FX_ROADMAP.md`](./MULTI_CURRENCY_IMPORT_FX_ROADMAP.md), [`MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md`](./MULTI_CURRENCY_IMPORT_FX_WORKFLOW_AND_COA.md).  
 > Live schema / RPC contracts ko migration ya coding se pehle re-audit karo. Cursor rule: [`.cursor/rules/multi-currency-import-fx.mdc`](../../.cursor/rules/multi-currency-import-fx.mdc).

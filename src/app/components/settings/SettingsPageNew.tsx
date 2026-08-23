@@ -2279,6 +2279,46 @@ export const SettingsPageNew = () => {
                   {accountingForm.multiCurrencyEnabled && (
                     <div className="bg-input-background p-4 rounded-lg border border-border space-y-3">
                       <div>
+                        <p className="text-foreground font-medium">Import FX USD Custody Control</p>
+                        <p className="text-sm text-muted-foreground">
+                          W3.1 GL debit when USD is held by agent/third party (not a company TT wallet). Operational
+                          custody positions track the holder separately. Never hardcode 1230; do not use Worker Advance
+                          (1180) or Phase-3 FX accounts.
+                        </p>
+                      </div>
+                      <select
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        value={accountingForm.importFxUsdCustodyControlAccountId || ''}
+                        onChange={(e) => {
+                          setAccountingForm({
+                            ...accountingForm,
+                            importFxUsdCustodyControlAccountId: e.target.value || null,
+                          });
+                          setHasUnsavedChanges(true);
+                        }}
+                      >
+                        <option value="">Not configured</option>
+                        {(accounting.accounts || [])
+                          .filter(
+                            (a: any) =>
+                              a &&
+                              !a.is_group &&
+                              a.is_active !== false &&
+                              String(a.type || '').toLowerCase() === 'asset' &&
+                              String(a.code || '').trim() !== '1180'
+                          )
+                          .map((a: any) => (
+                            <option key={a.id} value={a.id}>
+                              {a.code} — {a.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {accountingForm.multiCurrencyEnabled && (
+                    <div className="bg-input-background p-4 rounded-lg border border-border space-y-3">
+                      <div>
                         <p className="text-foreground font-medium">Active foreign currencies</p>
                         <p className="text-sm text-muted-foreground">
                           Shown on Purchase document currency (PKR is always available). Codes are stored uppercase (use CNY for RMB).

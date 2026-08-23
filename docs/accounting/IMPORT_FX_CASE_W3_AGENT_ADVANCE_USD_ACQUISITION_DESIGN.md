@@ -1,7 +1,7 @@
 # Import FX Case — W3 Agent Advance & USD/TT Acquisition Design
 
 **Status:** **DESIGN ONLY — NOT SHIPPED to production** · **Owner decisions OD-1–OD-7 LOCKED**  
-**Local working-tree note:** Implementation/QA evidence lives in [`IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md`](./IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md). OD register below remains authoritative and is not reinterpreted.  
+**Local working-tree note:** Implementation/QA evidence lives in [`IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md`](./IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md). Custody/routing amendment: [`IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md`](./IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md). OD register below remains authoritative and is not reinterpreted.  
 **Branch:** `docs/import-fx-w3-advance-usd-acquisition-design` (stacked on W2.1)  
 **Base HEAD:** `0d9d274e` (`feat/import-fx-w2-arrangement-enrichment` / Draft PR #23)  
 **Rule:** **No W3 implementation PR may merge before W2/W2.1.** This document posts **no** accounting.
@@ -11,6 +11,8 @@
 - [`IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](./IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md)
 - [`IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md`](./IMPORT_FX_OPERATOR_WORKFLOW_AND_GAP_ANALYSIS.md)
 - [`IMPORT_FX_CASES_VS_AGENT_FX_OPERATOR_WORKFLOW.md`](./IMPORT_FX_CASES_VS_AGENT_FX_OPERATOR_WORKFLOW.md)
+- [`IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md`](./IMPORT_FX_CASE_W3_IMPLEMENTATION_AND_QA.md)
+- [`IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md`](./IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md)
 - [`MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](./MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
 - [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md)
 - [`PAYMENT_ENTRY_PATHS.md`](./PAYMENT_ENTRY_PATHS.md)

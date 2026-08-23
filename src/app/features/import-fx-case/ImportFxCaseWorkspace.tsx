@@ -1275,6 +1275,22 @@ export function ImportFxCaseWorkspace({ open, onOpenChange }: Props) {
                       plannedUsd={plannedUsd ? Number(plannedUsd) : null}
                       plannedPkrPerUsd={expectedPkrPerUsd ? Number(expectedPkrPerUsd) : null}
                       clearingAccountId={accountingSettings.agentFxAdvanceClearingAccountId || null}
+                      custodyControlAccountId={
+                        accountingSettings.importFxUsdCustodyControlAccountId || null
+                      }
+                      agentContactId={agentId || caseRow?.agent_contact_id || null}
+                      contactOptions={[
+                        ...agentOptions.map((a) => ({
+                          id: a.id,
+                          name: a.name,
+                          type: 'money_exchange',
+                        })),
+                        ...supplierOptions.map((s) => ({
+                          id: s.id,
+                          name: s.name,
+                          type: 'supplier',
+                        })),
+                      ]}
                       accounts={(accounts || []).map((a: any) => ({
                         id: a.id,
                         code: a.code,

@@ -5,6 +5,7 @@
 **Live DB:** Applied on `localhost:5432/postgres` (`newposv3-local-pg`) only. See [`IMPORT_FX_W3_FINAL_FINISH_LOCALHOST_2026-08-14.md`](./IMPORT_FX_W3_FINAL_FINISH_LOCALHOST_2026-08-14.md).
 
 **Canonical design:** [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) (OD-1–OD-7 **unchanged / locked**)  
+**W3.1 Custody & Routing (local):** [`IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md`](./IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md)  
 **Master plan:** [`IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md`](./IMPORT_FX_W3_TO_W6_MASTER_IMPLEMENTATION_PLAN.md)
 
 ---
@@ -15,6 +16,9 @@
 |------|------|
 | [`migrations/20260813180000_import_fx_case_w3_advance_usd_acquisition.sql`](../../migrations/20260813180000_import_fx_case_w3_advance_usd_acquisition.sql) | Tables, helpers, capability probe, money overview, `post_import_fx_agent_advance` |
 | [`migrations/20260813180100_import_fx_case_w3_usd_acquisition_rpcs.sql`](../../migrations/20260813180100_import_fx_case_w3_usd_acquisition_rpcs.sql) | `post_import_fx_usd_acquisition`, reverse advance, reverse USD |
+| [`migrations/20260815150000_import_fx_case_w3_1_custody_routing.sql`](../../migrations/20260815150000_import_fx_case_w3_1_custody_routing.sql) | W3.1 custody/distribution tables + nullable wallet |
+| [`migrations/20260815150100_import_fx_case_w3_1_custody_rpcs.sql`](../../migrations/20260815150100_import_fx_case_w3_1_custody_rpcs.sql) | `post_import_fx_usd_acquisition_with_routing`, capability `w3.1` |
+| [`migrations/20260815150200_import_fx_case_w3_1_reverse_custody.sql`](../../migrations/20260815150200_import_fx_case_w3_1_reverse_custody.sql) | Reverse hardened for custody control debit + consumption guards |
 
 **Tables:** `import_fx_case_advances`, `import_fx_case_usd_acquisitions`, `import_fx_case_advance_applications`, `import_fx_case_usd_lots`  
 **RLS:** SELECT company-scoped; writes RPC-only.
@@ -27,8 +31,10 @@
 
 - JSON: `accounting_settings.agentFxAdvanceClearingAccountId`
 - Role: `AGENT_FX_ADVANCE_CLEARING` (display: Agent FX Advance / Settlement Clearing)
+- **W3.1:** `accounting_settings.importFxUsdCustodyControlAccountId` (USD custody control for non-wallet routing; never hardcode `1230`)
 - **Never hardcode `1230`**
 - Missing/invalid → post advance returns `IMPORT_FX_AGENT_ADVANCE_CLEARING_NOT_CONFIGURED`
+- Missing custody control → AGENT/THIRD_PARTY/SPLIT (non-wallet) posts fail closed
 - UI: Settings → Accounting (when Multi Currency ON)
 
 ---

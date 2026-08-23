@@ -9,6 +9,7 @@
 - [`IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md`](./IMPORT_FX_CASE_W2_ARRANGEMENT_ENRICHMENT.md)
 - [`IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md`](./IMPORT_FX_CASE_W2_1_OPERATOR_CLARITY_AND_ASSIGNMENT.md)
 - [`IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md`](./IMPORT_FX_CASE_W3_AGENT_ADVANCE_USD_ACQUISITION_DESIGN.md) — OD-1–OD-7 locked
+- [`IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md`](./IMPORT_FX_W3_1_CUSTODY_ROUTING_AND_DISTRIBUTION_DESIGN.md) — custody/routing amendment (local)
 - [`IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md`](./IMPORT_FX_CASE_W3_W6_MONEY_EXECUTION_UX_DESIGN.md) (branch `docs/import-fx-w3-w6-money-ux-design`)
 - [`MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md`](./MULTI_CURRENCY_SUPPLIER_SETTLEMENT_DATABASE_ACCOUNTING_DESIGN.md)
 - [`POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md`](./POOLED_USD_RMB_MULTI_SUPPLIER_SETTLEMENT_WORKFLOW.md)
@@ -23,6 +24,7 @@
 | W1 | Case shell (shipped) |
 | W2 / W2.1 | Arrangement planning + assignment (repo complete; live DB apply / PR #23 merge gates) |
 | **W3** | Agent advance + USD/TT acquisition |
+| **W3.1** | Custody & routing (company wallet / agent / third party / direct / split); operational distribution instructions; no W4/W5 money completion |
 | **W4** | China USD transfer **and** USD→CNY conversion + CNY pool |
 | **W5** | CNY pool → multi-supplier / multi-purchase allocation |
 | **W6** | Reconciliation, role-separated reports, case closure → final `POSTED` |

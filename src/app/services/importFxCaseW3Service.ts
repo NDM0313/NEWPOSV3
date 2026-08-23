@@ -10,6 +10,7 @@ import { W3_MIGRATION_NOT_INSTALLED } from '@/app/lib/importFxCaseW3Helpers';
 export type ImportFxW3Capability = {
   installed: boolean;
   version?: string;
+  custodyRouting?: boolean;
   message?: string;
 };
 
@@ -36,6 +37,7 @@ export async function probeImportFxW3Capability(force = false): Promise<ImportFx
   const value: ImportFxW3Capability = {
     installed: row.installed === true || row.success === true,
     version: typeof row.version === 'string' ? row.version : 'w3',
+    custodyRouting: row.custody_routing === true || row.version === 'w3.1',
   };
   capabilityCache = { at: Date.now(), value };
   return value;
@@ -122,6 +124,63 @@ export async function postImportFxUsdAcquisition(params: {
     p_external_reference: params.externalReference || null,
     p_notes: params.notes || null,
     p_fee_pkr: null,
+    p_client_operation_id: params.clientOperationId,
+    p_created_by: params.createdBy || null,
+  });
+  if (error) throw new Error(formatImportFxServerError(error));
+  return data as Record<string, unknown>;
+}
+
+export async function postImportFxUsdAcquisitionWithRouting(params: {
+  companyId: string;
+  branchId: string | null;
+  caseId: string;
+  acquisitionDate: string;
+  usdQuantity: number;
+  pkrPerUsd: number;
+  routingMode: string;
+  destinationWalletAccountId?: string | null;
+  holderContactId?: string | null;
+  retainedUsdQty?: number | null;
+  distributionRows?: Record<string, unknown>[] | null;
+  fundingType: 'ADVANCE' | 'CREDIT' | 'MIXED';
+  advanceAppliedPkr?: number | null;
+  useFifo?: boolean;
+  externalReference?: string;
+  notes?: string;
+  clientOperationId: string;
+  createdBy?: string | null;
+}) {
+  const cap = await probeImportFxW3Capability();
+  if (!cap.installed) {
+    return { success: false, code: 'W3_NOT_INSTALLED', error: W3_MIGRATION_NOT_INSTALLED, posts_journal: false };
+  }
+  if (!cap.custodyRouting) {
+    return {
+      success: false,
+      code: 'W31_NOT_INSTALLED',
+      error: 'W3.1 custody routing migration is not installed in this environment.',
+      posts_journal: false,
+    };
+  }
+  const { data, error } = await supabase.rpc('post_import_fx_usd_acquisition_with_routing', {
+    p_company_id: params.companyId,
+    p_branch_id: params.branchId,
+    p_case_id: params.caseId,
+    p_acquisition_date: params.acquisitionDate,
+    p_usd_quantity: params.usdQuantity,
+    p_pkr_per_usd: params.pkrPerUsd,
+    p_routing_mode: params.routingMode,
+    p_destination_wallet_account_id: params.destinationWalletAccountId || null,
+    p_holder_contact_id: params.holderContactId || null,
+    p_retained_usd_qty: params.retainedUsdQty ?? null,
+    p_distribution_rows: params.distributionRows || [],
+    p_funding_type: params.fundingType,
+    p_advance_applied_pkr: params.advanceAppliedPkr ?? null,
+    p_manual_advance_allocations: null,
+    p_use_fifo: params.useFifo !== false,
+    p_external_reference: params.externalReference || null,
+    p_notes: params.notes || null,
     p_client_operation_id: params.clientOperationId,
     p_created_by: params.createdBy || null,
   });

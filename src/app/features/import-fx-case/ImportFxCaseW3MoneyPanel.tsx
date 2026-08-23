@@ -22,6 +22,7 @@ import {
   getImportFxCaseMoneyOverview,
   postImportFxAgentAdvance,
   postImportFxUsdAcquisition,
+  postImportFxUsdAcquisitionWithRouting,
   probeImportFxW3Capability,
   reverseImportFxAgentAdvance,
   reverseImportFxUsdAcquisition,
@@ -29,6 +30,12 @@ import {
 import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
 import { isPartyTtAgentWalletAccount } from '@/app/lib/liquidityPaymentAccount';
 import { ImportFxW3DemoEntryLink } from '@/app/features/import-fx-case/ImportFxW3DemoPage';
+import { ImportFxCaseW31RoutingFields } from '@/app/features/import-fx-case/ImportFxCaseW31RoutingFields';
+import {
+  validateRoutingAllocation,
+  type ImportFxW31RoutingMode,
+  type W31DistributionDraftRow,
+} from '@/app/lib/importFxCaseW31Helpers';
 import type { ImportFxCaseAttachmentMeta } from '@/app/services/importFxCaseService';
 
 type AccountOpt = {
@@ -51,6 +58,9 @@ type Props = {
   plannedUsd?: number | null;
   plannedPkrPerUsd?: number | null;
   clearingAccountId?: string | null;
+  custodyControlAccountId?: string | null;
+  agentContactId?: string | null;
+  contactOptions?: { id: string; name?: string | null; type?: string | null }[];
   accounts: AccountOpt[];
   userId?: string | null;
   readOnly?: boolean;
@@ -88,6 +98,9 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     plannedUsd,
     plannedPkrPerUsd,
     clearingAccountId,
+    custodyControlAccountId,
+    agentContactId,
+    contactOptions = [],
     accounts,
     userId,
     readOnly,
@@ -100,6 +113,7 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
   const { updateAccountingSettings } = useSettings();
 
   const [installed, setInstalled] = useState<boolean | null>(null);
+  const [custodyRouting, setCustodyRouting] = useState(false);
   const [installMsg, setInstallMsg] = useState('');
   const [overview, setOverview] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -120,6 +134,10 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
   const [pkrPerUsd, setPkrPerUsd] = useState(String(plannedPkrPerUsd || ''));
   const [walletId, setWalletId] = useState('');
   const [fundingType, setFundingType] = useState<ImportFxW3FundingType>('CREDIT');
+  const [routingMode, setRoutingMode] = useState<ImportFxW31RoutingMode>('COMPANY_WALLET');
+  const [holderContactId, setHolderContactId] = useState('');
+  const [retainedUsd, setRetainedUsd] = useState('');
+  const [distributionRows, setDistributionRows] = useState<W31DistributionDraftRow[]>([]);
   const [advanceApply, setAdvanceApply] = useState('');
   const [usdRef, setUsdRef] = useState('');
   const [usdNotes, setUsdNotes] = useState('');
@@ -144,6 +162,7 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
   const refresh = async () => {
     const cap = await probeImportFxW3Capability(true);
     setInstalled(cap.installed);
+    setCustodyRouting(!!cap.custodyRouting);
     setInstallMsg(cap.message || '');
     if (!cap.installed) {
       setOverview(null);
@@ -176,8 +195,18 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     amountPkr: Number(advAmount) || 0,
   });
 
+  const debitAssetLabel = (() => {
+    if (!custodyRouting || routingMode === 'COMPANY_WALLET') {
+      return wallets.find((a) => a.id === walletId)?.name || 'USD/TT Wallet';
+    }
+    const ctrl = accounts.find((x) => x.id === custodyControlAccountId);
+    return ctrl
+      ? `${ctrl.code || ''} ${ctrl.name || ''}`.trim() || 'USD Custody Control'
+      : 'USD Custody Control (not configured)';
+  })();
+
   const usdPreview = buildUsdAcquisitionJournalPreview({
-    walletLabel: wallets.find((a) => a.id === walletId)?.name || 'USD/TT Wallet',
+    walletLabel: debitAssetLabel,
     clearingLabel,
     agentApLabel: 'Agent AP',
     carryingPkr: carrying,
@@ -199,6 +228,21 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     return null;
   })();
 
+  const routingValidation = custodyRouting
+    ? validateRoutingAllocation({
+        routingMode,
+        acquiredUsd: Number(usdQty) || 0,
+        retainedUsd:
+          routingMode === 'SPLIT_HOLD_AND_DISTRIBUTE'
+            ? Number(retainedUsd) || 0
+            : Number(usdQty) || 0,
+        distributionRows,
+        destinationWalletId: walletId || null,
+        holderContactId: holderContactId || null,
+        agentContactId: agentContactId || null,
+      })
+    : null;
+
   const usdConfirmBlockedReason = (() => {
     if (readOnly) return 'Blocked: case is read-only';
     if ((fundingType === 'ADVANCE' || fundingType === 'MIXED') && !clearingAccountId) {
@@ -207,7 +251,16 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
     if (!(Number(usdQty) > 0) || !(Number(pkrPerUsd) > 0)) {
       return 'Blocked: USD quantity and PKR/USD rate required';
     }
-    if (!walletId) return 'Blocked: select destination USD/TT wallet';
+    if (custodyRouting) {
+      if (routingMode !== 'COMPANY_WALLET' && !custodyControlAccountId) {
+        return 'Blocked: Import FX USD Custody Control not configured in Settings';
+      }
+      if (routingValidation && !routingValidation.ok) {
+        return `Blocked: ${routingValidation.message}`;
+      }
+    } else if (!walletId) {
+      return 'Blocked: select destination USD/TT wallet';
+    }
     if (!usdPreview.balanced) return 'Blocked: journal preview is not balanced';
     return null;
   })();
@@ -288,32 +341,87 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
 
   const runPostUsd = async () => {
     if (readOnly || busy) return;
-    if (!walletId || !(Number(usdQty) > 0) || !(Number(pkrPerUsd) > 0)) {
-      toast.error('Wallet, USD quantity and PKR/USD rate are required');
+    if (!(Number(usdQty) > 0) || !(Number(pkrPerUsd) > 0)) {
+      toast.error('USD quantity and PKR/USD rate are required');
       return;
     }
     if ((fundingType === 'ADVANCE' || fundingType === 'MIXED') && !clearingAccountId) {
       toast.error('Clearing account required for ADVANCE/MIXED funding');
       return;
     }
+    if (usdConfirmBlockedReason) {
+      toast.error(usdConfirmBlockedReason);
+      return;
+    }
     setBusy(true);
     try {
-      const res = await postImportFxUsdAcquisition({
-        companyId,
-        branchId,
-        caseId,
-        acquisitionDate: usdDate,
-        usdQuantity: Number(usdQty),
-        pkrPerUsd: Number(pkrPerUsd),
-        destinationWalletAccountId: walletId,
-        fundingType,
-        advanceAppliedPkr: fundingType === 'MIXED' ? split.advanceAppliedPkr : undefined,
-        useFifo: true,
-        externalReference: usdRef || undefined,
-        notes: usdNotes || undefined,
-        clientOperationId: crypto.randomUUID(),
-        createdBy: userId,
-      });
+      const clientOperationId = crypto.randomUUID();
+      let res: Record<string, unknown>;
+      if (custodyRouting) {
+        const holder =
+          routingMode === 'AGENT_CUSTODY'
+            ? agentContactId || null
+            : routingMode === 'THIRD_PARTY_CUSTODY'
+              ? holderContactId || null
+              : routingMode === 'SPLIT_HOLD_AND_DISTRIBUTE'
+                ? holderContactId || agentContactId || null
+                : null;
+        res = await postImportFxUsdAcquisitionWithRouting({
+          companyId,
+          branchId,
+          caseId,
+          acquisitionDate: usdDate,
+          usdQuantity: Number(usdQty),
+          pkrPerUsd: Number(pkrPerUsd),
+          routingMode,
+          destinationWalletAccountId:
+            routingMode === 'COMPANY_WALLET' ||
+            (routingMode === 'SPLIT_HOLD_AND_DISTRIBUTE' && walletId)
+              ? walletId || null
+              : null,
+          holderContactId: holder,
+          retainedUsdQty:
+            routingMode === 'SPLIT_HOLD_AND_DISTRIBUTE' ? Number(retainedUsd) || 0 : null,
+          distributionRows: distributionRows.map((r) => ({
+            recipient_contact_id: r.recipient_contact_id,
+            recipient_role: r.recipient_role || null,
+            purpose: r.purpose,
+            linked_purchase_id: r.linked_purchase_id || null,
+            usd_qty: r.usd_qty,
+            notes: r.notes || null,
+            reference: r.reference || null,
+          })),
+          fundingType,
+          advanceAppliedPkr: fundingType === 'MIXED' ? split.advanceAppliedPkr : undefined,
+          useFifo: true,
+          externalReference: usdRef || undefined,
+          notes: usdNotes || undefined,
+          clientOperationId,
+          createdBy: userId,
+        });
+      } else {
+        if (!walletId) {
+          toast.error('Select destination USD/TT wallet');
+          setBusy(false);
+          return;
+        }
+        res = await postImportFxUsdAcquisition({
+          companyId,
+          branchId,
+          caseId,
+          acquisitionDate: usdDate,
+          usdQuantity: Number(usdQty),
+          pkrPerUsd: Number(pkrPerUsd),
+          destinationWalletAccountId: walletId,
+          fundingType,
+          advanceAppliedPkr: fundingType === 'MIXED' ? split.advanceAppliedPkr : undefined,
+          useFifo: true,
+          externalReference: usdRef || undefined,
+          notes: usdNotes || undefined,
+          clientOperationId,
+          createdBy: userId,
+        });
+      }
       if ((res as any).success === false) {
         toast.error(String((res as any).code || (res as any).error || 'USD acquisition failed'));
         return;
@@ -324,6 +432,8 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
           : `USD acquisition posted · JE ${(res as any).entry_no || (res as any).journal_entry_id}`
       );
       setConfirmOpen(false);
+      setDistributionRows([]);
+      setRetainedUsd('');
       await refresh();
       onPosted?.();
     } catch (e: any) {
@@ -637,22 +747,48 @@ export function ImportFxCaseW3MoneyPanel(props: Props) {
                 disabled={readOnly || busy}
               />
             </div>
-            <div className="space-y-1 sm:col-span-2">
-              <Label>Destination USD/TT wallet</Label>
-              <select
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={walletId}
-                onChange={(e) => setWalletId(e.target.value)}
-                disabled={readOnly || busy}
-              >
-                <option value="">Select…</option>
-                {wallets.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.code} — {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {custodyRouting ? (
+              <div className="sm:col-span-2">
+                <ImportFxCaseW31RoutingFields
+                  routingMode={routingMode}
+                  onRoutingModeChange={setRoutingMode}
+                  wallets={wallets}
+                  walletId={walletId}
+                  onWalletIdChange={setWalletId}
+                  contacts={contactOptions}
+                  holderContactId={holderContactId}
+                  onHolderContactIdChange={setHolderContactId}
+                  agentContactId={agentContactId}
+                  agentName={agentName}
+                  retainedUsd={retainedUsd}
+                  onRetainedUsdChange={setRetainedUsd}
+                  acquiredUsd={Number(usdQty) || 0}
+                  distributionRows={distributionRows}
+                  onDistributionRowsChange={setDistributionRows}
+                  custodyControlConfigured={!!custodyControlAccountId}
+                />
+              </div>
+            ) : (
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Destination USD/TT wallet</Label>
+                <select
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={walletId}
+                  onChange={(e) => setWalletId(e.target.value)}
+                  disabled={readOnly || busy}
+                >
+                  <option value="">Select…</option>
+                  {wallets.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.code} — {a.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  W3.1 custody routing not installed — single wallet mode only.
+                </p>
+              </div>
+            )}
             {fundingType === 'MIXED' && (
               <div className="space-y-1">
                 <Label>Advance apply PKR</Label>
