@@ -699,7 +699,7 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = localNowDateString();
+    const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -1002,7 +1002,7 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = localNowDateString();
+    const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -1318,8 +1318,9 @@ export const saleAccountingService = {
     totalCostAmount: number;
     returnNo: string;
     performedBy?: string | null;
+    entryDate?: string;
   }): Promise<string | null> {
-    const { returnId, companyId, branchId, totalCostAmount, returnNo, performedBy } = params;
+    const { returnId, companyId, branchId, totalCostAmount, returnNo, performedBy, entryDate: requestedEntryDate } = params;
 
     if (!returnId || !companyId || totalCostAmount <= 0) {
       console.log('[saleAccountingService] createSaleReturnInventoryReversalJE: skipping (no cost or missing ids)');
@@ -1356,7 +1357,7 @@ export const saleAccountingService = {
 
     const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
     const entryNo = `JE-RTN-INV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = localNowDateString();
+    const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
 
     const entry: JournalEntry = {
       id: '',

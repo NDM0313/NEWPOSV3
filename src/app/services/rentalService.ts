@@ -1191,7 +1191,7 @@ export const rentalService = {
     }
 
     const payType = options?.paymentType ?? 'remaining';
-    const payDay = (options?.paymentDate || new Date().toISOString()).split('T')[0];
+    const payDay = String(options?.paymentDate || localNowDateString()).slice(0, 10);
     const isPenalty = payType === 'penalty';
     const bookingNo = String(r.booking_no || '').trim();
     const receiptRef = isPenalty

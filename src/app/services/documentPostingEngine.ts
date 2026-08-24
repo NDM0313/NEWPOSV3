@@ -29,7 +29,7 @@ export async function postSaleDocumentAccounting(saleId: string): Promise<string
   if (!saleId) return null;
   const { data: sale, error } = await supabase
     .from('sales')
-    .select('id, company_id, branch_id, status, total, discount_amount, shipment_charges, invoice_no, created_by')
+    .select('id, company_id, branch_id, status, total, discount_amount, shipment_charges, invoice_no, invoice_date, created_by')
     .eq('id', saleId)
     .maybeSingle();
   if (error || !sale) {
@@ -48,6 +48,7 @@ export async function postSaleDocumentAccounting(saleId: string): Promise<string
     shipmentCharges: Number((sale as { shipment_charges?: number }).shipment_charges ?? 0) || undefined,
     invoiceNo: (sale as { invoice_no?: string }).invoice_no || `SL-${saleId.slice(0, 8)}`,
     performedBy: (sale as { created_by?: string | null }).created_by ?? null,
+    entryDate: (sale as { invoice_date?: string | null }).invoice_date || undefined,
   });
 }
 
@@ -348,6 +349,7 @@ export async function reversePurchaseDocumentAccounting(purchaseId: string): Pro
     branchId: (p as { branch_id?: string | null }).branch_id,
     poNo: (p as { po_no?: string }).po_no || `PUR-${purchaseId.slice(0, 8)}`,
     performedBy: (p as { created_by?: string | null }).created_by ?? null,
+    entryDate: (p as { po_date?: string | null }).po_date || undefined,
   });
 }
 

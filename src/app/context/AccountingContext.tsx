@@ -24,7 +24,7 @@ import {
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
 import { isBulkImportActive } from '@/app/lib/bulkImportSession';
-import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { formatLocalDateYYYYMMDD, localNowDateString } from '@/app/utils/localDate';
 import {
   buildPaymentChainIndex,
   paymentChainFlagsForJournalEntry,
@@ -1570,7 +1570,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       normalizedCreditAccount = accountNameMap[entry.creditAccount] || entry.creditAccount;
       const entryDate =
         (entry.metadata as { postingDate?: string } | undefined)?.postingDate?.slice(0, 10) ||
-        new Date().toISOString().split('T')[0];
+        localNowDateString();
 
       // Find account IDs for debit and credit (case-insensitive)
       // When metadata.debitAccountId is set (e.g. on-account payment), use that for debit
@@ -1756,7 +1756,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         branch_id: validBranchId,
         entry_no: retryEntryNo,
         ...(entry.source === 'Manual' ? { document_no: retryEntryNo } : {}),
-        entry_date: new Date().toISOString().split('T')[0],
+        entry_date: entry.metadata?.postingDate?.slice(0, 10) || localNowDateString(),
         description: descRetry || undefined,
         reference_type: isWorkerPaymentRetry ? 'worker_payment' : entry.source.toLowerCase(),
         reference_id: isWorkerPaymentRetry
@@ -2542,7 +2542,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       rentalPaymentId,
     } = params;
 
-    const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
+    const postingDate = paymentDate?.slice(0, 10) || localNowDateString();
     const advanceMeta: Record<string, unknown> = {
       customerId,
       customerName,
@@ -2835,7 +2835,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           amount: toRecognize,
           description: `Advance recognized as income - ${customerName}`,
           module: 'Rental',
-          metadata: { customerId, customerName, bookingId, postingDate: postingDate || new Date().toISOString().split('T')[0] },
+          metadata: { customerId, customerName, bookingId, postingDate: postingDate || localNowDateString() },
         });
       }
     } catch { /* non-critical — advance recognition is best-effort */ }
@@ -3177,7 +3177,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   /** Issue 12: Purchase return — Dr party AP (reduce payable), Cr Inventory. `source` lowercases to `purchase_return` on JE. */
   const recordPurchaseReturn = async (params: PurchaseReturnParams): Promise<boolean> => {
-    const { returnId, returnNo, supplierName, supplierId, amount, creditAccount = 'Inventory' } = params;
+    const { returnId, returnNo, supplierName, supplierId, amount, creditAccount = 'Inventory', postingDate } = params;
     if (!amount || amount <= 0) return true;
     let debitAccountId: string | undefined;
     if (companyId && supplierId) {
@@ -3284,7 +3284,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             {
               id: '', company_id: companyId!, branch_id: branchId || undefined,
               entry_no: `JE-RTN-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
-              entry_date: postingDate || new Date().toISOString().split('T')[0],
+              entry_date: postingDate?.slice(0, 10) || localNowDateString(),
               description: description || `Sale Return: ${returnNo} - ${customerName}`,
               reference_type: 'sale_return', reference_id: saleReturnId,
             } as any,

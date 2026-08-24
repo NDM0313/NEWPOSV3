@@ -623,7 +623,7 @@ export async function reversePurchaseDocumentJournalEntry(params: {
   }
 
   const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
-  const entryDate = localNowDateString();
+  const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,

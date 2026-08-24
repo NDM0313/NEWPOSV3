@@ -317,7 +317,11 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
               .order('payment_date', { ascending: false })
               .limit(1)
               .maybeSingle();
-            penaltyPaymentId = (penRow as { id?: string } | null)?.id;
+            const candidatePenaltyPaymentId =
+              penRow && typeof penRow === 'object' && 'id' in penRow
+                ? (penRow as { id?: unknown }).id
+                : undefined;
+            penaltyPaymentId = typeof candidatePenaltyPaymentId === 'string' ? candidatePenaltyPaymentId : undefined;
           } catch {
             penaltyPaymentId = undefined;
           }
@@ -330,6 +334,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
               damageCharge: payload.penaltyAmount,
               paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
               rentalPaymentId: penaltyPaymentId,
+              paymentDate: payload.actualReturnDate,
               branchId: rental.branchId || branchId,
             })
             ?.catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
@@ -393,6 +398,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         remainingAmount: amount,
         paymentMethod,
         rentalPaymentId: payRow?.id,
+        paymentDate: (payRow as { payment_date?: string | null } | null)?.payment_date || undefined,
       })?.catch((err) => {
         console.warn('[RentalContext] Ledger posting failed (payment already recorded):', err);
       });
@@ -441,7 +447,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const markAsPickedUp = async (rentalId: string, payload: { actualPickupDate: string; notes?: string; documentType: string; documentNumber: string; documentExpiry?: string; documentReceived: boolean; remainingPaymentConfirmed: boolean; deliverOnCredit?: boolean; documentFrontImage?: string; documentBackImage?: string; customerPhoto?: string }) => {
     if (!companyId) return;
     const rental = getRentalById(rentalId);
-    const pickupDay = (payload.actualPickupDate || '').toString().slice(0, 10) || new Date().toISOString().split('T')[0];
+    const pickupDay = (payload.actualPickupDate || '').toString().slice(0, 10) || localNowDateString();
     if (rental?.customerId) {
       try {
         const {
