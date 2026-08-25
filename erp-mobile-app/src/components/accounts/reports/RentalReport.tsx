@@ -30,7 +30,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function RentalReport({ onBack, companyId, user, reportRefreshEpoch = 0 }: RentalReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<RentalReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +82,7 @@ export function RentalReport({ onBack, companyId, user, reportRefreshEpoch = 0 }
         sharing={preview.loading}
         gradient="amber"
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} />
       </ReportHeader>
 
       <ReportShell

@@ -1,0 +1,4 @@
+﻿HTTP: 200
+erp-frontend: healthy (docker inspect)
+URL: https://erp.dincouture.pk
+VPS: not redeployed (docs-only session)

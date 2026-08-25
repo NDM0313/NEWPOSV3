@@ -1,0 +1,47 @@
+{
+  "company": "DIN BRIDAL",
+  "capturedAt": "2026-07-01T07:24:53.128Z",
+  "post1100CorrectionJes": ["JV-000209", "JV-000210"],
+  "classification": "ZERO_DIFF_READY_FOR_FINANCE_REVIEW",
+  "balanceSheet": {
+    "asOfDate": "2026-07-01",
+    "legacy": {
+      "totalAssets": 13521792,
+      "totalLiabilities": -547191,
+      "totalEquity": 14068983,
+      "liabilitiesAndEquity": 13521792,
+      "difference": 0
+    },
+    "unifiedPreview": {
+      "totalAssets": 13521792,
+      "totalLiabilities": -547191,
+      "totalEquity": 14068983,
+      "liabilitiesAndEquity": 13521792,
+      "difference": 0
+    },
+    "sectionDeltas": { "assets": 0, "liabilities": 0, "equity": 0, "liabilitiesAndEquity": 0, "difference": 0 },
+    "comparePass": true
+  },
+  "profitLoss": {
+    "period": { "start": "2000-01-01", "end": "2026-07-01" },
+    "legacy": {
+      "revenue": 354500,
+      "costOfSales": 49028,
+      "grossProfit": 305472,
+      "expenses": 185480,
+      "netProfit": 119992
+    },
+    "unifiedPreview": {
+      "revenue": 354500,
+      "costOfSales": 49028,
+      "grossProfit": 305472,
+      "expenses": 185480,
+      "netProfit": 119992
+    },
+    "sectionDeltas": { "revenue": 0, "costOfSales": 0, "grossProfit": 0, "expenses": 0, "netProfit": 0 },
+    "comparePass": true
+  },
+  "vsPre1100Capture20260629": "section_totals_unchanged",
+  "freshCapturePrerequisiteSatisfied": true,
+  "loaderSwapApproved": false
+}

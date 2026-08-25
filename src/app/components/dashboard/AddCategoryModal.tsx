@@ -177,7 +177,7 @@ export const AddCategoryModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px] bg-[#1F2937] border-gray-700 text-white p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[425px] bg-card border-border text-foreground p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-2">
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             {categoryToEdit ? 'Edit Category' : 'Add New Category'}
@@ -186,51 +186,51 @@ export const AddCategoryModal = ({
 
         <div className="p-6 space-y-6">
           <div className="space-y-2">
-            <Label className="text-gray-400 text-xs uppercase font-bold tracking-wider">Category Name</Label>
+            <Label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Category Name</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Electricity Bill, Office Supplies"
-              className="bg-gray-900 border-gray-700 text-white focus:border-blue-500"
+              className="bg-card border-border text-foreground focus:border-blue-500"
             />
           </div>
 
           <div className="space-y-2">
-            <Label className="text-gray-400 text-xs uppercase font-bold tracking-wider">Category Type</Label>
+            <Label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Category Type</Label>
             <Select value={categoryType} onValueChange={(v) => setCategoryType(v as ExpenseCategoryType)}>
-              <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+              <SelectTrigger className="bg-card border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                <SelectItem value="general" className="focus:bg-gray-800 focus:text-white cursor-pointer">General</SelectItem>
-                <SelectItem value="utility" className="focus:bg-gray-800 focus:text-white cursor-pointer">Utility</SelectItem>
-                <SelectItem value="salary" className="focus:bg-gray-800 focus:text-white cursor-pointer">Salary (Users only – Staff/Salesman/Operator)</SelectItem>
+              <SelectContent className="bg-popover border-border text-popover-foreground">
+                <SelectItem value="general" className="focus:bg-muted focus:text-foreground cursor-pointer">General</SelectItem>
+                <SelectItem value="utility" className="focus:bg-muted focus:text-foreground cursor-pointer">Utility</SelectItem>
+                <SelectItem value="salary" className="focus:bg-muted focus:text-foreground cursor-pointer">Salary (Users only – Staff/Salesman/Operator)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-gray-400 text-xs uppercase font-bold tracking-wider">Parent Category (optional)</Label>
+            <Label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Parent Category (optional)</Label>
             <Select value={parentId || 'none'} onValueChange={(v) => setParentId(v === 'none' ? '' : v)}>
-              <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+              <SelectTrigger className="bg-card border-border text-foreground">
                 <SelectValue placeholder="None (Main Category)" />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                <SelectItem value="none" className="focus:bg-gray-800 focus:text-white cursor-pointer">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
+                <SelectItem value="none" className="focus:bg-muted focus:text-foreground cursor-pointer">
                   None (Main Category)
                 </SelectItem>
                 {parentOptions.map((opt) => (
-                  <SelectItem key={opt.id} value={opt.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                  <SelectItem key={opt.id} value={opt.id} className="focus:bg-muted focus:text-foreground cursor-pointer">
                     {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-500">Select a parent for sub or re-sub (max 3 levels).</p>
+            <p className="text-xs text-muted-foreground">Select a parent for sub or re-sub (max 3 levels).</p>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-gray-400 text-xs uppercase font-bold tracking-wider">Color</Label>
+            <Label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Color</Label>
             <div className="flex flex-wrap gap-2">
               {COLORS.map((color) => (
                 <button
@@ -243,14 +243,14 @@ export const AddCategoryModal = ({
                     selectedColorSlug === color.slug ? 'ring-2 ring-white ring-offset-2 ring-offset-[#1F2937] scale-110' : 'opacity-70 hover:opacity-100'
                   )}
                 >
-                  {selectedColorSlug === color.slug && <Check size={14} className="text-white drop-shadow-md" />}
+                  {selectedColorSlug === color.slug && <Check size={14} className="text-foreground drop-shadow-md" />}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-gray-400 text-xs uppercase font-bold tracking-wider">Icon</Label>
+            <Label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Icon</Label>
             <div className="grid grid-cols-5 gap-2">
               {ICONS.map((item) => {
                 const IconComp = item.icon;
@@ -263,7 +263,7 @@ export const AddCategoryModal = ({
                       'flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl border transition-all',
                       selectedIconSlug === item.slug
                         ? 'bg-blue-600/20 border-blue-500 text-blue-400'
-                        : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
+                        : 'bg-card border-border text-muted-foreground hover:border-border hover:text-muted-foreground'
                     )}
                   >
                     <IconComp size={18} />
@@ -272,22 +272,22 @@ export const AddCategoryModal = ({
                 );
               })}
             </div>
-            <p className="text-xs text-gray-500">Sub-categories can inherit parent icon or use this override.</p>
+            <p className="text-xs text-muted-foreground">Sub-categories can inherit parent icon or use this override.</p>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-gray-400 text-xs uppercase font-bold tracking-wider">Description (Optional)</Label>
+            <Label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Description (Optional)</Label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Short description..."
-              className="bg-gray-900 border-gray-700 text-white focus:border-blue-500"
+              className="bg-card border-border text-foreground focus:border-blue-500"
             />
           </div>
         </div>
 
         <DialogFooter className="p-6 pt-2">
-          <Button variant="outline" onClick={onClose} className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white" disabled={loading}>
+          <Button variant="outline" onClick={onClose} className="border-gray-600 text-muted-foreground hover:bg-muted hover:text-foreground" disabled={loading}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/20" disabled={loading}>

@@ -25,6 +25,7 @@ import {
   resolveCounterListBranchScope,
   shouldIsolateCounterWorkerData,
 } from '../../lib/counterDataIsolation';
+import { formatQty } from '../../utils/quantity';
 
 interface InventoryModuleProps {
   onBack: () => void;
@@ -326,9 +327,9 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
                     </div>
                     <div className="flex items-end justify-between mt-2">
                       <div>
-                        <p className="text-lg font-bold text-white leading-none">{item.stock}</p>
-                        <p className="text-[10px] text-[#9CA3AF]">
-                          {item.minStock > 0 ? `Min ${item.minStock}` : 'In stock'}
+                        <p className="text-lg font-bold text-white leading-none tabular-nums">{formatQty(item.stock)}</p>
+                        <p className="text-[10px] text-[#9CA3AF] tabular-nums">
+                          {item.minStock > 0 ? `Min ${formatQty(item.minStock)}` : 'In stock'}
                         </p>
                       </div>
                       <div className="text-right">

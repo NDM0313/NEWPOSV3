@@ -1,0 +1,87 @@
+{
+  "generated_at": "2026-06-30T07:16:02.903Z",
+  "url": "https://erp.dincouture.pk/reports/ledger-statement-center-v2",
+  "overall": "PASS",
+  "checks": [
+    {
+      "check": "DIN CHINA login",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Select customer MR JALIL",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Customer discount button visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Customer discount modal opens",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "COA summary Dr 5200 / Cr AR",
+      "result": "PASS",
+      "notes": "Dr 5200 Discount Allowed"
+    },
+    {
+      "check": "Empty amount validation",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Closed modal without posting",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Discount transaction filter option",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Unified preview panel",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Select supplier MR DIN MOHAMMAD",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Supplier discount button visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Supplier discount modal opens",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "COA summary Dr AP / Cr 5210",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Supplier empty amount validation",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Supplier modal closed without posting",
+      "result": "PASS",
+      "notes": ""
+    }
+  ],
+  "mutation_checks": {
+    "je_posted": false,
+    "party_discount_row_created": false,
+    "gl_mutation": false
+  }
+}

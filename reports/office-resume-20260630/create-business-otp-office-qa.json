@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-30T06:50:00.000Z",
+  "overall": "OTP_E2E_BLOCKED_EMAIL_ACCESS",
+  "url": "https://erp.dincouture.pk",
+  "test_email_used": null,
+  "admin_test_com_reused": false,
+  "checks": {
+    "wizard_loads": "NOT_RUN",
+    "signup_validation": "NOT_RUN",
+    "otp_email_received": "NOT_RUN",
+    "otp_verify": "NOT_RUN",
+    "session_poll": "NOT_RUN",
+    "business_creation_after_auth": "NOT_RUN",
+    "duplicate_submit_prevention": "NOT_RUN"
+  },
+  "blocked_reason": "No operator-controlled email inbox available in this agent session; production signup must not create unnecessary businesses",
+  "cleanup_plan": {
+    "if_test_business_created": [
+      "Document auth user id and business company id",
+      "Verify 0 sales/purchases/payments/journal entries before delete",
+      "Delete bootstrap data per production-test-business-cleanup-20260629 pattern",
+      "Operator approval required before any production delete"
+    ],
+    "admin_test_com": "Do not use — cleaned up at 1486e79d"
+  },
+  "prior_evidence": {
+    "local_wizard_steps_20260629": "PASS",
+    "production_entry_smoke_20260629": "PARTIAL — OTP verify BLOCKED_EMAIL_ACCESS"
+  }
+}

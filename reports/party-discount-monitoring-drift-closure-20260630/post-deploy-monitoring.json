@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-06-30T09:12:14.911Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "FAIL",
+  "exit_code": 1,
+  "evidence_file": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T08-58-37-905Z.json",
+  "deployed_commit": "a83522f758a3a55f0faffc4b35787cdd889547f2",
+  "profiles": {
+    "din-china": {
+      "result": "FAIL",
+      "mr_jalil_closing": "PASS at 216299",
+      "trial_balance_golden": "PASS at 407957272.02",
+      "admin_compare_pilot_batch": {
+        "result": "FAIL",
+        "notes": "compared=9 pass=0 fail=9",
+        "classification": "RETAINED_JE_ENGINE_TIEOUT_BASELINE",
+        "explanation": "Pilot batch compares legacy hybrid vs unified closing balances (not golden constant display). Retained JE-0003 (party_discount PKR 1) shifts unified MR JALIL to 216299 while hybrid legacy path remains 216300 → |diff|=1 on all 9 rows. Frontend constant deploy confirmed (216299 in production bundle); stale-constant drift is closed."
+      }
+    },
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "approved_je_baseline": {
+    "entry_no": "JE-0003",
+    "je_id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+    "company": "DIN CHINA",
+    "party": "MR JALIL",
+    "amount_pkr": 1,
+    "reference_type": "party_discount",
+    "date": "2026-06-30"
+  },
+  "drift_closure_scope": {
+    "tb_golden_plus_1": "CLOSED",
+    "frontend_golden_constant_deploy": "CLOSED",
+    "full_monitoring_exit_0": "OPEN — Admin Compare 9/9 tie-out baseline"
+  }
+}

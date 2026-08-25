@@ -1,0 +1,7 @@
+{
+  "run": "DEPLOY_DECISION",
+  "frontend_deployed": false,
+  "reason": "post_fix_monitoring_fail_roznamcha_golden_drift_await_operator_approval",
+  "deploy_script": "deploy/vps-build-erp-only.sh",
+  "migrations_required": false
+}

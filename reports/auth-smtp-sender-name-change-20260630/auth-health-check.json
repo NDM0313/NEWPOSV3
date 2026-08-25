@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-06-30T12:10:30.000Z",
+  "supabase_auth": { "status": "running", "health": "healthy" },
+  "GOTRUE_SMTP_SENDER_NAME": "NDM ERP SYSTEM",
+  "GOTRUE_MAILER_AUTOCONFIRM": "false",
+  "GOTRUE_SMTP_HOST": "smtp.hostinger.com",
+  "erp_http": 200,
+  "db_restarted": false,
+  "frontend_restarted": false,
+  "migrations_run": false
+}

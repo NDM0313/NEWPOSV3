@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-06-27T18:30:00Z",
+  "status": "VALIDATED_NOT_EXECUTED",
+  "sql_pack_dir": "scripts/single-core-ledger/din-couture",
+  "file_counts": { "enable": 12, "rollback": 12, "audit": 2, "config": 1 },
+  "company_id_hardcoded": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+  "gl_mutation": false,
+  "migrations": false,
+  "rollback_pairs_complete": true,
+  "golden_capture_script": "scripts/single-core-ledger/run-golden-capture-din-couture.mjs",
+  "executed": false,
+  "block_reason": "BROWSER_CREDENTIALS_NOT_DIN_COUTURE_USER"
+}

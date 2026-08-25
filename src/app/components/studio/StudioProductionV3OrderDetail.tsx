@@ -229,10 +229,10 @@ export const StudioProductionV3OrderDetail = () => {
   if (!orderId) {
     return (
       <div className="p-6">
-        <Button variant="ghost" onClick={() => setCurrentView('studio-pipeline')} className="text-gray-400">
+        <Button variant="ghost" onClick={() => setCurrentView('studio-pipeline')} className="text-muted-foreground">
           <ChevronLeft className="mr-2 h-4 w-4" /> Back to Pipeline
         </Button>
-        <p className="text-gray-500 mt-4">No order selected.</p>
+        <p className="text-muted-foreground mt-4">No order selected.</p>
       </div>
     );
   }
@@ -240,7 +240,7 @@ export const StudioProductionV3OrderDetail = () => {
   if (loading || !order) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -261,20 +261,20 @@ export const StudioProductionV3OrderDetail = () => {
             variant="ghost"
             size="icon"
             onClick={() => setCurrentView('studio-pipeline')}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             <ChevronLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-white">{order.production_no}</h1>
-            <p className="text-sm text-gray-400">Studio Production Order (V3)</p>
+            <h1 className="text-2xl font-bold text-foreground">{order.production_no}</h1>
+            <p className="text-sm text-muted-foreground">Studio Production Order (V3)</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {canFinalComplete && (
             <Button
               size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-green-600 hover:bg-green-700 text-foreground"
               onClick={handleFinalComplete}
             >
               <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -300,31 +300,31 @@ export const StudioProductionV3OrderDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4 space-y-2">
+        <div className="rounded-lg border border-border bg-accent/30 p-4 space-y-2">
           <div className="flex items-center gap-2 text-sm">
-            <User className="h-4 w-4 text-gray-500" />
-            <span className="text-gray-400">Customer:</span>
-            <span className="text-white">{customerName || '—'}</span>
+            <User className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Customer:</span>
+            <span className="text-foreground">{customerName || '—'}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <Scissors className="h-4 w-4 text-gray-500" />
-            <span className="text-gray-400">Fabric:</span>
-            <span className="text-white">{order.fabric || '—'}</span>
+            <Scissors className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Fabric:</span>
+            <span className="text-foreground">{order.fabric || '—'}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <Calendar className="h-4 w-4 text-gray-500" />
-            <span className="text-gray-400">Sale Date:</span>
-            <span className="text-white">{saleDate ? safeFormatDate(saleDate) : '—'}</span>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Sale Date:</span>
+            <span className="text-foreground">{saleDate ? safeFormatDate(saleDate) : '—'}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-400">Deadline:</span>
-            <span className="text-white">{order.deadline ? safeFormatDate(order.deadline) : '—'}</span>
+            <span className="text-muted-foreground">Deadline:</span>
+            <span className="text-foreground">{order.deadline ? safeFormatDate(order.deadline) : '—'}</span>
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4">
-        <h2 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+      <div className="rounded-lg border border-border bg-accent/30 p-4">
+        <h2 className="text-base font-bold text-foreground mb-4 flex items-center gap-2">
           <Package className="h-5 w-5 text-emerald-500" />
           Production Stages
         </h2>
@@ -335,14 +335,14 @@ export const StudioProductionV3OrderDetail = () => {
             return (
               <div
                 key={stage.id}
-                className="flex items-center justify-between py-2 border-b border-gray-700/50 last:border-0"
+                className="flex items-center justify-between py-2 border-b border-border last:border-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-white">{stage.stage_name}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="font-medium text-foreground">{stage.stage_name}</p>
+                  <p className="text-xs text-muted-foreground">
                     {worker ? worker.name : 'Not assigned'}
                     {stage.status === 'completed' && (
-                      <span className="ml-2 text-green-400"> · {formatCurrency(Number(stage.actual_cost) || 0)}</span>
+                      <span className="ml-2 text-[var(--erp-money-positive)]"> · {formatCurrency(Number(stage.actual_cost) || 0)}</span>
                     )}
                   </p>
                 </div>
@@ -355,7 +355,7 @@ export const StudioProductionV3OrderDetail = () => {
                             type="number"
                             min={0}
                             step={1}
-                            className="w-24 h-8 bg-gray-900"
+                            className="w-24 h-8 bg-card"
                             value={editingCostValue}
                             onChange={(e) => setEditingCostValue(e.target.value)}
                           />
@@ -373,7 +373,7 @@ export const StudioProductionV3OrderDetail = () => {
                       ) : (
                         <>
                           <select
-                            className="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                            className="bg-card border border-gray-600 rounded px-2 py-1 text-sm text-foreground"
                             value={stage.worker_id || ''}
                             onChange={(e) => {
                               const id = e.target.value;
@@ -408,16 +408,16 @@ export const StudioProductionV3OrderDetail = () => {
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4">
-        <h2 className="text-base font-bold text-white mb-3">Production Cost Summary</h2>
+      <div className="rounded-lg border border-border bg-accent/30 p-4">
+        <h2 className="text-base font-bold text-foreground mb-3">Production Cost Summary</h2>
         <div className="space-y-1">
           {stages.map((s) => (
             <div key={s.id} className="flex justify-between text-sm">
-              <span className="text-gray-400">{s.stage_name}</span>
-              <span className="text-white">{formatCurrency(Number(s.actual_cost) || 0)}</span>
+              <span className="text-muted-foreground">{s.stage_name}</span>
+              <span className="text-foreground">{formatCurrency(Number(s.actual_cost) || 0)}</span>
             </div>
           ))}
-          <div className="flex justify-between font-semibold text-white pt-2 border-t border-gray-700">
+          <div className="flex justify-between font-semibold text-foreground pt-2 border-t border-border">
             <span>Total Production Cost</span>
             <span>{formatCurrency(productionCost)}</span>
           </div>
@@ -425,24 +425,24 @@ export const StudioProductionV3OrderDetail = () => {
       </div>
 
       {invoicePanelOpen && (
-        <div className="rounded-lg border border-emerald-700/50 bg-gray-800/50 p-6 space-y-4">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+        <div className="rounded-lg border border-emerald-700/50 bg-muted/50 p-6 space-y-4">
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
             <FileText className="h-5 w-5 text-emerald-500" />
             Invoice Generation Panel
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label className="text-gray-400">Production Cost</Label>
-              <p className="text-xl font-semibold text-white">{formatCurrency(productionCost)}</p>
+              <Label className="text-muted-foreground">Production Cost</Label>
+              <p className="text-xl font-semibold text-foreground">{formatCurrency(productionCost)}</p>
             </div>
             <div>
-              <Label className="text-gray-400">Profit %</Label>
+              <Label className="text-muted-foreground">Profit %</Label>
               <Input
                 type="number"
                 min={0}
                 step={0.5}
-                className="bg-gray-900 text-white"
+                className="bg-card text-foreground"
                 value={profitPercent}
                 onChange={(e) => {
                   setProfitPercent(e.target.value);
@@ -453,41 +453,41 @@ export const StudioProductionV3OrderDetail = () => {
               />
             </div>
             <div>
-              <Label className="text-gray-400">Final Price (editable)</Label>
+              <Label className="text-muted-foreground">Final Price (editable)</Label>
               <Input
                 type="number"
                 min={0}
                 step={1}
-                className="bg-gray-900 text-white"
+                className="bg-card text-foreground"
                 value={finalPrice}
                 onChange={(e) => setFinalPrice(e.target.value)}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Profit: {formatCurrency(Math.max(0, displayFinal - prodCost))} ({displayProfitPct.toFixed(1)}%)
               </p>
             </div>
             <div>
-              <Label className="text-gray-400">Shipping (optional)</Label>
+              <Label className="text-muted-foreground">Shipping (optional)</Label>
               <Input
                 type="number"
                 min={0}
                 step={1}
-                className="bg-gray-900 text-white"
+                className="bg-card text-foreground"
                 value={shippingAmount}
                 onChange={(e) => setShippingAmount(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="rounded bg-gray-900/50 p-4">
-            <h3 className="text-sm font-semibold text-white mb-2">Production Breakdown</h3>
+          <div className="rounded bg-muted/40 p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Production Breakdown</h3>
             {breakdownRows.map((r, i) => (
               <div key={i} className="flex justify-between text-sm py-1">
-                <span className="text-gray-400">{r.label}</span>
-                <span className="text-white">{formatCurrency(r.value)}</span>
+                <span className="text-muted-foreground">{r.label}</span>
+                <span className="text-foreground">{formatCurrency(r.value)}</span>
               </div>
             ))}
-            <div className="flex justify-between font-semibold text-white pt-2 border-t border-gray-700">
+            <div className="flex justify-between font-semibold text-foreground pt-2 border-t border-border">
               <span>Final Price</span>
               <span>{formatCurrency(displayFinal)}</span>
             </div>
@@ -501,18 +501,18 @@ export const StudioProductionV3OrderDetail = () => {
               onChange={(e) => setShowProductionDetail(e.target.checked)}
               className="rounded border-gray-600"
             />
-            <Label htmlFor="show-detail" className="text-gray-400 flex items-center gap-1">
+            <Label htmlFor="show-detail" className="text-muted-foreground flex items-center gap-1">
               <Eye className="h-4 w-4" /> Show Production Detail on invoice
             </Label>
           </div>
 
           {!order.product_id ? (
             <div className="space-y-2">
-              <p className="text-sm text-gray-400">Product: Create new or use existing from linked sale.</p>
+              <p className="text-sm text-muted-foreground">Product: Create new or use existing from linked sale.</p>
               <div className="flex gap-2 flex-wrap">
                 <Input
                   placeholder="Product name"
-                  className="bg-gray-900 w-48"
+                  className="bg-card w-48"
                   value={productNameInput}
                   onChange={(e) => setProductNameInput(e.target.value)}
                 />
@@ -526,10 +526,10 @@ export const StudioProductionV3OrderDetail = () => {
                   Create New Product
                 </Button>
               </div>
-              <p className="text-xs text-gray-500">SKU will be auto-generated (e.g. STUDIO-DRESS-001).</p>
+              <p className="text-xs text-muted-foreground">SKU will be auto-generated (e.g. STUDIO-DRESS-001).</p>
             </div>
           ) : (
-            <p className="text-sm text-green-400">Product linked. You can generate the sales invoice.</p>
+            <p className="text-sm text-[var(--erp-money-positive)]">Product linked. You can generate the sales invoice.</p>
           )}
 
           <div className="flex gap-2 pt-2">

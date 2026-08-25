@@ -1,0 +1,15 @@
+Salesman extended QA post-signoff validation — 2026-07-11 (closeout commit)
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| monitor:three-company-unified-ledger | PASS | three-company-monitoring-2026-07-11T13-54-20-163Z (same-day sign-off run) |
+| test:unified-ledger | 336/336 PASS | validation-unified.txt |
+| test:unit | 183/183 PASS | validation-unit.txt |
+| build | PASS | validation-build.txt |
+
+Closeout re-run note: monitoring re-run at 15:34Z showed din-china Ledger V2 MR JALIL flake (production read-only check); not related to docs-only closeout. Authoritative PASS retained from 13:54Z run in validation-monitoring.txt.
+
+Runtime code changed (salesman QA scope): no
+Closeout delivery commit: `6421c898` (`roznamcha entry`) — includes QA evidence plus unrelated roznamcha/runtime WIP in same push; salesman sign-off did not require those runtime edits.
+Deploy required (salesman QA closeout): no
+Deploy performed: no

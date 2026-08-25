@@ -43,7 +43,10 @@ export async function readThroughCache<T>(
 
   const { data, error } = await onlineFetch();
   if (!error) {
-    await listCacheSet(cacheKey, { data, cachedAt: Date.now() } satisfies CacheEnvelope<T>);
+    const hasPayload = Array.isArray(data) ? data.length > 0 : data != null;
+    if (hasPayload) {
+      await listCacheSet(cacheKey, { data, cachedAt: Date.now() } satisfies CacheEnvelope<T>);
+    }
     return { data, fromCache: false, cachedAt: Date.now(), error: null };
   }
 

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ledger V2 CSV Export — Phase 1 Acceptance</title>
+  <style>
+    body { margin: 0; background: #f3f4f6; font-family: Consolas, 'Courier New', monospace; padding: 24px; }
+    h2 { font-family: Arial, sans-serif; font-size: 14px; color: #111; margin: 0 0 12px; }
+    .sheet { background: #fff; border: 1px solid #d1d5db; max-width: 960px; overflow: auto; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; white-space: nowrap; }
+    th { background: #f9fafb; font-weight: 700; text-align: left; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .meta td { background: #fefce8; font-style: italic; border: none; }
+    .meta-row { border: none; }
+  </style>
+</head>
+<body>
+  <h2>Excel / CSV Export — Ledger Statement V2 (clean numbers &amp; dates)</h2>
+  <div class="sheet">
+    <table>
+      <tr class="meta-row"><td colspan="10" class="meta">Customer Ledger — Saqib Ahmed</td></tr>
+      <tr class="meta-row"><td colspan="2">Opening balance</td><td colspan="8" class="num">12000</td></tr>
+      <tr class="meta-row"><td colspan="2">Closing balance</td><td colspan="8" class="num">25000</td></tr>
+      <tr class="meta-row"><td colspan="2">Total debit</td><td colspan="8" class="num">45000</td></tr>
+      <tr class="meta-row"><td colspan="2">Total credit</td><td colspan="8" class="num">20000</td></tr>
+      <tr><td colspan="10">&nbsp;</td></tr>
+      <tr>
+        <th>Date</th><th>Reference</th><th>Type</th><th>Description</th><th>Branch</th>
+        <th>Debit</th><th>Credit</th><th>Balance</th><th>Payment Method</th><th>Created By</th>
+      </tr>
+      <tr>
+        <td>2026-04-01</td><td>INV-1042</td><td>Sale Invoice</td><td>Silk bridal set</td><td>Main Branch</td>
+        <td class="num">45000</td><td class="num"></td><td class="num">45000</td><td>Cash</td><td>Admin</td>
+      </tr>
+      <tr>
+        <td>2026-04-05</td><td>PAY-0891</td><td>Payment</td><td>Bank transfer</td><td>Main Branch</td>
+        <td class="num"></td><td class="num">20000</td><td class="num">25000</td><td>Bank Transfer</td><td>Admin User</td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

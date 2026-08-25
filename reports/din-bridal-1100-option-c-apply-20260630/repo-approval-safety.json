@@ -1,0 +1,35 @@
+{
+  "runName": "DIN BRIDAL 1100 CONTROL AR — OPTION C SCOPED APPLY",
+  "timestampUtc": "2026-06-30T15:00:00.000Z",
+  "branch": "main",
+  "headCommit": "e7f3fea921239eec0c642634831ab7873218e1e5",
+  "dryRunEvidenceCommit": "e7f3fea9",
+  "dryRunEvidencePresent": true,
+  "stagedFiles": false,
+  "credentialsStaged": false,
+  "approvalStatus": "CONFIRMED",
+  "selectedOption": "Option C — reclass via scoped gl_correction",
+  "operator": "Nadeem Khan",
+  "approvalDate": "2026-06-30",
+  "approvalTextMatch": true,
+  "amountPkr": 136500,
+  "corrections": [
+    {
+      "sourceJe": "JE-0155",
+      "invoice": "HQ-SL-0001",
+      "customer": "Miss NAGHMANA RAJA",
+      "account": "AR-CUS0056",
+      "amountPkr": 78750,
+      "sourceLineId": "4dfdc6ba-f895-4efd-89c5-253a4429322f"
+    },
+    {
+      "sourceJe": "JE-0157",
+      "invoice": "HQ-SL-0002",
+      "customer": "ASIM",
+      "account": "AR-CUS0012",
+      "amountPkr": 57750,
+      "sourceLineId": "428ae1a5-2aea-4953-afc8-d93e372fc479"
+    }
+  ],
+  "blockedReason": null
+}

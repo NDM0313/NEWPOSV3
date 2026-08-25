@@ -1,0 +1,49 @@
+{
+  "run": "PHASE_3B_M_POST_SWAP_SMOKE",
+  "generated_at": "2026-06-29T16:12:15.295Z",
+  "production_url": "https://erp.dincouture.pk",
+  "commit": "36543345",
+  "overall": "PASS",
+  "checks": [
+    {
+      "check": "app loads",
+      "result": "PASS",
+      "notes": "https://erp.dincouture.pk"
+    },
+    {
+      "check": "login",
+      "result": "PASS",
+      "notes": "din@yahoo.com"
+    },
+    {
+      "check": "cash flow page loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "unified main loader active",
+      "result": "PASS",
+      "notes": "unified"
+    },
+    {
+      "check": "unified basis banner",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "operational totals visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "legacy shadow compare toggle visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "no material page errors",
+      "result": "PASS",
+      "notes": ""
+    }
+  ]
+}

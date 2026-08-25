@@ -1,0 +1,12 @@
+{
+  "generated": "2026-06-29",
+  "url": "https://erp.dincouture.pk",
+  "appLoads": true,
+  "loginWorks": true,
+  "dashboardLoads": true,
+  "consoleErrors": false,
+  "ledgerV2Loads": true,
+  "unifiedPreviewRoleGated": true,
+  "filtersWork": true,
+  "result": "PASS"
+}

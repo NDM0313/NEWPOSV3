@@ -29,12 +29,12 @@ export const PurchaseDashboard = () => {
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Purchases</h2>
-          <p className="text-gray-400 text-sm">Manage purchase orders and supplier transactions.</p>
+          <h2 className="text-2xl font-bold text-foreground">Purchases</h2>
+          <p className="text-muted-foreground text-sm">Manage purchase orders and supplier transactions.</p>
         </div>
         <Button 
           onClick={() => openDrawer('addPurchase')}
-          className="bg-orange-600 hover:bg-orange-500 text-white gap-2 shadow-lg shadow-orange-500/20"
+          className="bg-orange-600 hover:bg-orange-500 text-foreground gap-2 shadow-lg shadow-orange-500/20"
         >
           <Plus size={18} />
           Add Purchase
@@ -74,11 +74,11 @@ export const PurchaseDashboard = () => {
       </div>
 
       {/* Table Section */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         {/* Table Header with Method Badge */}
-        <div className="px-6 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
+        <div className="px-6 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Purchase Orders</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Purchase Orders</h3>
             <span className="px-3 py-1 bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded-full text-xs font-medium">
               Standard Method
             </span>
@@ -88,7 +88,7 @@ export const PurchaseDashboard = () => {
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-950/50 text-gray-400 font-medium border-b border-gray-800">
+            <thead className="bg-muted/40 text-muted-foreground font-medium border-b border-border">
               <tr>
                 <th className="px-6 py-4"></th>
                 <th className="px-6 py-4">Date</th>
@@ -102,57 +102,57 @@ export const PurchaseDashboard = () => {
                 <th className="px-6 py-4">Added By</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {mockPurchases.map((purchase) => (
-                <tr key={purchase.id} className="hover:bg-gray-800/50 transition-colors group">
+                <tr key={purchase.id} className="hover:bg-muted/50 transition-colors group">
                   <td className="px-6 py-4">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-gray-500 hover:text-white"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
                         >
                           <MoreVertical size={16} />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                      <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <Eye size={14} className="mr-2" />
                           View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <Edit size={14} className="mr-2" />
                           Edit Purchase
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <FileText size={14} className="mr-2" />
                           Generate Invoice
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                           <DollarSign size={14} className="mr-2" />
                           Add Payment
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400">
+                        <DropdownMenuItem className="hover:bg-muted cursor-pointer text-red-400">
                           <Trash2 size={14} className="mr-2" />
                           Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
-                  <td className="px-6 py-4 text-gray-400">
+                  <td className="px-6 py-4 text-muted-foreground">
                     {new Date(purchase.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </td>
                   <td className="px-6 py-4">
-                    <span className="font-medium text-white">{purchase.refNo}</span>
+                    <span className="font-medium text-foreground">{purchase.refNo}</span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-gray-300">{purchase.location}</span>
+                    <span className="text-muted-foreground">{purchase.location}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="font-medium text-white">{purchase.supplier}</p>
-                      <p className="text-xs text-gray-500">{purchase.items} items</p>
+                      <p className="font-medium text-foreground">{purchase.supplier}</p>
+                      <p className="text-xs text-muted-foreground">{purchase.items} items</p>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -160,7 +160,7 @@ export const PurchaseDashboard = () => {
                       "px-2.5 py-1 rounded-full text-xs font-medium",
                       purchase.purchaseStatus === 'Received' ? "bg-green-500/10 text-green-500" : 
                       purchase.purchaseStatus === 'Ordered' ? "bg-blue-500/10 text-blue-500" :
-                      "bg-gray-500/10 text-gray-500"
+                      "bg-gray-500/10 text-muted-foreground"
                     )}>
                       {purchase.purchaseStatus}
                     </span>
@@ -176,15 +176,15 @@ export const PurchaseDashboard = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <span className="font-medium text-white">${purchase.total.toLocaleString()}</span>
+                    <span className="font-medium text-foreground">${purchase.total.toLocaleString()}</span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     {purchase.due > 0 ? (
                       <span className="text-red-400 font-medium">${purchase.due.toLocaleString()}</span>
-                    ) : <span className="text-gray-600">-</span>}
+                    ) : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-gray-300 text-sm">{purchase.addedBy}</span>
+                    <span className="text-muted-foreground text-sm">{purchase.addedBy}</span>
                   </td>
                 </tr>
               ))}
@@ -199,12 +199,12 @@ export const PurchaseDashboard = () => {
 const GlassCard = ({ title, value, subtitle, icon: Icon, highlightColor }: any) => (
   <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-xl shadow-lg relative overflow-hidden">
     <div className="absolute top-0 right-0 p-4 opacity-10">
-      <Icon size={48} className="text-white" />
+      <Icon size={48} className="text-foreground" />
     </div>
-    <p className="text-gray-400 text-sm font-medium">{title}</p>
+    <p className="text-muted-foreground text-sm font-medium">{title}</p>
     <div className="flex items-end gap-3 mt-1 mb-2">
-      <h3 className={cn("text-3xl font-bold", highlightColor || "text-white")}>{value}</h3>
+      <h3 className={cn("text-3xl font-bold", highlightColor || "text-foreground")}>{value}</h3>
     </div>
-    <p className="text-gray-500 text-xs">{subtitle}</p>
+    <p className="text-muted-foreground text-xs">{subtitle}</p>
   </div>
 );

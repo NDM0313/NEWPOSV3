@@ -1,0 +1,24 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "golden-refresh-recommendation-pack",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "recommend_golden_refresh": true,
+  "execution_status": "NOT_EXECUTED",
+  "baseline_artifact": "three-company-monitoring-2026-07-01T12-43-13-370Z",
+  "proposed_new_goldens_pkr": {
+    "trial_balance_total": 22257400,
+    "roznamcha_cash_in": 1958350,
+    "roznamcha_cash_out": 917780,
+    "roznamcha_closing": 1040570,
+    "note_post_rcv_0077": "If refreshed after RCV-0077 only: TB +20000, cash in +20000 more"
+  },
+  "contributing_refs": ["RCV-0075", "JE-0205/SL-0018", "RCV-0076", "RCV-0077"],
+  "contributing_payment_ids": [
+    "54243a50-be7c-44ae-951b-138c0759ad74",
+    "f918811d-abb3-4be7-9e38-fba87b5173f1",
+    "a9e755e9-a345-410d-a9a3-930c1c9b4da4"
+  ],
+  "contributing_sale_ids": ["4a080eeb-4866-4c90-8265-bceec62d6727"],
+  "approval_template_operator": "Nadeem Khan",
+  "rollback_note": "Fixture-only update to monitoring-company-profiles.json and golden-fixtures.json; no production GL/data mutation"
+}

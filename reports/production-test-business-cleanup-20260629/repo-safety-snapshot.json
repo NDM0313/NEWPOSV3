@@ -1,0 +1,9 @@
+{
+  "generated": "2026-06-29",
+  "branch": "main",
+  "head": "31149d5d",
+  "originMain": "31149d5d",
+  "evidenceCommit31149d5d": true,
+  "stagedFiles": false,
+  "dirtyPaths": ["graphify-out/", "downloads/", "erp-flutter-app/releases/"]
+}

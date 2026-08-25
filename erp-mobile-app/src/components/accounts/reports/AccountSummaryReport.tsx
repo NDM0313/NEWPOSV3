@@ -10,6 +10,8 @@ import { formatAmount, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
+import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
 
 export type AccountKind = 'cash' | 'bank' | 'wallet';
 
@@ -19,7 +21,7 @@ interface AccountSummaryReportProps {
   user: User;
   kind: AccountKind;
   onViewLedger?: (accountId: string) => void;
-  /** Ledger movements scoped like web account ledger (includes NULL branch_id JEs). */
+  /** App branch — FY on DateRangeBar only; movement loaders use all-branches (web parity). */
   branchId?: string | null;
   reportRefreshEpoch?: number;
 }
@@ -43,7 +45,7 @@ export function AccountSummaryReport({
   const Icon = cfg.icon;
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [movements, setMovements] = useState<Record<string, { inAmount: number; outAmount: number; net: number; count: number; lines: LedgerLine[] }>>({});
   const [movementsRefreshNonce, setMovementsRefreshNonce] = useState(0);
   const [movementsRefreshBusy, setMovementsRefreshBusy] = useState(false);
@@ -89,7 +91,7 @@ export function AccountSummaryReport({
               a.id,
               range.from || undefined,
               range.to || undefined,
-              branchId ?? null,
+              ACCOUNT_LEDGER_ALL_BRANCHES,
             );
             const debit = lines.reduce((s, l) => s + l.debit, 0);
             const credit = lines.reduce((s, l) => s + l.credit, 0);
@@ -110,7 +112,7 @@ export function AccountSummaryReport({
     return () => {
       cancelled = true;
     };
-  }, [companyId, accounts, range.from, range.to, branchId, movementsRefreshNonce]);
+  }, [companyId, accounts, range.from, range.to, movementsRefreshNonce]);
 
   useEffect(() => {
     const onVis = () => {
@@ -138,14 +140,9 @@ export function AccountSummaryReport({
     return accounts.flatMap((a) => {
       const m = movements[a.id];
       if (!m) return [];
-      return m.lines.map((l) => ({
-        date: l.date,
-        reference: `${a.code}·${l.entryNo}`,
-        description: `${a.name} — ${l.description}`,
-        debit: l.debit,
-        credit: l.credit,
-        balance: l.runningBalance,
-      }));
+      return m.lines.map((l) =>
+        toLedgerPreviewRow(l, `${a.code}·${l.entryNo}`, { viewedAccountName: a.name }),
+      );
     });
   }, [accounts, movements]);
 
@@ -179,7 +176,7 @@ export function AccountSummaryReport({
         }}
         refreshing={movementsRefreshBusy}
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
       <ReportShell loading={loading} empty={!loading && accounts.length === 0} emptyLabel="No accounts of this type.">

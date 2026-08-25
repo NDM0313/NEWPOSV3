@@ -1,0 +1,13 @@
+{
+  "run_name": "CONTROLLED PARTY DISCOUNT JE POSTING QA — DIN CHINA MR JALIL PKR 1",
+  "generated_at": "2026-06-30T07:30:00.000Z",
+  "branch": "main",
+  "head": "ccf7d660b8f75a0193148f01362d5c40416b5cd9",
+  "origin_main": "ccf7d660b8f75a0193148f01362d5c40416b5cd9",
+  "head_equals_origin_main": true,
+  "staged_files": [],
+  "credentials_staged": false,
+  "posting_approved": true,
+  "approved_scope": "DIN CHINA / MR JALIL / customer / PKR 1 / single JE only",
+  "status": "PASS"
+}

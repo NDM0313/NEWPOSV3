@@ -1,0 +1,22 @@
+{
+  "phase": "3B-L",
+  "run": "readiness-checklist",
+  "generated_at": "2026-06-29T17:00:00.000Z",
+  "loaderSwapApproved": false,
+  "operatorWrittenApprovalReceived": false,
+  "items": [
+    { "id": "finance_basis_signoff", "label": "Finance basis sign-off complete (Phase 3B-K)", "status": "YES" },
+    { "id": "aligned_candidate_pack", "label": "Cash Flow aligned candidate pack complete (Phase 3B-I)", "status": "YES" },
+    { "id": "din_china_delta_acceptance", "label": "DIN CHINA delta acceptance recorded", "status": "YES" },
+    { "id": "din_bridal_delta_acceptance", "label": "DIN BRIDAL delta acceptance recorded", "status": "YES" },
+    { "id": "din_couture_zero_diff", "label": "DIN COUTURE zero-diff recorded", "status": "YES" },
+    { "id": "legacy_unchanged", "label": "Legacy official unchanged", "status": "YES" },
+    { "id": "rollback_plan", "label": "Rollback plan documented", "status": "COMPLETE", "evidence": "rollback-and-safety-plan.md" },
+    { "id": "monitoring_plan", "label": "Monitoring plan documented", "status": "COMPLETE", "evidence": "monitoring-and-qa-matrix.md" },
+    { "id": "flag_design", "label": "Flag design documented", "status": "COMPLETE", "evidence": "loader-architecture-map.md" },
+    { "id": "smoke_plan", "label": "Production smoke plan documented", "status": "COMPLETE", "evidence": "monitoring-and-qa-matrix.md" },
+    { "id": "operator_approval", "label": "Operator written approval for loader swap", "status": "NOT_RECEIVED" },
+    { "id": "loader_swap_approved", "label": "loader_swap_approved", "status": false }
+  ],
+  "overallReadiness": "PLANNING_COMPLETE_EXECUTION_BLOCKED"
+}

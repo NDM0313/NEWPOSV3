@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-06-30T11:24:00.000Z",
+  "config_change_applied": false,
+  "baseline_health": {
+    "supabase_auth_container": "healthy",
+    "auth_health_endpoint": "401 (expected without API key)",
+    "erp_frontend": "200",
+    "existing_login_test": "NOT_RUN — no config change; monitoring script validates production company login separately",
+    "session_invalidation_risk": "none — no auth restart performed"
+  },
+  "note": "Post-change login verification deferred until SMTP config is applied and supabase-auth is restarted"
+}

@@ -70,8 +70,8 @@ export const LeadTools = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-white mb-1">Lead Capture QR Codes</h3>
-        <p className="text-sm text-gray-400">
+        <h3 className="text-lg font-semibold text-foreground mb-1">Lead Capture QR Codes</h3>
+        <p className="text-sm text-muted-foreground">
           Generate QR codes and links for public contact registration. The link includes your company
           {branchId ? ' and branch' : ''} so leads register in the correct account.
         </p>
@@ -81,8 +81,8 @@ export const LeadTools = () => {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 space-y-4">
-          <Label className="text-white font-medium">Contact Type</Label>
+        <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+          <Label className="text-foreground font-medium">Contact Type</Label>
           <div className="flex gap-4">
             {(['customer', 'supplier', 'worker'] as const).map((t) => (
               <label key={t} className="flex items-center gap-2 cursor-pointer">
@@ -92,47 +92,47 @@ export const LeadTools = () => {
                   value={t}
                   checked={type === t}
                   onChange={() => setType(t)}
-                  className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600"
+                  className="w-4 h-4 text-blue-600 bg-muted border-gray-600"
                 />
-                <span className="text-gray-300 capitalize">{t}</span>
+                <span className="text-muted-foreground capitalize">{t}</span>
               </label>
             ))}
           </div>
 
           <div>
-            <Label className="text-gray-400 text-xs">Source (optional)</Label>
+            <Label className="text-muted-foreground text-xs">Source (optional)</Label>
             <Input
               value={source}
               onChange={(e) => setSource(e.target.value)}
               placeholder="e.g. instagram, facebook, website"
-              className="mt-1 bg-gray-800 border-gray-700 text-white"
+              className="mt-1 bg-muted border-border text-foreground"
             />
           </div>
 
           <div>
-            <Label className="text-gray-400 text-xs">Referral Code (optional)</Label>
+            <Label className="text-muted-foreground text-xs">Referral Code (optional)</Label>
             <Input
               value={ref}
               onChange={(e) => setRef(e.target.value)}
               placeholder="e.g. SALESMAN01, NDM01"
-              className="mt-1 bg-gray-800 border-gray-700 text-white"
+              className="mt-1 bg-muted border-border text-foreground"
             />
           </div>
 
           <div>
-            <Label className="text-gray-400 text-xs">Registration Link</Label>
+            <Label className="text-muted-foreground text-xs">Registration Link</Label>
             <div className="flex gap-2 mt-1">
               <Input
                 value={url}
                 readOnly
-                className="bg-gray-950 border-gray-700 text-gray-300 font-mono text-xs"
+                className="bg-input-background border-border text-muted-foreground font-mono text-xs"
               />
               <Button
                 size="icon"
                 variant="outline"
                 onClick={handleCopy}
                 disabled={!companyId}
-                className="shrink-0 border-gray-700"
+                className="shrink-0 border-border"
               >
                 {copied ? <Copy size={16} className="text-green-500" /> : <Copy size={16} />}
               </Button>
@@ -140,13 +140,13 @@ export const LeadTools = () => {
           </div>
         </div>
 
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 flex flex-col items-center justify-center">
+        <div className="bg-card border border-border rounded-xl p-6 flex flex-col items-center justify-center">
           <div ref={qrRef} className="bg-white p-4 rounded-xl">
             <QRCode value={url} size={200} level="M" fgColor="#111827" bgColor="#ffffff" />
           </div>
           <Button
             variant="outline"
-            className="mt-4 gap-2 border-gray-700"
+            className="mt-4 gap-2 border-border"
             onClick={handleDownloadQR}
             disabled={!companyId}
           >
@@ -158,10 +158,10 @@ export const LeadTools = () => {
 
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
         <p className="text-sm text-blue-300">
-          <strong>Tip:</strong> Links include <code className="bg-gray-800 px-1 rounded">company</code> and{' '}
-          <code className="bg-gray-800 px-1 rounded">branch</code> IDs so registrations stay in your tenant.
+          <strong>Tip:</strong> Links include <code className="bg-muted px-1 rounded">company</code> and{' '}
+          <code className="bg-muted px-1 rounded">branch</code> IDs so registrations stay in your tenant.
           Example:{' '}
-          <code className="bg-gray-800 px-1 rounded">
+          <code className="bg-muted px-1 rounded">
             ?company=…&branch=…&type=customer&source=instagram&ref=NDM01
           </code>
         </p>

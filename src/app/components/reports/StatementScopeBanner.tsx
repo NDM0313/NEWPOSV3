@@ -11,22 +11,22 @@ export const StatementScopeBanner: React.FC<{
 }> = ({ periodLabel, branchScopeLabel, basisLabel, statementLabel }) => {
   return (
     <div
-      className="rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2 text-xs text-gray-400 flex flex-wrap gap-x-6 gap-y-1"
+      className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-6 gap-y-1"
       role="status"
     >
       {statementLabel ? (
         <span>
-          <span className="text-gray-500">Statement:</span> {statementLabel}
+          <span className="text-muted-foreground">Statement:</span> {statementLabel}
         </span>
       ) : null}
       <span>
-        <span className="text-gray-500">Period:</span> {periodLabel}
+        <span className="text-muted-foreground">Period:</span> {periodLabel}
       </span>
       <span>
-        <span className="text-gray-500">Branch scope:</span> {branchScopeLabel}
+        <span className="text-muted-foreground">Branch scope:</span> {branchScopeLabel}
       </span>
       <span>
-        <span className="text-gray-500">Basis:</span> {basisLabel}
+        <span className="text-muted-foreground">Basis:</span> {basisLabel}
       </span>
     </div>
   );

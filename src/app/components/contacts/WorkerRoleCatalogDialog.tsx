@@ -104,17 +104,17 @@ export function WorkerRoleCatalogDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Manage worker roles</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div>
-            <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Built-in (read-only)</p>
-            <ul className="space-y-1 text-sm text-gray-400">
+            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Built-in (read-only)</p>
+            <ul className="space-y-1 text-sm text-muted-foreground">
               {DEFAULT_WORKER_ROLES.map((r) => (
-                <li key={r.value} className="px-2 py-1 rounded bg-gray-950/50">
+                <li key={r.value} className="px-2 py-1 rounded bg-muted/40">
                   {formatWorkerRoleOption(r)}
                 </li>
               ))}
@@ -122,11 +122,11 @@ export function WorkerRoleCatalogDialog({
           </div>
 
           <div>
-            <p className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Custom roles</p>
+            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Custom roles</p>
             {loading ? (
-              <p className="text-sm text-gray-500">Loading…</p>
+              <p className="text-sm text-muted-foreground">Loading…</p>
             ) : customRoles.length === 0 ? (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 No custom roles yet. Type a new name in the role dropdown to add one.
               </p>
             ) : (
@@ -134,7 +134,7 @@ export function WorkerRoleCatalogDialog({
                 {customRoles.map((role) => (
                   <li
                     key={role.value}
-                    className="flex items-center justify-between gap-2 p-2 rounded bg-gray-950 border border-gray-800"
+                    className="flex items-center justify-between gap-2 p-2 rounded bg-input-background border border-border"
                   >
                     <span className="text-sm">{formatWorkerRoleOption(role)}</span>
                     <div className="flex gap-1 shrink-0">
@@ -165,28 +165,28 @@ export function WorkerRoleCatalogDialog({
         </div>
 
         {editing && (
-          <div className="border-t border-gray-800 pt-4 space-y-3">
-            <p className="text-sm font-medium text-green-400">Edit role</p>
+          <div className="border-t border-border pt-4 space-y-3">
+            <p className="text-sm font-medium text-[var(--erp-money-positive)]">Edit role</p>
             <div>
-              <Label className="text-gray-300">Label</Label>
+              <Label className="text-muted-foreground">Label</Label>
               <Input
                 value={editLabel}
                 onChange={(e) => setEditLabel(e.target.value)}
-                className="bg-gray-950 border-gray-700 mt-1"
+                className="bg-input-background border-border mt-1"
               />
             </div>
             <div>
-              <Label className="text-gray-300">Category</Label>
+              <Label className="text-muted-foreground">Category</Label>
               <Select
                 value={editCategory}
                 onValueChange={(v) => setEditCategory(v as WorkerRoleCategory)}
               >
-                <SelectTrigger className="bg-gray-950 border-gray-700 mt-1">
+                <SelectTrigger className="bg-input-background border-border mt-1">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-950 border-gray-800">
+                <SelectContent className="bg-input-background border-border">
                   {CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c} className="text-white focus:bg-gray-800">
+                    <SelectItem key={c} value={c} className="text-foreground focus:bg-muted">
                       {c}
                     </SelectItem>
                   ))}

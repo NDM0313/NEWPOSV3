@@ -270,16 +270,16 @@ export const AddChartAccountDrawer = ({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm" />
-        <Dialog.Content className="fixed right-0 top-0 z-50 h-full w-full max-w-2xl bg-[#0B0F17] shadow-2xl flex flex-col border-l border-gray-800">
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm" />
+        <Dialog.Content className="fixed right-0 top-0 z-50 h-full w-full max-w-2xl bg-background shadow-2xl flex flex-col border-l border-border">
           
           {/* HEADER */}
-          <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between">
+          <div className="px-6 py-5 border-b border-border bg-background flex items-center justify-between">
             <div>
-              <Dialog.Title className="text-lg font-bold text-white tracking-tight">
+              <Dialog.Title className="text-lg font-bold text-foreground tracking-tight">
                 {account ? 'Edit Account' : 'Add New Account'}
               </Dialog.Title>
-              <Dialog.Description className="text-sm text-gray-400">
+              <Dialog.Description className="text-sm text-muted-foreground">
                 {account ? 'Modify account details and settings' : 'Create a new account for Chart of Accounts'}
               </Dialog.Description>
             </div>
@@ -287,7 +287,7 @@ export const AddChartAccountDrawer = ({
               variant="ghost" 
               size="icon" 
               onClick={onClose} 
-              className="text-gray-400 hover:text-white hover:bg-gray-800"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
             >
               <X className="h-5 w-5" />
             </Button>
@@ -299,13 +299,13 @@ export const AddChartAccountDrawer = ({
             {/* ACCOUNT CODE */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Hash className="h-4 w-4" />
                   Account Code *
                 </Label>
                 {!account && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">Auto Generate</span>
+                    <span className="text-xs text-muted-foreground">Auto Generate</span>
                     <Switch
                       checked={autoGenerateCode}
                       onCheckedChange={setAutoGenerateCode}
@@ -320,7 +320,7 @@ export const AddChartAccountDrawer = ({
                 placeholder={autoGenerateCode ? "Auto-generated (e.g. 1001)" : "Enter code manually"}
                 disabled={autoGenerateCode}
                 className={cn(
-                  "bg-gray-800 border-gray-700 text-white h-11 font-mono",
+                  "bg-muted border-border text-foreground h-11 font-mono",
                   autoGenerateCode && "opacity-50 cursor-not-allowed",
                   errors.accountCode && "border-red-500"
                 )}
@@ -335,7 +335,7 @@ export const AddChartAccountDrawer = ({
 
             {/* ACCOUNT NAME */}
             <div className="space-y-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 Account Name *
                 {account?.is_system && (
@@ -350,7 +350,7 @@ export const AddChartAccountDrawer = ({
                 placeholder="e.g. Cash in Hand, Office Rent, etc."
                 disabled={account?.is_system}
                 className={cn(
-                  "bg-gray-800 border-gray-700 text-white h-11",
+                  "bg-muted border-border text-foreground h-11",
                   errors.accountName && "border-red-500",
                   account?.is_system && "opacity-50 cursor-not-allowed"
                 )}
@@ -372,7 +372,7 @@ export const AddChartAccountDrawer = ({
             {/* ACCOUNT TYPE & SUB-CATEGORY */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-3">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Tags className="h-4 w-4" />
                   Account Type *
                 </Label>
@@ -380,10 +380,10 @@ export const AddChartAccountDrawer = ({
                   setAccountType(value as AccountCategory);
                   setSubCategory('');
                 }}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
+                  <SelectTrigger className="bg-muted border-border text-foreground h-11">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectContent className="bg-muted border-border text-foreground">
                     <SelectItem value="Assets">Assets</SelectItem>
                     <SelectItem value="Liabilities">Liabilities</SelectItem>
                     <SelectItem value="Equity">Equity</SelectItem>
@@ -395,15 +395,15 @@ export const AddChartAccountDrawer = ({
               </div>
 
               <div className="space-y-3">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider">Sub Category *</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Sub Category *</Label>
                 <Select value={subCategory} onValueChange={setSubCategory}>
                   <SelectTrigger className={cn(
-                    "bg-gray-800 border-gray-700 text-white h-11",
+                    "bg-muted border-border text-foreground h-11",
                     errors.subCategory && "border-red-500"
                   )}>
                     <SelectValue placeholder="Select sub-category" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectContent className="bg-muted border-border text-foreground">
                     {subCategoryOptions[accountType].map((option) => (
                       <SelectItem key={option} value={option}>
                         {option}
@@ -422,15 +422,15 @@ export const AddChartAccountDrawer = ({
 
             {/* PARENT ACCOUNT */}
             <div className="space-y-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                 <Link2 className="h-4 w-4" />
                 Parent Account (Optional)
               </Label>
               <Select value={parentAccount || 'none'} onValueChange={(value) => setParentAccount(value === 'none' ? '' : value)}>
-                <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
+                <SelectTrigger className="bg-muted border-border text-foreground h-11">
                   <SelectValue placeholder="Select parent account (optional)" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                <SelectContent className="bg-muted border-border text-foreground">
                   <SelectItem value="none">None</SelectItem>
                   {allAccounts
                     .filter(a => a.category === accountType && a.id && a.id !== account?.id)
@@ -445,7 +445,7 @@ export const AddChartAccountDrawer = ({
 
             {/* MODULES */}
             <div className="space-y-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Modules *</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Modules *</Label>
               <div className="grid grid-cols-2 gap-2">
                 {(['POS', 'Rental', 'Studio', 'General Accounting'] as AccountModule[]).map((module) => (
                   <button
@@ -456,7 +456,7 @@ export const AddChartAccountDrawer = ({
                       "p-3 rounded-lg border text-sm transition-all",
                       selectedModules.includes(module)
                         ? "bg-blue-600/20 border-blue-500 text-blue-400"
-                        : "bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600"
+                        : "bg-muted border-border text-muted-foreground hover:border-gray-600"
                     )}
                   >
                     {module}
@@ -474,7 +474,7 @@ export const AddChartAccountDrawer = ({
             {/* OPENING BALANCE & NATURE */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-3">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Calculator className="h-4 w-4" />
                   Opening Balance *
                 </Label>
@@ -484,7 +484,7 @@ export const AddChartAccountDrawer = ({
                   onChange={(e) => setOpeningBalance(e.target.value)}
                   placeholder="0.00"
                   className={cn(
-                    "bg-gray-800 border-gray-700 text-white h-11",
+                    "bg-muted border-border text-foreground h-11",
                     errors.openingBalance && "border-red-500"
                   )}
                 />
@@ -497,15 +497,15 @@ export const AddChartAccountDrawer = ({
               </div>
 
               <div className="space-y-3">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Shield className="h-4 w-4" />
                   Nature
                 </Label>
                 <Select value={nature} onValueChange={(value) => setNature(value as 'Debit' | 'Credit')}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
+                  <SelectTrigger className="bg-muted border-border text-foreground h-11">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectContent className="bg-muted border-border text-foreground">
                     <SelectItem value="Debit">Debit</SelectItem>
                     <SelectItem value="Credit">Credit</SelectItem>
                   </SelectContent>
@@ -515,10 +515,10 @@ export const AddChartAccountDrawer = ({
 
             {/* TAX SETTINGS */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg border border-gray-700">
+              <div className="flex items-center justify-between p-4 bg-muted rounded-lg border border-border">
                 <div>
-                  <Label className="text-white font-medium">Tax Applicable</Label>
-                  <p className="text-sm text-gray-400">Enable if this account is subject to tax</p>
+                  <Label className="text-foreground font-medium">Tax Applicable</Label>
+                  <p className="text-sm text-muted-foreground">Enable if this account is subject to tax</p>
                 </div>
                 <Switch
                   checked={taxApplicable}
@@ -528,10 +528,10 @@ export const AddChartAccountDrawer = ({
               </div>
               {taxApplicable && (
                 <Select value={taxType} onValueChange={setTaxType}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
+                  <SelectTrigger className="bg-muted border-border text-foreground h-11">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectContent className="bg-muted border-border text-foreground">
                     <SelectItem value="GST">GST</SelectItem>
                     <SelectItem value="VAT">VAT</SelectItem>
                     <SelectItem value="Sales Tax">Sales Tax</SelectItem>
@@ -542,10 +542,10 @@ export const AddChartAccountDrawer = ({
 
             {/* STATUS SETTINGS */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg border border-gray-700">
+              <div className="flex items-center justify-between p-4 bg-muted rounded-lg border border-border">
                 <div>
-                  <Label className="text-white font-medium">Active</Label>
-                  <p className="text-sm text-gray-400">
+                  <Label className="text-foreground font-medium">Active</Label>
+                  <p className="text-sm text-muted-foreground">
                     {account?.is_system
                       ? 'System accounts are always active'
                       : 'Inactive accounts won\'t appear in transaction forms'}
@@ -561,10 +561,10 @@ export const AddChartAccountDrawer = ({
                   )}
                 />
               </div>
-              <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg border border-gray-700">
+              <div className="flex items-center justify-between p-4 bg-muted rounded-lg border border-border">
                 <div>
-                  <Label className="text-white font-medium">Show in Reports</Label>
-                  <p className="text-sm text-gray-400">Include this account in financial reports</p>
+                  <Label className="text-foreground font-medium">Show in Reports</Label>
+                  <p className="text-sm text-muted-foreground">Include this account in financial reports</p>
                 </div>
                 <Switch
                   checked={showInReports}
@@ -576,11 +576,11 @@ export const AddChartAccountDrawer = ({
           </div>
 
           {/* FOOTER */}
-          <div className="px-6 py-4 border-t border-gray-800 bg-[#111827] flex items-center justify-end gap-3">
+          <div className="px-6 py-4 border-t border-border bg-background flex items-center justify-end gap-3">
             <Button
               variant="outline"
               onClick={onClose}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="border-border text-muted-foreground hover:bg-muted"
             >
               Cancel
             </Button>

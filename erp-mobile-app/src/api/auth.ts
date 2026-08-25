@@ -13,7 +13,13 @@ import {
   type SecurePayload,
   type VerifyResult,
 } from '../lib/secureStorage';
-import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
+import {
+  isPlatformCompanyOperator,
+  normalizeAppRole,
+  type AssignableAppRole,
+  type PlatformAppRole,
+} from '../config/functionalRoles';
+import { getEffectiveCompanyId } from './platformCompany';
 import { getOAuthRedirectTo } from '../lib/oauthRedirect';
 import {
   isStaleRefreshTokenError,
@@ -23,6 +29,12 @@ import {
 } from '../lib/authSessionRecovery';
 import { isAuthAbortError, withAuthRefreshMutex } from '../lib/authRefreshMutex';
 import { getUserAccessibleBranchIds } from './permissions';
+import {
+  formatCreateBusinessSignInFallbackError,
+  isReservedSystemEmail,
+  RESERVED_SYSTEM_EMAIL_MESSAGE,
+  shouldAttemptSignupSignInFallback,
+} from '../utils/authErrorMessages';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
 
@@ -179,6 +191,10 @@ export async function signInWithGoogle(): Promise<{
   return { error: null };
 }
 
+function isSignupExistingEmailError(authError: { message?: string; status?: number }): boolean {
+  return shouldAttemptSignupSignInFallback(authError);
+}
+
 export async function signUpForNewBusiness(params: {
   email: string;
   password: string;
@@ -201,6 +217,13 @@ export async function signUpForNewBusiness(params: {
       },
     };
   }
+  if (isReservedSystemEmail(params.email)) {
+    return {
+      needsEmailVerification: false,
+      hasSession: false,
+      error: { message: RESERVED_SYSTEM_EMAIL_MESSAGE },
+    };
+  }
   const { data, error } = await supabase.auth.signUp({
     email: params.email,
     password: params.password,
@@ -214,11 +237,25 @@ export async function signUpForNewBusiness(params: {
     },
   });
   if (error) {
-    let msg = error.message;
-    if (msg.toLowerCase().includes('already registered')) {
-      msg = 'This email is already registered. Sign in, or use a different email.';
+    if (isSignupExistingEmailError(error)) {
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: params.email,
+        password: params.password,
+      });
+      if (!signInError && signInData.session) {
+        return { needsEmailVerification: false, hasSession: true, error: null };
+      }
+      return {
+        needsEmailVerification: false,
+        hasSession: false,
+        error: {
+          message: signInError
+            ? formatCreateBusinessSignInFallbackError(signInError, error)
+            : 'This email is already registered. Sign in with your password, or use a different email.',
+        },
+      };
     }
-    return { needsEmailVerification: false, hasSession: false, error: { message: msg } };
+    return { needsEmailVerification: false, hasSession: false, error: { message: error.message } };
   }
   const hasSession = Boolean(data.session);
   const needsEmailVerification = Boolean(data.user) && !hasSession;
@@ -263,13 +300,15 @@ export async function resendSignupEmailOtp(email: string): Promise<{ error: { me
   return error ? { error: { message: error.message } } : { error: null };
 }
 
-export type UserRole = AssignableAppRole | 'owner';
+export type UserRole = AssignableAppRole | 'owner' | PlatformAppRole;
 
 export interface AuthProfile {
   name: string;
   email: string;
   role: UserRole;
   companyId: string | null;
+  /** Home users.company_id (before platform session override). */
+  homeCompanyId?: string | null;
   userId: string;
   /** Public users.id (for user_branches.user_id). When present, use for branch access. */
   profileId?: string;
@@ -298,15 +337,26 @@ async function profileFromAuthUser(
 
   const normalized = normalizeAppRole(row.role);
   const finalRole: UserRole =
-    normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
+    normalized === 'owner'
+      ? 'owner'
+      : normalized === 'developer' || normalized === 'super_admin'
+        ? (normalized as PlatformAppRole)
+        : (normalized as AssignableAppRole);
   const branchId: string | null = null;
   const branchLocked = false;
+  const homeCompanyId = row.company_id || null;
+  let companyId = homeCompanyId;
+  if (isPlatformCompanyOperator(row.role)) {
+    const effective = await getEffectiveCompanyId();
+    if (!effective.error && effective.data) companyId = effective.data;
+  }
 
   const profile: AuthProfile = {
     name: displayNameFromAuthUserAndRow(user, row as UsersNameRow),
     email: user.email || email,
     role: finalRole,
-    companyId: row.company_id || null,
+    companyId,
+    homeCompanyId,
     userId: user.id,
     profileId: (row as { id?: string }).id ?? undefined,
     branchId,
@@ -512,13 +562,23 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   if (!user) return null;
   const normalized = normalizeAppRole(row.role);
   const finalRole: UserRole =
-    normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
+    normalized === 'owner'
+      ? 'owner'
+      : normalized === 'developer' || normalized === 'super_admin'
+        ? (normalized as PlatformAppRole)
+        : (normalized as AssignableAppRole);
   const profileId = (row as { id?: string }).id ?? undefined;
+  const homeCompanyId = row.company_id || null;
+  let companyId = homeCompanyId;
+  if (isPlatformCompanyOperator(row.role)) {
+    const effective = await getEffectiveCompanyId();
+    if (!effective.error && effective.data) companyId = effective.data;
+  }
 
   let branchId: string | null = null;
   let branchLocked = false;
-  if (profileId && isSupabaseConfigured) {
-    const companyId = row.company_id || null;
+  // Platform operators pick company then branch; do not lock from home-company assignments.
+  if (profileId && isSupabaseConfigured && !isPlatformCompanyOperator(row.role)) {
     const branchIds = await getUserAccessibleBranchIds(user.id, profileId, companyId);
     if (branchIds.length === 1) {
       branchId = branchIds[0];
@@ -530,7 +590,8 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
     name: displayNameFromAuthUserAndRow(user, row as UsersNameRow),
     email: user.email || '',
     role: finalRole,
-    companyId: row.company_id || null,
+    companyId,
+    homeCompanyId,
     userId: user.id,
     profileId,
     branchId,

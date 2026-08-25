@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "final-web-monitoring",
+  "generated_at": "2026-07-01T10:35:05.500Z",
+  "status": "PASS",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "timestamp_slug": "2026-07-01T10-24-06-616Z",
+  "din_china": "PASS",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "admin_compare_din_china": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false
+}

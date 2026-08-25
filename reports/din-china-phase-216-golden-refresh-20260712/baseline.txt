@@ -1,0 +1,14 @@
+Phase 1 baseline — 2026-07-12
+Branch: main
+HEAD: 74e357f68c64d46caaba9ef0001635b0e07adbd3
+origin/main: 74e357f68c64d46caaba9ef0001635b0e07adbd3
+HEAD equals origin/main: YES
+Staged files: none
+Unsafe staged (.env, credentials, migrations, APK, keystore): none
+
+Unrelated local WIP present (mobile, graphify, roznamcha) — excluded from golden-refresh commit.
+
+Recent commits:
+74e357f6 docs(qa): close salesman extended mobile QA
+6421c898 roznamcha entry
+511044a1 docs(qa): note salesman extended QA device-blocked verdict

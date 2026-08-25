@@ -26,7 +26,7 @@ function variationLabel(v: { attributes: Record<string, string>; sku: string }):
 
 export function InventoryReport({ onBack, companyId, user, reportRefreshEpoch = 0 }: InventoryReportProps) {
   // Default to 'year' so users see data even when last-30-day window is empty.
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<StockMovementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +126,7 @@ export function InventoryReport({ onBack, companyId, user, reportRefreshEpoch = 
         sharing={preview.loading}
         gradient="slate"
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} />
         <div className="flex gap-1.5 mt-2 flex-wrap">
           {(['all', 'in', 'out'] as const).map((f) => (
             <button

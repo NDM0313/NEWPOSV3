@@ -1,0 +1,62 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "source-document-crosscheck",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "sources": [
+    {
+      "type": "payment",
+      "ref": "RCV-0075",
+      "id": "54243a50-be7c-44ae-951b-138c0759ad74",
+      "amount_pkr": 80000,
+      "party": "Walk-in Customer old",
+      "description": "N331 reaming Balance",
+      "entry_date_backdated": "2026-06-14",
+      "je_created_at": "2026-07-01T11:56:02Z",
+      "status": "posted_via_je",
+      "appears_normal": true,
+      "audit_window": true
+    },
+    {
+      "type": "sale",
+      "ref": "SL-0018",
+      "id": "4a080eeb-4866-4c90-8265-bceec62d6727",
+      "je": "JE-0205",
+      "amount_pkr": 79325,
+      "party": "MAHVISH IQBAL",
+      "finalized_at": "2026-07-01T12:32:12Z",
+      "status": "finalized",
+      "appears_normal": true,
+      "audit_window": true,
+      "lines_summary": "AR 57000; Revenue 57000; COGS/Inventory 22325"
+    },
+    {
+      "type": "payment",
+      "ref": "RCV-0076",
+      "id": "f918811d-abb3-4be7-9e38-fba87b5173f1",
+      "amount_pkr": 42000,
+      "party": "MAHVISH IQBAL",
+      "linked_sale": "SL-0018",
+      "entry_date_backdated": "2026-06-15",
+      "je_created_at": "2026-07-01T12:42:24Z",
+      "status": "posted_via_je",
+      "appears_normal": true,
+      "audit_window": true
+    },
+    {
+      "type": "payment",
+      "ref": "RCV-0077",
+      "id": "a9e755e9-a345-410d-a9a3-930c1c9b4da4",
+      "amount_pkr": 20000,
+      "party": "HARIS N219",
+      "linked_sale": "SL-0019",
+      "entry_date_backdated": "2026-05-16",
+      "je_created_at": "2026-07-01T13:07:42Z",
+      "status": "posted_via_je",
+      "appears_normal": true,
+      "audit_window": true,
+      "note": "After 12:43 monitoring artifact"
+    }
+  ],
+  "party_discount_je": "none",
+  "correction_reversal_void": "none in audit window"
+}

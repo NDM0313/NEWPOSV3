@@ -1,0 +1,31 @@
+{
+  "run": "R5-DIN-BRIDAL-controlled-rollout-autonomous-gated",
+  "generated_at": "2026-06-27T10:30:00Z",
+  "main_commit": "a2b1229c",
+  "target_company": "DIN BRIDAL",
+  "target_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "din_china_company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "gates": {
+    "finance_signoff_present": false,
+    "finance_signoff_path": null,
+    "finance_signoff_note": "Only remediation CSV exists (2026-06-23) — not unified ledger rollout authorization",
+    "operator_approval_present": false,
+    "qa_browser_email_present": false,
+    "qa_browser_password_present": false,
+    "staged_sql_authorized": false
+  },
+  "production_readonly_audit": {
+    "din_bridal_unified_flag_rows": 0,
+    "din_china_unified_flags_on": 12,
+    "din_china_loaders_on": 5,
+    "other_company_loaders_on": 0,
+    "audit_pass": true
+  },
+  "execution_stopped_at_step": 2,
+  "status": "R5_BLOCKED_FINANCE_SIGN_OFF_REQUIRED",
+  "sql_executed": false,
+  "flags_changed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "fx_app_touched": false
+}

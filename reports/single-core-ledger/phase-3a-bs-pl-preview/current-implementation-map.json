@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-06-29",
+  "balance_sheet": {
+    "page": "src/app/components/reports/BalanceSheetPage.tsx",
+    "service": "accountingReportsService.getBalanceSheet",
+    "dataSource": "legacy_tb",
+    "previewService": "bsPlUnifiedPreviewService.loadBalanceSheetUnifiedPreview",
+    "previewDataSource": "unified_tb_rpc"
+  },
+  "profit_loss": {
+    "page": "src/app/components/reports/ProfitLossPage.tsx",
+    "service": "accountingReportsService.getProfitLoss",
+    "dataSource": "legacy_tb",
+    "previewService": "bsPlUnifiedPreviewService.loadProfitLossUnifiedPreview",
+    "previewDataSource": "unified_tb_rpc"
+  }
+}

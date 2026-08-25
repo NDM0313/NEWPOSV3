@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-30T09:00:00.000Z",
+  "company": "DIN CHINA",
+  "field": "trial_balance_debit_credit_pkr",
+  "old_value": 407957271.02,
+  "new_value": 407957272.02,
+  "delta_pkr": 1,
+  "reason": "Operator retained approved production QA JE-0003 (party_discount PKR 1)",
+  "data_mutation": false,
+  "files_changed": [
+    "scripts/single-core-ledger/monitoring-company-profiles.json",
+    "reports/single-core-ledger/din-china/golden-fixtures.json",
+    "scripts/single-core-ledger/unifiedLedgerBrowserQaHelpers.mjs",
+    "scripts/single-core-ledger/unifiedLedgerBrowserQaHelpers.test.mjs",
+    "scripts/single-core-ledger/loadMonitoringProfile.test.mjs"
+  ],
+  "unchanged": ["din-bridal", "din-couture", "mr_jalil_closing_pkr 216299", "GL data", "flags"]
+}

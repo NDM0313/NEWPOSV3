@@ -1,0 +1,48 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "monitoring-rerun",
+  "generated_at": "2026-07-01T12:41:59.220Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "FAIL",
+  "artifact_json": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T12-31-25-103Z.json",
+  "artifact_md": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T12-31-25-103Z.md",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "feature_flags_changed": false,
+  "din_china": "PASS",
+  "din_couture": "PASS",
+  "din_bridal": {
+    "phaseResult": "FAIL",
+    "failing_modules": ["roznamcha", "trial_balance"],
+    "failures": [
+      {
+        "check": "Roznamcha Cash In golden",
+        "expected_pkr": 1836350,
+        "actual_pkr": 1916350,
+        "delta_pkr": 80000
+      },
+      {
+        "check": "Roznamcha Closing golden",
+        "expected_pkr": 918570,
+        "actual_pkr": 998570,
+        "delta_pkr": 80000
+      },
+      {
+        "check": "Trial Balance golden total",
+        "expected_pkr": 22056075,
+        "actual_debit_pkr": 22215400,
+        "actual_credit_pkr": 22215400,
+        "delta_pkr": 159325,
+        "debit_equals_credit": true
+      }
+    ],
+    "passing_related": [
+      "Roznamcha Cash Out golden — actual=917780",
+      "Trial Balance debit = credit — balanced",
+      "MR REHAN ALI party/ledger — closing=530000",
+      "All 18 unified flags ON",
+      "Loaders unified on all screens"
+    ]
+  },
+  "drift_timeline_note": "DIN BRIDAL TB/roznamcha matched golden through 2026-07-01T11-32-17Z; first +80k roznamcha/TB shift at 11-58; TB continued rising to 22,215,400 by 12-31 run."
+}

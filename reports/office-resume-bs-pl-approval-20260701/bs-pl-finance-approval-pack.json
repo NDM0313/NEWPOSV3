@@ -1,0 +1,33 @@
+{
+  "status": "BLOCKED_PENDING_FINANCE_APPROVAL",
+  "generatedAt": "2026-07-01",
+  "mainLoader": "legacy",
+  "previewStatus": "compare-only",
+  "swapExecuted": false,
+  "deployExecuted": false,
+  "glMutations": false,
+  "phase3dCapture": {
+    "date": "2026-06-29",
+    "companies": 3,
+    "reports": 6,
+    "zeroDiff": true
+  },
+  "perCompanyRisks": {
+    "dinChina": ["scale", "cogs_heuristic", "equity_rollup"],
+    "dinBridal": ["stale_capture_post_1100_apply", "negative_liabilities", "ar_reclass"],
+    "dinCouture": ["negative_equity", "small_revenue_base"]
+  },
+  "missingBeforeApproval": [
+    "finance_rule_confirmations",
+    "din_bridal_fresh_bs_pl_capture",
+    "signed_operator_approval",
+    "separate_swap_execution_phase"
+  ],
+  "recommendedDecision": "KEEP_BLOCKED",
+  "baselineVerification": {
+    "monitoring": "PASS",
+    "unifiedLedgerTests": "303/303",
+    "unitTests": "122/122",
+    "build": "PASS"
+  }
+}

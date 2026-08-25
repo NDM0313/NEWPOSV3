@@ -1,166 +1,284 @@
 /**
  * Rental Collections Tab – Customer Outstanding Dashboard
- * Shows rentals with due_amount > 0 (credit deliveries, partial payments)
- * Collect Payment button opens payment dialog
  */
-import React, { useMemo } from 'react';
-import { DollarSign, Phone, Calendar, AlertCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { DollarSign, Phone, Calendar, Loader2, Search, Download } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { useRentals, type RentalUI } from '@/app/context/RentalContext';
+import { Input } from '@/app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import type { RentalUI } from '@/app/context/RentalContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { rentalService } from '@/app/services/rentalService';
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import {
+  AgingBucket,
+  downloadCsv,
+  getAgingBucket,
+  getRentalDueAmount,
+  matchesRentalSearch,
+  todayIso,
+} from '@/app/lib/rentalQueueUtils';
+import { toast } from 'sonner';
 
 interface RentalCollectionsTabProps {
   onCollectPayment: (rental: RentalUI) => void;
+  refreshKey?: number;
 }
 
-export const RentalCollectionsTab = ({ onCollectPayment }: RentalCollectionsTabProps) => {
-  const { rentals } = useRentals();
+const AGING_OPTIONS: { value: AgingBucket | 'all'; label: string }[] = [
+  { value: 'all', label: 'All buckets' },
+  { value: 'current', label: 'Current' },
+  { value: '1-30', label: '1–30 days' },
+  { value: '31-60', label: '31–60 days' },
+  { value: '61-90', label: '61–90 days' },
+  { value: '90+', label: '90+ days' },
+];
+
+export const RentalCollectionsTab = ({ onCollectPayment, refreshKey = 0 }: RentalCollectionsTabProps) => {
+  const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const today = todayIso();
 
-  const getDue = (r: RentalUI) => {
-    const d = r.dueAmount ?? 0;
-    return d > 0 ? d : Math.max(0, (r.totalAmount ?? 0) - (r.paidAmount ?? 0));
-  };
+  const [rentals, setRentals] = useState<RentalUI[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [agingFilter, setAgingFilter] = useState<AgingBucket | 'all'>('all');
+  const [branchFilter, setBranchFilter] = useState<string>(branchId && branchId !== 'all' ? branchId : 'all');
 
-  const outstandingRentals = useMemo(() => {
-    return rentals
-      .filter((r) => {
-        const due = getDue(r);
-        return due > 0 && ['rented', 'overdue', 'booked', 'returned'].includes(r.status);
-      })
-      .sort((a, b) => getDue(b) - getDue(a));
+  const effectiveBranch = branchFilter === 'all' ? undefined : branchFilter;
+
+  const loadOutstanding = useCallback(async () => {
+    if (!companyId) return;
+    setLoading(true);
+    try {
+      const rows = await rentalService.getOutstandingForCollections(companyId, effectiveBranch);
+      setRentals(rows);
+    } catch (e) {
+      console.error('[RentalCollectionsTab]', e);
+      toast.error('Failed to load outstanding rentals');
+      setRentals([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, effectiveBranch]);
+
+  useEffect(() => {
+    void loadOutstanding();
+  }, [loadOutstanding, refreshKey]);
+
+  useEffect(() => {
+    if (branchId && branchId !== 'all') setBranchFilter(branchId);
+  }, [branchId]);
+
+  const branchOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    rentals.forEach((r) => {
+      if (r.branchId) map.set(r.branchId, r.location || r.branchId);
+    });
+    return [...map.entries()];
   }, [rentals]);
 
-  const totalOutstanding = useMemo(
-    () => outstandingRentals.reduce((sum, r) => sum + getDue(r), 0),
-    [outstandingRentals]
-  );
+  const filtered = useMemo(() => {
+    return rentals
+      .filter((r) => matchesRentalSearch(r, search))
+      .filter((r) => agingFilter === 'all' || getAgingBucket(r.expectedReturnDate, today) === agingFilter)
+      .sort((a, b) => getRentalDueAmount(b) - getRentalDueAmount(a));
+  }, [rentals, search, agingFilter, today]);
 
   const agingBuckets = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const due = (r: RentalUI) => {
-      const d = r.dueAmount ?? 0;
-      return d > 0 ? d : Math.max(0, (r.totalAmount ?? 0) - (r.paidAmount ?? 0));
-    };
     let current = 0, days1to30 = 0, days31to60 = 0, days61to90 = 0, days90plus = 0;
-    outstandingRentals.forEach((r) => {
-      const amt = due(r);
-      const ret = r.expectedReturnDate;
-      const days = ret >= today ? 0 : Math.floor((new Date(today).getTime() - new Date(ret).getTime()) / (1000 * 60 * 60 * 24));
-      if (days <= 0) current += amt;
-      else if (days <= 30) days1to30 += amt;
-      else if (days <= 60) days31to60 += amt;
-      else if (days <= 90) days61to90 += amt;
+    rentals.forEach((r) => {
+      const amt = getRentalDueAmount(r);
+      const bucket = getAgingBucket(r.expectedReturnDate, today);
+      if (bucket === 'current') current += amt;
+      else if (bucket === '1-30') days1to30 += amt;
+      else if (bucket === '31-60') days31to60 += amt;
+      else if (bucket === '61-90') days61to90 += amt;
       else days90plus += amt;
     });
     return { current, days1to30, days31to60, days61to90, days90plus };
-  }, [outstandingRentals]);
+  }, [rentals, today]);
 
-  const getDaysOverdue = (expectedReturn: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    if (expectedReturn >= today) return 0;
-    const diff = new Date(today).getTime() - new Date(expectedReturn).getTime();
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  const totalOutstanding = useMemo(
+    () => rentals.reduce((sum, r) => sum + getRentalDueAmount(r), 0),
+    [rentals]
+  );
+
+  const exportCsv = () => {
+    downloadCsv(
+      `rental-collections-${today}.csv`,
+      ['Rental No', 'Customer', 'Phone', 'Return Date', 'Aging', 'Paid', 'Total', 'Due', 'Status'],
+      filtered.map((r) => [
+        r.rentalNo,
+        r.customerName,
+        r.customerContact || '',
+        r.expectedReturnDate,
+        getAgingBucket(r.expectedReturnDate, today),
+        String(r.paidAmount ?? 0),
+        String(r.totalAmount ?? 0),
+        String(getRentalDueAmount(r)),
+        r.status,
+      ])
+    );
   };
 
   return (
     <div className="h-full flex flex-col p-6 overflow-hidden">
-      <div className="shrink-0 mb-6">
-        <h2 className="text-lg font-semibold text-white">Customer Outstanding</h2>
-        <p className="text-sm text-gray-400 mt-0.5">
-          Rentals with balance due – collect payments to reduce AR
-        </p>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2">
-            <span className="text-xs text-gray-400">Total Outstanding</span>
+      <div className="shrink-0 mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Customer Outstanding</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Rentals with balance due – collect payments to reduce AR
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">Aging basis: expected return date · queue as of today (not header date range)</p>
+          </div>
+          <Button variant="outline" size="sm" className="border-border text-muted-foreground" onClick={exportCsv} disabled={filtered.length === 0}>
+            <Download size={16} className="mr-1.5" />
+            Export CSV
+          </Button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">Total Outstanding</span>
             <p className="text-xl font-bold text-amber-400">{formatCurrency(totalOutstanding)}</p>
           </div>
-          <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2">
-            <span className="text-xs text-gray-400">Rentals Due</span>
-            <p className="text-xl font-bold text-white">{outstandingRentals.length}</p>
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">Rentals Due</span>
+            <p className="text-xl font-bold text-foreground">{rentals.length}</p>
           </div>
-          <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2">
-            <span className="text-xs text-gray-400">Current</span>
-            <p className="text-lg font-semibold text-green-400">{formatCurrency(agingBuckets.current)}</p>
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">Current</span>
+            <p className="text-lg font-semibold text-[var(--erp-money-positive)]">{formatCurrency(agingBuckets.current)}</p>
           </div>
-          <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2">
-            <span className="text-xs text-gray-400">1-30 Days</span>
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">1-30 Days</span>
             <p className="text-lg font-semibold text-amber-400">{formatCurrency(agingBuckets.days1to30)}</p>
           </div>
-          <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2">
-            <span className="text-xs text-gray-400">31-60 Days</span>
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">31-60 Days</span>
             <p className="text-lg font-semibold text-orange-400">{formatCurrency(agingBuckets.days31to60)}</p>
           </div>
-          <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2">
-            <span className="text-xs text-gray-400">61-90+ Days</span>
-            <p className="text-lg font-semibold text-red-400">{formatCurrency(agingBuckets.days61to90 + agingBuckets.days90plus)}</p>
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">61-90 Days</span>
+            <p className="text-lg font-semibold text-red-400">{formatCurrency(agingBuckets.days61to90)}</p>
           </div>
+          <div className="rounded-lg border border-border bg-muted/50 px-4 py-2">
+            <span className="text-xs text-muted-foreground uppercase">90+ Days</span>
+            <p className="text-lg font-semibold text-red-500">{formatCurrency(agingBuckets.days90plus)}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search customer, rental no, phone…"
+              className="pl-9 bg-card border-border text-sm"
+            />
+          </div>
+          <Select value={agingFilter} onValueChange={(v) => setAgingFilter(v as AgingBucket | 'all')}>
+            <SelectTrigger className="w-[160px] bg-card border-border text-sm h-9">
+              <SelectValue placeholder="Aging" />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border">
+              {AGING_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger className="w-[180px] bg-card border-border text-sm h-9">
+              <SelectValue placeholder="Branch" />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border">
+              <SelectItem value="all">All branches</SelectItem>
+              {branchOptions.map(([id, label]) => (
+                <SelectItem key={id} value={id}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
-        {outstandingRentals.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <DollarSign size={48} className="mb-4 opacity-50" />
-            <p className="text-lg font-medium">No outstanding rentals</p>
+            <p className="text-lg font-medium">
+              {search || agingFilter !== 'all' ? 'No outstanding rentals match filters' : 'No outstanding rentals'}
+            </p>
             <p className="text-sm mt-1">All rental payments are up to date</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {outstandingRentals.map((r) => {
-              const daysOverdue = getDaysOverdue(r.expectedReturnDate);
-              return (
-                <div
-                  key={r.id}
-                  className={cn(
-                    'rounded-lg border p-4 flex items-center justify-between gap-4',
-                    daysOverdue > 0
-                      ? 'border-red-500/30 bg-red-500/5'
-                      : 'border-gray-700 bg-gray-800/30'
-                  )}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-pink-400 font-medium">{r.rentalNo}</span>
-                      {r.status === 'returned' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-gray-500/20 text-gray-400">Returned</span>
-                      )}
-                      {daysOverdue > 0 && r.status !== 'returned' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
-                          {daysOverdue}d overdue
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-base leading-snug">
+              <thead className="bg-input-background/80 text-sm uppercase text-muted-foreground sticky top-0">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium">Rental</th>
+                  <th className="text-left px-4 py-3 font-medium">Customer</th>
+                  <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Return</th>
+                  <th className="text-right px-4 py-3 font-medium">Paid</th>
+                  <th className="text-right px-4 py-3 font-medium">Total</th>
+                  <th className="text-right px-4 py-3 font-medium">Due</th>
+                  <th className="text-right px-4 py-3 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.map((r) => {
+                  const due = getRentalDueAmount(r);
+                  const od = r.expectedReturnDate < today ? Math.floor((new Date(today).getTime() - new Date(r.expectedReturnDate).getTime()) / 86400000) : 0;
+                  return (
+                    <tr key={r.id} className={cn('hover:bg-accent/30', od > 0 && 'bg-red-500/5')}>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-pink-400 font-medium">{r.rentalNo}</span>
+                        {r.status === 'returned' && (
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-500/20 text-muted-foreground">Returned</span>
+                        )}
+                        {od > 0 && r.status !== 'returned' && (
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">{od}d overdue</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-foreground font-medium">{r.customerName}</p>
+                        {r.customerContact && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <Phone size={12} /> {r.customerContact}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                        <span className="flex items-center gap-1 text-sm">
+                          <Calendar size={12} className="text-muted-foreground" />
+                          {r.expectedReturnDate}
                         </span>
-                      )}
-                    </div>
-                    <p className="text-white font-medium mt-1">{r.customerName}</p>
-                    {r.customerContact && (
-                      <p className="text-sm text-gray-400 flex items-center gap-1 mt-0.5">
-                        <Phone size={12} /> {r.customerContact}
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                      <Calendar size={12} /> Return: {r.expectedReturnDate}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-amber-400">
-                      {formatCurrency(getDue(r))}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      of {formatCurrency(r.totalAmount ?? 0)} total
-                    </p>
-                    <Button
-                      size="sm"
-                      className="mt-2 bg-amber-500 hover:bg-amber-600 text-white"
-                      onClick={() => onCollectPayment(r)}
-                    >
-                      <DollarSign size={14} className="mr-1.5" />
-                      Collect Payment
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                      </td>
+                      <td className="px-4 py-3 text-right text-emerald-400 font-mono">{formatCurrency(r.paidAmount ?? 0)}</td>
+                      <td className="px-4 py-3 text-right text-muted-foreground font-mono">{formatCurrency(r.totalAmount ?? 0)}</td>
+                      <td className="px-4 py-3 text-right text-amber-400 font-bold font-mono">{formatCurrency(due)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          size="sm"
+                          className="bg-amber-500 hover:bg-amber-600 text-white"
+                          onClick={() => onCollectPayment(r)}
+                        >
+                          <DollarSign size={14} className="mr-1.5" />
+                          Collect
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

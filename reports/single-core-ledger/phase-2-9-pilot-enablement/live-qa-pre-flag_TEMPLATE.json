@@ -1,0 +1,25 @@
+{
+  "phase": "2.9",
+  "checklist": "section-9-before-enablement",
+  "tenant": "DIN CHINA",
+  "role": "admin-or-developer",
+  "timestampUtc": null,
+  "tester": null,
+  "items": {
+    "allFlagsOffSqlBaseline": null,
+    "ledgerV2ToggleVisibleDefaultOff": null,
+    "networkNoUnifiedRpcToggleOff": null,
+    "mrJalilClosing216300": null,
+    "previewJsonExport": null,
+    "exportParityPreviewOnVsOff": null,
+    "killSwitchTest": null,
+    "staffNoTogglesAllScreens": null
+  },
+  "waiverClearance": {
+    "liveWalkthrough": null,
+    "networkHar": null,
+    "previewJsonDownload": null,
+    "killSwitchRebuild": null
+  },
+  "overall": null
+}

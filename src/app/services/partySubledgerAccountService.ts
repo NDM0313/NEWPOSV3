@@ -126,7 +126,8 @@ export async function ensurePayableSubaccountForContact(companyId: string, conta
   const contact = await getContactRow(companyId, contactId);
   if (!contact) return null;
   const t = String(contact.type || '').toLowerCase();
-  if (!t.includes('supplier') && t !== 'both') return null;
+  // money_exchange agents get AP under 2000 (dual-credit Agent FX).
+  if (!t.includes('supplier') && t !== 'both' && t !== 'money_exchange') return null;
 
   const slug = slugFromContactCode(contact.code, contactId);
   const code = `AP-${slug}`;
@@ -179,11 +180,13 @@ export async function ensurePayableSubaccountForContact(companyId: string, conta
 export async function ensurePartySubledgersForContact(
   companyId: string,
   contactId: string,
-  type: 'customer' | 'supplier' | 'both' | 'worker' | string
+  type: 'customer' | 'supplier' | 'both' | 'worker' | 'money_exchange' | string
 ): Promise<void> {
   const t = String(type || '').toLowerCase();
   if (t === 'customer' || t === 'both') await ensureReceivableSubaccountForContact(companyId, contactId);
-  if (t === 'supplier' || t === 'both') await ensurePayableSubaccountForContact(companyId, contactId);
+  if (t === 'supplier' || t === 'both' || t === 'money_exchange') {
+    await ensurePayableSubaccountForContact(companyId, contactId);
+  }
 }
 
 /**

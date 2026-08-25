@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-07-17T12:11:58.478Z",
+  "base": "https://erp.dincouture.pk",
+  "email": "din@yahoo.com",
+  "gotoTimeoutMs": 120000,
+  "buildCommit": null,
+  "overall": "PASS",
+  "results": [
+    {
+      "id": "roznamcha",
+      "name": "Roznamcha",
+      "routeOk": true,
+      "loaderValue": "unified",
+      "loaderUnified": true,
+      "dataHint": true,
+      "filtersHint": true,
+      "companyScopeHint": true,
+      "failClosed": false,
+      "consoleErrors": [],
+      "pass": true
+    },
+    {
+      "id": "account_statement",
+      "name": "Account Statement",
+      "routeOk": true,
+      "loaderValue": "unified",
+      "loaderUnified": true,
+      "dataHint": true,
+      "filtersHint": true,
+      "companyScopeHint": true,
+      "failClosed": false,
+      "consoleErrors": [],
+      "pass": true
+    },
+    {
+      "id": "cash_flow",
+      "name": "Cash Flow",
+      "routeOk": true,
+      "loaderValue": "unified",
+      "loaderUnified": true,
+      "dataHint": true,
+      "filtersHint": true,
+      "companyScopeHint": true,
+      "failClosed": false,
+      "consoleErrors": [],
+      "pass": true
+    },
+    {
+      "id": "trial_balance",
+      "name": "Trial Balance",
+      "routeOk": true,
+      "loaderValue": "unified",
+      "loaderUnified": true,
+      "dataHint": true,
+      "filtersHint": true,
+      "companyScopeHint": true,
+      "failClosed": false,
+      "consoleErrors": [],
+      "pass": true
+    },
+    {
+      "id": "party_ledger",
+      "name": "Party Ledger",
+      "routeOk": true,
+      "loaderValue": "unified",
+      "loaderUnified": true,
+      "dataHint": true,
+      "filtersHint": true,
+      "companyScopeHint": true,
+      "failClosed": false,
+      "consoleErrors": [],
+      "pass": true
+    },
+    {
+      "id": "ledger_v2",
+      "name": "Ledger V2",
+      "routeOk": true,
+      "loaderValue": "unified",
+      "loaderUnified": true,
+      "dataHint": true,
+      "filtersHint": true,
+      "companyScopeHint": true,
+      "failClosed": false,
+      "consoleErrors": [],
+      "pass": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-06-30T12:39:44.447Z",
+  "base_url": "https://erp.dincouture.pk",
+  "business_name": "OTP QA Business 2026-06-30",
+  "test_email_masked": "kha***@gmail.com",
+  "auth_user_id": "6a101ab0-f34d-4948-b6cb-20659b76e400",
+  "email_received_infra": true,
+  "email_received_inbox_verified": false,
+  "sender_display_confirmed": false,
+  "otp_verified": false,
+  "immediate_session_before_verification": false,
+  "business_created_after_verification": false,
+  "otp_phase_reached": true,
+  "auth_user_id": null,
+  "company_id": null,
+  "branch_id": null,
+  "console_errors": [],
+  "rpc_errors": [],
+  "status": "BLOCKED",
+  "block_reason": "OTP_CODE_NOT_PROVIDED"
+}

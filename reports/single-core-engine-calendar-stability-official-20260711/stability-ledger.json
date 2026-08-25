@@ -1,0 +1,7 @@
+{
+  "status": "CALENDAR_STABILITY_DAY_PASS",
+  "calendarDay": 11,
+  "mobileReleaseGate": "BLOCKED_SALESMAN_DEVICE_QA_PENDING",
+  "r8": "BLOCKED",
+  "playStore": "NOT_RELEASED"
+}

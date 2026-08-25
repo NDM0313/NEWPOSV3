@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-06-30T11:35:00.000Z",
+  "test_unified_ledger": {
+    "command": "npm run test:unified-ledger",
+    "tests": 303,
+    "pass": 303,
+    "fail": 0,
+    "exit_code": 0
+  },
+  "test_unit": {
+    "command": "npm run test:unit",
+    "tests": 122,
+    "pass": 122,
+    "fail": 0,
+    "exit_code": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exit_code": 0,
+    "duration_s": 45.09
+  },
+  "deploy": "NO FRONTEND DEPLOY"
+}

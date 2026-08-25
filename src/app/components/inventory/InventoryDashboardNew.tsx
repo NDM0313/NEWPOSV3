@@ -8,9 +8,11 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { productService } from '../../services/productService';
 import { inventoryService, createStockTransfer, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
 import { branchService } from '@/app/services/branchService';
@@ -28,7 +30,8 @@ import {
   shouldSkipInventoryReloadForReason,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
-import { isBulkImportActive } from '@/app/lib/bulkImportSession';
+import { InventoryOverviewTable } from './InventoryOverviewTable';
+import { ErpPage } from '../ui/erp-surfaces';
 
 type InventoryTab = 'overview' | 'analytics';
 
@@ -316,7 +319,7 @@ export const InventoryDashboardNew = () => {
     quantity: number;
     reason: string;
     notes: string;
-    date: string;
+    movementAt: string;
     newStock: number;
     variationId?: string | null;
   }) => {
@@ -333,6 +336,7 @@ export const InventoryDashboardNew = () => {
         notes: `${data.reason}: ${data.notes}`,
         reference_type: 'adjustment',
         created_by: user?.id,
+        created_at: data.movementAt,
       });
       toast.success('Stock adjustment saved');
       setAdjustmentProduct(null);
@@ -454,45 +458,35 @@ export const InventoryDashboardNew = () => {
     toast.success('Export downloaded');
   }, [movements, enablePacking]);
 
-  const getMovementBadge = (movement: string) => {
-    switch(movement) {
-      case 'Fast': return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'Medium': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      case 'Slow': return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-      case 'Dead': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-    }
-  };
-
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="shrink-0 flex justify-between items-start border-b border-gray-800 pb-4">
+      <div className="shrink-0 flex justify-between items-start border-b border-border pb-4">
         <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h2 className="text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
             <Warehouse size={32} className="text-blue-500" />
             Inventory Management
           </h2>
-          <p className="text-gray-400 mt-1">Stock levels, movement analysis, and reorder alerts</p>
+          <p className="text-muted-foreground mt-1">Stock levels, movement analysis, and reorder alerts</p>
         </div>
         
         <div className="flex gap-3">
           {activeTab === 'overview' && (
             <>
-              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={exportOverviewCsv}>
+              <Button variant="outline" className="gap-2 border-border text-muted-foreground" onClick={exportOverviewCsv}>
                 <FileDown size={16} /> Export CSV
               </Button>
-              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => window.print()}>
+              <Button variant="outline" className="gap-2 border-border text-muted-foreground" onClick={() => window.print()}>
                 <Printer size={16} /> Print
               </Button>
             </>
           )}
           {activeTab === 'analytics' && (
             <>
-              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={loadMovements}>
+              <Button variant="outline" className="gap-2 border-border text-muted-foreground" onClick={loadMovements}>
                 <Filter size={16} /> Apply Filters
               </Button>
-              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => exportMovementsCsv(viewMode)}>
+              <Button variant="outline" className="gap-2 border-border text-muted-foreground" onClick={() => exportMovementsCsv(viewMode)}>
                 <Download size={16} /> Export CSV
               </Button>
             </>
@@ -501,7 +495,7 @@ export const InventoryDashboardNew = () => {
       </div>
 
       {/* Tabs */}
-      <div className="shrink-0 border-b border-gray-800">
+      <div className="shrink-0 border-b border-border">
         <div className="flex gap-8">
           <button
             onClick={() => setActiveTab('overview')}
@@ -509,7 +503,7 @@ export const InventoryDashboardNew = () => {
               "pb-3 text-sm font-medium transition-all relative",
               activeTab === 'overview'
                 ? "text-blue-400 border-b-2 border-blue-500"
-                : "text-gray-400 hover:text-white"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Package size={16} className="inline mr-2" />
@@ -521,7 +515,7 @@ export const InventoryDashboardNew = () => {
               "pb-3 text-sm font-medium transition-all relative",
               activeTab === 'analytics'
                 ? "text-blue-400 border-b-2 border-blue-500"
-                : "text-gray-400 hover:text-white"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             <BarChart3 size={16} className="inline mr-2" />
@@ -536,38 +530,38 @@ export const InventoryDashboardNew = () => {
           <div className="space-y-6 animate-in fade-in duration-300 p-px">
           {/* Summary cards at top: Slow Moving, Low/Out of Stock, Total Stock Value */}
           <div className="grid grid-cols-3 gap-6">
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-orange-500/10 rounded-lg">
                   <TrendingDown className="text-orange-400" size={20} />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Slow Moving</h3>
-                  <p className="text-2xl font-bold text-white mt-1">{slowMovingItems.length}</p>
-                  <p className="text-sm text-gray-400">items</p>
+                  <h3 className="text-foreground font-bold">Slow Moving</h3>
+                  <p className="text-2xl font-bold text-foreground mt-1">{slowMovingItems.length}</p>
+                  <p className="text-sm text-muted-foreground">items</p>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-red-500/10 rounded-lg">
                   <AlertTriangle className="text-red-400" size={20} />
                 </div>
                 <div>
-                  <h3 className="text-white font-bold">Low / Out of Stock</h3>
-                  <p className="text-2xl font-bold text-white mt-1">{lowStockItems.length}</p>
-                  <p className="text-sm text-gray-400">items</p>
+                  <h3 className="text-foreground font-bold">Low / Out of Stock</h3>
+                  <p className="text-2xl font-bold text-foreground mt-1">{lowStockItems.length}</p>
+                  <p className="text-sm text-muted-foreground">items</p>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6 min-w-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-500/10 rounded-lg">
-                  <DollarSign className="text-green-400" size={20} />
+                  <DollarSign className="text-[var(--erp-money-positive)]" size={20} />
                 </div>
-                <div>
-                  <h3 className="text-white font-bold">Total Stock Value</h3>
-                  <p className="text-2xl font-bold text-white mt-1">{formatCurrency(totalStockValue)}</p>
+                <div className="min-w-0">
+                  <h3 className="text-foreground font-bold">Total Stock Value</h3>
+                  <AdaptiveCurrencyValue value={totalStockValue} className="text-2xl font-bold text-foreground mt-1" as="p" />
                 </div>
               </div>
             </div>
@@ -575,13 +569,11 @@ export const InventoryDashboardNew = () => {
 
           {/* Key Metrics */}
           <div className="grid grid-cols-4 gap-6">
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6 min-w-0">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Total Stock Value</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">
-                    {formatCurrency(totalStockValue)}
-                  </h3>
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-sm">Total Stock Value</p>
+                  <AdaptiveCurrencyValue value={totalStockValue} className="text-2xl font-bold text-foreground mt-1" as="p" />
                 </div>
                 <div className="p-3 bg-blue-500/10 rounded-lg">
                   <DollarSign className="text-blue-400" size={24} />
@@ -589,25 +581,23 @@ export const InventoryDashboardNew = () => {
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6 min-w-0">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Potential Profit</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">
-                    {formatCurrency(potentialProfit)}
-                  </h3>
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-sm">Potential Profit</p>
+                  <AdaptiveCurrencyValue value={potentialProfit} className="text-2xl font-bold text-foreground mt-1" as="p" />
                 </div>
                 <div className="p-3 bg-green-500/10 rounded-lg">
-                  <TrendingDown className="text-green-400" size={24} />
+                  <TrendingDown className="text-[var(--erp-money-positive)]" size={24} />
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm">Low Stock Items</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">{lowStockItems.length}</h3>
+                  <p className="text-muted-foreground text-sm">Low Stock Items</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-1">{lowStockItems.length}</h3>
                 </div>
                 <div className="p-3 bg-red-500/10 rounded-lg">
                   <AlertTriangle className="text-red-400" size={24} />
@@ -615,11 +605,11 @@ export const InventoryDashboardNew = () => {
               </div>
             </div>
 
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm">Total SKUs</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">{overviewRows.length}</h3>
+                  <p className="text-muted-foreground text-sm">Total SKUs</p>
+                  <h3 className="text-2xl font-bold text-foreground mt-1">{overviewRows.length}</h3>
                 </div>
                 <div className="p-3 bg-purple-500/10 rounded-lg">
                   <Package className="text-purple-400" size={24} />
@@ -651,9 +641,9 @@ export const InventoryDashboardNew = () => {
                 onToggle: () => setOverviewFilterOpen((o) => !o),
                 activeCount: overviewFilterActiveCount,
                 renderPanel: () => (
-                  <div className="absolute right-0 top-12 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+                  <div className="absolute right-0 top-12 w-72 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-semibold text-white">Overview filters</h3>
+                      <h3 className="text-sm font-semibold text-foreground">Overview filters</h3>
                       <button
                         onClick={() => {
                           setOverviewCategoryFilter('all');
@@ -667,11 +657,11 @@ export const InventoryDashboardNew = () => {
                     </div>
                     <div className="space-y-4 max-h-[400px] overflow-y-auto">
                       <div>
-                        <label className="text-xs text-gray-400 mb-2 block font-medium">Category</label>
+                        <label className="text-xs text-muted-foreground mb-2 block font-medium">Category</label>
                         <select
                           value={overviewCategoryFilter}
                           onChange={(e) => setOverviewCategoryFilter(e.target.value)}
-                          className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2"
+                          className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2"
                         >
                           <option value="all">All categories</option>
                           {uniqueCategories.map((c) => (
@@ -680,11 +670,11 @@ export const InventoryDashboardNew = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-2 block font-medium">Status</label>
+                        <label className="text-xs text-muted-foreground mb-2 block font-medium">Status</label>
                         <select
                           value={overviewStatusFilter}
                           onChange={(e) => setOverviewStatusFilter(e.target.value)}
-                          className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2"
+                          className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2"
                         >
                           <option value="all">All status</option>
                           <option value="OK">OK</option>
@@ -693,11 +683,11 @@ export const InventoryDashboardNew = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-2 block font-medium">Movement</label>
+                        <label className="text-xs text-muted-foreground mb-2 block font-medium">Movement</label>
                         <select
                           value={overviewMovementFilter}
                           onChange={(e) => setOverviewMovementFilter(e.target.value)}
-                          className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2"
+                          className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2"
                         >
                           <option value="all">All</option>
                           <option value="Fast">Fast</option>
@@ -745,286 +735,19 @@ export const InventoryDashboardNew = () => {
               }}
             />
 
-          {/* Stock Table - horizontal and vertical scroll when needed */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-auto print:border print:rounded min-w-0">
-            <table className="w-full min-w-[1000px]">
-              <thead className="bg-gray-950/50 border-b border-gray-800">
-                <tr>
-                  {overviewColumnOrder.filter((key) => visibleOverviewColumns[key] !== false).map((key) => {
-                    const align = ['avgCost', 'sellingPrice', 'stockValue'].includes(key) ? 'text-right' : ['stockQty', 'unit', 'boxes', 'pieces', 'movement', 'status', 'actions'].includes(key) ? 'text-center' : 'text-left';
-                    const label = overviewColumnsList.find((c) => c.key === key)?.label ?? key;
-                    return (
-                      <th key={key} className={`px-4 py-2.5 ${align} text-xs font-medium text-gray-400 uppercase ${key === 'actions' ? 'print:hidden' : ''}`}>
-                        {label}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {loading ? (
-                  <tr>
-                    <td colSpan={overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false).length} className="px-6 py-12 text-center">
-                      <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-                      <p className="text-gray-400 text-sm">Loading inventory...</p>
-                    </td>
-                  </tr>
-                ) : filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false).length} className="px-6 py-12 text-center">
-                      <Package size={48} className="mx-auto text-gray-600 mb-3" />
-                      <p className="text-gray-400 text-sm">No products found</p>
-                      <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
-                    </td>
-                  </tr>
-                ) : (
-                  displayedProducts.flatMap((product) => {
-                    const visibleCols = overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false);
-                    const renderProductCell = (key: string) => {
-                      switch (key) {
-                        case 'product':
-                          return (
-                            <td key={key} className="px-4 py-2">
-                              <div className="font-medium text-white text-sm">{product.name}</div>
-                              {product.hasVariations && (product as any).variations?.length > 0 && (
-                                <p className="text-[11px] text-gray-500 mt-0.5">
-                                  <span className="bg-gray-800/50 border border-gray-700 px-1.5 py-0.5 rounded text-[10px]">
-                                    SUM of {((product as any).variations as any[]).length} variations
-                                  </span>
-                                </p>
-                              )}
-                            </td>
-                          );
-                        case 'sku':
-                          return <td key={key} className="px-4 py-2"><span className="text-gray-400 font-mono text-xs">{product.sku}</span></td>;
-                        case 'category':
-                          return <td key={key} className="px-4 py-2"><span className="text-gray-400 text-sm">{product.category}</span></td>;
-                        case 'stockQty':
-                          return (
-                            <td key={key} className="px-4 py-2 text-center">
-                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{formatDecimal(product.stock)}</span>
-                            </td>
-                          );
-                        case 'boxes':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.boxes)}</td>;
-                        case 'pieces':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>;
-                        case 'unit':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{formatDecimal(product.stock)}</td>;
-                        case 'avgCost':
-                          return (
-                            <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
-                              {product.avgCost.toLocaleString()}
-                            </td>
-                          );
-                        case 'sellingPrice':
-                          return (
-                            <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
-                              {product.sellingPrice.toLocaleString()}
-                            </td>
-                          );
-                        case 'stockValue': {
-                          const vars = (product as { variations?: Array<{ stock?: number; stockValueAtCost?: number; retailStockValue?: number; purchasePrice?: number; sellingPrice?: number }> }).variations;
-                          if (product.hasVariations && vars?.length) {
-                            const atCost = vars.reduce(
-                              (s, v) =>
-                                s +
-                                (typeof v.stockValueAtCost === 'number' && Number.isFinite(v.stockValueAtCost)
-                                  ? v.stockValueAtCost
-                                  : (v.stock ?? 0) * (v.purchasePrice ?? product.avgCost)),
-                              0
-                            );
-                            const atRetail = vars.reduce(
-                              (s, v) =>
-                                s +
-                                (typeof v.retailStockValue === 'number' && Number.isFinite(v.retailStockValue)
-                                  ? v.retailStockValue
-                                  : (v.stock ?? 0) * (v.sellingPrice ?? product.sellingPrice)),
-                              0
-                            );
-                            return (
-                              <td key={key} className={cn('px-4 py-2 text-right text-sm tabular-nums align-top', atCost < 0 ? 'text-red-400' : 'text-gray-300')}>
-                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">At cost (Σ var.)</div>
-                                <div className="font-medium">{formatDecimal(atCost)}</div>
-                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium mt-1">At retail (Σ var.)</div>
-                                <div className="text-gray-400">{formatDecimal(atRetail)}</div>
-                              </td>
-                            );
-                          }
-                          return (
-                            <td key={key} className={cn('px-4 py-2 text-right text-sm tabular-nums', product.stockValue < 0 ? 'text-red-400' : 'text-gray-300')}>
-                              {formatDecimal(product.stockValue)}
-                            </td>
-                          );
-                        }
-                        case 'movement':
-                          return (
-                            <td key={key} className="px-4 py-2 text-center">
-                              <Badge className={cn("border text-xs", getMovementBadge(product.movement))}>{product.movement}</Badge>
-                            </td>
-                          );
-                        case 'status':
-                          return (
-                            <td key={key} className="px-4 py-2 text-center">
-                              {product.status === 'Out' ? (
-                                <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border text-xs">Out</Badge>
-                              ) : product.status === 'Low' ? (
-                                <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 border text-xs"><AlertTriangle size={10} className="mr-0.5" /> Low</Badge>
-                              ) : (
-                                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border text-xs">OK</Badge>
-                              )}
-                            </td>
-                          );
-                        case 'actions':
-                          return (
-                            <td key={key} className="px-4 py-2 text-center print:hidden">
-                              <div className="flex items-center justify-center gap-1.5">
-                                <Button variant="ghost" size="sm" className="h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 px-2" onClick={() => setLedgerProduct(product)}>
-                                  <ExternalLink size={12} className="mr-1" /> Ledger
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2" onClick={() => { setStockDrawerMode('adjust'); setAdjustmentProduct(product); }}>
-                                  <SlidersHorizontal size={12} className="mr-1" /> Adjust
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-7 text-xs text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 px-2" onClick={() => { setStockDrawerMode('transfer'); setAdjustmentProduct(product); }}>
-                                  <ArrowRightLeft size={12} className="mr-1" /> Transfer
-                                </Button>
-                              </div>
-                            </td>
-                          );
-                        default:
-                          return null;
-                      }
-                    };
-                    const rows: React.ReactNode[] = [];
-                    rows.push(
-                      <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
-                        {visibleCols.map((key) => renderProductCell(key))}
-                      </tr>
-                    );
-                    // RULE 3: Display stock per variation (sub-rows under parent)
-                    const variations = (product as any).variations as
-                      | Array<{
-                          id: string;
-                          sku?: string;
-                          attributes?: Record<string, string>;
-                          stock: number;
-                          boxes?: number;
-                          pieces?: number;
-                          purchasePrice?: number;
-                          sellingPrice?: number;
-                          stockValueAtCost?: number;
-                          retailStockValue?: number;
-                        }>
-                      | undefined;
-                    if (product.hasVariations && variations?.length) {
-                      variations.forEach((v) => {
-                        const attrText =
-                          typeof v.attributes === 'object' && v.attributes !== null
-                            ? Object.entries(v.attributes)
-                                .filter(([, val]) => String(val).trim() !== '')
-                                .map(([k, val]) => `${k}: ${val}`)
-                                .join(' · ')
-                            : '';
-                        const vQty = v.stock ?? 0;
-                        const varPurch =
-                          typeof v.purchasePrice === 'number' && Number.isFinite(v.purchasePrice)
-                            ? v.purchasePrice
-                            : product.avgCost;
-                        const varSell =
-                          typeof v.sellingPrice === 'number' && Number.isFinite(v.sellingPrice)
-                            ? v.sellingPrice
-                            : product.sellingPrice;
-                        const valueAtCost =
-                          typeof v.stockValueAtCost === 'number' && Number.isFinite(v.stockValueAtCost)
-                            ? v.stockValueAtCost
-                            : vQty * varPurch;
-                        const valueAtRetail =
-                          typeof v.retailStockValue === 'number' && Number.isFinite(v.retailStockValue)
-                            ? v.retailStockValue
-                            : vQty * varSell;
-                        const renderVariationCell = (key: string) => {
-                          const dash = <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">—</td>;
-                          const dashRight = <td key={key} className="px-4 py-1.5 text-right text-gray-500 text-xs">—</td>;
-                          const dashLeft = <td key={key} className="px-4 py-1.5 text-gray-500 text-xs">—</td>;
-                          if (key === 'product') {
-                            return (
-                              <td key={key} className="px-4 py-1.5 pl-10">
-                                <div className="text-gray-400 text-[11px] space-y-0.5">
-                                  <p className="text-gray-300 text-xs font-medium leading-snug">
-                                    {attrText || 'Variation'}
-                                  </p>
-                                  <span className="font-mono text-[10px] text-gray-500 block">
-                                    SKU {v.sku || '—'}
-                                  </span>
-                                </div>
-                              </td>
-                            );
-                          }
-                          if (key === 'stockQty') {
-                            const vStock = v.stock ?? 0;
-                            return (
-                              <td key={key} className="px-4 py-1.5 text-center">
-                                <span className={cn("font-mono text-xs tabular-nums", vStock < 0 ? "text-red-400" : "text-gray-300")}>{formatDecimal(vStock)}</span>
-                              </td>
-                            );
-                          }
-                          if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>;
-                          if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>;
-                          if (key === 'unit') {
-                            return (
-                              <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono">
-                                {product.unit}
-                              </td>
-                            );
-                          }
-                          if (key === 'sku') {
-                            return (
-                              <td key={key} className="px-4 py-1.5 text-gray-400 font-mono text-xs whitespace-nowrap">
-                                {v.sku || '—'}
-                              </td>
-                            );
-                          }
-                          if (key === 'avgCost') {
-                            return (
-                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums', varPurch < 0 ? 'text-red-400' : 'text-green-400/90')}>
-                                {varPurch.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                              </td>
-                            );
-                          }
-                          if (key === 'sellingPrice') {
-                            return (
-                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums', varSell < 0 ? 'text-red-400' : 'text-green-400/90')}>
-                                {varSell.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                              </td>
-                            );
-                          }
-                          if (key === 'stockValue') {
-                            return (
-                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums align-top', valueAtCost < 0 ? 'text-red-400' : 'text-gray-200')}>
-                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">At cost</div>
-                                <div className="tabular-nums font-medium">{formatDecimal(valueAtCost)}</div>
-                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium mt-1">At retail</div>
-                                <div className="tabular-nums text-gray-400">{formatDecimal(valueAtRetail)}</div>
-                              </td>
-                            );
-                          }
-                          if (['category', 'movement', 'status'].includes(key)) return dash;
-                          if (key === 'actions') return <td key={key} className="px-4 py-1.5 text-center print:hidden text-xs">—</td>;
-                          return dash;
-                        };
-                        rows.push(
-                          <tr key={`${product.id}-${v.id}`} className="bg-gray-900/40 hover:bg-gray-800/20 transition-colors opacity-90">
-                            {visibleCols.map((key) => renderVariationCell(key))}
-                          </tr>
-                        );
-                      });
-                    }
-                    return rows;
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <InventoryOverviewTable
+            products={displayedProducts}
+            loading={loading}
+            visibleCols={overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false)}
+            columnsList={overviewColumnsList}
+            enablePacking={enablePacking}
+            alwaysShowVariations
+            actionsMode="labels"
+            onLedger={setLedgerProduct}
+            onAdjust={(product) => { setStockDrawerMode('adjust'); setAdjustmentProduct(product); }}
+            onTransfer={(product) => { setStockDrawerMode('transfer'); setAdjustmentProduct(product); }}
+            className="print:border print:rounded min-w-0"
+          />
           </div>
         </div>
       )}
@@ -1066,9 +789,9 @@ export const InventoryDashboardNew = () => {
 
       {/* Import Inventory CSV modal */}
       <Dialog open={importInventoryModalOpen} onOpenChange={(open) => { if (!open) { setImportInventoryModalOpen(false); setImportRows([]); } }}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
+            <DialogTitle className="text-foreground flex items-center gap-2">
               <Upload size={20} />
               Import Inventory (Opening Balance)
             </DialogTitle>
@@ -1081,8 +804,8 @@ export const InventoryDashboardNew = () => {
                 <Info size={20} className="text-blue-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-blue-400 mb-2">How it works</h3>
-                  <ul className="text-xs text-gray-300 space-y-1">
-                    <li>• Upload a CSV with <code className="bg-gray-800 px-1 rounded">sku</code> and <code className="bg-gray-800 px-1 rounded">quantity</code> (or <code className="bg-gray-800 px-1 rounded">qty</code>)</li>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li>• Upload a CSV with <code className="bg-muted px-1 rounded">sku</code> and <code className="bg-muted px-1 rounded">quantity</code> (or <code className="bg-muted px-1 rounded">qty</code>)</li>
                     <li>• SKU must match existing products in your catalog (Products page)</li>
                     <li>• Quantities will be added as <strong>opening balance</strong> stock movements</li>
                     <li>• Rows with unknown SKUs will be skipped (no product match)</li>
@@ -1093,9 +816,9 @@ export const InventoryDashboardNew = () => {
 
             {/* Example */}
             <div>
-              <label className="text-sm font-semibold text-white mb-2 block">Example format</label>
-              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 font-mono text-xs overflow-x-auto">
-                <pre className="text-gray-300">{`sku,quantity
+              <label className="text-sm font-semibold text-foreground mb-2 block">Example format</label>
+              <div className="bg-muted/50 border border-border rounded-lg p-3 font-mono text-xs overflow-x-auto">
+                <pre className="text-muted-foreground">{`sku,quantity
 PROD-001,10
 PROD-002,5
 PROD-003,20`}</pre>
@@ -1104,11 +827,11 @@ PROD-003,20`}</pre>
 
             {/* Step 1: Download Template */}
             <div>
-              <label className="text-sm font-semibold text-white mb-2 block">Step 1: Download Template</label>
+              <label className="text-sm font-semibold text-foreground mb-2 block">Step 1: Download Template</label>
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white gap-2"
+                className="h-10 bg-muted border-border hover:bg-muted text-foreground gap-2"
                 onClick={() => {
                   const template = `sku,quantity
 PROD-001,10
@@ -1136,11 +859,11 @@ PROD-003,20`;
 
             {/* Step 2: Upload */}
             <div>
-              <label className="text-sm font-semibold text-white mb-2 block">Step 2: Upload your file</label>
+              <label className="text-sm font-semibold text-foreground mb-2 block">Step 2: Upload your file</label>
               <input
                 type="file"
                 accept=".csv"
-                className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-gray-700 file:text-white file:text-sm file:cursor-pointer"
+                className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-muted file:text-foreground file:text-sm file:cursor-pointer"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
@@ -1175,26 +898,26 @@ PROD-003,20`;
             {/* Preview */}
             {importRows.length > 0 && (
             <div>
-              <label className="text-sm font-semibold text-white mb-2 block">Preview</label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-700">
+              <label className="text-sm font-semibold text-foreground mb-2 block">Preview</label>
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-800 sticky top-0">
+                  <thead className="bg-muted sticky top-0">
                     <tr>
-                      <th className="text-left px-3 py-2 text-gray-400">SKU</th>
-                      <th className="text-left px-3 py-2 text-gray-400">Product</th>
-                      <th className="text-right px-3 py-2 text-gray-400">Qty</th>
-                      <th className="text-center px-3 py-2 text-gray-400 w-20">Status</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground">SKU</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground">Product</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground">Qty</th>
+                      <th className="text-center px-3 py-2 text-muted-foreground w-20">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {importRows.slice(0, 20).map((r, i) => (
-                      <tr key={i} className="border-t border-gray-800">
+                      <tr key={i} className="border-t border-border">
                         <td className="px-3 py-1.5 font-mono">{r.sku}</td>
-                        <td className="px-3 py-1.5 text-gray-400">{r.name ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-right">{r.quantity}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{r.name ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatQty(r.quantity)}</td>
                         <td className="px-3 py-1.5 text-center">
                           {r.productId ? (
-                            <span className="text-green-400 text-xs">✓</span>
+                            <span className="text-[var(--erp-money-positive)] text-xs">✓</span>
                           ) : (
                             <span className="text-amber-400 text-xs">No match</span>
                           )}
@@ -1203,16 +926,16 @@ PROD-003,20`;
                     ))}
                   </tbody>
                 </table>
-                {importRows.length > 20 && <p className="text-xs text-gray-500 px-3 py-1">+ {importRows.length - 20} more</p>}
+                {importRows.length > 20 && <p className="text-xs text-muted-foreground px-3 py-1">+ {importRows.length - 20} more</p>}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 {importRows.filter((r) => r.productId).length} of {importRows.length} rows match existing products. Only matched rows will be imported.
               </p>
             </div>
             )}
           </div>
-          <DialogFooter className="gap-2 shrink-0 pt-4 border-t border-gray-800">
-            <Button variant="outline" className="border-gray-700" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
+          <DialogFooter className="gap-2 shrink-0 pt-4 border-t border-border">
+            <Button variant="outline" className="border-border" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
             <Button
               className="bg-blue-600 hover:bg-blue-500"
               disabled={importRows.length === 0 || importing || importRows.every((r) => !r.productId)}
@@ -1222,12 +945,28 @@ PROD-003,20`;
                 setImporting(true);
                 try {
                   const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-                  for (const row of valid) {
-                    if (row.productId)
-                      await inventoryService.insertOpeningBalanceMovement(companyId, branchIdOrNull, row.productId, row.quantity, 0);
-                  }
+                  const overviewByProductId = new Map(overviewRows.map((p) => [p.productId, p]));
+                  const result = await inventoryService.bulkImportOpeningInventory(
+                    companyId,
+                    branchIdOrNull,
+                    valid.map((row) => ({
+                      productId: row.productId!,
+                      quantity: row.quantity,
+                      unitCost: overviewByProductId.get(row.productId!)?.avgCost ?? 0,
+                    }))
+                  );
                   await loadOverview();
-                  toast.success(`Imported ${valid.length} item(s) as opening balance.`);
+                  const glMsg =
+                    result.openingGlPosted + result.openingGlKept > 0
+                      ? ` · ${result.openingGlPosted + result.openingGlKept} opening GL entr${result.openingGlPosted + result.openingGlKept === 1 ? 'y' : 'ies'}`
+                      : '';
+                  toast.success(`Imported ${result.processed} item(s) as opening balance${glMsg}.`);
+                  if (result.openingGlSkippedZeroCost > 0) {
+                    toast.warning(`${result.openingGlSkippedZeroCost} item(s) skipped GL — zero cost price.`);
+                  }
+                  if (result.failed > 0) {
+                    toast.error(`${result.failed} row(s) failed.`);
+                  }
                   setImportInventoryModalOpen(false);
                   setImportRows([]);
                 } catch (err: any) {
@@ -1248,9 +987,9 @@ PROD-003,20`;
         <div className="flex-1 min-h-0 overflow-auto">
           <div className="space-y-6 animate-in fade-in duration-300 p-px">
           {/* Filters */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-wrap items-end gap-4">
+          <div className="bg-card border border-border rounded-xl p-4 flex flex-wrap items-end gap-4">
             <div>
-              <label className="text-xs text-gray-400 block mb-1">From Date</label>
+              <label className="text-xs text-muted-foreground block mb-1">From Date</label>
               <DatePicker
                 value={filters.dateFrom}
                 onChange={(v) => setFilters(f => ({ ...f, dateFrom: v }))}
@@ -1259,7 +998,7 @@ PROD-003,20`;
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">To Date</label>
+              <label className="text-xs text-muted-foreground block mb-1">To Date</label>
               <DatePicker
                 value={filters.dateTo}
                 onChange={(v) => setFilters(f => ({ ...f, dateTo: v }))}
@@ -1268,11 +1007,11 @@ PROD-003,20`;
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">Movement Type</label>
+              <label className="text-xs text-muted-foreground block mb-1">Movement Type</label>
               <select
                 value={filters.movementType}
                 onChange={(e) => setFilters(f => ({ ...f, movementType: e.target.value }))}
-                className="h-9 px-3 rounded-md bg-gray-950 border border-gray-700 text-white text-sm w-40"
+                className="h-9 px-3 rounded-md bg-input-background border border-border text-foreground text-sm w-40"
               >
                 <option value="">All</option>
                 <option value="purchase">Purchase</option>
@@ -1283,11 +1022,11 @@ PROD-003,20`;
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">Product</label>
+              <label className="text-xs text-muted-foreground block mb-1">Product</label>
               <select
                 value={filters.productId}
                 onChange={(e) => setFilters(f => ({ ...f, productId: e.target.value }))}
-                className="h-9 px-3 rounded-md bg-gray-950 border border-gray-700 text-white text-sm min-w-[180px]"
+                className="h-9 px-3 rounded-md bg-input-background border border-border text-foreground text-sm min-w-[180px]"
               >
                 <option value="">All products</option>
                 {overviewRows.map((p) => (
@@ -1301,23 +1040,23 @@ PROD-003,20`;
           </div>
 
           {/* Movements Table - scroll when needed */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-w-0">
-            <div className="p-6 border-b border-gray-800">
+          <div className="bg-card border border-border rounded-xl overflow-hidden min-w-0">
+            <div className="p-6 border-b border-border">
               <div className="flex justify-between items-center mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-white">Stock Movements</h3>
-                  <p className="text-sm text-gray-400 mt-1">Filter by date, product, and movement type</p>
+                  <h3 className="text-lg font-bold text-foreground">Stock Movements</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Filter by date, product, and movement type</p>
                 </div>
                 <div className="flex items-center gap-3">
                   {/* View Mode Toggle */}
-                  <div className="flex items-center gap-2 bg-gray-950/50 border border-gray-700 rounded-lg p-1">
+                  <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-lg p-1">
                     <button
                       onClick={() => setViewMode('detailed')}
                       className={cn(
                         "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5",
                         viewMode === 'detailed'
                           ? "bg-blue-600 text-white"
-                          : "text-gray-400 hover:text-white"
+                          : "text-muted-foreground hover:text-foreground"
                       )}
                       title="Detailed mode shows all individual movements (audit trail)"
                     >
@@ -1330,7 +1069,7 @@ PROD-003,20`;
                         "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5",
                         viewMode === 'grouped'
                           ? "bg-blue-600 text-white"
-                          : "text-gray-400 hover:text-white"
+                          : "text-muted-foreground hover:text-foreground"
                       )}
                       title="Grouped mode shows net effect per document (user-friendly)"
                     >
@@ -1338,7 +1077,7 @@ PROD-003,20`;
                       Grouped
                     </button>
                   </div>
-                  <Button variant="outline" size="sm" className="gap-2 border-gray-700 text-gray-300" onClick={() => exportMovementsCsv(viewMode)}>
+                  <Button variant="outline" size="sm" className="gap-2 border-border text-muted-foreground" onClick={() => exportMovementsCsv(viewMode)}>
                     <Download size={16} /> Export CSV
                   </Button>
                 </div>
@@ -1374,36 +1113,36 @@ PROD-003,20`;
             </div>
             <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-gray-950/50 border-b border-gray-800 sticky top-0 z-10">
+              <thead className="bg-muted/40 border-b border-border sticky top-0 z-10">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Variation</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Type</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Qty Change</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-muted-foreground uppercase">Product</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-muted-foreground uppercase">Variation</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-muted-foreground uppercase">Type</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-muted-foreground uppercase">Qty Change</th>
                   {enablePacking && (
                     <>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Box Change</th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Piece Change</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-muted-foreground uppercase">Box Change</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-muted-foreground uppercase">Piece Change</th>
                     </>
                   )}
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Before Qty</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">After Qty</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Unit Cost</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase max-w-[200px]">Notes</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-muted-foreground uppercase">Before Qty</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-muted-foreground uppercase">After Qty</th>
+                  <th className="px-6 py-4 text-right text-xs font-medium text-muted-foreground uppercase">Unit Cost</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-muted-foreground uppercase max-w-[200px]">Notes</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {movementsLoading ? (
                   <tr>
                     <td colSpan={enablePacking ? 11 : 9} className="px-6 py-12 text-center">
                       <Loader2 size={32} className="mx-auto text-blue-500 animate-spin" />
-                      <p className="text-gray-400 text-sm mt-2">Loading movements...</p>
+                      <p className="text-muted-foreground text-sm mt-2">Loading movements...</p>
                     </td>
                   </tr>
                 ) : displayedMovements.length === 0 ? (
                   <tr>
-                    <td colSpan={enablePacking ? 11 : 9} className="px-6 py-12 text-center text-gray-400 text-sm">
+                    <td colSpan={enablePacking ? 11 : 9} className="px-6 py-12 text-center text-muted-foreground text-sm">
                       No movements found. Adjust filters or ensure stock_movements has data.
                     </td>
                   </tr>
@@ -1412,17 +1151,17 @@ PROD-003,20`;
                     const isGrouped = (m as any).is_grouped === true;
                     const movementCount = (m as any).movement_count || 1;
                     return (
-                    <tr key={m.id} className="hover:bg-gray-800/30 transition-colors">
-                      <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
+                    <tr key={m.id} className="hover:bg-accent/30 transition-colors">
+                      <td className="px-6 py-4 text-muted-foreground text-sm whitespace-nowrap">
                         {m.created_at ? new Date(m.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '-'}
                       </td>
                       <td className="px-6 py-4">
                         <div>
-                          <p className="font-medium text-white">{m.product?.name ?? '-'}</p>
-                          <p className="text-xs text-gray-500">{m.product?.sku ?? ''}</p>
+                          <p className="font-medium text-foreground">{m.product?.name ?? '-'}</p>
+                          <p className="text-xs text-muted-foreground">{m.product?.sku ?? ''}</p>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-gray-400 text-sm">
+                      <td className="px-6 py-4 text-muted-foreground text-sm">
                         {(m as any).variation_id && (m as any).variation ? (
                           <span>
                             {typeof (m as any).variation?.attributes === 'object' && (m as any).variation?.attributes !== null
@@ -1435,28 +1174,28 @@ PROD-003,20`;
                         <Badge className={cn(
                           "border text-xs",
                           m.movement_type === 'sale' ? "bg-red-500/20 text-red-400 border-red-500/30" :
-                          m.movement_type === 'purchase' ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                          m.movement_type === 'purchase' ? "bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30" :
                           m.movement_type === 'adjustment' ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
-                          "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                          "bg-gray-500/20 text-muted-foreground border-gray-500/30"
                         )}>
                           {m.movement_type ?? '-'}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-center font-mono text-white">
-                        {m.quantity != null ? (Number(m.quantity) >= 0 ? '+' : '') + Number(m.quantity) : '-'}
+                      <td className="px-6 py-4 text-center font-mono text-foreground">
+                        {m.quantity != null ? (Number(m.quantity) >= 0 ? '+' : '') + formatQty(m.quantity) : '-'}
                       </td>
                       {enablePacking && (
                         <>
-                          <td className="px-6 py-4 text-center text-gray-400">{(m as any).box_change != null ? Math.round(Number((m as any).box_change)) : '-'}</td>
-                          <td className="px-6 py-4 text-center text-gray-400">{(m as any).piece_change != null ? Math.round(Number((m as any).piece_change)) : '-'}</td>
+                          <td className="px-6 py-4 text-center text-muted-foreground">{(m as any).box_change != null ? Math.round(Number((m as any).box_change)) : '-'}</td>
+                          <td className="px-6 py-4 text-center text-muted-foreground">{(m as any).piece_change != null ? Math.round(Number((m as any).piece_change)) : '-'}</td>
                         </>
                       )}
-                      <td className="px-6 py-4 text-center text-gray-400">{m.before_qty ?? '-'}</td>
-                      <td className="px-6 py-4 text-center text-gray-400">{m.after_qty ?? '-'}</td>
-                      <td className="px-6 py-4 text-right text-gray-400">
+                      <td className="px-6 py-4 text-center text-muted-foreground">{m.before_qty ?? '-'}</td>
+                      <td className="px-6 py-4 text-center text-muted-foreground">{m.after_qty ?? '-'}</td>
+                      <td className="px-6 py-4 text-right text-muted-foreground">
                         {m.unit_cost != null ? formatCurrency(Number(m.unit_cost)) : '-'}
                       </td>
-                      <td className="px-6 py-4 text-gray-400 text-sm max-w-[200px] truncate" title={m.notes || ''}>
+                      <td className="px-6 py-4 text-muted-foreground text-sm max-w-[200px] truncate" title={m.notes || ''}>
                         <div className="flex items-center gap-2">
                           {m.notes || '-'}
                           {isGrouped && movementCount > 1 && (

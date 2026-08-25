@@ -1,0 +1,9 @@
+AR/AP Phase 2b production rollout — frontend build
+Generated: 2026-07-12
+
+Command: npm run build
+
+Result: PASS (Vite + PWA generateSW)
+Duration: ~29–34s (session)
+
+Note: Chunk size warnings only; no build errors.

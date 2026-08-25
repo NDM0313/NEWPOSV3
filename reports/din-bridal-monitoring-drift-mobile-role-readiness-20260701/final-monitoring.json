@@ -1,0 +1,22 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "final-monitoring",
+  "generated_at": "2026-07-01T12:53:34.834Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "FAIL",
+  "artifact_json": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T12-43-13-370Z.json",
+  "artifact_md": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T12-43-13-370Z.md",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "din_china": "PASS",
+  "din_couture": "PASS",
+  "din_bridal": {
+    "phaseResult": "FAIL",
+    "failures": [
+      { "check": "Roznamcha Cash In golden", "expected_pkr": 1836350, "actual_pkr": 1958350, "delta_pkr": 122000 },
+      { "check": "Roznamcha Closing golden", "expected_pkr": 918570, "actual_pkr": 1040570, "delta_pkr": 122000 },
+      { "check": "Trial Balance golden total", "expected_pkr": 22056075, "actual_pkr": 22257400, "delta_pkr": 201325 }
+    ]
+  },
+  "ongoing_drift_note": "TB and roznamcha totals increased again between 12:31 and 12:43 runs — confirms live production activity, not transient monitoring glitch."
+}

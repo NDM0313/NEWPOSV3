@@ -1,0 +1,42 @@
+{
+  "run": "LOCAL_CLEANUP_APPROVED_NEXT_OPTIONS",
+  "generated_at": "2026-06-29T18:00:00.000Z",
+  "options": {
+    "A": {
+      "label": "Leave all local files untouched",
+      "risk": "low",
+      "touches_reviewed_files": false
+    },
+    "B": {
+      "label": "Archive selected timestamped monitoring files locally, no repo commit",
+      "risk": "low",
+      "recommended": true,
+      "archive_destination": "%USERPROFILE%\\erp-monitoring-logs",
+      "file_count": 10
+    },
+    "C": {
+      "label": "Commit latest 08-12 PASS evidence as official evidence",
+      "risk": "low",
+      "git_churn_warning": true,
+      "recommended": false
+    },
+    "D": {
+      "label": "Restore generated noise only, leave evidence files untouched",
+      "risk": "low",
+      "files": ["graphify-out/GRAPH_REPORT.md"]
+    },
+    "E": {
+      "label": "Finance/manual review required before touching golden fixture files",
+      "risk": "high",
+      "mandatory_before_bridal_golden_changes": true,
+      "files": [
+        "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/"
+      ]
+    }
+  },
+  "inspector_recommendation": "B+D with E frozen",
+  "bridal_golden_pkr_unchanged": true,
+  "do_not_commit_daily_monitoring_by_default": true
+}
