@@ -94,6 +94,7 @@ export const RentalProductSearch = ({
             <CommandGroup heading="Search Results">
               {filteredProducts.map((product) => {
                 const isUnavailable = product.status === 'unavailable';
+                const isSoftUnavailable = !isUnavailable && !!product.unavailableReason;
                 
                 return (
                   <CommandItem
@@ -104,7 +105,8 @@ export const RentalProductSearch = ({
                       "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors mb-1",
                       isUnavailable 
                         ? "opacity-50 cursor-not-allowed hover:bg-transparent" 
-                        : "hover:bg-muted data-[selected=true]:bg-muted"
+                        : "hover:bg-muted data-[selected=true]:bg-muted",
+                      isSoftUnavailable && "border border-amber-500/30"
                     )}
                     disabled={isUnavailable}
                   >
@@ -129,11 +131,16 @@ export const RentalProductSearch = ({
 
                     {/* Badges / Status */}
                     <div className="shrink-0">
-                      {product.status === 'available' && (
+                      {isSoftUnavailable ? (
+                        <Badge variant="outline" className="bg-amber-900/20 text-amber-400 border-amber-900/50 flex items-center gap-1">
+                          <CalendarOff size={10} />
+                          {product.unavailableReason}
+                        </Badge>
+                      ) : product.status === 'available' ? (
                         <Badge className="bg-green-900/20 text-[var(--erp-money-positive)] border-green-900/50 hover:bg-green-900/30">
                           Rent: ${product.rentPrice?.toLocaleString() ?? "0"}
                         </Badge>
-                      )}
+                      ) : null}
 
                       {product.status === 'retail_only' && (
                         <div className="flex flex-col items-end gap-1">

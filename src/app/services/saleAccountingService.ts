@@ -1,4 +1,5 @@
-import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '@/app/utils/localDate';
+import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 /**
  * Sale Accounting Service (Phase 4: one contract)
  *
@@ -665,8 +666,20 @@ export const saleAccountingService = {
     shipmentCharges?: number;
     invoiceNo: string;
     performedBy?: string | null;
+    /** Document calendar date (invoice_date); defaults to today only if missing. */
+    entryDate?: string;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy } = params;
+    const {
+      saleId,
+      companyId,
+      branchId,
+      total,
+      discountAmount = 0,
+      shipmentCharges = 0,
+      invoiceNo,
+      performedBy,
+      entryDate: requestedEntryDate,
+    } = params;
 
     if (!saleId || !companyId) {
       console.warn('[saleAccountingService] createSaleJournalEntry: missing saleId or companyId');
@@ -681,12 +694,22 @@ export const saleAccountingService = {
     const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
     if (!eligible) return null;
 
+    const entryDate = requestedEntryDate
+      ? toLocalDateString(requestedEntryDate)
+      : localNowDateString();
+
     // Idempotency: exactly one active canonical document JE; payment-linked rows must not block creation.
     const existingDocId = await findActiveCanonicalSaleDocumentJournalEntryId(saleId);
     if (existingDocId) {
       console.log(
         `[saleAccountingService] Canonical sale document JE already exists for ${invoiceNo}, reusing ${existingDocId}`
       );
+      await syncJournalEntryDateByDocumentRefs({
+        companyId,
+        referenceTypes: ['sale', 'sale_adjustment'],
+        referenceId: saleId,
+        entryDate,
+      });
       return existingDocId;
     }
 
@@ -699,7 +722,6 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -1002,7 +1024,8 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
+    // Cancellation / reversal stamps the day of cancel (not original invoice date).
+    const entryDate = localNowDateString();
 
     const entry: JournalEntry = {
       id: '',

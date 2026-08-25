@@ -587,6 +587,7 @@ export const rentalService = {
         durationDays: number;
         total: number;
       }>;
+      skipAvailabilityCheck?: boolean;
     }
   ): Promise<void> {
     const { data: existing, error: fetchErr } = await supabase
@@ -617,20 +618,22 @@ export const rentalService = {
           }));
         })();
 
-    const availability = await checkRentalAvailabilityForItems({
-      companyId,
-      items: items.map((i: { productId: string; quantity?: number; variationId?: string | null }) => ({
-        productId: i.productId,
-        quantity: i.quantity,
-        variationId: i.variationId,
-      })),
-      startDate: pickupDate,
-      endDate: returnDate,
-      excludeRentalId: id,
-      branchId: r.branch_id,
-    });
-    if (!availability.available) {
-      throw new Error(availability.message || 'Selected dates conflict with an existing booking');
+    if (!updates.skipAvailabilityCheck) {
+      const availability = await checkRentalAvailabilityForItems({
+        companyId,
+        items: items.map((i: { productId: string; quantity?: number; variationId?: string | null }) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          variationId: i.variationId,
+        })),
+        startDate: pickupDate,
+        endDate: returnDate,
+        excludeRentalId: id,
+        branchId: r.branch_id,
+      });
+      if (!availability.available) {
+        throw new Error(availability.message || 'Selected dates conflict with an existing booking');
+      }
     }
 
     const payload: Record<string, unknown> = {};

@@ -916,7 +916,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         customer_bill_ref: (saleData as Sale).customerBillRef?.trim() || null,
         deadline: (saleData as any).deadline ?? null,
         created_by: createdByAuthId,
-        salesman_id: isCreateFinal ? salesmanIdVal : null,
+        salesman_id: salesmanIdVal,
         commission_amount: isCreateFinal ? commissionAmountVal : 0,
         commission_eligible_amount: isCreateFinal ? (saleData.subtotal ?? null) : null,
         commission_status: isCreateFinal && salesmanIdVal && commissionAmountVal > 0 ? 'pending' : null,

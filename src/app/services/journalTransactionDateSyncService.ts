@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { toLocalDateString } from '@/app/utils/localDate';
 
 const VOID_FILTER = 'is_void.is.null,is_void.eq.false';
 
@@ -15,7 +16,7 @@ export async function syncJournalEntryDateByDocumentRefs(params: {
 }): Promise<{ updated: number; error?: string }> {
   const { companyId, referenceTypes, referenceId, entryDate } = params;
   if (!companyId || !referenceId || !referenceTypes.length) return { updated: 0 };
-  const date = String(entryDate).slice(0, 10);
+  const date = toLocalDateString(entryDate);
 
   const { data: rows, error } = await supabase
     .from('journal_entries')

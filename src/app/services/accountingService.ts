@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { toLocalDateString } from '@/app/utils/localDate';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import {
   fetchCustomerLedgerSalesForRange,
@@ -4367,7 +4368,7 @@ export const accountingService = {
     const insertData: any = {
       company_id: entry.company_id,
       entry_no: entry.entry_no,
-      entry_date: entry.entry_date,
+      entry_date: toLocalDateString(entry.entry_date),
       description: entry.description,
       reference_type: entry.reference_type,
     };

@@ -2030,18 +2030,62 @@ export async function getSaleReturnCandidateItems(saleId: string): Promise<{
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   if (!saleId) return { data: [], error: 'Sale id is required.' };
 
+  // Already-returned qty by sale_item_id / product+variation (final returns only)
+  const alreadyBySaleItem = new Map<string, number>();
+  const alreadyByProductKey = new Map<string, number>();
+  try {
+    const { data: priorReturns } = await supabase
+      .from('sale_returns')
+      .select('id, status')
+      .eq('original_sale_id', saleId);
+    const finalIds = (priorReturns || [])
+      .filter((r: { status?: string }) => {
+        const st = String(r.status || '').toLowerCase();
+        return st === 'final' || st === 'completed' || st === 'posted';
+      })
+      .map((r: { id: string }) => r.id);
+    if (finalIds.length > 0) {
+      const { data: priorItems } = await supabase
+        .from('sale_return_items')
+        .select('sale_item_id, product_id, variation_id, quantity')
+        .in('sale_return_id', finalIds);
+      for (const row of priorItems || []) {
+        const qty = Number((row as { quantity?: number }).quantity) || 0;
+        const saleItemId = (row as { sale_item_id?: string | null }).sale_item_id;
+        if (saleItemId) {
+          alreadyBySaleItem.set(String(saleItemId), (alreadyBySaleItem.get(String(saleItemId)) || 0) + qty);
+        }
+        const pk = `${(row as { product_id?: string }).product_id || ''}:${(row as { variation_id?: string | null }).variation_id || ''}`;
+        alreadyByProductKey.set(pk, (alreadyByProductKey.get(pk) || 0) + qty);
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
   const mapRows = (rows: Record<string, unknown>[]) =>
     rows
-      .map((r) => ({
-        saleItemId: r.id ? String(r.id) : null,
-        productId: String(r.product_id ?? ''),
-        variationId: r.variation_id ? String(r.variation_id) : null,
-        productName: String(r.product_name ?? 'Item'),
-        sku: String(r.sku ?? '—'),
-        soldQty: Number(r.quantity ?? 0),
-        unitPrice: Number(r.unit_price ?? 0),
-        lineTotal: Number(r.total ?? 0),
-      }))
+      .map((r) => {
+        const saleItemId = r.id ? String(r.id) : null;
+        const productId = String(r.product_id ?? '');
+        const variationId = r.variation_id ? String(r.variation_id) : null;
+        const sold = Number(r.quantity ?? 0);
+        const already =
+          (saleItemId ? alreadyBySaleItem.get(saleItemId) : undefined) ??
+          alreadyByProductKey.get(`${productId}:${variationId || ''}`) ??
+          0;
+        const remaining = Math.max(0, sold - already);
+        return {
+          saleItemId,
+          productId,
+          variationId,
+          productName: String(r.product_name ?? 'Item'),
+          sku: String(r.sku ?? '—'),
+          soldQty: remaining,
+          unitPrice: Number(r.unit_price ?? 0),
+          lineTotal: Number(r.total ?? 0),
+        };
+      })
       .filter((r) => r.soldQty > 0);
 
   const sourceTables = ['sales_items', 'sale_items'] as const;

@@ -68,11 +68,13 @@ export const userService = {
     // Filter by salesman permission if specified
     if (options?.canBeSalesman) {
       return (data || []).filter(user => {
+        const role = String(user.role || '').toLowerCase();
         return (
           user.can_be_assigned_as_salesman === true ||
-          user.role === 'salesman' ||
-          user.role === 'admin' ||
-          user.role === 'owner'
+          role === 'salesman' ||
+          role === 'admin' ||
+          role === 'owner' ||
+          role === 'manager'
         );
       });
     }

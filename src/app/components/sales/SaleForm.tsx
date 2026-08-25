@@ -326,7 +326,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Permission-based: settings access allows branch selection and full branch list (was role === 'admin')
     const isAdmin = canManageSettings;
-    const canAssignCommission = canAssignSaleCommission(userRole);
+    const canAssignCommission = canAssignSaleCommission(userRole) || canManageSettings;
     const [erpUserId, setErpUserId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -530,7 +530,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // For admin: allow selection
     const [salesmanId, setSalesmanId] = useState<string>(() => {
       if (initialSale?.id) return savedSalesmanFromSale(initialSale);
-      return '1';
+      return 'none';
     });
     const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
     const [commissionValue, setCommissionValue] = useState<number>(0);

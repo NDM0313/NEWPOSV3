@@ -443,6 +443,11 @@ export interface SaleReturnParams {
   amount: number;
   /** Linked sale UUID when return is against an invoice; optional for standalone returns. */
   originalSaleId?: string | null;
+  /**
+   * Preferred settlement mode for the **refund** leg (cash/bank).
+   * When arPortion covers the full amount, adjust-only applies (no liquidity credit).
+   * Legacy: exclusive 'adjust' forces full AR credit (ignores auto-split) — prefer dueBefore instead.
+   */
   refundMethod: 'cash' | 'bank' | 'adjust';
   /** GL account id for cash/bank refund leg (metadata.creditAccountId). */
   refundAccountId?: string | null;
@@ -458,6 +463,12 @@ export interface SaleReturnParams {
   discountAmount?: number;
   /** Gross subtotal before discount (= amount + discountAmount). If provided, used as Revenue Dr amount. */
   subtotal?: number;
+  /** Invoice due before this return (operational). When set, settlement splits: AR first, then cash/bank. */
+  dueBefore?: number;
+  /** Explicit AR credit (overrides dueBefore split when both arPortion and refundPortion provided). */
+  arPortion?: number;
+  /** Explicit cash/bank credit portion. */
+  refundPortion?: number;
 }
 
 export interface SupplierPaymentParams {
@@ -3216,7 +3227,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  /** Dr Sales Revenue, Cr party AR (adjust) or Cr liquidity — same party subledger pattern as recordPurchaseReturn. */
+  /** Dr Sales Revenue; Cr party AR (due portion) and/or Cr liquidity (refund portion). */
   const recordSaleReturn = async (params: SaleReturnParams): Promise<boolean> => {
     const {
       saleReturnId,
@@ -3232,116 +3243,164 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       postingDate,
       discountAmount: returnDiscount = 0,
       subtotal: returnSubtotal,
+      dueBefore,
+      arPortion: arPortionParam,
+      refundPortion: refundPortionParam,
     } = params;
     if (!amount || amount <= 0) return true;
+    if (!companyId) return false;
 
-    // If discount exists, use direct JE creation for proper 3-line entry:
-    //   Dr Revenue (subtotal)  /  Cr Discount (discount)  /  Cr AR|Cash (net amount)
-    // Without discount, fall back to simple createEntry.
-    const hasReturnDiscount = returnDiscount > 0 && companyId;
-
-    if (hasReturnDiscount) {
-      try {
-        const { accountHelperService } = await import('@/app/services/accountHelperService');
-        const { accountingService: acctSvc } = await import('@/app/services/accountingService');
-        const { ensureDiscountAllowedAccount } = await import('@/app/services/saleAccountingService');
-
-        // Revenue account (Dr)
-        let revenueAcctId = revenueDebitAccountId || undefined;
-        if (!revenueAcctId) {
-          const { getCanonicalSalesRevenueAccountId } = await import('@/app/lib/canonicalSalesRevenueAccount');
-          revenueAcctId = await getCanonicalSalesRevenueAccountId(companyId!);
-        }
-
-        // Discount account (Cr)
-        const discountAcct = await ensureDiscountAllowedAccount(companyId!);
-
-        // Credit account (AR sub-ledger or Cash/Bank)
-        let creditAcctId: string | undefined;
-        if (refundMethod === 'adjust' && customerId) {
-          const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-          creditAcctId = (await resolveReceivablePostingAccountId(companyId!, customerId)) || undefined;
-        } else if ((refundMethod === 'cash' || refundMethod === 'bank') && refundAccountId) {
-          creditAcctId = refundAccountId;
-        }
-        if (!creditAcctId) {
-          creditAcctId = (await accountHelperService.getAccountByCode('1100', companyId!))?.id || undefined;
-        }
-
-        if (!revenueAcctId || !creditAcctId) {
-          console.warn('[recordSaleReturn] Missing account IDs, falling back to simple entry');
-        } else {
-          const grossAmount = returnSubtotal || (amount + returnDiscount);
-          const jeLines: Array<{ id: string; journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }> = [
-            { id: '', journal_entry_id: '', account_id: revenueAcctId, debit: grossAmount, credit: 0, description: `Return Revenue – ${returnNo}` },
-            { id: '', journal_entry_id: '', account_id: creditAcctId, debit: 0, credit: amount, description: `Return settlement – ${returnNo}` },
-          ];
-          if (discountAcct?.id) {
-            jeLines.push({ id: '', journal_entry_id: '', account_id: discountAcct.id, debit: 0, credit: returnDiscount, description: `Return Discount reversal – ${returnNo}` });
-          }
-
-          const result = await acctSvc.createEntry(
-            {
-              id: '', company_id: companyId!, branch_id: branchId || undefined,
-              entry_no: `JE-RTN-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
-              entry_date: postingDate?.slice(0, 10) || localNowDateString(),
-              description: description || `Sale Return: ${returnNo} - ${customerName}`,
-              reference_type: 'sale_return', reference_id: saleReturnId,
-            } as any,
-            jeLines,
-          );
-          return !!result;
-        }
-      } catch (e: any) {
-        console.warn('[recordSaleReturn] Discount JE failed, falling back:', e?.message);
-      }
+    const { computeSaleReturnSettlementSplit } = await import('@/app/lib/saleReturnSettlementSplit');
+    let arPortion: number;
+    let refundPortion: number;
+    if (arPortionParam != null && refundPortionParam != null) {
+      arPortion = Math.max(0, Number(arPortionParam) || 0);
+      refundPortion = Math.max(0, Number(refundPortionParam) || 0);
+    } else if (dueBefore != null && Number.isFinite(Number(dueBefore))) {
+      const split = computeSaleReturnSettlementSplit({ returnTotal: amount, dueBefore: Number(dueBefore) });
+      arPortion = split.arPortion;
+      refundPortion = split.refundPortion;
+    } else if (refundMethod === 'adjust') {
+      arPortion = amount;
+      refundPortion = 0;
+    } else {
+      arPortion = 0;
+      refundPortion = amount;
+    }
+    // Normalize rounding so legs sum to amount
+    const legsSum = Math.round((arPortion + refundPortion) * 100) / 100;
+    if (Math.abs(legsSum - amount) > 0.02) {
+      refundPortion = Math.round((amount - arPortion) * 100) / 100;
     }
 
-    // Fallback: simple 2-line entry (no discount)
-    let debitAccountId: string | undefined = revenueDebitAccountId || undefined;
-    if (!debitAccountId && companyId) {
-      try {
+    try {
+      const { accountingService: acctSvc } = await import('@/app/services/accountingService');
+      const { ensureDiscountAllowedAccount } = await import('@/app/services/saleAccountingService');
+      const { accountHelperService } = await import('@/app/services/accountHelperService');
+      const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+
+      let revenueAcctId = revenueDebitAccountId || undefined;
+      if (!revenueAcctId) {
         const { getCanonicalSalesRevenueAccountId } = await import('@/app/lib/canonicalSalesRevenueAccount');
-        debitAccountId = await getCanonicalSalesRevenueAccountId(companyId);
-      } catch {
-        debitAccountId = undefined;
+        revenueAcctId = await getCanonicalSalesRevenueAccountId(companyId);
       }
-    }
-
-    let creditAccount: AccountType = 'Accounts Receivable';
-    if (refundMethod === 'cash') creditAccount = 'Cash';
-    else if (refundMethod === 'bank') creditAccount = 'Bank';
-
-    let creditAccountId: string | undefined;
-    if (refundMethod === 'adjust' && companyId && customerId) {
-      try {
-        const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
-        creditAccountId = (await resolveReceivablePostingAccountId(companyId, customerId)) || undefined;
-      } catch {
-        creditAccountId = undefined;
+      if (!revenueAcctId) {
+        console.warn('[recordSaleReturn] Missing revenue account');
+        return false;
       }
-    } else if ((refundMethod === 'cash' || refundMethod === 'bank') && refundAccountId) {
-      creditAccountId = refundAccountId;
-    }
 
-    return await createEntry({
-      source: 'Sale_Return',
-      referenceNo: returnNo,
-      debitAccount: 'Sales Revenue',
-      creditAccount,
-      amount,
-      description,
-      module: 'sales',
-      metadata: {
-        customerId: customerId || undefined,
-        customerName,
-        saleReturnId,
-        ...(originalSaleId ? { saleId: originalSaleId } : {}),
-        ...(debitAccountId ? { debitAccountId } : {}),
-        ...(creditAccountId ? { creditAccountId } : {}),
-        ...(postingDate ? { postingDate } : {}),
-      },
-    });
+      let arAcctId: string | undefined;
+      if (arPortion > 0.005 && customerId) {
+        arAcctId = (await resolveReceivablePostingAccountId(companyId, customerId)) || undefined;
+      }
+      if (arPortion > 0.005 && !arAcctId) {
+        arAcctId = (await accountHelperService.getAccountByCode('1100', companyId))?.id || undefined;
+      }
+
+      let liquidityAcctId: string | undefined;
+      if (refundPortion > 0.005) {
+        if ((refundMethod === 'cash' || refundMethod === 'bank') && refundAccountId) {
+          liquidityAcctId = refundAccountId;
+        } else {
+          const code = refundMethod === 'bank' ? '1010' : '1000';
+          liquidityAcctId = (await accountHelperService.getAccountByCode(code, companyId))?.id || undefined;
+        }
+      }
+
+      if (arPortion > 0.005 && !arAcctId) {
+        console.warn('[recordSaleReturn] Missing AR account for due portion');
+        return false;
+      }
+      if (refundPortion > 0.005 && !liquidityAcctId) {
+        console.warn('[recordSaleReturn] Missing cash/bank account for refund portion');
+        return false;
+      }
+
+      const grossAmount = returnSubtotal || (amount + (returnDiscount || 0));
+      const discAmt = Math.max(0, Number(returnDiscount) || 0);
+      const jeLines: Array<{
+        id: string;
+        journal_entry_id: string;
+        account_id: string;
+        debit: number;
+        credit: number;
+        description: string;
+      }> = [
+        {
+          id: '',
+          journal_entry_id: '',
+          account_id: revenueAcctId,
+          debit: grossAmount,
+          credit: 0,
+          description: `Return Revenue – ${returnNo}`,
+        },
+      ];
+      if (discAmt > 0.005) {
+        const discountAcct = await ensureDiscountAllowedAccount(companyId);
+        if (discountAcct?.id) {
+          jeLines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: discountAcct.id,
+            debit: 0,
+            credit: discAmt,
+            description: `Return Discount reversal – ${returnNo}`,
+          });
+        }
+      }
+      if (arPortion > 0.005 && arAcctId) {
+        jeLines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: arAcctId,
+          debit: 0,
+          credit: arPortion,
+          description: `Return due adjust (AR) – ${returnNo}`,
+        });
+      }
+      if (refundPortion > 0.005 && liquidityAcctId) {
+        jeLines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: liquidityAcctId,
+          debit: 0,
+          credit: refundPortion,
+          description: `Return cash/bank refund – ${returnNo}`,
+        });
+      }
+
+      const fingerprint = `sale_return_settlement:${companyId}:${saleReturnId}`;
+      const { data: existing } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('action_fingerprint', fingerprint)
+        .or('is_void.is.null,is_void.eq.false')
+        .maybeSingle();
+      if (existing?.id) {
+        console.log('[recordSaleReturn] Settlement JE already exists:', existing.id);
+        return true;
+      }
+
+      const result = await acctSvc.createEntry(
+        {
+          id: '',
+          company_id: companyId,
+          branch_id: branchId || undefined,
+          entry_no: `JE-RTN-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+          entry_date: postingDate?.slice(0, 10) || localNowDateString(),
+          description: description || `Sale Return: ${returnNo} - ${customerName}`,
+          reference_type: 'sale_return',
+          reference_id: saleReturnId,
+          action_fingerprint: fingerprint,
+        } as any,
+        jeLines,
+      );
+      return !!result;
+    } catch (e: any) {
+      console.error('[recordSaleReturn] Failed:', e?.message || e);
+      return false;
+    }
   };
 
   const recordSupplierPayment = async (params: SupplierPaymentParams): Promise<boolean> => {

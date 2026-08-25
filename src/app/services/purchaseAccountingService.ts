@@ -1,4 +1,5 @@
-import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '@/app/utils/localDate';
+import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 /**
  * Purchase Accounting Service (Phase 5: one contract)
  *
@@ -339,9 +340,17 @@ export async function createPurchaseJournalEntry(params: {
   const eligible = await assertPurchaseEligibleForDocumentJournal(purchaseId, poNo);
   if (!eligible) return null;
 
+  const resolvedEntryDate = entryDate ? toLocalDateString(entryDate) : localNowDateString();
+
   const existingId = await findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId);
   if (existingId) {
     console.log(`[purchaseAccountingService] Canonical purchase document JE already exists for ${poNo}, reusing ${existingId}`);
+    await syncJournalEntryDateByDocumentRefs({
+      companyId,
+      referenceTypes: ['purchase', 'purchase_adjustment'],
+      referenceId: purchaseId,
+      entryDate: resolvedEntryDate,
+    });
     return existingId;
   }
 
@@ -397,7 +406,7 @@ export async function createPurchaseJournalEntry(params: {
     company_id: companyId,
     branch_id: branchId && branchId !== 'all' ? branchId : undefined,
     entry_no: entryNo,
-    entry_date: entryDate || localNowDateString(),
+    entry_date: resolvedEntryDate,
     description: `Purchase ${poNo} from ${supplierName}`,
     reference_type: 'purchase',
     reference_id: purchaseId,
@@ -623,7 +632,8 @@ export async function reversePurchaseDocumentJournalEntry(params: {
   }
 
   const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
-  const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
+  // Cancellation stamps the day of cancel (not original po_date).
+  const entryDate = localNowDateString();
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,

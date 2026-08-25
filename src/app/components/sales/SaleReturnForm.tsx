@@ -22,6 +22,7 @@ import { saleReturnService, CreateSaleReturnData, UpdateSaleReturnData } from '@
 import { saleService } from '@/app/services/saleService';
 import { PackingEntryModal, type ReturnPackingDetails } from '../transactions/PackingEntryModal';
 import { cn, formatBoxesPieces } from '../ui/utils';
+import { computeSaleReturnSettlementSplit } from '@/app/lib/saleReturnSettlementSplit';
 import {
   Table,
   TableBody,
@@ -95,6 +96,13 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   // Settlement dialog state
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
   const [pendingReturnData, setPendingReturnData] = useState<CreateSaleReturnData | null>(null);
+  /** Frozen at dialog open so post-finalize recalc cannot collapse AR → full cash. */
+  const [frozenSettlement, setFrozenSettlement] = useState<{
+    dueBefore: number;
+    arPortion: number;
+    refundPortion: number;
+    returnTotal: number;
+  } | null>(null);
 
   // Refund accounts: cash or bank accounts filtered from accounting context
   const refundAccounts = useMemo(() => {
@@ -418,6 +426,20 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
         total,
       };
       setPendingReturnData(returnData);
+      const dueAtDialog = Math.max(
+        0,
+        Number(originalSale?.due_amount ?? originalSale?.due ?? 0) || 0,
+      );
+      const splitAtDialog = computeSaleReturnSettlementSplit({
+        returnTotal: total,
+        dueBefore: dueAtDialog,
+      });
+      setFrozenSettlement({
+        dueBefore: dueAtDialog,
+        arPortion: splitAtDialog.arPortion,
+        refundPortion: splitAtDialog.refundPortion,
+        returnTotal: splitAtDialog.returnTotal,
+      });
       setShowSettlementDialog(true);
     } catch (error: any) {
       console.error('[SALE RETURN FORM] Error saving return:', error);
@@ -430,6 +452,10 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   // Handle settlement confirmation
   const handleSettlementConfirm = async () => {
     if (!pendingReturnData || !companyId || !contextBranchId || !originalSale) return;
+    if (!frozenSettlement) {
+      toast.error('Settlement split missing — please reopen the return and try again');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -441,6 +467,8 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
         return;
       }
 
+      const { arPortion, refundPortion, dueBefore: frozenDue } = frozenSettlement;
+
       // Create sale return
       const saleReturn = await saleReturnService.createSaleReturn(pendingReturnData);
 
@@ -451,7 +479,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
       const settlementAmount = Math.max(0, Number(refreshedReturn.total) || 0);
       
       try {
-        const desc = `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`;
+        const desc = `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Due adjust ${formatCurrency(arPortion)} / Refund ${formatCurrency(refundPortion)}`;
         const returnDiscountAmt = Number(refreshedReturn.discount_amount) || 0;
         const returnSubtotalAmt = Number(refreshedReturn.subtotal) || (settlementAmount + returnDiscountAmt);
         const reversalSuccess = await accounting.recordSaleReturn({
@@ -461,12 +489,18 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           customerId: originalSale.customer_id || undefined,
           amount: settlementAmount,
           originalSaleId: saleReturn.original_sale_id || undefined,
-          refundMethod,
-          refundAccountId: (refundMethod === 'cash' || refundMethod === 'bank') ? selectedRefundAccountId || null : null,
+          refundMethod: refundPortion > 0.005 ? refundMethod === 'adjust' ? 'cash' : refundMethod : 'adjust',
+          refundAccountId:
+            refundPortion > 0.005 && (refundMethod === 'cash' || refundMethod === 'bank')
+              ? selectedRefundAccountId || null
+              : null,
           description: desc,
           postingDate: pendingReturnData.return_date,
           discountAmount: returnDiscountAmt > 0 ? returnDiscountAmt : undefined,
           subtotal: returnDiscountAmt > 0 ? returnSubtotalAmt : undefined,
+          dueBefore: frozenDue,
+          arPortion,
+          refundPortion,
         });
 
         if (!reversalSuccess) {
@@ -482,6 +516,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
 
       toast.success(`Sale return ${saleReturn.return_no || saleReturn.id} finalized successfully`);
       setPendingReturnData(null);
+      setFrozenSettlement(null);
 
       if (onSuccess) onSuccess();
       onClose();
@@ -506,6 +541,22 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
     adjustedTotal += manualAdjustment; // Manual adjustment (can be positive or negative)
     return Math.max(0, adjustedTotal); // Ensure non-negative
   }, [subtotal, discountAmount, restockingFee, manualAdjustment]);
+
+  const dueBefore = frozenSettlement?.dueBefore ?? Math.max(
+    0,
+    Number(originalSale?.due_amount ?? originalSale?.due ?? 0) || 0,
+  );
+  const settlementSplit = useMemo(
+    () =>
+      frozenSettlement
+        ? {
+            arPortion: frozenSettlement.arPortion,
+            refundPortion: frozenSettlement.refundPortion,
+            returnTotal: frozenSettlement.returnTotal,
+          }
+        : computeSaleReturnSettlementSplit({ returnTotal: total, dueBefore }),
+    [total, dueBefore, frozenSettlement],
+  );
 
   // Auto-populate proportional discount from original sale when return quantities change.
   // Only applies in CREATE mode (returnId === null/undefined).
@@ -858,14 +909,29 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
-            <div className="bg-muted/40 border border-border rounded-lg p-4">
-              <p className="text-sm text-muted-foreground mb-2">Return Amount:</p>
-              <p className="text-2xl font-bold text-red-400">{formatCurrency(total)}</p>
+            <div className="bg-muted/40 border border-border rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Return amount</span>
+                <span className="font-semibold text-red-400">{formatCurrency(total)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Invoice due (adjust first)</span>
+                <span className="tabular-nums">{formatCurrency(dueBefore)}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t border-border pt-2">
+                <span className="text-muted-foreground">Due adjust (AR)</span>
+                <span className="tabular-nums text-foreground">{formatCurrency(settlementSplit.arPortion)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Cash/bank refund</span>
+                <span className="tabular-nums text-foreground">{formatCurrency(settlementSplit.refundPortion)}</span>
+              </div>
             </div>
             
+            {settlementSplit.refundPortion > 0.005 ? (
             <div>
               <Label className="text-muted-foreground mb-3 block text-sm font-semibold">
-                How would you like to settle this return amount?
+                Refund the remaining {formatCurrency(settlementSplit.refundPortion)} via
               </Label>
               <div className="space-y-2">
                 <button
@@ -881,7 +947,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                   <DollarSign size={18} />
                   <div className="flex-1 text-left">
                     <div className="font-semibold">Cash Refund</div>
-                    <div className="text-xs opacity-75">Refund amount in cash</div>
+                    <div className="text-xs opacity-75">Pay refund from cash</div>
                   </div>
                   {refundMethod === 'cash' && <div className="w-2 h-2 rounded-full bg-white" />}
                 </button>
@@ -899,32 +965,19 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                   <Building2 size={18} />
                   <div className="flex-1 text-left">
                     <div className="font-semibold">Bank Refund</div>
-                    <div className="text-xs opacity-75">Refund amount via bank transfer</div>
+                    <div className="text-xs opacity-75">Pay refund via bank</div>
                   </div>
                   {refundMethod === 'bank' && <div className="w-2 h-2 rounded-full bg-white" />}
                 </button>
-                
-                <button
-                  type="button"
-                  onClick={() => setRefundMethod('adjust')}
-                  className={cn(
-                    "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
-                    refundMethod === 'adjust'
-                      ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
-                  )}
-                >
-                  <Package size={18} />
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold">Adjust in Customer Account</div>
-                    <div className="text-xs opacity-75">Reduce customer's outstanding balance</div>
-                  </div>
-                  {refundMethod === 'adjust' && <div className="w-2 h-2 rounded-full bg-white" />}
-                </button>
               </div>
             </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Full return applies to invoice due — no cash/bank refund needed.
+              </p>
+            )}
           </div>
-          {(refundMethod === 'cash' || refundMethod === 'bank') && (
+          {settlementSplit.refundPortion > 0.005 && (refundMethod === 'cash' || refundMethod === 'bank') && (
             <div className="px-1 pt-3">
               <label className="block text-xs text-muted-foreground mb-1.5">
                 Select Account <span className="text-red-400">*</span>
@@ -957,6 +1010,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               onClick={() => {
                 setShowSettlementDialog(false);
                 setPendingReturnData(null);
+                setFrozenSettlement(null);
                 setSaving(false);
               }}
               className="border-border text-muted-foreground"
@@ -965,7 +1019,12 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
             </Button>
             <Button
               onClick={handleSettlementConfirm}
-              disabled={saving || ((refundMethod === 'cash' || refundMethod === 'bank') && !selectedRefundAccountId)}
+              disabled={
+                saving ||
+                (settlementSplit.refundPortion > 0.005 &&
+                  (refundMethod === 'cash' || refundMethod === 'bank') &&
+                  !selectedRefundAccountId)
+              }
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {saving ? (

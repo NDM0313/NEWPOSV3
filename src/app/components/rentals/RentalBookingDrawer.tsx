@@ -3,6 +3,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useRentals } from '@/app/context/RentalContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { rentalService } from '@/app/services/rentalService';
+import { checkRentalAvailabilityForItems } from '@/app/services/rentalAvailabilityService';
 import { productService } from '@/app/services/productService';
 import { contactService } from '@/app/services/contactService';
 import { userService } from '@/app/services/userService';
@@ -367,19 +368,22 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   };
 
   // --- DATA MAPPING LOGIC ---
+  // Rentable + stock<=0 is soft (badge + confirm on select), not hard-blocked —
+  // unique bridal stock often shows 0 when out on rental; mobile allows re-book with confirm.
   const mappedProducts: SearchProduct[] = products.map(p => {
     let status: SearchProduct['status'] = 'available';
     let unavailableReason = undefined;
 
-    // Check if product is rentable
     const isRentable = p.is_rentable !== false;
     const isSellable = p.is_sellable !== false;
     const currentStock = (p as any).stock ?? 0;
 
     if (!isRentable && isSellable) {
         status = 'retail_only';
-    } else if (currentStock <= 0) {
+    } else if (!isRentable && !isSellable) {
         status = 'unavailable';
+        unavailableReason = 'Not available';
+    } else if (currentStock <= 0) {
         unavailableReason = 'Out of Stock';
     }
 
@@ -397,6 +401,22 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         securityDeposit: 0 // TODO: Add security deposit field to products table
     };
   });
+
+  const confirmSelectSoftUnavailable = (product: SearchProduct): boolean => {
+    if (!product.unavailableReason) return true;
+    const reason = product.unavailableReason;
+    const isOos = /out of stock/i.test(reason);
+    const msg = isOos
+      ? `"${product.name}" stock out / booked dikh raha hai.\n\nKya aap is ko dobara rental book karna chahte hain?`
+      : `"${product.name}" pehle se book hai (${reason}).\n\nKya aap is ko dobara rental book karna chahte hain?`;
+    return window.confirm(msg);
+  };
+
+  const trySelectRentalProduct = (product: SearchProduct) => {
+    if (product.status === 'unavailable') return;
+    if (!confirmSelectSoftUnavailable(product)) return;
+    setSelectedProduct(product);
+  };
 
   // Update manual rent price when product changes (skip in edit mode—edit effect already set it)
   useEffect(() => {
@@ -515,19 +535,48 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
     try {
       setSaving(true);
+      const pickupYmd = formatLocalDateYYYYMMDD(pickupDate);
+      const returnYmd = formatLocalDateYYYYMMDD(returnDate);
+      const availability = await checkRentalAvailabilityForItems({
+        companyId,
+        items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        startDate: pickupYmd,
+        endDate: returnYmd,
+        excludeRentalId: editRental?.id,
+        branchId,
+      });
+      let skipAvailabilityCheck = false;
+      if (!availability.available) {
+        if (availability.requiresConfirmation) {
+          const ok = window.confirm(
+            `${availability.message ?? 'This item overlaps an existing booking.'}\n\nBook this item again anyway?`,
+          );
+          if (!ok) {
+            setSaving(false);
+            return;
+          }
+          skipAvailabilityCheck = true;
+        } else {
+          toast.error(availability.message || 'Selected dates conflict with an existing booking');
+          setSaving(false);
+          return;
+        }
+      }
+
       if (editRental?.id) {
         await rentalService.updateBooking(editRental.id, companyId, {
           customerId: selectedCustomer,
           customerName: getCustomerName(),
           bookingDate: formatLocalDateYYYYMMDD(bookingDate),
-          pickupDate: formatLocalDateYYYYMMDD(pickupDate),
-          returnDate: formatLocalDateYYYYMMDD(returnDate),
+          pickupDate: pickupYmd,
+          returnDate: returnYmd,
           rentalCharges: totalRent,
           securityDeposit: 0,
           notes: null,
           documentNumber: documentNumber.trim() || null,
           salesmanId: salesmanId || null,
           items,
+          skipAvailabilityCheck,
         });
         if (rentalAttachmentFiles.length > 0 && companyId) {
           try {
@@ -557,8 +606,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           customerId: selectedCustomer,
           customerName: getCustomerName(),
           bookingDate: formatLocalDateYYYYMMDD(bookingDate),
-          pickupDate: formatLocalDateYYYYMMDD(pickupDate),
-          returnDate: formatLocalDateYYYYMMDD(returnDate),
+          pickupDate: pickupYmd,
+          returnDate: returnYmd,
           rentalCharges: totalRent,
           securityDeposit: 0,
           paidAmount: 0,
@@ -569,6 +618,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           commissionPercent: salesmanId && commissionType === 'percentage' ? commissionValue : null,
           commissionEligibleAmount: commissionBase,
           items,
+          skipAvailabilityCheck,
         });
         if (result?.id && rentalAttachmentFiles.length > 0 && companyId) {
           try {
@@ -674,25 +724,26 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
     setAdvancePaymentOpen(true);
   };
 
-  // Auto-update product list with conflict indicators
+  // Soft date-conflict / OOS badge only — do not hard-block select (mobile parity).
+  // Hard block remains status === 'unavailable' (non-rentable / non-sellable).
   const productsWithConflicts = mappedProducts.map(product => {
     if (!pickupDate || !returnDate) return product;
-    
+    if (product.status === 'unavailable') return product;
+
     const conflict = checkDateConflict(
       product.id,
       pickupDate,
       returnDate,
       bookingsForConflict
     );
-    
+
     if (conflict.hasConflict) {
       return {
         ...product,
-        status: 'unavailable' as const,
-        unavailableReason: `Booked until ${conflict.availableFrom?.toLocaleDateString()}`
+        unavailableReason: `Already booked until ${conflict.availableFrom?.toLocaleDateString() ?? 'selected dates'}`,
       };
     }
-    
+
     return product;
   });
 
@@ -961,6 +1012,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                           searchTerm={productSearchTerm}
                           onSearchTermChange={setProductSearchTerm}
                           onSelect={async (p) => {
+                            if (p.status === 'unavailable') return;
+                            if (!confirmSelectSoftUnavailable(p)) return;
                             // Check if product has variations
                             const fullProd = products.find(pp => String(pp.id) === String(p.id));
                             if ((fullProd as any)?.has_variations) {
@@ -993,23 +1046,25 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
               <ScrollArea className="h-full p-4 bg-input-background">
                    <div className="grid grid-cols-1 gap-3">
                        {filteredProductsForGrid.map((product) => {
-                           const isUnavailable = product.status === 'unavailable';
+                           const isHardUnavailable = product.status === 'unavailable';
+                           const isSoftUnavailable = !isHardUnavailable && !!product.unavailableReason;
                            const isSelected = selectedProduct?.id === product.id;
                            const isConflict = hasConflict && product.id === selectedProduct?.id; // Only show conflict for selected
                            
                            return (
                                <div 
                                  key={product.id}
-                                 onClick={() => !isUnavailable && setSelectedProduct(product)}
+                                 onClick={() => trySelectRentalProduct(product)}
                                  className={cn(
                                      "flex gap-4 p-3 rounded-lg border transition-all cursor-pointer relative overflow-hidden",
                                      isSelected ? "bg-pink-900/10 border-pink-500 ring-1 ring-pink-500/50" : "bg-card border-border hover:border-border",
-                                     (isUnavailable) && "opacity-60 cursor-not-allowed bg-muted/40"
+                                     isHardUnavailable && "opacity-60 cursor-not-allowed bg-muted/40",
+                                     isSoftUnavailable && !isSelected && "border-amber-500/40"
                                  )}
                                >
                                    <div className="w-20 h-20 bg-muted rounded-md overflow-hidden shrink-0 flex items-center justify-center">
                                        {product.image ? (
-                                         <ProductImage src={product.image} alt={product.name} className={cn("w-full h-full object-cover", isUnavailable && "grayscale")} />
+                                         <ProductImage src={product.image} alt={product.name} className={cn("w-full h-full object-cover", isHardUnavailable && "grayscale")} />
                                        ) : null}
                                        {!product.image && (
                                          <Package className="w-8 h-8 text-muted-foreground" />
@@ -1017,18 +1072,22 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                                    </div>
                                    <div className="flex-1 flex flex-col justify-center">
                                        <div className="flex justify-between items-start">
-                                           <h4 className={cn("font-medium text-foreground", isUnavailable && "line-through text-muted-foreground")}>{product.name}</h4>
-                                           {isUnavailable ? (
+                                           <h4 className={cn("font-medium text-foreground", isHardUnavailable && "line-through text-muted-foreground")}>{product.name}</h4>
+                                           {isHardUnavailable ? (
                                                <Badge variant="outline" className="bg-red-900/20 text-red-500 border-red-900/50 text-[10px]">
                                                    {product.unavailableReason}
                                                </Badge>
                                            ) : (
                                                <div className="flex gap-2">
-                                                   {product.status === 'available' && (
+                                                   {isSoftUnavailable ? (
+                                                       <Badge variant="outline" className="bg-amber-900/20 text-amber-400 border-amber-900/50 text-[10px]">
+                                                         {product.unavailableReason}
+                                                       </Badge>
+                                                   ) : product.status === 'available' ? (
                                                        <Badge variant="outline" className="bg-green-900/20 text-green-500 border-green-900/50 text-[10px]">
                                                          Available
                                                        </Badge>
-                                                   )}
+                                                   ) : null}
                                                    {isConflict && (
                                                        <Badge variant="outline" className="bg-red-900/20 text-red-500 border-red-900/50 text-[10px]">
                                                            Date Conflict

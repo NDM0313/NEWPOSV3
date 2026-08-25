@@ -673,16 +673,17 @@ export const NewRentalBooking = () => {
                             </div>
                           </div>
 
-                          {availability.available && (
+                          {(
                             <Button
                               onClick={() => handleAddItem(product)}
                               disabled={isSelected}
                               className={cn(
                                 "bg-[#800020] hover:bg-[#600018] text-foreground",
-                                isSelected && "bg-muted text-muted-foreground cursor-not-allowed"
+                                isSelected && "bg-muted text-muted-foreground cursor-not-allowed",
+                                !availability.available && !isSelected && "border border-amber-500/50"
                               )}
                             >
-                              {isSelected ? 'Added' : 'Add to Booking'}
+                              {isSelected ? 'Added' : availability.available ? 'Add to Booking' : 'Add anyway'}
                             </Button>
                           )}
                         </div>
