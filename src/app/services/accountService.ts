@@ -25,60 +25,65 @@ export interface Account {
   linked_contact_id?: string | null;
 }
 
+const ACCOUNTS_PAGE_SIZE = 1000;
+
+function sortAccountsByCodeThenName<T extends { code?: string | null; name?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const ca = String(a.code ?? '').trim();
+    const cb = String(b.code ?? '').trim();
+    const na = Number(ca.replace(/\D/g, '')) || 0;
+    const nb = Number(cb.replace(/\D/g, '')) || 0;
+    if (na !== nb) return na - nb;
+    if (ca !== cb) return ca.localeCompare(cb, undefined, { numeric: true });
+    return String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { sensitivity: 'base' });
+  });
+}
+
 export const accountService = {
-  // Get all accounts - with company_id filter
+  // Get all accounts - with company_id filter (paginated past PostgREST ~1000 cap; ordered by code)
   async getAllAccounts(companyId: string, branchId?: string) {
     try {
-      // Try to fetch with company_id filter first
-      let query = supabase
-        .from('accounts')
-        .select('*')
-        .order('name');
-
-      // Try to filter by company_id if column exists
-      if (companyId) {
-        query = query.eq('company_id', companyId);
-      }
-
-      // Branch-aware COA: include company-wide rows (branch_id null) plus the selected branch.
-      // Matches AccountingContext usage when user picks a branch (was previously ignored here).
       const bid = branchId && String(branchId).trim() !== '' && String(branchId) !== 'all' ? String(branchId).trim() : '';
       const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bid);
-      if (uuidOk) {
-        query = query.or(`branch_id.is.null,branch_id.eq.${bid}`);
-      }
 
-      const { data, error } = await query;
+      const fetchPage = async (from: number, opts: { useCompany: boolean; useBranch: boolean }) => {
+        let query = supabase.from('accounts').select('*').order('code', { ascending: true }).range(from, from + ACCOUNTS_PAGE_SIZE - 1);
+        if (opts.useCompany && companyId) query = query.eq('company_id', companyId);
+        if (opts.useBranch && uuidOk) query = query.or(`branch_id.is.null,branch_id.eq.${bid}`);
+        return query;
+      };
 
-      if (error) {
+      const fetchAllPages = async (opts: { useCompany: boolean; useBranch: boolean }) => {
+        const out: Account[] = [];
+        for (let from = 0; ; from += ACCOUNTS_PAGE_SIZE) {
+          const { data, error } = await fetchPage(from, opts);
+          if (error) throw error;
+          const chunk = (data || []) as Account[];
+          out.push(...chunk);
+          if (chunk.length < ACCOUNTS_PAGE_SIZE) break;
+        }
+        return sortAccountsByCodeThenName(out);
+      };
+
+      try {
+        return await fetchAllPages({ useCompany: true, useBranch: uuidOk });
+      } catch (error: unknown) {
+        const err = error as { message?: string; details?: string; code?: string };
         // Older DBs without branch_id: retry without branch OR filter
         if (
           uuidOk &&
-          (error.message?.includes('branch_id') ||
-            String((error as { details?: string }).details || '').includes('branch_id'))
+          (err.message?.includes('branch_id') || String(err.details || '').includes('branch_id'))
         ) {
           console.warn('[ACCOUNT SERVICE] branch_id not available on accounts, retrying without branch scope');
-          let q2 = supabase.from('accounts').select('*').order('name');
-          if (companyId) q2 = q2.eq('company_id', companyId);
-          const { data: d2, error: e2 } = await q2;
-          if (e2) throw e2;
-          return d2 || [];
+          return await fetchAllPages({ useCompany: true, useBranch: false });
         }
         // If error related to company_id column, retry without it
-        if (error.message?.includes('company_id') || error.code === 'PGRST204') {
+        if (err.message?.includes('company_id') || err.code === 'PGRST204') {
           console.warn('[ACCOUNT SERVICE] company_id column not found, fetching all accounts');
-          const { data: allData, error: allError } = await supabase
-            .from('accounts')
-            .select('*')
-            .order('name');
-          
-          if (allError) throw allError;
-          return allData || [];
+          return await fetchAllPages({ useCompany: false, useBranch: false });
         }
         throw error;
       }
-      
-      return data || [];
     } catch (error) {
       console.error('[ACCOUNT SERVICE] Error fetching accounts:', error);
       // Final fallback - return empty array to prevent crashes

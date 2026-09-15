@@ -92,7 +92,7 @@ export function SearchableAccountSelect({
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
+          <CommandList className="max-h-[min(60vh,420px)]">
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
               {filtered.map((a) => (
@@ -104,16 +104,24 @@ export function SearchableAccountSelect({
                     setOpen(false);
                     setSearch('');
                   }}
-                  className="text-foreground hover:bg-muted cursor-pointer"
+                  className="items-start text-foreground hover:bg-muted cursor-pointer py-2"
                 >
                   <Check
-                    className={cn('mr-2 h-4 w-4 shrink-0', value === a.id ? 'opacity-100' : 'opacity-0')}
+                    className={cn('mr-2 mt-0.5 h-4 w-4 shrink-0', value === a.id ? 'opacity-100' : 'opacity-0')}
                   />
-                  <span className="truncate">{formatOptionLabel(a)}</span>
+                  <span className="whitespace-normal break-words text-left leading-snug">
+                    {formatOptionLabel(a)}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
           </CommandList>
+          {accounts.length > 0 && (
+            <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+              Showing {filtered.length} of {accounts.length} accounts
+              {search.trim() ? '' : ' — type code or name to search'}
+            </div>
+          )}
         </Command>
       </PopoverContent>
     </Popover>

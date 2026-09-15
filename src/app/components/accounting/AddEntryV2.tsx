@@ -302,7 +302,17 @@ export function AddEntryV2({
       setOperationalBalancesOk(operationalRpcOk);
       setCourierSummaryOk(Array.isArray(courierBalanceRows));
 
-      const accList = (acc || []).map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }));
+      const accList = (acc || [])
+        .map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }))
+        .sort((a: { code?: string | null; name: string }, b: { code?: string | null; name: string }) => {
+          const ca = String(a.code ?? '').trim();
+          const cb = String(b.code ?? '').trim();
+          const na = Number(ca.replace(/\D/g, '')) || 0;
+          const nb = Number(cb.replace(/\D/g, '')) || 0;
+          if (na !== nb) return na - nb;
+          if (ca !== cb) return ca.localeCompare(cb, undefined, { numeric: true });
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
       const coaBalanceById = new Map<string, number>();
       for (const a of acc || []) {
         if (a?.id) coaBalanceById.set(a.id, Number((a as { balance?: number }).balance) || 0);
