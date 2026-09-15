@@ -26,7 +26,7 @@ import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { RoznamchaPreviewPdf } from '../../shared/RoznamchaPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
-import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
+import { TransactionDetailSheet as CancelCapableTransactionDetailSheet } from './TransactionDetailSheet';
 import { localNowDateString } from '../../../utils/localDate';
 import { roznamchaMetaSubline } from '../../../lib/roznamchaRowDescription';
 import { roznamchaRowHasAttachments } from '../../../lib/roznamchaAttachments';
@@ -1006,34 +1006,23 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         </PdfPreviewModal>
       )}
 
-      <TransactionDetailSheet
-        open={!!selectedEntry}
-        onClose={() => setSelectedEntry(null)}
-        companyId={companyId}
-        referenceType="journal"
-        referenceId={selectedEntry?.id ?? null}
-        fallbackTitle={
-          selectedEntry
-            ? `${displayReferenceNumber(selectedEntry.entryNo, selectedEntry.referenceType)} · ${(selectedEntry.referenceType || 'Journal').replace(/_/g, ' ')}`
-            : undefined
-        }
-      />
-
-      <TransactionDetailSheet
-        open={!!selectedPaymentId}
-        onClose={() => setSelectedPaymentId(null)}
-        companyId={companyId}
-        referenceType="payment"
-        referenceId={selectedPaymentId}
-      />
-
-      <TransactionDetailSheet
-        open={!!selectedJournalId}
-        onClose={() => setSelectedJournalId(null)}
-        companyId={companyId}
-        referenceType="journal"
-        referenceId={selectedJournalId}
-      />
+      {(selectedPaymentId || selectedJournalId || selectedEntry?.id) && companyId ? (
+        <CancelCapableTransactionDetailSheet
+          paymentId={selectedPaymentId || selectedJournalId || selectedEntry!.id}
+          companyId={companyId}
+          branchId={rozBranchId}
+          onClose={() => {
+            setSelectedEntry(null);
+            setSelectedPaymentId(null);
+            setSelectedJournalId(null);
+          }}
+          onCancelled={() => {
+            setSelectedEntry(null);
+            setSelectedPaymentId(null);
+            setSelectedJournalId(null);
+          }}
+        />
+      ) : null}
 
       {AttachmentPreviewPortal}
     </div>

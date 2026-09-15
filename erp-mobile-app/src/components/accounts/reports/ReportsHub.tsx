@@ -39,6 +39,7 @@ import {
   type CopyTransactionPrefill,
 } from '../../../lib/copyTransactionPrefill';
 import { Copy } from 'lucide-react';
+import { useTransactionCancel } from '../../../hooks/useTransactionCancel';
 import {
   type LegacyReportKey,
   type ReportHubMode,
@@ -123,6 +124,33 @@ export function ReportsHub({
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<string | null>(null);
   const attachmentActions = useAccountingAttachmentActions(companyId, branchId);
+
+  const reloadRecent = () => {
+    if (!companyId || !fullAccounting) return;
+    void (async () => {
+      const today = todayIso();
+      const [todayRes, recentRes] = await Promise.all([
+        getPaymentTransactions({ companyId, branchId: branchId ?? undefined, startDate: today, endDate: today, limit: 200 }),
+        getPaymentTransactions({ companyId, branchId: branchId ?? undefined, limit: 8 }),
+      ]);
+      setTodayRows(todayRes.data || []);
+      setRecentRows(recentRes.data || []);
+    })();
+  };
+
+  const {
+    beginCancelForTransactionRow,
+    CancelConfirmPortal,
+    CancelErrorBanner,
+    rowCancelHint,
+  } = useTransactionCancel({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      reloadRecent();
+      setDetailId(null);
+    },
+  });
 
   const catalogSections = useMemo(
     () =>
@@ -245,12 +273,21 @@ export function ReportsHub({
                     const rowAttachParams = { transactionRow: t };
                     const copyPrefill = resolveCopyPrefillFromTransactionRow(t);
                     const showCopy = Boolean(onCopyTransaction && copyPrefill);
+                    const cancelHint = rowCancelHint(t);
                     return (
                       <LongPressCard
                         key={t.id}
                         onTap={() => setDetailId(t.id)}
                         canEdit={false}
-                        canDelete={false}
+                        canDelete={cancelHint.show}
+                        deleteLabel={cancelHint.label}
+                        onDelete={
+                          cancelHint.show
+                            ? () => {
+                                void beginCancelForTransactionRow(t);
+                              }
+                            : undefined
+                        }
                         customMenuItems={[
                           ...attachmentActions.buildLongPressMenuItems(rowAttachParams, {
                             canAdd: editability.editable,
@@ -300,13 +337,21 @@ export function ReportsHub({
         <TransactionDetailSheet
           paymentId={detailId}
           companyId={companyId}
+          branchId={branchId}
           onClose={() => setDetailId(null)}
+          onCancelled={() => {
+            setDetailId(null);
+            reloadRecent();
+          }}
           onViewLedger={({ accountId }) => {
             setDetailId(null);
             onOpenReport('account-ledger', { accountId });
           }}
         />
       )}
+
+      {CancelConfirmPortal}
+      {CancelErrorBanner}
 
       {attachmentActions.AttachmentPreviewPortal}
       {attachmentActions.AddAttachmentSheetPortal}

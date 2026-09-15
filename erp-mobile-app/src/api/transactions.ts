@@ -7,6 +7,7 @@ import { normalizeAttachments } from '../lib/normalizeAttachments';
 import { isInternalLiquidityTransferRow } from '../lib/transactionTimelinePresentation';
 import { isRoznamchaLiquidityAccount } from '../lib/liquidityPaymentAccount';
 import { fetchInBatches } from '../lib/chunkInQuery';
+import { filterLivePaymentsExcludingVoidedJournals } from '../lib/paymentVoidVisibility';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -124,6 +125,7 @@ type PaymentSupabaseRow = {
   notes: string | null;
   attachments: unknown;
   created_by: string | null;
+  voided_at?: string | null;
 };
 
 type JournalEntryLite = {
@@ -237,9 +239,10 @@ export async function getPaymentTransactions(
   let q = supabase
     .from('payments')
     .select(
-      'id, created_at, payment_date, payment_type, reference_type, reference_id, reference_number, amount, payment_method, payment_account_id, branch_id, notes, attachments, created_by',
+      'id, created_at, payment_date, payment_type, reference_type, reference_id, reference_number, amount, payment_method, payment_account_id, branch_id, notes, attachments, created_by, voided_at',
     )
     .eq('company_id', filters.companyId)
+    .is('voided_at', null)
     .order('payment_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(timelineFetchLimit(filters));
@@ -254,7 +257,11 @@ export async function getPaymentTransactions(
 
   const { data: payments, error } = await q;
   if (error) return { data: [], error: error.message };
-  const rows = (payments || []) as PaymentSupabaseRow[];
+  const livePayments = await filterLivePaymentsExcludingVoidedJournals(
+    filters.companyId,
+    (payments || []) as PaymentSupabaseRow[],
+  );
+  const rows = livePayments;
   if (!rows.length) return { data: [], error: null };
 
   const paymentIds = rows.map((r) => r.id);

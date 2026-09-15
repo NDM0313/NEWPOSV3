@@ -1043,7 +1043,15 @@ export function SalesHome({
         deadline: null,
       });
       if (rpcErr.error) {
-        setActionError(rpcErr.error);
+        const msg =
+          rpcErr.error === 'Forbidden'
+            ? 'Forbidden: your session company does not match this sale. Switch company or re-login, then retry.'
+            : rpcErr.error;
+        console.warn('[SalesHome] updateSaleWithItems failed:', rpcErr.error, {
+          saleId: String(raw.id),
+          lineCount: lines.length,
+        });
+        setActionError(msg);
         return;
       }
       const billPatchLines = await salesApi.patchSaleBillRef(String(raw.id), editBillRef);
@@ -1266,9 +1274,11 @@ export function SalesHome({
 
   useEffect(() => {
     if (!actionError || cancelConfirmSale) return;
+    // Keep errors sticky while edit/return/payment modals are open so RPC failures stay visible.
+    if (editSale || returnSale || addPaymentSale) return;
     const t = setTimeout(() => setActionError(null), 4000);
     return () => clearTimeout(t);
-  }, [actionError, cancelConfirmSale]);
+  }, [actionError, cancelConfirmSale, editSale, returnSale, addPaymentSale]);
 
   useEffect(() => {
     if (editSale || returnSale || previewSale || cancelConfirmSale || addPaymentSale || attachmentSale) {

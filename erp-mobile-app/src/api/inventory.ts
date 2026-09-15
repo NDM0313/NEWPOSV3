@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchInBatches } from '../lib/chunkInQuery';
 import { applyBranchStockMovementFilter, isRealBranchUuid } from '../utils/branchId';
+import { fetchStockMovementsPaged } from '../utils/productStockFetch';
 
 export interface InventoryItem {
   id: string;
@@ -36,23 +36,12 @@ export async function getInventory(
   const productIds = products.map((p: { id: string }) => p.id);
   let movements: { product_id: string; variation_id: string | null; quantity: number }[] = [];
   try {
-    movements = await fetchInBatches(productIds, async (chunk) => {
-      let movQ = supabase
-        .from('stock_movements')
-        .select('product_id, variation_id, quantity')
-        .eq('company_id', companyId)
-        .in('product_id', chunk);
-      if (isRealBranchUuid(branchId)) {
-        movQ = applyBranchStockMovementFilter(movQ, branchId);
-      } else if (options?.accessibleBranchIds?.length) {
-        const ids = options.accessibleBranchIds.filter((id) => isRealBranchUuid(id));
-        if (ids.length > 0) {
-          movQ = movQ.or(`branch_id.in.(${ids.join(',')}),branch_id.is.null`);
-        }
-      }
-      const { data, error } = await movQ;
-      if (error) throw error;
-      return (data || []) as { product_id: string; variation_id: string | null; quantity: number }[];
+    movements = await fetchStockMovementsPaged(companyId, productIds, {
+      branchId: isRealBranchUuid(branchId) ? branchId : null,
+      accessibleBranchIds:
+        !isRealBranchUuid(branchId) && options?.accessibleBranchIds?.length
+          ? options.accessibleBranchIds
+          : undefined,
     });
   } catch (e: unknown) {
     console.warn('[getInventory] stock_movements:', e instanceof Error ? e.message : String(e));

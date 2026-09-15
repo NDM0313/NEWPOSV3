@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, Ban, ExternalLink, Loader2 } from 'lucide-react';
 import {
   allowsDayBookUnifiedEdit,
   getMobileSalePurchaseOpenTarget,
@@ -19,6 +19,7 @@ import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { loadMergedAttachmentsForJournalEntry } from '../../lib/loadMergedAttachments';
 import type { NormalizedAttachment } from '../../lib/normalizeAttachments';
+import { useTransactionCancel, canCancelJournalRow } from '../../hooks/useTransactionCancel';
 
 interface Props {
   entry: AccountEntry;
@@ -43,6 +44,25 @@ export function JournalEntryDetailPanel({
   const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
   const { hasAnyAttachmentHint } = useAccountingAttachmentActions(companyId, branchId);
+
+  const cancelHint = canCancelJournalRow({
+    journalEntryId: entry.id,
+    paymentId: entry.paymentId,
+    referenceType: entry.referenceType,
+  });
+
+  const {
+    cancelBusy,
+    cancelError,
+    beginCancelByJournalEntryId,
+    CancelConfirmPortal,
+  } = useTransactionCancel({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      onBack();
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -312,6 +332,23 @@ export function JournalEntryDetailPanel({
               ) : null}
             </div>
           )}
+
+          {cancelHint.show ? (
+            <button
+              type="button"
+              disabled={cancelBusy}
+              onClick={() => void beginCancelByJournalEntryId(entry.id)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-[#7F1D1D] hover:bg-[#991B1B] rounded-lg text-white font-semibold text-sm disabled:opacity-50"
+            >
+              {cancelBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              {cancelHint.label}
+            </button>
+          ) : null}
+          {cancelError ? (
+            <div className="p-3 bg-[#EF4444]/15 border border-[#EF4444]/40 rounded-lg text-sm text-[#FCA5A5]">
+              {cancelError}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -334,6 +371,7 @@ export function JournalEntryDetailPanel({
         />
       )}
 
+      {CancelConfirmPortal}
       {AttachmentPreviewPortal}
     </>
   );

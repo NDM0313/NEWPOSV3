@@ -20,6 +20,7 @@ import {
   X,
   Trash2,
   Barcode,
+  ChevronRight,
 } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
@@ -49,6 +50,7 @@ import { MobilePaySupplier } from './MobilePaySupplier';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
@@ -130,6 +132,7 @@ export function PurchaseModule({
   const [attachmentOrder, setAttachmentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [menuOrder, setMenuOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<purchasesApi.PurchasePaymentRow[]>([]);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
   const [markAsFinalError, setMarkAsFinalError] = useState<string | null>(null);
@@ -1178,22 +1181,40 @@ export function PurchaseModule({
               <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
               <div className="space-y-2">
                 {paymentHistory.map((p) => (
-                  <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
-                    <div className="min-w-0 flex-1">
+                  <div
+                    key={p.id}
+                    className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => p.id && setViewPaymentId(p.id)}
+                      className="min-w-0 flex-1 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 py-0.5 transition-colors"
+                    >
                       <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
                       <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
                       {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
-                    </div>
-                    {p.attachments && p.attachments.length > 0 && (
+                      <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / cancel</p>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {p.attachments && p.attachments.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => openAttachmentPreview(p.attachments!, 0)}
+                          className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151]"
+                          aria-label="View attachments"
+                        >
+                          <Paperclip className="w-5 h-5" />
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => openAttachmentPreview(p.attachments!, 0)}
-                        className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
-                        aria-label="View attachments"
+                        onClick={() => p.id && setViewPaymentId(p.id)}
+                        className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151]"
+                        aria-label="View payment"
                       >
-                        <Paperclip className="w-5 h-5" />
+                        <ChevronRight className="w-5 h-5" />
                       </button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1208,6 +1229,25 @@ export function PurchaseModule({
               onClose={() => {
                 setAttachmentPreviewList(null);
                 setAttachmentPreviewStart(0);
+              }}
+            />
+          )}
+
+          {viewPaymentId && companyId && (
+            <TransactionDetailSheet
+              paymentId={viewPaymentId}
+              companyId={companyId}
+              branchId={selectedOrder?.branchId ?? branchId}
+              onClose={() => setViewPaymentId(null)}
+              onCancelled={() => {
+                setViewPaymentId(null);
+                if (selectedOrder?.id) {
+                  void loadPaymentHistory(selectedOrder.id);
+                  void purchasesApi.getPurchaseById(companyId, selectedOrder.id).then(({ data }) => {
+                    if (data) setSelectedOrder(data);
+                  });
+                  void loadOrders();
+                }
               }}
             />
           )}

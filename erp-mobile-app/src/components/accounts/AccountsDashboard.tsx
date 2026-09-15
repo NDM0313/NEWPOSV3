@@ -37,6 +37,7 @@ import { useAccountingAttachmentActions } from '../../hooks/useAccountingAttachm
 import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
 import { LongPressCard } from '../common/LongPressCard';
 import { allowsDayBookUnifiedEdit } from '../../lib/journalEntryEditPolicy';
+import { useTransactionCancel, canCancelJournalRow } from '../../hooks/useTransactionCancel';
 
 export type { EntrySourceKind };
 export { sourceLabel };
@@ -340,6 +341,18 @@ export function AccountsDashboard({
     setLoading(false);
   };
 
+  const {
+    beginCancelByJournalEntryId,
+    CancelConfirmPortal,
+    CancelErrorBanner,
+  } = useTransactionCancel({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      void loadDashboardData();
+    },
+  });
+
   useEffect(() => {
     if (!companyId || isPartyMode) return;
     let cancelled = false;
@@ -537,6 +550,11 @@ export function AccountsDashboard({
                 entry.referenceType ?? '',
                 entry.paymentId ?? null,
               );
+              const cancelHint = canCancelJournalRow({
+                journalEntryId: entry.id,
+                paymentId: entry.paymentId,
+                referenceType: entry.referenceType,
+              });
               const rowAttachParams = {
                 journalEntryId: entry.id,
                 paymentId: entry.paymentId,
@@ -552,7 +570,15 @@ export function AccountsDashboard({
                     canAdd: canAddAttachment,
                   })}
                   canEdit={false}
-                  canDelete={false}
+                  canDelete={cancelHint.show}
+                  deleteLabel={cancelHint.label}
+                  onDelete={
+                    cancelHint.show
+                      ? () => {
+                          void beginCancelByJournalEntryId(entry.id);
+                        }
+                      : undefined
+                  }
                   onDuplicate={
                     onDuplicateEntry && duplicateViewForSourceKind(entry.sourceKind)
                       ? () => onDuplicateEntry(entry)
@@ -618,6 +644,8 @@ export function AccountsDashboard({
       {attachmentActions.AttachmentPreviewPortal}
       {attachmentActions.AddAttachmentSheetPortal}
       {attachmentActions.ToastBanner}
+      {CancelConfirmPortal}
+      {CancelErrorBanner}
       {duplicateHint ? (
         <div className="fixed bottom-28 left-4 right-4 z-[120] mx-auto max-w-md p-3 rounded-lg bg-amber-500/90 text-[#111827] text-sm shadow-lg">
           {duplicateHint}
