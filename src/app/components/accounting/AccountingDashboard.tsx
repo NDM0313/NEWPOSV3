@@ -1260,7 +1260,14 @@ export const AccountingDashboard = () => {
                 ) : null}
               </div>
               <Badge variant="outline" className="text-xs text-muted-foreground border-border">
-                {listForPagination.length} result{listForPagination.length === 1 ? '' : 's'}
+                {journalViewMode === 'grouped'
+                  ? `${listForPagination.length} document${listForPagination.length === 1 ? '' : 's'}`
+                  : `${listForPagination.length} entr${listForPagination.length === 1 ? 'y' : 'ies'}`}
+                {accounting.entriesTotal > accounting.entries.length
+                  ? ` · ${accounting.entries.length} loaded of ${accounting.entriesTotal}`
+                  : accounting.entries.length > 0 && journalViewMode === 'grouped'
+                    ? ` · ${accounting.entries.length} JE`
+                    : ''}
               </Badge>
             </div>
 

@@ -527,7 +527,9 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
 const COALESCED_REFRESH_MS = 400;
-const ENTRIES_FETCH_LIMIT = 100;
+/** Chunk size per getAllEntries call (Day Book parity). Not a total cap — loadEntries loops until done. */
+const ENTRIES_FETCH_LIMIT = 500;
+const ENTRIES_MAX_PAGES = 200;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
@@ -1061,19 +1063,51 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           }
 
-          const page = opts?.page ?? entriesPage;
-          const result = await accountingService.getAllEntries(
-            companyId,
-            branchId === 'all' ? undefined : branchId || undefined,
-            startDateISO || undefined,
-            endDateISO || undefined,
-            { limit: ENTRIES_FETCH_LIMIT, offset: page * ENTRIES_FETCH_LIMIT, mode: 'list' }
-          );
-          const isPaginated =
-            result && typeof result === 'object' && 'data' in result && 'total' in result;
-          const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
-          const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
-          setEntriesTotal(total);
+          const branchArg = branchId === 'all' ? undefined : branchId || undefined;
+          const startArg = startDateISO || undefined;
+          const endArg = endDateISO || undefined;
+
+          // Full date-range load: page through getAllEntries (Day Book–style).
+          // Stop using filtered chunk.length < limit — void/orphan filters shrink pages
+          // and would truncate the year early. Advance by offset vs DB count instead.
+          const allRows: any[] = [];
+          let total = 0;
+          let pageIdx = 0;
+          while (pageIdx < ENTRIES_MAX_PAGES) {
+            const offset = pageIdx * ENTRIES_FETCH_LIMIT;
+            if (pageIdx > 0 && offset >= total) break;
+
+            const result = await accountingService.getAllEntries(
+              companyId,
+              branchArg,
+              startArg,
+              endArg,
+              // exact count so offset loop is reliable (list mode uses estimated)
+              { limit: ENTRIES_FETCH_LIMIT, offset, mode: 'full' }
+            );
+            const isPaginated =
+              result && typeof result === 'object' && 'data' in result && 'total' in result;
+            const chunk = isPaginated
+              ? (result as { data: any[]; total: number }).data
+              : (result as any[]);
+            if (isPaginated) {
+              total = (result as { data: any[]; total: number }).total;
+            } else if (pageIdx === 0) {
+              total = chunk?.length ?? 0;
+            }
+            allRows.push(...(chunk || []));
+            pageIdx += 1;
+
+            if (!isPaginated) break;
+            if (offset + ENTRIES_FETCH_LIMIT >= total) break;
+          }
+          if (pageIdx >= ENTRIES_MAX_PAGES && import.meta.env?.DEV) {
+            console.warn(
+              `[ACCOUNTING CONTEXT] journal fetch hit ENTRIES_MAX_PAGES=${ENTRIES_MAX_PAGES}; loaded=${allRows.length} total=${total}`
+            );
+          }
+          setEntriesTotal(total > 0 ? total : allRows.length);
+          const data = allRows;
           const jeIds = (data as { id?: string }[])
             .map((j) => String(j.id || '').trim())
             .filter(Boolean);
@@ -1101,7 +1135,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
           }));
           const convertedEntries = applyJournalRowsToState(dataWithReversalFlag as JournalEntryWithLines[]);
-          if (import.meta.env?.DEV) console.log('✅ Journal entries loaded:', convertedEntries.length);
+          if (import.meta.env?.DEV) {
+            console.log(
+              '✅ Journal entries loaded:',
+              convertedEntries.length,
+              `(raw=${data.length}, dbTotal=${total}, pages=${pageIdx + 1})`
+            );
+          }
 
           if (!opts?.skipBalanceSync) {
             await maybeSyncBalancesFromJournal();
@@ -1125,7 +1165,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       loadEntriesInFlightRef.current = p;
       return p;
     },
-    [companyId, branchId, startDateISO, endDateISO, entriesPage, applyJournalRowsToState, maybeSyncBalancesFromJournal]
+    [companyId, branchId, startDateISO, endDateISO, applyJournalRowsToState, maybeSyncBalancesFromJournal]
   );
 
   const setEntriesPage = useCallback((p: number) => {
