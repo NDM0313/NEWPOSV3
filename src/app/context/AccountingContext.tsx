@@ -606,6 +606,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const loadEntriesInFlightRef = useRef<Promise<void> | null>(null);
   const entriesBootstrappedRef = useRef(false);
   const pendingEntriesReloadRef = useRef(false);
+  const startDateISORef = useRef(startDateISO);
+  const endDateISORef = useRef(endDateISO);
+  const branchIdRef = useRef(branchId);
+  startDateISORef.current = startDateISO;
+  endDateISORef.current = endDateISO;
+  branchIdRef.current = branchId;
   const loadAccountsInFlightRef = useRef<Promise<void> | null>(null);
   const pendingAccountsReloadRef = useRef(false);
   const paymentSyncDoneForCompanyRef = useRef<string | null>(null);
@@ -1082,8 +1088,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               branchArg,
               startArg,
               endArg,
-              // exact count so offset loop is reliable (list mode uses estimated)
-              { limit: ENTRIES_FETCH_LIMIT, offset, mode: 'full' }
+              // list mode: lean rows for Journal tab (avoid full enrichment empty-on-error)
+              { limit: ENTRIES_FETCH_LIMIT, offset, mode: 'list' }
             );
             const isPaginated =
               result && typeof result === 'object' && 'data' in result && 'total' in result;
@@ -1174,8 +1180,21 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const ensureEntriesLoaded = useCallback(async () => {
     if (!companyId || entriesBootstrappedRef.current) return;
+    const startSnap = startDateISORef.current;
+    const endSnap = endDateISORef.current;
+    const branchSnap = branchIdRef.current;
     await loadEntries({ showBlockingLoading: true, skipBalanceSync: true });
     entriesBootstrappedRef.current = true;
+    // Header FY/preset can settle during bootstrap — reload if range/branch drifted or pending.
+    if (
+      pendingEntriesReloadRef.current ||
+      startSnap !== startDateISORef.current ||
+      endSnap !== endDateISORef.current ||
+      branchSnap !== branchIdRef.current
+    ) {
+      pendingEntriesReloadRef.current = false;
+      void loadEntries({ showBlockingLoading: false, skipBalanceSync: true });
+    }
     // Payment account repair + balance sync off critical path
     schedulePaymentAccountSyncIdle();
     const ric = typeof window !== 'undefined' ? window.requestIdleCallback : undefined;
@@ -1402,7 +1421,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Reload entries when date range or page changes after bootstrap
   useEffect(() => {
-    if (!companyId || !entriesBootstrappedRef.current) return;
+    if (!companyId) return;
+    if (!entriesBootstrappedRef.current) {
+      // Queue reload so ensureEntriesLoaded flushes after first fetch with settled dates
+      pendingEntriesReloadRef.current = true;
+      return;
+    }
     void loadEntriesRef.current({ showBlockingLoading: false, page: entriesPage });
   }, [companyId, startDateISO, endDateISO, entriesPage]);
 

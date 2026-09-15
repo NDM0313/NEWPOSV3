@@ -723,7 +723,8 @@ export const accountingService = {
       
       if (error) {
         console.error('[ACCOUNTING SERVICE] Error fetching journal entries:', error);
-        return opts ? { data: [], total: 0 } : [];
+        if (opts) throw error;
+        return [];
       }
 
       if (!data || data.length === 0) {
@@ -1303,8 +1304,10 @@ export const accountingService = {
 
       return opts ? { data: enrichedEntries, total: count ?? enrichedEntries.length } : enrichedEntries;
     } catch (error: any) {
-      console.warn('[ACCOUNTING SERVICE] Error:', error.message);
-      return opts ? { data: [], total: 0 } : [];
+      console.warn('[ACCOUNTING SERVICE] Error:', error?.message || error);
+      // Paginated callers must not treat enrichment/query failure as an empty period
+      if (opts) throw error;
+      return [];
     }
   },
 
