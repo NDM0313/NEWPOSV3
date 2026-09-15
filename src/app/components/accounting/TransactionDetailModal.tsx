@@ -243,19 +243,51 @@ async function enrichLedgerPaymentEditorFields(args: {
   };
 }
 
+function resolveEffectivePaymentId(transaction: {
+  payment_id?: string | null;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  payment?: { id?: string } | Array<{ id?: string }> | null;
+} | null | undefined): string | null {
+  if (!transaction) return null;
+  if (transaction.payment_id) return String(transaction.payment_id);
+  const embedded = Array.isArray(transaction.payment)
+    ? transaction.payment[0]?.id
+    : transaction.payment?.id;
+  if (embedded) return String(embedded);
+  const rt = String(transaction.reference_type || '').toLowerCase();
+  if (
+    (rt === 'payment' || rt === 'payment_adjustment') &&
+    transaction.reference_id
+  ) {
+    return String(transaction.reference_id);
+  }
+  return null;
+}
+
 function collectTransactionAttachmentUrls(
-  transaction: { attachments?: unknown; reference_type?: string; payment_id?: string } | null | undefined,
+  transaction: {
+    attachments?: unknown;
+    reference_type?: string;
+    payment_id?: string;
+    reference_id?: string;
+    payment?: { id?: string; attachments?: unknown } | Array<{ id?: string; attachments?: unknown }> | null;
+  } | null | undefined,
   options: {
     expenseReceiptUrl?: string | null;
     sourceDocumentAttachments?: unknown;
     paymentAttachments?: unknown;
   } = {}
 ): string[] {
+  const effectivePaymentId = resolveEffectivePaymentId(transaction);
+  const embeddedPayment = Array.isArray(transaction?.payment)
+    ? transaction?.payment[0]
+    : transaction?.payment;
   const owned = collectTransactionOwnedAttachments({
     referenceType: transaction?.reference_type,
-    paymentId: transaction?.payment_id,
+    paymentId: effectivePaymentId,
     jeAttachments: transaction?.attachments,
-    paymentAttachments: options.paymentAttachments,
+    paymentAttachments: options.paymentAttachments ?? embeddedPayment?.attachments,
     expenseReceiptUrl: options.expenseReceiptUrl,
     documentAttachments: options.sourceDocumentAttachments,
   });
@@ -446,9 +478,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setPaymentAttachments(null);
       return;
     }
-    const paymentId =
-      transaction.payment_id ??
-      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const paymentId = resolveEffectivePaymentId(transaction);
     if (paymentId) {
       let cancelled = false;
       void (async () => {

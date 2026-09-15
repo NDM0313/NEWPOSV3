@@ -18,6 +18,7 @@ import {
 } from '@/app/lib/ledgerStatementV2Enrichment';
 import { supabase } from '@/lib/supabase';
 import { resolveLedgerTransactionOpenRef } from '@/app/lib/ledgerTransactionOpenRef';
+import { normalizeAttachmentList } from '@/app/utils/transactionAttachments';
 import type {
   LedgerEntityOption,
   LedgerStatementV2Filters,
@@ -648,7 +649,23 @@ function isRentalReferenceType(rt: string): boolean {
 }
 
 function hasAttachmentPayload(att: unknown): boolean {
-  return (Array.isArray(att) && att.length > 0) || (typeof att === 'string' && att.trim().length > 0);
+  return normalizeAttachmentList(att).length > 0;
+}
+
+function isPaymentReferenceType(rt: string): boolean {
+  const n = normalizeDocType(rt);
+  return n === 'payment' || n === 'payment_adjustment';
+}
+
+function resolvePaymentIdFromJe(opts: {
+  paymentId?: string | null;
+  referenceType?: string | null;
+  referenceId?: string | null;
+}): string | undefined {
+  if (opts.paymentId) return String(opts.paymentId);
+  const rid = opts.referenceId ? String(opts.referenceId) : '';
+  if (rid && isPaymentReferenceType(opts.referenceType || '')) return rid;
+  return undefined;
 }
 
 /** Collect sale / purchase / rental ids from row GL + sourceKind (before JE refetch fills gaps). */
@@ -682,7 +699,10 @@ function collectDocIdsFromRow(r: LedgerStatementV2Row): {
  */
 export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void> {
   const jeIds = [...new Set(rows.map((r) => r.journalEntryId).filter(Boolean))] as string[];
-  const payIds = [...new Set(rows.map((r) => r.paymentId).filter(Boolean))] as string[];
+  const payIdSet = new Set<string>();
+  for (const r of rows) {
+    if (r.paymentId) payIdSet.add(String(r.paymentId));
+  }
 
   const saleIdSet = new Set<string>();
   const purchaseIdSet = new Set<string>();
@@ -702,34 +722,53 @@ export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]
   const jeSaleRefById = new Map<string, string>();
   const jePurchaseRefById = new Map<string, string>();
   const jeRentalRefById = new Map<string, string>();
+  const jePaymentRefById = new Map<string, string>();
   const slice200 = <T>(arr: T[]) => arr.slice(0, 200);
 
   if (jeIds.length) {
     const { data: jeRows } = await supabase
       .from('journal_entries')
-      .select('id, attachments, reference_type, reference_id')
+      .select('id, attachments, reference_type, reference_id, payment_id')
       .in('id', slice200(jeIds));
-    (jeRows || []).forEach((r: { id: string; attachments?: unknown; reference_type?: string; reference_id?: string }) => {
-      if (Array.isArray(r.attachments) && r.attachments.length > 0) jeHas.add(r.id);
-      if (!r.reference_id) return;
-      const rid = String(r.reference_id);
-      const rt = r.reference_type || '';
-      if (isSaleReferenceType(rt)) {
-        jeSaleRefById.set(r.id, rid);
-        saleIdSet.add(rid);
-      } else if (isPurchaseReferenceType(rt)) {
-        jePurchaseRefById.set(r.id, rid);
-        purchaseIdSet.add(rid);
-      } else if (isRentalReferenceType(rt)) {
-        jeRentalRefById.set(r.id, rid);
-        rentalIdSet.add(rid);
-      }
-    });
+    (jeRows || []).forEach(
+      (r: {
+        id: string;
+        attachments?: unknown;
+        reference_type?: string;
+        reference_id?: string;
+        payment_id?: string | null;
+      }) => {
+        if (hasAttachmentPayload(r.attachments)) jeHas.add(r.id);
+        const payId = resolvePaymentIdFromJe({
+          paymentId: r.payment_id,
+          referenceType: r.reference_type,
+          referenceId: r.reference_id,
+        });
+        if (payId) {
+          payIdSet.add(payId);
+          jePaymentRefById.set(r.id, payId);
+        }
+        if (!r.reference_id) return;
+        const rid = String(r.reference_id);
+        const rt = r.reference_type || '';
+        if (isSaleReferenceType(rt)) {
+          jeSaleRefById.set(r.id, rid);
+          saleIdSet.add(rid);
+        } else if (isPurchaseReferenceType(rt)) {
+          jePurchaseRefById.set(r.id, rid);
+          purchaseIdSet.add(rid);
+        } else if (isRentalReferenceType(rt)) {
+          jeRentalRefById.set(r.id, rid);
+          rentalIdSet.add(rid);
+        }
+      },
+    );
   }
+  const payIds = [...payIdSet];
   if (payIds.length) {
     const { data } = await supabase.from('payments').select('id, attachments').in('id', slice200(payIds));
     (data || []).forEach((r: { id: string; attachments?: unknown }) => {
-      if (Array.isArray(r.attachments) && r.attachments.length > 0) payHas.add(r.id);
+      if (hasAttachmentPayload(r.attachments)) payHas.add(r.id);
     });
   }
   const saleIds = [...saleIdSet];
@@ -756,7 +795,10 @@ export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]
 
   rows.forEach((r) => {
     if (r.journalEntryId && jeHas.has(r.journalEntryId)) r.hasAttachments = true;
-    if (r.paymentId && payHas.has(r.paymentId)) r.hasAttachments = true;
+    const payId =
+      (r.paymentId ? String(r.paymentId) : undefined) ||
+      (r.journalEntryId ? jePaymentRefById.get(r.journalEntryId) : undefined);
+    if (payId && payHas.has(payId)) r.hasAttachments = true;
 
     const fromRow = collectDocIdsFromRow(r);
     const saleId =
@@ -877,36 +919,39 @@ export function openLedgerRowDetailV2(row: LedgerStatementV2Row): void {
   }
 }
 
-function normalizeAttachments(raw: unknown): { url: string; name: string }[] {
-  if (Array.isArray(raw)) {
-    return raw.filter((a) => a && typeof a === 'object' && 'url' in a) as { url: string; name: string }[];
-  }
-  if (typeof raw === 'string' && raw.trim()) {
-    return [{ url: raw.trim(), name: 'Attachment' }];
-  }
-  return [];
-}
-
 export async function getLedgerAttachmentsV2(
   row: LedgerStatementV2Row,
 ): Promise<{ url: string; name: string }[]> {
+  let jePaymentId: string | undefined;
+
   if (row.journalEntryId) {
     const { data } = await supabase
       .from('journal_entries')
-      .select('attachments, reference_type, reference_id')
+      .select('attachments, reference_type, reference_id, payment_id')
       .eq('id', row.journalEntryId)
       .maybeSingle();
-    const je = data as { attachments?: unknown; reference_type?: string; reference_id?: string } | null;
-    const att = normalizeAttachments(je?.attachments);
+    const je = data as {
+      attachments?: unknown;
+      reference_type?: string;
+      reference_id?: string;
+      payment_id?: string | null;
+    } | null;
+    const att = normalizeAttachmentList(je?.attachments);
     if (att.length) return att;
 
+    jePaymentId = resolvePaymentIdFromJe({
+      paymentId: je?.payment_id,
+      referenceType: je?.reference_type,
+      referenceId: je?.reference_id,
+    });
+
     // Prefer JE reference for source docs when row GL ids are thin.
-    if (je?.reference_id && !row.paymentId) {
+    if (je?.reference_id && !row.paymentId && !jePaymentId) {
       const rid = String(je.reference_id);
       const rt = je.reference_type || '';
       if (isSaleReferenceType(rt)) {
         const { data: sale } = await supabase.from('sales').select('attachments').eq('id', rid).maybeSingle();
-        const saleAtt = normalizeAttachments((sale as { attachments?: unknown } | null)?.attachments);
+        const saleAtt = normalizeAttachmentList((sale as { attachments?: unknown } | null)?.attachments);
         if (saleAtt.length) return saleAtt;
       } else if (isPurchaseReferenceType(rt)) {
         const { data: purchase } = await supabase
@@ -914,18 +959,20 @@ export async function getLedgerAttachmentsV2(
           .select('attachments')
           .eq('id', rid)
           .maybeSingle();
-        const purchaseAtt = normalizeAttachments((purchase as { attachments?: unknown } | null)?.attachments);
+        const purchaseAtt = normalizeAttachmentList((purchase as { attachments?: unknown } | null)?.attachments);
         if (purchaseAtt.length) return purchaseAtt;
       } else if (isRentalReferenceType(rt)) {
         const { data: rental } = await supabase.from('rentals').select('attachments').eq('id', rid).maybeSingle();
-        const rentalAtt = normalizeAttachments((rental as { attachments?: unknown } | null)?.attachments);
+        const rentalAtt = normalizeAttachmentList((rental as { attachments?: unknown } | null)?.attachments);
         if (rentalAtt.length) return rentalAtt;
       }
     }
   }
-  if (row.paymentId) {
-    const { data } = await supabase.from('payments').select('attachments').eq('id', row.paymentId).maybeSingle();
-    const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
+
+  const paymentId = (row.paymentId ? String(row.paymentId) : undefined) || jePaymentId;
+  if (paymentId) {
+    const { data } = await supabase.from('payments').select('attachments').eq('id', paymentId).maybeSingle();
+    const att = normalizeAttachmentList((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
     return [];
   }
@@ -933,17 +980,17 @@ export async function getLedgerAttachmentsV2(
   const ids = collectDocIdsFromRow(row);
   if (ids.saleId) {
     const { data } = await supabase.from('sales').select('attachments').eq('id', ids.saleId).maybeSingle();
-    const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
+    const att = normalizeAttachmentList((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
   }
   if (ids.rentalId) {
     const { data } = await supabase.from('rentals').select('attachments').eq('id', ids.rentalId).maybeSingle();
-    const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
+    const att = normalizeAttachmentList((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
   }
   if (ids.purchaseId) {
     const { data } = await supabase.from('purchases').select('attachments').eq('id', ids.purchaseId).maybeSingle();
-    const att = normalizeAttachments((data as { attachments?: unknown } | null)?.attachments);
+    const att = normalizeAttachmentList((data as { attachments?: unknown } | null)?.attachments);
     if (att.length) return att;
   }
   return [];
