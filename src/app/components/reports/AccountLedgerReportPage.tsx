@@ -431,6 +431,9 @@ export const AccountLedgerReportPage: React.FC<{
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [statementLoadedOnce, setStatementLoadedOnce] = useState(false);
   const [journalRefreshTick, setJournalRefreshTick] = useState(0);
+  const statementLoadFilterKeyRef = useRef('');
+  const journalRefreshTickRef = useRef(0);
+  const statementLoadedOnceRef = useRef(false);
   const showUnifiedPreviewTools = canAccessAccountStatementUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
   const [previewBasis, setPreviewBasis] = useState<UnifiedLedgerBasis>('effective_party');
@@ -624,7 +627,21 @@ export const AccountLedgerReportPage: React.FC<{
       setLoadError(null);
       return;
     }
-    setLoading(true);
+    const filterKey = [
+      companyId,
+      JSON.stringify(applied),
+      startDate,
+      endDate,
+      viewMode,
+      accounts.length,
+    ].join('|');
+    const filterChanged = statementLoadFilterKeyRef.current !== filterKey;
+    const tickChanged = journalRefreshTickRef.current !== journalRefreshTick;
+    statementLoadFilterKeyRef.current = filterKey;
+    journalRefreshTickRef.current = journalRefreshTick;
+    const silent = Boolean(statementLoadedOnceRef.current && !filterChanged && tickChanged);
+
+    if (!silent) setLoading(true);
     setLoadError(null);
     (async () => {
       try {
@@ -706,8 +723,9 @@ export const AccountLedgerReportPage: React.FC<{
           setLoadError(msg || 'Failed to load account statement.');
         }
       } finally {
+        statementLoadedOnceRef.current = true;
         setStatementLoadedOnce(true);
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     })();
   }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick, viewMode]);

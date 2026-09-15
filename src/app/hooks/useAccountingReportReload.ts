@@ -41,6 +41,9 @@ export function subscribeAccountingReportReload(
     ) {
       return;
     }
+    // Align with Sales/Purchase/Expense/Rental: fallback-poll must not remount report UIs.
+    const reason = String(detail?.reason ?? '').toLowerCase();
+    if (reason.includes('fallback-poll')) return;
     schedule();
   };
 

@@ -147,6 +147,7 @@ export function LedgerStatementCenterV2Page({
   const [rowActionBusy, setRowActionBusy] = useState(false);
 
   const rowActionLockRef = useRef(false);
+  const hasStatementDataRef = useRef(false);
   const pendingInitialEntityRef = useRef<typeof initialLedgerEntity>(null);
   const onInitialLedgerConsumedRef = useRef(onInitialLedgerConsumed);
   onInitialLedgerConsumedRef.current = onInitialLedgerConsumed;
@@ -394,10 +395,11 @@ export function LedgerStatementCenterV2Page({
     [entities, entityId, result?.entityLabel],
   );
 
-  const loadStatement = useCallback(async () => {
+  const loadStatement = useCallback(async (opts?: { silent?: boolean }) => {
     if (!companyId || !entityId) return;
 
-    setLoading(true);
+    const silent = Boolean(opts?.silent && hasStatementDataRef.current);
+    if (!silent) setLoading(true);
     try {
       const statementFilters = {
         statementType,
@@ -424,6 +426,7 @@ export function LedgerStatementCenterV2Page({
         entityLabel || entityId,
       );
       setResult(data);
+      hasStatementDataRef.current = true;
       setDocComparison(null);
       if (showDocComparison && showDiagnosticTools) {
         setDocComparisonLoading(true);
@@ -460,20 +463,33 @@ export function LedgerStatementCenterV2Page({
         toast.error('Failed to load statement');
       }
       setResult(null);
+      hasStatementDataRef.current = false;
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [companyId, entityId, entityLabel, statementType, fromDate, toDate, showDocComparison, showDiagnosticTools]);
 
   const handleEntityChange = useCallback((id: string) => {
     setEntityId(id);
-    if (!id) setResult(null);
+    if (!id) {
+      setResult(null);
+      hasStatementDataRef.current = false;
+    }
   }, []);
+
+  const statementFilterKey = `${companyId ?? ''}|${entityId}|${statementType}|${fromDate}|${toDate}`;
+  const statementFilterKeyRef = useRef(statementFilterKey);
+  const reloadEpochRef = useRef(reloadEpoch);
 
   useEffect(() => {
     if (!companyId || !entityId) return;
-    void loadStatement();
-  }, [companyId, entityId, statementType, fromDate, toDate, loadStatement, reloadEpoch]);
+    const filterChanged = statementFilterKeyRef.current !== statementFilterKey;
+    const epochChanged = reloadEpochRef.current !== reloadEpoch;
+    statementFilterKeyRef.current = statementFilterKey;
+    reloadEpochRef.current = reloadEpoch;
+    const silent = !filterChanged && epochChanged;
+    void loadStatement({ silent });
+  }, [companyId, entityId, statementType, fromDate, toDate, loadStatement, reloadEpoch, statementFilterKey]);
 
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -484,7 +500,7 @@ export function LedgerStatementCenterV2Page({
         (statementType === 'customer' && type === 'customer') ||
         (statementType === 'supplier' && type === 'supplier')
       ) {
-        void loadStatement();
+        void loadStatement({ silent: true });
       }
     };
     window.addEventListener('ledgerUpdated', handler);
