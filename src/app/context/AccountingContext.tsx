@@ -1105,6 +1105,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             pageIdx += 1;
 
             if (!isPaginated) break;
+            // Day Book parity: stop on short page; exact total is secondary guard
+            if ((chunk?.length ?? 0) < ENTRIES_FETCH_LIMIT) break;
             if (offset + ENTRIES_FETCH_LIMIT >= total) break;
           }
           if (pageIdx >= ENTRIES_MAX_PAGES && import.meta.env?.DEV) {

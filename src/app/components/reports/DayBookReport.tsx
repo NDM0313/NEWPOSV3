@@ -34,6 +34,7 @@ import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
 import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 
 export interface DayBookEntry {
   id: string;
@@ -148,10 +149,14 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
   const dateFrom = useGlobalRange
     ? (globalStartDate ?? '').slice(0, 10)
-    : (dateRange.from ? dateRange.from.toISOString().split('T')[0] : '');
+    : dateRange.from
+      ? formatLocalDateYYYYMMDD(dateRange.from)
+      : '';
   const dateTo = useGlobalRange
     ? (globalEndDate ?? '').slice(0, 10)
-    : (dateRange.to ? dateRange.to.toISOString().split('T')[0] : dateFrom);
+    : dateRange.to
+      ? formatLocalDateYYYYMMDD(dateRange.to)
+      : dateFrom;
 
   useEffect(() => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -672,7 +677,9 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         </div>
       )}
       {useGlobalRange && (
-        <p className="text-sm text-muted-foreground">Using global date range from top bar</p>
+        <p className="text-sm text-muted-foreground">
+          Using global date range from top bar: {dateFrom || '—'} → {dateTo || '—'}
+        </p>
       )}
       <div className="flex flex-wrap items-center gap-3 py-2">
         <div className="flex items-center gap-2">

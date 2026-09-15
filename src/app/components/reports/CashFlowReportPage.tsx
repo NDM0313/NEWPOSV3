@@ -130,7 +130,6 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [auditMode, setAuditMode] = useState(false);
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
   const [rangeNarrowedForPerf, setRangeNarrowedForPerf] = useState(false);
-  const didAutoNarrowRef = useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
@@ -186,22 +185,33 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
 
-  // Auto-narrow wide header ranges to current month so first paint does not dump years of cash rows.
+  const headerRangeWide = useMemo(() => {
+    if (!useGlobalRange || !globalStartDate || !globalEndDate) return false;
+    return cashFlowHeaderRangeExceedsSafeDays(
+      String(globalStartDate).slice(0, 10),
+      String(globalEndDate).slice(0, 10),
+    );
+  }, [useGlobalRange, globalStartDate, globalEndDate]);
+
+  // Header presets always win by default. Clear intentional override when header span is safe again.
   useEffect(() => {
-    if (didAutoNarrowRef.current) return;
     if (!useGlobalRange || !globalStartDate || !globalEndDate) return;
-    if (overrideGlobalDates) return;
-    if (
-      cashFlowHeaderRangeExceedsSafeDays(
-        String(globalStartDate).slice(0, 10),
-        String(globalEndDate).slice(0, 10),
-      )
-    ) {
-      didAutoNarrowRef.current = true;
-      setOverrideGlobalDates(true);
-      setRangeNarrowedForPerf(true);
+    if (!headerRangeWide) {
+      setOverrideGlobalDates(false);
+      setRangeNarrowedForPerf(false);
     }
-  }, [useGlobalRange, globalStartDate, globalEndDate, overrideGlobalDates]);
+  }, [useGlobalRange, globalStartDate, globalEndDate, headerRangeWide]);
+
+  const applyLastSafeDays = useCallback(() => {
+    const to = new Date();
+    to.setHours(23, 59, 59, 999);
+    const from = new Date(to);
+    from.setDate(from.getDate() - (CASH_FLOW_SAFE_RANGE_DAYS - 1));
+    from.setHours(0, 0, 0, 0);
+    setDateRange({ from, to });
+    setOverrideGlobalDates(true);
+    setRangeNarrowedForPerf(true);
+  }, []);
 
   const dateFrom = useMemo(() => {
     if (useGlobalRange && !overrideGlobalDates) return (globalStartDate ?? '').slice(0, 10);
@@ -803,11 +813,30 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
         ) : null}
       </div>
 
+      {useGlobalRange && headerRangeWide && !overrideGlobalDates ? (
+        <div className="no-print rounded-lg border border-amber-800/50 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90 flex flex-wrap items-center justify-between gap-3">
+          <span>
+            Header period exceeds {CASH_FLOW_SAFE_RANGE_DAYS} days. Cash Flow still uses the header
+            dates ({globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}). Narrow only if
+            the load is slow.
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="border-amber-700/60 text-amber-100 hover:bg-amber-950/40 shrink-0"
+            onClick={applyLastSafeDays}
+          >
+            Use last {CASH_FLOW_SAFE_RANGE_DAYS} days
+          </Button>
+        </div>
+      ) : null}
+
       {rangeNarrowedForPerf && overrideGlobalDates && useGlobalRange ? (
         <div className="no-print rounded-lg border border-amber-800/50 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90">
-          Date range was narrowed to this month for performance (header span exceeded{' '}
-          {CASH_FLOW_SAFE_RANGE_DAYS} days). Turn off <strong>Override header dates</strong> below to
-          load the full header period.
+          Using a narrowed local range for performance (last {CASH_FLOW_SAFE_RANGE_DAYS} days or your
+          picker). Turn off <strong>Override header dates</strong> below to restore the header
+          period.
         </div>
       ) : null}
 

@@ -690,7 +690,7 @@ export const accountingService = {
             account:accounts(name, code, type)
           )
         `,
-          opts ? { count: listMode ? 'estimated' : 'exact' } : undefined
+          opts ? { count: 'exact' } : undefined
         )
         .eq('company_id', companyId)
         .order('entry_date', { ascending: false })
