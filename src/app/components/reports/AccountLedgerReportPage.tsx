@@ -19,6 +19,7 @@ import {
   type AccountingStatementMode,
 } from '@/app/lib/accounting/statementEngineTypes';
 import { isPartySubledgerLeaf, nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
+import { filterPreferCanonicalPartySubledgerAccounts } from '@/app/lib/preferCanonicalPartySubledgerAccounts';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import {
@@ -1193,7 +1194,14 @@ export const AccountLedgerReportPage: React.FC<{
   }, [contacts]);
 
   const accountSelectOptions = useMemo(() => {
-    const filtered = accounts.filter((a) => {
+    const deduped = filterPreferCanonicalPartySubledgerAccounts(
+      accounts.map((a) => ({
+        ...a,
+        linked_contact_id: a.linked_contact_id ?? null,
+        isActive: true,
+      })),
+    );
+    const filtered = deduped.filter((a) => {
       const cat = classifyAccountCategory(a);
       if (selectedCategory !== 'all' && cat !== selectedCategory) return false;
       if (statementType === 'cash_bank') return cat === 'Cash / Bank / Wallet';

@@ -13,11 +13,17 @@ import {
   CommandList,
 } from '@/app/components/ui/command';
 import { cn } from '@/app/components/ui/utils';
+import {
+  filterPreferCanonicalPartySubledgerAccounts,
+  resolveCanonicalPartySubledgerAccountId,
+} from '@/app/lib/preferCanonicalPartySubledgerAccounts';
 
 export type SearchableAccountOption = {
   id: string;
   name: string;
   code?: string | null;
+  linked_contact_id?: string | null;
+  isActive?: boolean;
 };
 
 export interface SearchableAccountSelectProps {
@@ -30,6 +36,8 @@ export interface SearchableAccountSelectProps {
   className?: string;
   emptyLabel?: string;
   searchPlaceholder?: string;
+  /** When false, show both legacy + AP-/AR- leaves (admin/debug). Default true. */
+  preferCanonicalPartySubledgers?: boolean;
 }
 
 export function SearchableAccountSelect({
@@ -42,22 +50,41 @@ export function SearchableAccountSelect({
   className,
   emptyLabel = 'No account found.',
   searchPlaceholder = 'Search account...',
+  preferCanonicalPartySubledgers = true,
 }: SearchableAccountSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const selected = useMemo(() => accounts.find((a) => a.id === value) ?? null, [accounts, value]);
+  const pickerAccounts = useMemo(
+    () =>
+      preferCanonicalPartySubledgers
+        ? filterPreferCanonicalPartySubledgerAccounts(accounts)
+        : accounts,
+    [accounts, preferCanonicalPartySubledgers],
+  );
+
+  const selected = useMemo(() => {
+    const fromPicker = pickerAccounts.find((a) => a.id === value);
+    if (fromPicker) return fromPicker;
+    // Value may still point at a hidden legacy id — show canonical label if possible.
+    const resolved = preferCanonicalPartySubledgers
+      ? resolveCanonicalPartySubledgerAccountId(accounts, value)
+      : value;
+    return (
+      pickerAccounts.find((a) => a.id === resolved) ?? accounts.find((a) => a.id === value) ?? null
+    );
+  }, [pickerAccounts, accounts, value, preferCanonicalPartySubledgers]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return accounts;
-    return accounts.filter((a) => {
+    if (!q) return pickerAccounts;
+    return pickerAccounts.filter((a) => {
       const label = formatOptionLabel(a).toLowerCase();
       const code = String(a.code ?? '').toLowerCase();
       const name = String(a.name ?? '').toLowerCase();
       return label.includes(q) || code.includes(q) || name.includes(q) || a.id.toLowerCase().includes(q);
     });
-  }, [accounts, search, formatOptionLabel]);
+  }, [pickerAccounts, search, formatOptionLabel]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -100,14 +127,20 @@ export function SearchableAccountSelect({
                   key={a.id}
                   value={`${a.code ?? ''} ${a.name} ${a.id}`}
                   onSelect={() => {
-                    onChange(a.id);
+                    const next = preferCanonicalPartySubledgers
+                      ? resolveCanonicalPartySubledgerAccountId(accounts, a.id)
+                      : a.id;
+                    onChange(next);
                     setOpen(false);
                     setSearch('');
                   }}
                   className="items-start text-foreground hover:bg-muted cursor-pointer py-2"
                 >
                   <Check
-                    className={cn('mr-2 mt-0.5 h-4 w-4 shrink-0', value === a.id ? 'opacity-100' : 'opacity-0')}
+                    className={cn(
+                      'mr-2 mt-0.5 h-4 w-4 shrink-0',
+                      value === a.id ? 'opacity-100' : 'opacity-0',
+                    )}
                   />
                   <span className="whitespace-normal break-words text-left leading-snug">
                     {formatOptionLabel(a)}
@@ -116,9 +149,9 @@ export function SearchableAccountSelect({
               ))}
             </CommandGroup>
           </CommandList>
-          {accounts.length > 0 && (
+          {pickerAccounts.length > 0 && (
             <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
-              Showing {filtered.length} of {accounts.length} accounts
+              Showing {filtered.length} of {pickerAccounts.length} accounts
               {search.trim() ? '' : ' — type code or name to search'}
             </div>
           )}
