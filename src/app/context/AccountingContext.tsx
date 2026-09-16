@@ -1026,12 +1026,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         }
       } catch (error) {
         console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);
-        setAccounts([]);
+        // Keep last good CoA — clearing on refresh failure looks like empty books.
       } finally {
         loadAccountsInFlightRef.current = null;
         if (pendingAccountsReloadRef.current) {
           pendingAccountsReloadRef.current = false;
-          scheduleCoalescedRefreshRef.current({ accounts: true, entries: false });
+          scheduleCoalescedRefreshRef.current({ accounts: true });
         }
       }
     };
@@ -1156,15 +1156,14 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           }
         } catch (error) {
           console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
-          setEntries([]);
-          setEntriesTotal(0);
+          // Keep last good journal list — clearing on refresh failure shows a fake empty period.
         } finally {
           if (blocking) setInitialLoading(false);
           setBackgroundSync(false);
           loadEntriesInFlightRef.current = null;
           if (pendingEntriesReloadRef.current) {
             pendingEntriesReloadRef.current = false;
-            scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+            scheduleCoalescedRefreshRef.current({ entries: true });
           }
         }
       };
@@ -1220,9 +1219,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         }
         return;
       }
+      // Sticky OR-merge: never let a later `{ entries: true, accounts: false }`
+      // (or inverse) clear a flag already queued in the coalesce window.
       const acc = coalescedRefreshOptsRef.current;
-      if (opts?.entries !== undefined) acc.entries = opts.entries;
-      if (opts?.accounts !== undefined) acc.accounts = opts.accounts;
+      if (opts?.entries) acc.entries = true;
+      if (opts?.accounts) acc.accounts = true;
       if (opts?.blocking) acc.blocking = true;
       if (coalescedRefreshTimerRef.current) clearTimeout(coalescedRefreshTimerRef.current);
       coalescedRefreshTimerRef.current = setTimeout(() => {
@@ -1435,10 +1436,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // Listen for purchase/sale delete events
   useEffect(() => {
     const handlePurchaseDelete = () => {
-      scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+      scheduleCoalescedRefreshRef.current({ entries: true });
     };
     const handleSaleDelete = () => {
-      scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+      scheduleCoalescedRefreshRef.current({ entries: true });
     };
     window.addEventListener('purchaseDeleted', handlePurchaseDelete);
     window.addEventListener('saleDeleted', handleSaleDelete);
@@ -1477,7 +1478,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           coalescedRefreshOptsRef.current.entries = false;
           return;
         }
-        scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+        scheduleCoalescedRefreshRef.current({ entries: true });
       })();
     };
 
@@ -1507,9 +1508,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             : false;
         if (handled) return;
         const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
+        // Only pass true flags — sticky OR-merge must not see explicit false.
         scheduleCoalescedRefreshRef.current({
-          entries: reloadEntries,
-          accounts: reloadAccounts,
+          ...(reloadEntries ? { entries: true } : {}),
+          ...(reloadAccounts ? { accounts: true } : {}),
         });
       })();
     };

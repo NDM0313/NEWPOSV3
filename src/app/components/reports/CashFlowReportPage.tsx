@@ -8,6 +8,7 @@ import { AlertCircle, ArrowLeftRight, Loader2, RefreshCw, Wallet } from 'lucide-
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -113,6 +114,7 @@ function auditBadgeClass(): string {
 
 export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowReportPageProps) {
   const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+  const reloadEpoch = useAccountingReportReload({ companyId, branchId: contextBranchId });
   const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'cash_flow' });
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const { company } = useSettings();
@@ -141,6 +143,8 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const paymentAccountOptionsRef = useRef(paymentAccountOptions);
   paymentAccountOptionsRef.current = paymentAccountOptions;
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const showUnifiedPreviewTools = canAccessCashFlowUnifiedPreview(userRole);
   const [unifiedPreviewEnabled, setUnifiedPreviewEnabled] = useState(false);
@@ -283,7 +287,7 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   const auditModeNote = cashFlowAuditModeNote(auditMode);
   const glModeNote = glCashFlowModeNote(auditMode, auditMode ? 'official_gl' : 'effective_party');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!companyId || !dateFrom || !dateTo) {
       setData(null);
       setGlSummary(null);
@@ -291,9 +295,12 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       setLoadError(null);
       return;
     }
-    setLoading(true);
+    const silent = Boolean(opts?.silent && dataRef.current);
+    if (!silent) {
+      setLoading(true);
+      setGlSummary(null);
+    }
     setLoadError(null);
-    setGlSummary(null);
     try {
       const resolved = await resolveCashFlowMainLoaderSource(companyId);
       const mainSource = effectiveCashFlowMainLoaderSource(resolved);
@@ -315,11 +322,13 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
       });
       setData(unified);
     } catch (err) {
-      setData(null);
-      setGlSummary(null);
+      if (!silent) {
+        setData(null);
+        setGlSummary(null);
+      }
       setLoadError(err instanceof Error ? err.message : 'Failed to load cash flow report');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [
     companyId,
@@ -336,6 +345,14 @@ export function CashFlowReportPage({ globalStartDate, globalEndDate }: CashFlowR
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Header Refresh / accounting invalidation — silent when a grid is already on screen.
+  useEffect(() => {
+    if (reloadEpoch === 0) return;
+    void load({ silent: true });
+    // Only re-run on epoch bump; filter changes already go through `load` above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [reloadEpoch]);
 
   // Defer GL cash-flow statement until operational grid is ready.
   useEffect(() => {
