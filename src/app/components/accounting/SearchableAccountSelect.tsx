@@ -55,13 +55,12 @@ export function SearchableAccountSelect({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const pickerAccounts = useMemo(
-    () =>
-      preferCanonicalPartySubledgers
-        ? filterPreferCanonicalPartySubledgerAccounts(accounts)
-        : accounts,
-    [accounts, preferCanonicalPartySubledgers],
-  );
+  const pickerAccounts = useMemo(() => {
+    const active = accounts.filter((a) => a.isActive !== false);
+    return preferCanonicalPartySubledgers
+      ? filterPreferCanonicalPartySubledgerAccounts(active)
+      : active;
+  }, [accounts, preferCanonicalPartySubledgers]);
 
   const selected = useMemo(() => {
     const fromPicker = pickerAccounts.find((a) => a.id === value);

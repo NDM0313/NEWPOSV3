@@ -1194,8 +1194,9 @@ export const AccountLedgerReportPage: React.FC<{
   }, [contacts]);
 
   const accountSelectOptions = useMemo(() => {
+    const active = accounts.filter((a) => (a as { is_active?: boolean }).is_active !== false);
     const deduped = filterPreferCanonicalPartySubledgerAccounts(
-      accounts.map((a) => ({
+      active.map((a) => ({
         ...a,
         linked_contact_id: a.linked_contact_id ?? null,
         isActive: true,
