@@ -79,42 +79,42 @@ export const ProfitLossStatement = () => {
     <div className="space-y-8 animate-in slide-in-from-bottom-2 duration-300">
       
       {/* 1. Header Area */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-900/50 p-6 rounded-xl border border-gray-800">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-muted/40 p-6 rounded-xl border border-border">
         <div>
-          <h2 className="text-2xl font-bold text-white">Profit & Loss Statement</h2>
-          <p className="text-gray-400 text-sm mt-1">Detailed financial performance report</p>
+          <h2 className="text-2xl font-bold text-foreground">Profit & Loss Statement</h2>
+          <p className="text-muted-foreground text-sm mt-1">Detailed financial performance report</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
           <Select defaultValue="main_branch">
-            <SelectTrigger className="w-[160px] h-9 bg-gray-950 border-gray-700 text-white rounded-full">
+            <SelectTrigger className="w-[160px] h-9 bg-input-background border-border text-foreground rounded-full">
               <SelectValue placeholder="Location" />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="main_branch">Main Branch</SelectItem>
               <SelectItem value="warehouse">Warehouse</SelectItem>
             </SelectContent>
           </Select>
 
           <Select defaultValue="this_month">
-            <SelectTrigger className="w-[160px] h-9 bg-gray-950 border-gray-700 text-white rounded-full">
+            <SelectTrigger className="w-[160px] h-9 bg-input-background border-border text-foreground rounded-full">
               <SelectValue placeholder="Date Range" />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="this_month">This Month</SelectItem>
               <SelectItem value="last_month">Last Month</SelectItem>
               <SelectItem value="this_year">This Year</SelectItem>
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-1 ml-2 border-l border-gray-700 pl-3">
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full" title="Export PDF">
+          <div className="flex items-center gap-1 ml-2 border-l border-border pl-3">
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full" title="Export PDF">
               <FileText size={18} />
             </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full" title="Export Excel">
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full" title="Export Excel">
               <FileSpreadsheet size={18} />
             </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full" title="Print">
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full" title="Print">
               <Printer size={18} />
             </Button>
           </div>
@@ -122,7 +122,7 @@ export const ProfitLossStatement = () => {
       </div>
 
       {/* 2. Hero Section (The "Bottom Line") */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800 border border-gray-700 p-8 shadow-2xl h-[200px] min-h-[200px]">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800 border border-border p-8 shadow-2xl h-[200px] min-h-[200px]">
         {/* Background Trend Line */}
         <div className="absolute inset-0 w-full h-full opacity-10 pointer-events-none">
           <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={200}>
@@ -134,14 +134,14 @@ export const ProfitLossStatement = () => {
 
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-center md:text-left">
-            <p className="text-gray-400 font-medium mb-1 uppercase tracking-wider text-sm">Gross Profit</p>
-            <h3 className="text-4xl font-bold text-white">Rs {(grossProfit/1000000).toFixed(1)}M</h3>
+            <p className="text-muted-foreground font-medium mb-1 uppercase tracking-wider text-sm">Gross Profit</p>
+            <h3 className="text-4xl font-bold text-foreground">Rs {(grossProfit/1000000).toFixed(1)}M</h3>
           </div>
           
-          <div className="h-px w-full md:w-px md:h-16 bg-gray-700"></div>
+          <div className="h-px w-full md:w-px md:h-16 bg-muted"></div>
 
           <div className="text-center md:text-right">
-            <p className="text-gray-400 font-medium mb-1 uppercase tracking-wider text-sm">Net Profit</p>
+            <p className="text-muted-foreground font-medium mb-1 uppercase tracking-wider text-sm">Net Profit</p>
             <h3 className="text-5xl md:text-6xl font-black text-[#4ade80] drop-shadow-[0_0_15px_rgba(74,222,128,0.3)]">
               Rs {netProfit.toLocaleString()}
             </h3>
@@ -152,44 +152,44 @@ export const ProfitLossStatement = () => {
       {/* 3. The Breakdown (Split View) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Costs & Expenses */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-800 bg-red-950/10 flex justify-between items-center">
-             <h3 className="font-bold text-white">Costs & Expenses</h3>
+        <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-border bg-red-950/10 flex justify-between items-center">
+             <h3 className="font-bold text-foreground">Costs & Expenses</h3>
              <span className="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20">Money Out</span>
           </div>
           <div className="p-6 space-y-4 flex-1">
-             <div className="text-sm font-medium text-gray-500 mb-2">Cost of Goods Sold (COGS)</div>
+             <div className="text-sm font-medium text-muted-foreground mb-2">Cost of Goods Sold (COGS)</div>
              {breakdownData.costs.filter(i => showZeroValues || i.value !== 0).map((item, idx) => (
                <div key={idx} className="flex justify-between items-center group">
-                 <span className="text-gray-300 group-hover:text-white transition-colors">{item.label}</span>
+                 <span className="text-muted-foreground group-hover:text-foreground transition-colors">{item.label}</span>
                  <span className="font-mono text-gray-200">Rs {Math.abs(item.value).toLocaleString()}</span>
                </div>
              ))}
           </div>
-          <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-between items-center">
-             <span className="font-bold text-gray-400">Total Cost</span>
-             <span className="font-bold text-xl text-white">Rs {totalCost.toLocaleString()}</span>
+          <div className="p-4 border-t border-border bg-card flex justify-between items-center">
+             <span className="font-bold text-muted-foreground">Total Cost</span>
+             <span className="font-bold text-xl text-foreground">Rs {totalCost.toLocaleString()}</span>
           </div>
         </div>
 
         {/* Revenue & Stock */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-800 bg-green-950/10 flex justify-between items-center">
-             <h3 className="font-bold text-white">Revenue & Stock</h3>
-             <span className="text-xs font-bold text-green-400 bg-green-500/10 px-2 py-1 rounded border border-green-500/20">Money In</span>
+        <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-border bg-green-950/10 flex justify-between items-center">
+             <h3 className="font-bold text-foreground">Revenue & Stock</h3>
+             <span className="text-xs font-bold text-[var(--erp-money-positive)] bg-green-500/10 px-2 py-1 rounded border border-green-500/20">Money In</span>
           </div>
           <div className="p-6 space-y-4 flex-1">
-             <div className="text-sm font-medium text-gray-500 mb-2">Sales & Inventory</div>
+             <div className="text-sm font-medium text-muted-foreground mb-2">Sales & Inventory</div>
              {breakdownData.revenue.filter(i => showZeroValues || i.value !== 0).map((item, idx) => (
                <div key={idx} className="flex justify-between items-center group">
-                 <span className="text-gray-300 group-hover:text-white transition-colors">{item.label}</span>
+                 <span className="text-muted-foreground group-hover:text-foreground transition-colors">{item.label}</span>
                  <span className="font-mono text-gray-200">Rs {Math.abs(item.value).toLocaleString()}</span>
                </div>
              ))}
           </div>
-          <div className="p-4 border-t border-gray-800 bg-gray-900 flex justify-between items-center">
-             <span className="font-bold text-gray-400">Total Revenue</span>
-             <span className="font-bold text-xl text-white">Rs {totalRevenue.toLocaleString()}</span>
+          <div className="p-4 border-t border-border bg-card flex justify-between items-center">
+             <span className="font-bold text-muted-foreground">Total Revenue</span>
+             <span className="font-bold text-xl text-foreground">Rs {totalRevenue.toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -197,7 +197,7 @@ export const ProfitLossStatement = () => {
       {/* 4. Detailed Drill-Down */}
       <div className="space-y-4">
         {/* Navigation & Controls */}
-        <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-gray-800 pb-2">
+        <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 border-b border-border pb-2">
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto">
             {['product', 'brand', 'customer', 'invoice', 'date'].map((tab) => (
               <button
@@ -207,7 +207,7 @@ export const ProfitLossStatement = () => {
                   "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap",
                   drillDownTab === tab 
                     ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                    : "bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white"
+                    : "bg-muted text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 By {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -215,14 +215,14 @@ export const ProfitLossStatement = () => {
             ))}
           </div>
           
-          <div className="flex items-center space-x-2 bg-gray-900 p-2 rounded-lg border border-gray-800">
+          <div className="flex items-center space-x-2 bg-card p-2 rounded-lg border border-border">
             <Switch 
               id="show-zero" 
               checked={showZeroValues}
               onCheckedChange={setShowZeroValues}
               className="data-[state=checked]:bg-blue-600"
             />
-            <Label htmlFor="show-zero" className="text-sm text-gray-400 cursor-pointer select-none flex items-center gap-2">
+            <Label htmlFor="show-zero" className="text-sm text-muted-foreground cursor-pointer select-none flex items-center gap-2">
               {showZeroValues ? <Eye size={14} /> : <EyeOff size={14} />}
               Show Zero Values
             </Label>
@@ -230,10 +230,10 @@ export const ProfitLossStatement = () => {
         </div>
 
         {/* Data Table */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-base leading-snug">
-              <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800">
+              <thead className="bg-input-background/80 text-muted-foreground font-medium border-b border-border">
                 <tr>
                   <th className="px-6 py-4">Product Name</th>
                   <th className="px-6 py-4 text-center">Units Sold</th>
@@ -242,36 +242,36 @@ export const ProfitLossStatement = () => {
                   <th className="px-6 py-4 text-right">Gross Profit</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {filteredProducts.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-4 font-medium text-white">{row.name}</td>
-                    <td className="px-6 py-4 text-center text-gray-300">{row.sold}</td>
-                    <td className="px-6 py-4 text-right text-gray-400 font-mono">
+                  <tr key={row.id} className="hover:bg-accent/30 transition-colors">
+                    <td className="px-6 py-4 font-medium text-foreground">{row.name}</td>
+                    <td className="px-6 py-4 text-center text-muted-foreground">{row.sold}</td>
+                    <td className="px-6 py-4 text-right text-muted-foreground font-mono">
                       Rs {row.avgPrice.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-right font-mono font-medium text-white">
+                    <td className="px-6 py-4 text-right font-mono font-medium text-foreground">
                       Rs {row.revenue.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-right font-mono font-bold text-green-400 bg-green-900/5">
+                    <td className="px-6 py-4 text-right font-mono font-bold text-[var(--erp-money-positive)] bg-green-900/5">
                       Rs {row.profit.toLocaleString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-950 border-t border-gray-800">
+              <tfoot className="bg-input-background border-t border-border">
                  <tr>
-                    <td className="px-6 py-4 font-bold text-white">TOTAL</td>
-                    <td className="px-6 py-4 text-center font-bold text-white">{totalSold}</td>
-                    <td className="px-6 py-4 text-right text-gray-500">-</td>
-                    <td className="px-6 py-4 text-right font-bold text-white">Rs {totalProductRevenue.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-bold text-green-400">Rs {totalProductProfit.toLocaleString()}</td>
+                    <td className="px-6 py-4 font-bold text-foreground">TOTAL</td>
+                    <td className="px-6 py-4 text-center font-bold text-foreground">{totalSold}</td>
+                    <td className="px-6 py-4 text-right text-muted-foreground">-</td>
+                    <td className="px-6 py-4 text-right font-bold text-foreground">Rs {totalProductRevenue.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right font-bold text-[var(--erp-money-positive)]">Rs {totalProductProfit.toLocaleString()}</td>
                  </tr>
               </tfoot>
             </table>
           </div>
           {filteredProducts.length === 0 && (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-muted-foreground">
               No data available for the selected filters.
             </div>
           )}

@@ -16,6 +16,27 @@ Append-only. **Newest entry at the top.** Use when testing APK builds or reporti
 
 ---
 
+## 2026-06-08 — build 39 / 14 (post-migration deploy finish)
+
+| Field | Value |
+|--------|--------|
+| **Build** | 1.0.5 / Android 39, iOS 14 |
+| **Area** | Full smoke — web deploy + mobile shell + camera pipeline |
+| **Automated** | VPS deploy OK; dist has no mlkit-stub; APK/IPA built |
+| **Device UAT** | See checklist in [`docs/2026-06-08-MAC-MOBILE-UX-SESSION-WORK-DONE.md`](../../docs/2026-06-08-MAC-MOBILE-UX-SESSION-WORK-DONE.md) |
+| **Status** | **pending device sign-off** |
+
+| # | Check | Pass |
+|---|--------|------|
+| 1 | Web login, no storage crash (Chrome) | ☐ |
+| 2 | Web TopHeader logout one click | ☐ |
+| 3 | Home header safe-area (mobile) | ☐ |
+| 4 | Android back → home | ☐ |
+| 5 | iOS ML Kit scan (Sales/POS) | ☐ |
+| 6 | Camera photo attach | ☐ |
+
+---
+
 ## 2026-06-03 — Sales APK vs localhost scope
 
 | Field | Value |

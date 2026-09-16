@@ -9,7 +9,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import {
   Select,
   SelectContent,
@@ -18,7 +18,8 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Badge } from "../ui/badge";
-import { formatDecimal } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
+import { toLocalISOString } from '@/app/utils/localDate';
 
 type AdjustmentType = 'add' | 'subtract';
 type AdjustmentReason = 'damaged' | 'audit' | 'return' | 'theft' | 'correction' | 'other';
@@ -57,7 +58,8 @@ interface StockAdjustmentDrawerProps {
     quantity: number;
     reason: AdjustmentReason;
     notes: string;
-    date: string;
+    /** Full local timestamp for stock_movements.created_at */
+    movementAt: string;
     newStock: number;
     /** Required when product has variations – adjustment applies only to this variation */
     variationId?: string | null;
@@ -294,7 +296,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       quantity,
       reason,
       notes,
-      date: date instanceof Date ? date.toISOString().split('T')[0] : date,
+      movementAt: toLocalISOString(date instanceof Date ? date : new Date()),
       newStock: calculatedNewStock,
       variationId: hasVariations ? selectedVariationId : undefined,
     });
@@ -321,14 +323,14 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-[600px] bg-[#111827] border-l border-gray-800 z-50 shadow-2xl overflow-y-auto">
-        <div className="sticky top-0 bg-[#111827] border-b border-gray-800 px-6 py-4 z-10">
+      <div className="fixed right-0 top-0 h-full w-[600px] bg-background border-l border-border z-50 shadow-2xl overflow-y-auto">
+        <div className="sticky top-0 bg-background border-b border-border px-6 py-4 z-10">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-xl font-bold text-foreground">
                 {drawerMode === 'transfer' ? 'Stock Transfer' : 'Stock Adjustment'}
               </h2>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 {drawerMode === 'transfer'
                   ? 'Move stock between branches'
                   : 'Correct inventory levels and log changes'}
@@ -336,7 +338,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
               <X size={24} />
             </button>
@@ -345,22 +347,22 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Product Info */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-4">
               {product.image && (
                 <img 
                   src={product.image} 
                   alt={product.name}
-                  className="w-16 h-16 rounded-lg object-cover border border-gray-700"
+                  className="w-16 h-16 rounded-lg object-cover border border-border"
                 />
               )}
               <div className="flex-1">
-                <h3 className="font-semibold text-white">{product.name}</h3>
+                <h3 className="font-semibold text-foreground">{product.name}</h3>
                 <div className="flex items-center gap-3 mt-1">
-                  <code className="text-xs bg-gray-800 px-2 py-1 rounded text-blue-400">
+                  <code className="text-xs bg-muted px-2 py-1 rounded text-blue-400">
                     {product.sku}
                   </code>
-                  <Badge className="bg-green-500/10 text-green-400 border-green-500/20">
+                  <Badge className="bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20">
                     Current: {effectiveCurrentStock} {product.unit}
                     {hasVariations && selectedVariation && ` (${selectedVariation.sku || selectedVariation.id})`}
                   </Badge>
@@ -370,12 +372,12 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
           </div>
 
           {canTransfer && (
-            <div className="flex rounded-lg bg-gray-900 border border-gray-800 p-1">
+            <div className="flex rounded-lg bg-card border border-border p-1">
               <button
                 type="button"
                 onClick={() => setDrawerMode('adjust')}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-                  drawerMode === 'adjust' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                  drawerMode === 'adjust' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Adjust
@@ -384,7 +386,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 type="button"
                 onClick={() => setDrawerMode('transfer')}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition flex items-center justify-center gap-1.5 ${
-                  drawerMode === 'transfer' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'
+                  drawerMode === 'transfer' ? 'bg-violet-600 text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <ArrowRightLeft size={14} />
@@ -395,21 +397,21 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
           {(showBranchSelect || loadingBranches || adjustBranchId) && (
             <div className="space-y-2">
-              <Label className="text-gray-300 flex items-center gap-2">
+              <Label className="text-muted-foreground flex items-center gap-2">
                 <MapPin size={14} />
                 {drawerMode === 'transfer' ? 'From branch' : 'Branch / Location'}
               </Label>
               {loadingBranches ? (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
                   <Loader2 size={16} className="animate-spin" />
                   Loading branches...
                 </div>
               ) : showBranchSelect ? (
                 <Select value={adjustBranchId ?? ''} onValueChange={(v) => setAdjustBranchId(v)}>
-                  <SelectTrigger className="w-full bg-gray-900 border-gray-800 text-white">
+                  <SelectTrigger className="w-full bg-card border-border text-foreground">
                     <SelectValue placeholder="Select branch" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     {branches.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.name}
@@ -419,7 +421,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                   </SelectContent>
                 </Select>
               ) : adjustBranchId ? (
-                <p className="text-sm text-gray-300 py-1">
+                <p className="text-sm text-muted-foreground py-1">
                   {branches.find((b) => b.id === adjustBranchId)?.name ?? 'Branch'}
                 </p>
               ) : null}
@@ -428,12 +430,12 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
           {drawerMode === 'transfer' && canTransfer && (
             <div className="space-y-2">
-              <Label className="text-gray-300 flex items-center gap-2">
+              <Label className="text-muted-foreground flex items-center gap-2">
                 <MapPin size={14} />
                 To branch
               </Label>
               {loadingBranches ? (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
                   <Loader2 size={16} className="animate-spin" />
                   Loading branches...
                 </div>
@@ -441,10 +443,10 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <p className="text-sm text-amber-400">Select a different source branch first.</p>
               ) : (
                 <Select value={toBranchId ?? ''} onValueChange={(v) => setToBranchId(v)}>
-                  <SelectTrigger className="w-full bg-gray-900 border-gray-800 text-white">
+                  <SelectTrigger className="w-full bg-card border-border text-foreground">
                     <SelectValue placeholder="Select destination branch" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  <SelectContent className="bg-popover border-border text-popover-foreground">
                     {destinationBranches.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.name}
@@ -460,12 +462,12 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
           {/* Variation selector: required when product has variations */}
           {hasVariations && (
             <div className="space-y-2">
-              <Label className="text-gray-300 flex items-center gap-2">
+              <Label className="text-muted-foreground flex items-center gap-2">
                 <Layers size={14} />
                 Variation to adjust
               </Label>
               {loadingVariations ? (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
                   <Loader2 size={16} className="animate-spin" />
                   Loading variations...
                 </div>
@@ -473,23 +475,23 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <p className="text-sm text-amber-400">No variations found for this branch.</p>
               ) : (
               <Select value={selectedVariationId ?? ''} onValueChange={(v) => setSelectedVariationId(v || null)}>
-                <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                <SelectTrigger className="bg-card border-border text-foreground">
                   <SelectValue placeholder="Select variation" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   {variations.map((v) => (
                     <SelectItem key={v.id} value={v.id}>
                       {(v.attributes && typeof v.attributes === 'object' && Object.keys(v.attributes).length > 0)
                         ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
                         : (v.sku || v.id)}
                       {' — '}
-                      <span className="text-green-400">{formatDecimal(v.stock)} {product.unit}</span>
+                      <span className="text-[var(--erp-money-positive)] tabular-nums">{formatQty(v.stock)} {product.unit}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               )}
-              <p className="text-xs text-gray-500">Adjustment will apply only to the selected variation.</p>
+              <p className="text-xs text-muted-foreground">Adjustment will apply only to the selected variation.</p>
             </div>
           )}
 
@@ -497,15 +499,15 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
           <>
           {/* Adjustment Type */}
           <div className="space-y-2">
-            <Label className="text-gray-300">Adjustment Type</Label>
+            <Label className="text-muted-foreground">Adjustment Type</Label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setType('add')}
                 className={`p-4 rounded-lg border-2 transition-all ${
                   type === 'add'
-                    ? 'bg-green-500/10 border-green-500 text-green-400'
-                    : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                    ? 'bg-green-500/10 border-green-500 text-[var(--erp-money-positive)]'
+                    : 'bg-card border-border text-muted-foreground hover:border-border'
                 }`}
               >
                 <Plus size={24} className="mx-auto mb-2" />
@@ -518,7 +520,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 className={`p-4 rounded-lg border-2 transition-all ${
                   type === 'subtract'
                     ? 'bg-red-500/10 border-red-500 text-red-400'
-                    : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                    : 'bg-card border-border text-muted-foreground hover:border-border'
                 }`}
               >
                 <Minus size={24} className="mx-auto mb-2" />
@@ -532,7 +534,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
           {/* Quantity */}
           <div className="space-y-2">
-            <Label htmlFor="quantity" className="text-gray-300">
+            <Label htmlFor="quantity" className="text-muted-foreground">
               {drawerMode === 'transfer' ? 'Transfer quantity' : 'Quantity'} ({product.unit})
             </Label>
             <Input
@@ -542,7 +544,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
               step="1"
               value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value))}
-              className="bg-gray-900 border-gray-800 text-white"
+              className="bg-card border-border text-foreground"
               placeholder="Enter quantity"
               required
             />
@@ -552,14 +554,14 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
           <>
           {/* Reason */}
           <div className="space-y-2">
-            <Label htmlFor="reason" className="text-gray-300">
+            <Label htmlFor="reason" className="text-muted-foreground">
               Reason for Adjustment
             </Label>
             <Select value={reason} onValueChange={(v: AdjustmentReason) => setReason(v)}>
-              <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+              <SelectTrigger className="bg-card border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 <SelectItem value="correction">{getReasonLabel('correction')}</SelectItem>
                 <SelectItem value="damaged">{getReasonLabel('damaged')}</SelectItem>
                 <SelectItem value="audit">{getReasonLabel('audit')}</SelectItem>
@@ -572,11 +574,10 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
           {/* Date */}
           <div className="space-y-2">
-            <CalendarDatePicker
+            <DateTimePicker
               label="Adjustment Date"
-              value={date}
-              onChange={(d) => setDate(d || new Date())}
-              showTime={true}
+              value={dateToDateTimePickerValue(date)}
+              onChange={(v) => setDate(dateTimePickerValueToDate(v) || new Date())}
               required
             />
           </div>
@@ -585,7 +586,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
           {/* Notes */}
           <div className="space-y-2">
-            <Label htmlFor="notes" className="text-gray-300 flex items-center gap-2">
+            <Label htmlFor="notes" className="text-muted-foreground flex items-center gap-2">
               <FileText size={14} />
               Notes (Optional)
             </Label>
@@ -593,7 +594,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="bg-gray-900 border-gray-800 text-white resize-none"
+              className="bg-card border-border text-foreground resize-none"
               placeholder="Add any additional notes about this adjustment..."
               rows={3}
             />
@@ -607,19 +608,19 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <div className="flex-1">
                   <h4 className="font-semibold text-blue-400 mb-2">Adjustment Preview</h4>
                   <div className="space-y-1 text-sm">
-                    <div className="flex justify-between text-gray-300">
+                    <div className="flex justify-between text-muted-foreground">
                       <span>Current Stock:</span>
                       <span className="font-semibold">{effectiveCurrentStock} {product.unit}</span>
                     </div>
-                    <div className="flex justify-between text-gray-300">
+                    <div className="flex justify-between text-muted-foreground">
                       <span>Adjustment:</span>
-                      <span className={`font-semibold ${type === 'add' ? 'text-green-400' : 'text-red-400'}`}>
-                        {type === 'add' ? '+' : '-'}{quantity} {product.unit}
+                      <span className={`font-semibold ${type === 'add' ? 'text-[var(--erp-money-positive)]' : 'text-red-400'}`}>
+                        {type === 'add' ? '+' : '-'}{formatQty(quantity)} {product.unit}
                       </span>
                     </div>
                     <div className="border-t border-blue-500/20 pt-2 mt-2 flex justify-between">
-                      <span className="font-semibold text-white">New Stock:</span>
-                      <span className="font-bold text-white text-lg">
+                      <span className="font-semibold text-foreground">New Stock:</span>
+                      <span className="font-bold text-foreground text-lg">
                         {calculatedNewStock} {product.unit}
                       </span>
                     </div>
@@ -635,13 +636,13 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <ArrowRightLeft size={20} className="text-violet-400 mt-0.5" />
                 <div className="flex-1 text-sm space-y-1">
                   <p className="font-semibold text-violet-400">Transfer preview</p>
-                  <p className="text-gray-300">
-                    {quantity} {product.unit} from{' '}
-                    <span className="text-white">{branches.find((b) => b.id === adjustBranchId)?.name}</span>
+                  <p className="text-muted-foreground">
+                    {formatQty(quantity)} {product.unit} from{' '}
+                    <span className="text-foreground">{branches.find((b) => b.id === adjustBranchId)?.name}</span>
                     {' → '}
-                    <span className="text-white">{branches.find((b) => b.id === toBranchId)?.name}</span>
+                    <span className="text-foreground">{branches.find((b) => b.id === toBranchId)?.name}</span>
                   </p>
-                  <p className="text-gray-400">Source after: {Math.max(0, effectiveCurrentStock - quantity)} {product.unit}</p>
+                  <p className="text-muted-foreground">Source after: {formatQty(Math.max(0, effectiveCurrentStock - quantity))} {product.unit}</p>
                 </div>
               </div>
             </div>
@@ -654,7 +655,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <AlertCircle size={20} className="text-red-400 mt-0.5" />
                 <div>
                   <h4 className="font-semibold text-red-400">Invalid Quantity</h4>
-                  <p className="text-sm text-gray-300 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Cannot subtract more than current stock ({effectiveCurrentStock} {product.unit})
                   </p>
                 </div>
@@ -668,7 +669,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                 <AlertCircle size={20} className="text-red-400 mt-0.5" />
                 <div>
                   <h4 className="font-semibold text-red-400">Invalid Quantity</h4>
-                  <p className="text-sm text-gray-300 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Cannot transfer more than source stock ({effectiveCurrentStock} {product.unit})
                   </p>
                 </div>
@@ -677,18 +678,18 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
           )}
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-gray-800">
+          <div className="flex gap-3 pt-4 border-t border-border">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              className="flex-1 bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800"
+              className="flex-1 bg-card border-border text-muted-foreground hover:bg-muted"
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className={`flex-1 text-white ${drawerMode === 'transfer' ? 'bg-violet-600 hover:bg-violet-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+              className={`flex-1 text-foreground ${drawerMode === 'transfer' ? 'bg-violet-600 hover:bg-violet-500' : 'bg-blue-600 hover:bg-blue-500'}`}
               disabled={
                 quantity <= 0 ||
                 !adjustBranchId ||

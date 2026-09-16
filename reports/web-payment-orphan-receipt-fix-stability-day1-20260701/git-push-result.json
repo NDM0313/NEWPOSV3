@@ -1,0 +1,7 @@
+{
+  "commit": "dcf82d891fdf7d7fb5733432b9714005d3a6f17a",
+  "message": "fix(accounting): prevent orphan web receipts and add soft cleanup",
+  "branch": "main",
+  "origin_main": "dcf82d891fdf7d7fb5733432b9714005d3a6f17a",
+  "push": "SUCCESS"
+}

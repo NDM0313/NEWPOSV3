@@ -1,0 +1,7 @@
+{
+  "generated": "2026-06-29",
+  "email": "admin@test.com",
+  "deleted": false,
+  "decision": "CLEANUP_REQUIRED_OPERATOR_APPROVAL",
+  "reason": "Linked company and bootstrap data exist; not orphan auth-only"
+}

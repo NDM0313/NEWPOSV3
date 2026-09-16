@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ledger V2 PDF Preview — Phase 1 Acceptance</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #1a1f2e; font-family: Arial, Helvetica, sans-serif; padding: 24px; }
+    .modal-title { color: #e5e7eb; font-size: 14px; margin-bottom: 12px; font-weight: 600; }
+    .pdf-document { background: #fff; color: #111; max-width: 820px; margin: 0 auto; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+    .brand { border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 12px; }
+    .brand h1 { margin: 0; font-size: 18px; text-transform: uppercase; }
+    .brand .sub { font-size: 13px; font-weight: 600; margin-top: 4px; }
+    .brand .meta { font-size: 10px; color: #444; margin-top: 4px; }
+    .summary td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; font-size: 10px; width: 25%; }
+    .summary .lbl { color: #666; font-size: 8px; }
+    .summary .val { font-weight: 700; }
+    table.data { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 10px; }
+    table.data th { padding: 5px 4px; text-align: left; font-weight: 700; background: #f0f0f0; color: #111; border: 1px solid #333; }
+    table.data th.r { text-align: right; }
+    table.data td { padding: 3px 4px; border-bottom: 1px solid #ddd; }
+    table.data td.r { text-align: right; }
+    table.data tr.open { background: #f3f4f6; font-weight: 600; }
+    table.data tfoot td { background: #f3f4f6; font-weight: 700; border: 1px solid #333; padding: 5px 4px; }
+    .footer { margin-top: 12px; font-size: 9px; color: #666; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="modal-title">PDF Preview — Customer Ledger (8 columns incl. Branch)</div>
+  <div class="pdf-document">
+    <div class="brand">
+      <h1>DIN COUTURE</h1>
+      <div class="sub">Customer Ledger — Saqib Ahmed</div>
+      <div class="meta">Period: 01 Apr 2026 → 10 Jun 2026 · All branches (GL scope) · Generated: 10 Jun 2026</div>
+    </div>
+    <table class="summary" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td><div class="lbl">Opening</div><div class="val">Rs 12,000</div></td>
+        <td><div class="lbl">Closing</div><div class="val">Rs 25,000</div></td>
+        <td><div class="lbl">Total debit</div><div class="val">Rs 45,000</div></td>
+        <td><div class="lbl">Total credit</div><div class="val">Rs 20,000</div></td>
+      </tr>
+    </table>
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Date</th><th>Ref</th><th>Type</th><th>Description</th><th>Branch</th>
+          <th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="open"><td colspan="7">Opening balance</td><td class="r">Rs 12,000</td></tr>
+        <tr>
+          <td>01 Apr 2026</td><td>INV-1042</td><td>Sale Invoice</td><td>Silk bridal set</td><td>Main Branch</td>
+          <td class="r">Rs 45,000</td><td class="r">—</td><td class="r">Rs 45,000</td>
+        </tr>
+        <tr>
+          <td>05 Apr 2026</td><td>PAY-0891</td><td>Payment</td><td>Bank transfer</td><td>Main Branch</td>
+          <td class="r">—</td><td class="r">Rs 20,000</td><td class="r">Rs 25,000</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5" class="r">Totals / Closing balance</td>
+          <td class="r">Rs 45,000</td><td class="r">Rs 20,000</td><td class="r">Rs 25,000</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="footer">Page 1 of 1</div>
+  </div>
+</body>
+</html>

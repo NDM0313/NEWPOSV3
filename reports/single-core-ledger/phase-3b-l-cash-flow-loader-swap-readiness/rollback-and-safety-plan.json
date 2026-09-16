@@ -1,0 +1,50 @@
+{
+  "phase": "3B-L",
+  "run": "rollback-and-safety-plan",
+  "generated_at": "2026-06-29T17:00:00.000Z",
+  "planOnly": true,
+  "executed": false,
+  "steps": [
+    {
+      "order": 1,
+      "action": "Disable Cash Flow loader flag",
+      "detail": "UPDATE or DELETE feature_flags row where feature_key = unified_ledger_loader_cash_flow per company",
+      "restores": "Legacy getCashFlowReport as main path when resolver reads flag OFF"
+    },
+    {
+      "order": 2,
+      "action": "Emergency kill switch",
+      "detail": "Enable unified_ledger_kill_switch for affected company — forces legacy on all unified loaders",
+      "when": "Critical production incident affecting multiple reports"
+    },
+    {
+      "order": 3,
+      "action": "Frontend revert",
+      "detail": "Redeploy prior ERP bundle via deploy/vps-build-erp-only.sh from known-good commit",
+      "when": "Unified main path code defect independent of flags"
+    },
+    {
+      "order": 4,
+      "action": "Verify no GL/data mutation",
+      "detail": "Confirm monitoring reports gl_mutations: false; no migration apply commands were run",
+      "command": "npm run monitor:three-company-unified-ledger"
+    },
+    {
+      "order": 5,
+      "action": "Post-rollback monitoring",
+      "detail": "Run three-company monitoring until PASS; verify Cash Flow main totals match pre-swap legacy",
+      "expected": "din-china PASS, din-bridal PASS, din-couture PASS"
+    },
+    {
+      "order": 6,
+      "action": "User communication",
+      "detail": "Inform operators that Cash Flow totals reverted to legacy official basis; no journal/stock changes occurred"
+    }
+  ],
+  "stopConditions": [
+    "Rollback itself causes monitoring FAIL — escalate, do not re-enable loader flag",
+    "Kill switch left ON without documented incident closure",
+    "Partial rollback (one company only) without operator sign-off"
+  ],
+  "sqlTemplatePattern": "scripts/single-core-ledger/din-couture/dc-rollback-loader-*.sql"
+}

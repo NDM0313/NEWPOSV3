@@ -1,0 +1,63 @@
+{
+  "phase": "2.17",
+  "status": "READY_FOR_PR_OR_MAIN_MERGE_GOVERNANCE",
+  "company": "DIN CHINA",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "production_url": "https://erp.dincouture.pk",
+  "branch": "feature/single-core-ledger-phase-2-9a3-preview-deploy-plan",
+  "phase_216_commit": "269830b5",
+  "phase_216_status": "A",
+  "phase_216_status_label": "PHASE 2.16 MONITORING PASS — DIN CHINA UNIFIED LEDGER STABLE",
+  "flags_changed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "other_company_expansion": false,
+  "fx_app_touched": false,
+  "live_unified_loaders": [
+    "ledger_v2",
+    "account_statement",
+    "trial_balance",
+    "party_ledger",
+    "roznamcha"
+  ],
+  "tests": {
+    "test_unified_ledger": {
+      "command": "npm run test:unified-ledger",
+      "result": "PASS",
+      "count": 240,
+      "fail": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "result": "PASS"
+    }
+  },
+  "golden_values": {
+    "ledger_v2_mr_jalil_pkr": 216300,
+    "account_statement_mr_jalil_pkr": 216300,
+    "party_ledger_mr_jalil_pkr": 216300,
+    "trial_balance_debit_credit_pkr": 407957271.02,
+    "roznamcha_cash_in_pkr": 136158012,
+    "roznamcha_cash_out_pkr": 67042426,
+    "roznamcha_closing_pkr": 69115586
+  },
+  "evidence_paths": {
+    "phase_2_16_monitoring": "reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md",
+    "phase_2_16_flags": "reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json",
+    "phase_2_16_automation": "reports/single-core-ledger/phase-2-16-monitoring/automation-hardening-report.md",
+    "phase_2_16_final_verify": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+    "phase_2_16_expansion": "reports/single-core-ledger/phase-2-16-monitoring/company-expansion-readiness.md",
+    "expansion_checklist": "docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md",
+    "production_ready": "docs/accounting/SINGLE_CORE_LEDGER_PRODUCTION_READY.md",
+    "phase_2_15_plan": "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_15_CASH_BANK_PARITY_AND_ROZNAMCHA_RECOVERY_PLAN.md",
+    "phase_2_17_governance": "reports/single-core-ledger/phase-2-17-release-governance/final-release-governance.md"
+  },
+  "rollback_scripts": {
+    "ledger_v2": "scripts/single-core-ledger/phase-210-rollback-loader-ledger-v2.sql",
+    "account_statement": "scripts/single-core-ledger/phase-211-rollback-account-statement-loader.sql",
+    "trial_balance": "scripts/single-core-ledger/phase-212-rollback-trial-balance-loader.sql",
+    "party_ledger": "scripts/single-core-ledger/phase-213-rollback-party-ledger-loader.sql",
+    "roznamcha": "scripts/single-core-ledger/phase-214-rollback-roznamcha-loader.sql"
+  },
+  "generated_at": "2026-06-27T12:42:11Z"
+}

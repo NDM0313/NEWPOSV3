@@ -45,7 +45,96 @@ export interface CreatePurchaseInput {
 }
 
 const PURCHASE_ATTACHMENTS_BUCKET = 'purchase-attachments';
-const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_PURCHASE_ATTACHMENTS_COUNT = 5;
+
+export type PurchaseAttachmentMeta = { url: string; name: string };
+
+/** Merge attachment lists; dedupe by url; cap at MAX_PURCHASE_ATTACHMENTS_COUNT. */
+export function mergePurchaseAttachments(
+  existing: PurchaseAttachmentMeta[],
+  uploaded: PurchaseAttachmentMeta[],
+): PurchaseAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: PurchaseAttachmentMeta[] = [];
+  const push = (a: PurchaseAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_PURCHASE_ATTACHMENTS_COUNT);
+}
+
+async function fetchPurchaseAttachments(purchaseId: string): Promise<PurchaseAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('purchases').select('attachments').eq('id', purchaseId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Persist attachment metadata on the purchase row (after upload). */
+export async function updatePurchaseAttachments(
+  purchaseId: string,
+  attachments: { url: string; name: string }[],
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('purchases')
+    .update({ attachments: attachments.length > 0 ? attachments : null })
+    .eq('id', purchaseId);
+  if (error) {
+    if (error.code === 'PGRST204' && String(error.message || '').includes('attachments')) {
+      return { error: null };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Upload new files and merge onto existing purchase.attachments (max 5 total). */
+export async function appendPurchaseAttachments(
+  companyId: string,
+  purchaseId: string,
+  files: File[],
+  existing?: PurchaseAttachmentMeta[],
+): Promise<{ data: PurchaseAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchPurchaseAttachments(purchaseId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchPurchaseAttachments(purchaseId));
+  const slotsLeft = MAX_PURCHASE_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_PURCHASE_ATTACHMENTS_COUNT} attachments per purchase.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadPurchaseAttachments(companyId, purchaseId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergePurchaseAttachments(prior, upload.data);
+  const upd = await updatePurchaseAttachments(purchaseId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
+}
 
 export async function uploadPurchaseAttachments(
   companyId: string,
@@ -334,6 +423,7 @@ export interface PurchaseListItem {
   created_by?: string | null;
   created_by_name?: string;
   branchId?: string | null;
+  attachments?: { url: string; name: string }[];
 }
 
 async function enrichPurchasesWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
@@ -408,7 +498,7 @@ async function fetchPurchasesOnline(
 ): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   let query = supabase
     .from('purchases')
-    .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date, created_by, branch_id')
+    .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date, created_by, branch_id, attachments')
     .eq('company_id', companyId)
     // Keep cancelled POs visible with a "Cancelled" badge (web parity). Filtering removed.
     .order('po_date', { ascending: false })
@@ -465,6 +555,11 @@ async function fetchPurchasesOnline(
       created_by: (r.created_by as string) ?? null,
       created_by_name: (r.created_by_name as string) || undefined,
       branchId: (r.branch_id as string) ?? null,
+      attachments: Array.isArray(r.attachments)
+        ? (r.attachments as { url?: string; name?: string }[])
+            .map((a) => ({ url: String(a?.url ?? ''), name: String(a?.name ?? 'Attachment') }))
+            .filter((a) => a.url)
+        : undefined,
     };
   });
   return { data: list, error: null };

@@ -1,4 +1,5 @@
-import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '@/app/utils/localDate';
+import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 /**
  * Purchase Accounting Service (Phase 5: one contract)
  *
@@ -16,6 +17,11 @@ import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate'
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { resolvePayablePostingAccountId } from './partySubledgerAccountService';
 import { documentNumberService } from './documentNumberService';
+import {
+  getFreightSettlement,
+  isCourierFreightChargeType,
+} from '@/app/wholesale/wholesaleImportPurchaseCalc';
+import { resolveCourierPayableForPurchase } from '@/app/wholesale/wholesaleImportPurchase';
 
 export type PurchaseAccountingSnapshot = {
   total: number;
@@ -64,6 +70,120 @@ function purchaseLedgerChargeLabel(typeRaw: string): string {
   };
   if (!t) return 'Extra charge';
   return labels[t] || t.replace(/_/g, ' ');
+}
+
+export type PurchaseDocumentJournalLineSpec = {
+  account_id: string;
+  debit: number;
+  credit: number;
+  description: string;
+};
+
+/** Build canonical purchase document JE lines (retail supplier freight vs wholesale courier clearance). */
+export async function buildPurchaseDocumentJournalLines(params: {
+  companyId: string;
+  purchaseId: string;
+  poNo: string;
+  supplierName: string;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  shippingCost: number;
+  freightSettlement: string;
+  clearanceCourierId?: string | null;
+  supplierContactId?: string | null;
+  charges?: Array<{ charge_type?: string; chargeType?: string; amount?: number }>;
+  inventoryAccountId: string;
+  apAccountId: string;
+  discountAccountId?: string | null;
+}): Promise<PurchaseDocumentJournalLineSpec[]> {
+  const {
+    companyId,
+    poNo,
+    supplierName,
+    subtotal,
+    discount,
+    tax,
+    shippingCost,
+    freightSettlement,
+    clearanceCourierId,
+    supplierContactId,
+    charges = [],
+    inventoryAccountId,
+    apAccountId,
+    discountAccountId,
+  } = params;
+
+  const courierMode = getFreightSettlement({ freight_settlement: freightSettlement }) === 'courier' && !!clearanceCourierId;
+  let courierPayableId: string | null = null;
+  if (courierMode && clearanceCourierId) {
+    courierPayableId = await resolveCourierPayableForPurchase(companyId, clearanceCourierId);
+  }
+
+  const lines: PurchaseDocumentJournalLineSpec[] = [];
+  const itemsSubtotal = Number(subtotal) || 0;
+
+  if (itemsSubtotal > 0) {
+    lines.push(
+      { account_id: inventoryAccountId, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` },
+      { account_id: apAccountId, debit: 0, credit: itemsSubtotal, description: `Payable to ${supplierName}` },
+    );
+  }
+
+  const taxAmt = Number(tax) || 0;
+  if (taxAmt > 0) {
+    lines.push(
+      { account_id: inventoryAccountId, debit: taxAmt, credit: 0, description: `Tax (purchase) ${poNo}` },
+      { account_id: apAccountId, debit: 0, credit: taxAmt, description: `Payable — tax ${supplierName}` },
+    );
+  }
+
+  for (const c of charges) {
+    const amount = Number(c?.amount ?? 0);
+    const type = String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase();
+    const chargeLabel = purchaseLedgerChargeLabel(type);
+    if (amount <= 0) continue;
+    if (type === 'discount' && discountAccountId) {
+      lines.push(
+        { account_id: apAccountId, debit: amount, credit: 0, description: 'Purchase discount (purchase)' },
+        { account_id: discountAccountId, debit: 0, credit: amount, description: 'Discount received (purchase)' },
+      );
+      continue;
+    }
+    if (courierMode && isCourierFreightChargeType(type)) {
+      continue;
+    }
+    const creditAccountId = apAccountId;
+    lines.push(
+      { account_id: inventoryAccountId, debit: amount, credit: 0, description: `${chargeLabel} (purchase)` },
+      { account_id: creditAccountId, debit: 0, credit: amount, description: `Payable - ${chargeLabel}` },
+    );
+  }
+
+  if (Number(discount) > 0 && discountAccountId && !charges.some((c) => String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase() === 'discount')) {
+    lines.push(
+      { account_id: apAccountId, debit: discount, credit: 0, description: 'Purchase discount (purchase)' },
+      { account_id: discountAccountId, debit: 0, credit: discount, description: 'Discount received (purchase)' },
+    );
+  }
+
+  const clearance = Number(shippingCost) || 0;
+  if (clearance > 0) {
+    if (courierMode && courierPayableId) {
+      lines.push(
+        { account_id: inventoryAccountId, debit: clearance, credit: 0, description: `Clearance / freight (purchase) ${poNo}` },
+        { account_id: courierPayableId, debit: 0, credit: clearance, description: `Courier clearance — ${supplierName}` },
+      );
+    } else {
+      lines.push(
+        { account_id: inventoryAccountId, debit: clearance, credit: 0, description: `Freight (purchase)` },
+        { account_id: apAccountId, debit: 0, credit: clearance, description: `Payable — freight` },
+      );
+    }
+  }
+
+  void supplierContactId;
+  return lines;
 }
 
 /** Build accounting snapshot from purchase row + charges for delta comparison. */
@@ -220,14 +340,31 @@ export async function createPurchaseJournalEntry(params: {
   const eligible = await assertPurchaseEligibleForDocumentJournal(purchaseId, poNo);
   if (!eligible) return null;
 
+  const resolvedEntryDate = entryDate ? toLocalDateString(entryDate) : localNowDateString();
+
   const existingId = await findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId);
   if (existingId) {
     console.log(`[purchaseAccountingService] Canonical purchase document JE already exists for ${poNo}, reusing ${existingId}`);
+    await syncJournalEntryDateByDocumentRefs({
+      companyId,
+      referenceTypes: ['purchase', 'purchase_adjustment'],
+      referenceId: purchaseId,
+      entryDate: resolvedEntryDate,
+    });
     return existingId;
   }
 
-  const { data: purRow } = await supabase.from('purchases').select('supplier_id').eq('id', purchaseId).maybeSingle();
+  const { data: purRow } = await supabase
+    .from('purchases')
+    .select('supplier_id, discount_amount, tax_amount, shipping_cost, freight_settlement, clearance_courier_id')
+    .eq('id', purchaseId)
+    .maybeSingle();
   const supplierContactId = (purRow as { supplier_id?: string | null } | null)?.supplier_id ?? null;
+  const headerDiscount = Number((purRow as { discount_amount?: number } | null)?.discount_amount ?? 0) || 0;
+  const headerTax = Number((purRow as { tax_amount?: number } | null)?.tax_amount ?? 0) || 0;
+  const headerShipping = Number((purRow as { shipping_cost?: number } | null)?.shipping_cost ?? 0) || 0;
+  const freightSettlement = String((purRow as { freight_settlement?: string } | null)?.freight_settlement ?? 'supplier');
+  const clearanceCourierId = (purRow as { clearance_courier_id?: string | null } | null)?.clearance_courier_id ?? null;
 
   let inventoryAccountId: string | null = await resolveInventoryGlAccountIdForPurchase(companyId);
   let apAccountId: string | null = null;
@@ -260,16 +397,8 @@ export async function createPurchaseJournalEntry(params: {
   const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
   const normalizedCharges = [...charges];
   const hasDiscountLine = normalizedCharges.some((c) => String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase() === 'discount');
-  if (!hasDiscountLine) {
-    const { data: purchaseHeader } = await supabase
-      .from('purchases')
-      .select('discount_amount')
-      .eq('id', purchaseId)
-      .maybeSingle();
-    const headerDiscount = Number((purchaseHeader as { discount_amount?: number } | null)?.discount_amount ?? 0) || 0;
-    if (headerDiscount > 0) {
-      normalizedCharges.push({ charge_type: 'discount', amount: headerDiscount });
-    }
+  if (headerDiscount > 0 && !hasDiscountLine) {
+    normalizedCharges.push({ charge_type: 'discount', amount: headerDiscount });
   }
 
   const entry: JournalEntry = {
@@ -277,7 +406,7 @@ export async function createPurchaseJournalEntry(params: {
     company_id: companyId,
     branch_id: branchId && branchId !== 'all' ? branchId : undefined,
     entry_no: entryNo,
-    entry_date: entryDate || localNowDateString(),
+    entry_date: resolvedEntryDate,
     description: `Purchase ${poNo} from ${supplierName}`,
     reference_type: 'purchase',
     reference_id: purchaseId,
@@ -285,30 +414,31 @@ export async function createPurchaseJournalEntry(params: {
     action_fingerprint: purchaseDocumentJournalFingerprint(companyId, purchaseId),
   };
 
-  const lines: JournalEntryLine[] = [];
-  if (itemsSubtotal > 0) {
-    lines.push(
-      { id: '', journal_entry_id: '', account_id: inventoryAccountId, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` },
-      { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: itemsSubtotal, description: `Payable to ${supplierName}` },
-    );
-  }
-  for (const c of normalizedCharges) {
-    const amount = Number(c?.amount ?? 0);
-    const type = String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase();
-    const chargeLabel = purchaseLedgerChargeLabel(type);
-    if (amount <= 0) continue;
-    if (type === 'discount' && discountAccountId) {
-      lines.push(
-        { id: '', journal_entry_id: '', account_id: apAccountId, debit: amount, credit: 0, description: 'Purchase discount (purchase)' },
-        { id: '', journal_entry_id: '', account_id: discountAccountId, debit: 0, credit: amount, description: 'Discount received (purchase)' },
-      );
-    } else {
-      lines.push(
-        { id: '', journal_entry_id: '', account_id: inventoryAccountId, debit: amount, credit: 0, description: `${chargeLabel} (purchase)` },
-        { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: amount, description: `Payable - ${chargeLabel}` },
-      );
-    }
-  }
+  const lineSpecs = await buildPurchaseDocumentJournalLines({
+    companyId,
+    purchaseId,
+    poNo,
+    supplierName,
+    subtotal: itemsSubtotal,
+    discount: headerDiscount,
+    tax: headerTax,
+    shippingCost: headerShipping,
+    freightSettlement,
+    clearanceCourierId,
+    supplierContactId,
+    charges: normalizedCharges,
+    inventoryAccountId,
+    apAccountId,
+    discountAccountId,
+  });
+  const lines: JournalEntryLine[] = lineSpecs.map((l) => ({
+    id: '',
+    journal_entry_id: '',
+    account_id: l.account_id,
+    debit: l.debit,
+    credit: l.credit,
+    description: l.description,
+  }));
   if (!lines.length) return null;
   const result = await accountingService.createEntry(entry, lines);
   return (result as { id?: string } | null)?.id ?? null;
@@ -502,6 +632,7 @@ export async function reversePurchaseDocumentJournalEntry(params: {
   }
 
   const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
+  // Cancellation stamps the day of cancel (not original po_date).
   const entryDate = localNowDateString();
   const entry: JournalEntry = {
     id: '',

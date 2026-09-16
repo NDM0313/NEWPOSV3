@@ -1,0 +1,28 @@
+{
+  "phase": "3B-L",
+  "run": "evidence-read-summary",
+  "generated_at": "2026-06-29T17:00:00.000Z",
+  "sources": [
+    "phase-3b-k-cash-flow-finance-signoff/cash-flow-finance-signoff-pack.json",
+    "phase-3b-k-cash-flow-finance-signoff/finance-basis-decision-record.json",
+    "phase-3b-i-cash-flow-aligned-golden-capture/aligned-cash-flow-candidate-goldens.json",
+    "phase-3b-j-cash-flow-residual-delta-bridge/residual-delta-bridge.json",
+    "phase-3b-h-cash-flow-preview-alignment/phase-3b-h-implementation-manifest.json"
+  ],
+  "financeBasis": {
+    "selectedOption": "B",
+    "reviewer": "Nadeem Khan",
+    "reviewDate": "2026-06-29",
+    "rules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+    "companyStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE"
+  },
+  "loaderSwapApproved": false,
+  "officialLegacyUnchanged": true,
+  "deployedPreviewAlignment": "d2401b1f",
+  "companies": {
+    "din-china": { "closingDelta": 69637623, "acceptedAsExpected": true },
+    "din-bridal": { "closingDelta": 857850, "acceptedAsExpected": true },
+    "din-couture": { "closingDelta": 0, "zeroDiff": true }
+  },
+  "readinessConclusion": "Finance basis sign-off complete. Loader swap not approved. Architecture map and future implementation plan required before Phase 3B-M."
+}

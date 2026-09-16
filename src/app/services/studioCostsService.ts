@@ -12,6 +12,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 
 export interface WorkerCostSummary {
   workerId: string;
@@ -184,13 +185,26 @@ export const studioCostsService = {
     if (costId) accountFilter.push(costId);
     if (payableId) accountFilter.push(payableId);
 
-    const { data: lines, error: linesErr } = await supabase
-      .from('journal_entry_lines')
-      .select('id, journal_entry_id, account_id, debit, credit')
-      .in('journal_entry_id', allJeIds)
-      .in('account_id', accountFilter);
+    let lines: { id: string; journal_entry_id: string; account_id: string; debit: number; credit: number }[] = [];
+    try {
+      lines = await fetchInBatches(
+        allJeIds,
+        async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entry_lines')
+            .select('id, journal_entry_id, account_id, debit, credit')
+            .in('journal_entry_id', chunk)
+            .in('account_id', accountFilter);
+          if (error) throw error;
+          return data || [];
+        },
+        { chunkSize: 15 }
+      );
+    } catch {
+      lines = [];
+    }
 
-    if (linesErr || !lines?.length) {
+    if (!lines.length) {
       return { summary: { totalCost: 0, totalPaid: 0, totalUnpaid: 0, workersCount: 0, byStageType: { dyer: 0, stitching: 0, handwork: 0 }, fromJournal: true }, workerCosts: [], hasData: false };
     }
 
@@ -218,11 +232,15 @@ export const studioCostsService = {
 
     if (stageJeIds.length > 0 && costId) {
       // Get stage lines (Cost of Production debits only — one per completed stage)
-      const { data: stageLines } = await supabase
-        .from('journal_entry_lines')
-        .select('journal_entry_id, debit, credit')
-        .in('journal_entry_id', stageJeIds)
-        .eq('account_id', costId);
+      const stageLines = await fetchInBatches(stageJeIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, debit, credit')
+          .in('journal_entry_id', chunk)
+          .eq('account_id', costId);
+        if (error) throw error;
+        return data || [];
+      });
 
       // Map stageId → { totalDebit, totalCredit }
       const stageCostMap = new Map<string, { debit: number; credit: number }>();

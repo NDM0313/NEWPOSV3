@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchInBatches } from '../lib/chunkInQuery';
+import { applyBranchStockMovementFilter, isRealBranchUuid } from '../utils/branchId';
+import { fetchStockMovementsPaged } from '../utils/productStockFetch';
 
 export interface InventoryItem {
   id: string;
@@ -35,73 +36,27 @@ export async function getInventory(
   const productIds = products.map((p: { id: string }) => p.id);
   let movements: { product_id: string; variation_id: string | null; quantity: number }[] = [];
   try {
-    movements = await fetchInBatches(productIds, async (chunk) => {
-      let movQ = supabase
-        .from('stock_movements')
-        .select('product_id, variation_id, quantity')
-        .eq('company_id', companyId)
-        .in('product_id', chunk);
-      if (branchId && branchId !== 'all' && branchId !== 'default') {
-        movQ = movQ.eq('branch_id', branchId);
-      } else if (options?.accessibleBranchIds?.length) {
-        movQ = movQ.in('branch_id', options.accessibleBranchIds);
-      }
-      const { data, error } = await movQ;
-      if (error) throw error;
-      return (data || []) as { product_id: string; variation_id: string | null; quantity: number }[];
+    movements = await fetchStockMovementsPaged(companyId, productIds, {
+      branchId: isRealBranchUuid(branchId) ? branchId : null,
+      accessibleBranchIds:
+        !isRealBranchUuid(branchId) && options?.accessibleBranchIds?.length
+          ? options.accessibleBranchIds
+          : undefined,
     });
   } catch (e: unknown) {
     console.warn('[getInventory] stock_movements:', e instanceof Error ? e.message : String(e));
   }
 
-  function stockMapFromMovements(
-    rows: { product_id: string; variation_id: string | null; quantity: number }[]
-  ): Record<string, number> {
-    const map: Record<string, number> = {};
-    for (const m of rows) {
-      const key = m.variation_id ? `${m.product_id}_${m.variation_id}` : m.product_id;
-      map[key] = (map[key] ?? 0) + (Number(m.quantity) || 0);
-    }
-    return map;
-  }
-
-  const stockByKey = stockMapFromMovements(movements);
-
-  const withVariations = products.filter((r: { has_variations?: boolean }) => r.has_variations);
-  const varProductIds = withVariations.map((r: { id: string }) => r.id);
-  let varMap: Record<string, { id: string }[]> = {};
-  if (varProductIds.length > 0) {
-    let varData: { product_id: string; id: string }[] = [];
-    try {
-      varData = await fetchInBatches(varProductIds, async (chunk) => {
-        const { data, error } = await supabase
-          .from('product_variations')
-          .select('id, product_id')
-          .in('product_id', chunk)
-          .eq('is_active', true);
-        if (error) throw error;
-        return (data || []) as { product_id: string; id: string }[];
-      });
-    } catch (e: unknown) {
-      console.warn('[getInventory] product_variations:', e instanceof Error ? e.message : String(e));
-    }
-    for (const v of varData) {
-      const pv = v as { product_id: string; id: string };
-      if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
-      varMap[pv.product_id].push({ id: pv.id });
-    }
+  // Authoritative on-hand: SUM(quantity) per product_id (matches web inventoryService when movRows exist).
+  const stockByProduct: Record<string, number> = {};
+  for (const m of movements) {
+    const pid = m.product_id;
+    stockByProduct[pid] = (stockByProduct[pid] ?? 0) + (Number(m.quantity) || 0);
   }
 
   const list: InventoryItem[] = products.map((r: Record<string, unknown>) => {
     const id = String(r.id ?? '');
-    const hasVariations = r.has_variations === true;
-    let stock: number;
-    if (hasVariations) {
-      const vars = varMap[id] ?? [];
-      stock = vars.length > 0 ? vars.reduce((sum, v) => sum + (stockByKey[`${id}_${v.id}`] ?? 0), 0) : 0;
-    } else {
-      stock = stockByKey[id] ?? 0;
-    }
+    const stock = stockByProduct[id] ?? 0;
     const minStock = Number(r.min_stock) ?? 0;
     const imgs = (r.image_urls as string[] | null) ?? [];
     const pc = r.product_categories as { name?: string } | { name?: string }[] | null | undefined;
@@ -203,7 +158,9 @@ export async function getProductStockMovements(
     .eq('product_id', productId)
     .order('created_at', { ascending: true });
 
-  if (opts.branchId && opts.branchId !== 'all') q = q.eq('branch_id', opts.branchId);
+  if (isRealBranchUuid(opts.branchId)) {
+    q = applyBranchStockMovementFilter(q, opts.branchId);
+  }
   if (opts.from) q = q.gte('created_at', opts.from);
   if (opts.to) q = q.lte('created_at', opts.to);
   if (opts.types?.length) q = q.in('movement_type', opts.types);

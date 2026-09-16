@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-06-30T11:22:30.000Z",
+  "config_sources": {
+    "primary_env_file": "/root/supabase/docker/.env",
+    "compose_file": "/root/supabase/docker/docker-compose.yml",
+    "auth_service": "supabase-auth",
+    "note": "GoTrue SMTP/autoconfirm values are injected via docker-compose env substitution from .env"
+  },
+  "vps_backup": {
+    "timestamp_utc": "20260630T112048Z",
+    "env_backup": "/root/supabase/docker/.env.bak.auth-otp-infra-20260630T112048Z",
+    "compose_backup": "/root/supabase/docker/docker-compose.yml.bak.auth-otp-infra-20260630T112048Z"
+  },
+  "current_running_container_values_masked": {
+    "GOTRUE_MAILER_AUTOCONFIRM": "true",
+    "GOTRUE_SMTP_HOST": "supabase-mail",
+    "GOTRUE_SMTP_PORT": "2500",
+    "GOTRUE_SMTP_USER": "fake_mail_user",
+    "GOTRUE_SMTP_PASS": "***MASKED***",
+    "GOTRUE_SMTP_ADMIN_EMAIL": "admin@example.com",
+    "GOTRUE_SMTP_SENDER_NAME": "fake_sender",
+    "GOTRUE_SITE_URL": "https://erp.dincouture.pk"
+  },
+  "env_file_values_masked": {
+    "ENABLE_EMAIL_AUTOCONFIRM": "true",
+    "SMTP_HOST": "supabase-mail",
+    "SMTP_PORT": "2500",
+    "SMTP_USER": "fake_mail_user",
+    "SMTP_PASS": "***MASKED***",
+    "SMTP_ADMIN_EMAIL": "admin@example.com",
+    "SMTP_SENDER_NAME": "fake_sender"
+  },
+  "url_related": {
+    "SITE_URL": "https://erp.dincouture.pk",
+    "API_EXTERNAL_URL": "https://supabase.dincouture.pk"
+  },
+  "change_applied": false
+}

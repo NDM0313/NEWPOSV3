@@ -1,0 +1,1233 @@
+{
+  "mode": "dry-run",
+  "generatedAt": "2026-06-15T07:07:50.103Z",
+  "targetCompanyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "sourceSystem": "legacy_din_china",
+  "csvPaths": {
+    "sales": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_sales.csv",
+    "saleItems": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_sale_items.csv",
+    "salePayments": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_sale_payments.csv",
+    "purchases": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_purchases.csv",
+    "purchaseItems": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_purchase_items.csv",
+    "purchasePayments": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_purchase_payments.csv",
+    "expenses": "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\legacy_din_china_expenses.csv"
+  },
+  "expectedTotals": {
+    "sales": {
+      "count": 34,
+      "amount": 28343979
+    },
+    "saleItems": {
+      "count": 63
+    },
+    "salePayments": {
+      "count": 70,
+      "amount": 8416540
+    },
+    "purchases": {
+      "count": 1,
+      "amount": 67978418.4
+    },
+    "purchaseItems": {
+      "count": 17
+    },
+    "purchasePayments": {
+      "count": 4,
+      "amount": 65916440
+    },
+    "expenses": {
+      "count": 4,
+      "amount": 88000
+    }
+  },
+  "liveImportApplied": false,
+  "csvValidation": {
+    "errors": [],
+    "computed": {
+      "sales count": 34,
+      "sales total": 28343979,
+      "sale items count": 63,
+      "sale payments count": 70,
+      "sale payments total": 8416540,
+      "purchases count": 1,
+      "purchases total": 67978418.4,
+      "purchase items count": 17,
+      "purchase payments count": 4,
+      "purchase payments total": 65916440,
+      "expenses count": 4,
+      "expenses total": 88000
+    }
+  },
+  "companyLookupStatus": "ok",
+  "company": {
+    "id": "30bd8592-3384-4f34-899a-f3907e336485",
+    "name": "DIN CHINA"
+  },
+  "schema": [
+    {
+      "table": "companies",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "name"
+      ],
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    {
+      "table": "branches",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "name",
+        "code",
+        "is_active"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "name"
+      ]
+    },
+    {
+      "table": "contacts",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "type",
+        "name",
+        "phone",
+        "mobile",
+        "code",
+        "notes",
+        "system_type"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "type",
+        "name"
+      ]
+    },
+    {
+      "table": "products",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "name",
+        "sku",
+        "cost_price",
+        "retail_price",
+        "has_variations",
+        "track_stock"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "name",
+        "sku"
+      ]
+    },
+    {
+      "table": "product_variations",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "product_id",
+        "sku",
+        "attributes",
+        "price"
+      ],
+      "required": [
+        "id",
+        "product_id",
+        "sku"
+      ]
+    },
+    {
+      "table": "sales",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "branch_id",
+        "invoice_no",
+        "invoice_date",
+        "customer_id",
+        "status",
+        "payment_status",
+        "subtotal",
+        "discount_amount",
+        "tax_amount",
+        "expenses",
+        "total",
+        "paid_amount",
+        "due_amount",
+        "notes",
+        "source",
+        "customer_bill_ref",
+        "created_by"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "branch_id",
+        "invoice_date",
+        "status",
+        "total",
+        "paid_amount",
+        "due_amount"
+      ]
+    },
+    {
+      "table": "sales_items",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "sale_id",
+        "product_id",
+        "variation_id",
+        "product_name",
+        "sku",
+        "quantity",
+        "unit_price",
+        "discount_amount",
+        "tax_amount",
+        "total"
+      ],
+      "required": [
+        "sale_id",
+        "product_id",
+        "product_name",
+        "sku",
+        "quantity",
+        "unit_price",
+        "total"
+      ]
+    },
+    {
+      "table": "purchases",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "branch_id",
+        "po_no",
+        "po_date",
+        "supplier_id",
+        "status",
+        "payment_status",
+        "subtotal",
+        "discount_amount",
+        "tax_amount",
+        "shipping_cost",
+        "total",
+        "paid_amount",
+        "due_amount",
+        "notes",
+        "created_by"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "branch_id",
+        "po_no",
+        "supplier_id",
+        "status",
+        "total"
+      ]
+    },
+    {
+      "table": "purchase_items",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "purchase_id",
+        "product_id",
+        "variation_id",
+        "product_name",
+        "sku",
+        "quantity",
+        "unit_price",
+        "total"
+      ],
+      "required": [
+        "purchase_id",
+        "product_id",
+        "quantity",
+        "unit_price",
+        "total"
+      ]
+    },
+    {
+      "table": "payments",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "branch_id",
+        "payment_type",
+        "reference_type",
+        "reference_id",
+        "amount",
+        "payment_method",
+        "payment_date",
+        "payment_account_id",
+        "reference_number",
+        "notes"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "reference_type",
+        "reference_id",
+        "amount",
+        "payment_method"
+      ]
+    },
+    {
+      "table": "expenses",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "branch_id",
+        "expense_no",
+        "expense_date",
+        "category",
+        "description",
+        "amount",
+        "payment_method",
+        "payment_account_id",
+        "status",
+        "created_by"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "expense_date",
+        "amount",
+        "status"
+      ]
+    },
+    {
+      "table": "accounts",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "code",
+        "name",
+        "type",
+        "balance",
+        "is_active"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "code",
+        "name",
+        "type"
+      ]
+    },
+    {
+      "table": "stock_movements",
+      "ok": true,
+      "error": null,
+      "sampleColumns": [
+        "id",
+        "company_id",
+        "branch_id",
+        "product_id",
+        "variation_id",
+        "movement_type",
+        "quantity",
+        "reference_type",
+        "reference_id",
+        "notes"
+      ],
+      "required": [
+        "id",
+        "company_id",
+        "product_id",
+        "quantity",
+        "movement_type"
+      ]
+    }
+  ],
+  "branch": {
+    "legacyBranchId": 2,
+    "action": "reuse",
+    "branchId": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+    "name": "DIN CHINA",
+    "code": "BL0002"
+  },
+  "walkingCustomerId": "7c575448-3382-4587-a1c6-f05847733058",
+  "contacts": {
+    "customers": 21,
+    "suppliers": 1,
+    "plan": {
+      "create": 0,
+      "reuse": 22,
+      "other": 0
+    },
+    "details": [
+      {
+        "legacyContactId": 47,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "f8fd5ef4-0710-4f90-8726-0626132f2f5d",
+        "name": "LAL   MOHAMMAD",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 46,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "11d58d0b-a4fe-4022-8428-0d859cfbcd73",
+        "name": "RAEES   LHR",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 48,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "2ba4ba1f-f947-44b9-8007-eb5b412f37cd",
+        "name": "SHAHURKH   KHAN",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 49,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "a987eea6-22cb-43a5-87b3-11bdc1f421f8",
+        "name": "AZIZ   JAMURAD",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 50,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "b74d8b8e-7de4-4a5e-8931-bca7915570ed",
+        "name": "PARVAISE  MARDAN",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 51,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "166142cd-98ee-4e0a-8827-0b666cb2e04d",
+        "name": "MURAD  RAMDAS",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 52,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "ed1abdc6-a701-488b-8a92-8efd1f9750a3",
+        "name": "HASSAN   MARDAN",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 53,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "88249510-03b3-490c-8c95-93c6476c2e18",
+        "name": "SALEEM   KARIM ULLAH",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 54,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "476d3eea-5653-4689-8a07-08efaaa9ea7b",
+        "name": "ABDUL WAJID  JAMURAD",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 55,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "26f8df5e-d847-47b2-845a-a6d983c2b2e9",
+        "name": "AHMED   ZEB",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 56,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "da4f66e7-7be0-48fe-8486-aa02fa1b50ff",
+        "name": "HAJI   SHARIF",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 57,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "31375187-7c08-4a8e-8819-f65bde2224f7",
+        "name": "DIN COUTURE",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 58,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "f4a27643-4976-4283-8db0-667f1dcb686c",
+        "name": "MR KHALIL LHR",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 59,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "fa1ef303-5642-45b4-8046-e0f647010a04",
+        "name": "MR HAJI IKRAM U DIN",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 60,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "51a5ede0-6ae9-4a1a-8314-38ae5cb9f197",
+        "name": "MR ALMAS NOW",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 1,
+        "action": "reuse",
+        "reason": "walking_customer",
+        "newContactId": "7c575448-3382-4587-a1c6-f05847733058",
+        "name": "Walk-In Customer",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 62,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "58c083b4-b005-4d4a-8290-7c492d5ec3d1",
+        "name": "MR HAJI MUTABAR",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 63,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
+        "name": "MR JALIL",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 64,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "4fa2100a-9376-4fc7-83ef-aaf9ec1f4089",
+        "name": "MR H.BUKHCHA GUL",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 65,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "4ebd11a8-19b4-473f-8afc-5442443d6479",
+        "name": "MR KHAYAL MOHAMMAD",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 66,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "54e906c0-65ab-4d1b-86c7-faffb1ca6777",
+        "name": "MR MIR WALI",
+        "type": "customer"
+      },
+      {
+        "legacyContactId": 45,
+        "action": "reuse",
+        "reason": "deterministic_id",
+        "newContactId": "36fe85d7-95cf-49ad-8922-cabe5f3596cc",
+        "name": "MR DIN MOHAMMAD",
+        "type": "supplier"
+      }
+    ]
+  },
+  "products": {
+    "uniqueLines": 15,
+    "plan": {
+      "create": 0,
+      "reuse": 15,
+      "other": 0
+    },
+    "details": [
+      {
+        "legacyProductId": 14,
+        "legacyVariationId": 14,
+        "action": "reuse",
+        "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+        "variationId": "efeec767-d7b8-4c41-811b-56e2b4d40dbd",
+        "sku": "0014",
+        "name": "VELVET SETECHABLE"
+      },
+      {
+        "legacyProductId": 3,
+        "legacyVariationId": 3,
+        "action": "reuse",
+        "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+        "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+        "sku": "0003-1",
+        "name": "TR — SET WASIE"
+      },
+      {
+        "legacyProductId": 13,
+        "legacyVariationId": 21,
+        "action": "reuse",
+        "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+        "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+        "sku": "0013-4",
+        "name": "WOOL — LAAT"
+      },
+      {
+        "legacyProductId": 13,
+        "legacyVariationId": 20,
+        "action": "reuse",
+        "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+        "variationId": "43f351f4-5370-4f5f-8fcb-836b6e80537e",
+        "sku": "0013-3",
+        "name": "WOOL — SET WASIE"
+      },
+      {
+        "legacyProductId": 3,
+        "legacyVariationId": 15,
+        "action": "reuse",
+        "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+        "variationId": "368492f0-79c9-4526-8447-ee1d72737d94",
+        "sku": "0003-2",
+        "name": "TR — LAAT"
+      },
+      {
+        "legacyProductId": 3,
+        "legacyVariationId": 16,
+        "action": "reuse",
+        "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+        "variationId": "df6daa8a-4790-49c4-8820-de568ff9bfd7",
+        "sku": "0003-3",
+        "name": "TR — BLACK & WHITE"
+      },
+      {
+        "legacyProductId": 12,
+        "legacyVariationId": 12,
+        "action": "reuse",
+        "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
+        "variationId": "8e21ac1e-7a48-41bf-849b-29bce279c235",
+        "sku": "0012",
+        "name": "TC"
+      },
+      {
+        "legacyProductId": 17,
+        "legacyVariationId": 22,
+        "action": "reuse",
+        "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+        "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+        "sku": "0017-1",
+        "name": "TAIBO — SET WASIE"
+      },
+      {
+        "legacyProductId": 4,
+        "legacyVariationId": 4,
+        "action": "reuse",
+        "productId": "97a2e574-53c1-4f41-8c23-0cdf48ceb746",
+        "variationId": "21f76e02-ba11-4f60-816d-df80a9bcdd2d",
+        "sku": "0004",
+        "name": "KATAN RIYAN"
+      },
+      {
+        "legacyProductId": 5,
+        "legacyVariationId": 5,
+        "action": "reuse",
+        "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+        "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+        "sku": "0005",
+        "name": "SHAMIZ RIYAN"
+      },
+      {
+        "legacyProductId": 8,
+        "legacyVariationId": 8,
+        "action": "reuse",
+        "productId": "57e6d4ff-503f-47b8-8bae-43158eabed15",
+        "variationId": "47f12c1c-8b75-495c-8b24-c9da7e64c604",
+        "sku": "0008",
+        "name": "DUBAL SHADE POLYSTER"
+      },
+      {
+        "legacyProductId": 9,
+        "legacyVariationId": 9,
+        "action": "reuse",
+        "productId": "659126ee-dfaa-4e72-857e-9979c58c2cbc",
+        "variationId": "1629567a-e033-47e6-8108-fb4564c31a22",
+        "sku": "0009",
+        "name": "SILK COLOR POLYSTER"
+      },
+      {
+        "legacyProductId": 10,
+        "legacyVariationId": 10,
+        "action": "reuse",
+        "productId": "74fa8f4e-67dd-4898-8db0-ec26ceb4ef19",
+        "variationId": "7bd18968-165d-4487-8fdc-5a33b0990df6",
+        "sku": "0010",
+        "name": "RIYAN SILK PRINT"
+      },
+      {
+        "legacyProductId": 7,
+        "legacyVariationId": 7,
+        "action": "reuse",
+        "productId": "2009a404-e2fc-45dc-801a-5440b88c7354",
+        "variationId": "f770b180-21d5-4f31-8eed-936a16ba0e17",
+        "sku": "0007",
+        "name": "GRIAB RIYAN"
+      },
+      {
+        "legacyProductId": 11,
+        "legacyVariationId": 11,
+        "action": "reuse",
+        "productId": "fc9d1281-7aa9-4927-85ec-671024454f03",
+        "variationId": "7a6d5f35-5027-4ecf-8f26-985545e2b990",
+        "sku": "0011",
+        "name": "RAD RIYAN"
+      }
+    ]
+  },
+  "accounts": {
+    "legacyIds": [
+      106,
+      108,
+      115,
+      133,
+      157,
+      159
+    ],
+    "plan": {
+      "create": 4,
+      "reuse": 2,
+      "other": 0
+    },
+    "details": [
+      {
+        "legacyAccountId": 106,
+        "action": "reuse",
+        "newAccountId": "cbd663c5-cfcf-4c1d-84b8-b4a4204c3f0e",
+        "name": "MCB",
+        "type": "bank",
+        "code": "1061",
+        "is_group": false
+      },
+      {
+        "legacyAccountId": 108,
+        "action": "create",
+        "newAccountId": "767952ce-e3ec-472f-8e8c-0f8001e4e5c7",
+        "name": "DIN FHD MZ",
+        "type": "bank",
+        "is_group": false
+      },
+      {
+        "legacyAccountId": 115,
+        "action": "create",
+        "newAccountId": "8120ff5b-9d36-4c97-8d3e-ee3a9328a29b",
+        "name": "DIN CHINA Cash",
+        "type": "cash",
+        "is_group": false
+      },
+      {
+        "legacyAccountId": 133,
+        "action": "create",
+        "newAccountId": "13af87d4-cea5-4085-8cd5-6ea08dc12ada",
+        "name": "WALI DIN T/T",
+        "type": "bank",
+        "is_group": false
+      },
+      {
+        "legacyAccountId": 157,
+        "action": "reuse",
+        "newAccountId": "f08ae0ee-a156-4c6c-8607-4b02f0cc15fe",
+        "name": "YAQOOB",
+        "type": "bank",
+        "code": "1204",
+        "is_group": false
+      },
+      {
+        "legacyAccountId": 159,
+        "action": "create",
+        "newAccountId": "a903c6d2-6ba8-4e40-849e-39e6b7394901",
+        "name": "DIN NDM MZ",
+        "type": "bank",
+        "is_group": false
+      }
+    ]
+  },
+  "coaPreflight": {
+    "ok": true,
+    "revenueAccountFound": true,
+    "revenuePostingAccount": {
+      "id": "ce23889c-07c0-4f09-9946-1e55764719e1",
+      "code": "4100",
+      "name": "Sales Revenue"
+    },
+    "revenueResolvedBy": "code_4100",
+    "arAccount": {
+      "id": "51ef008a-00ca-48cd-94f8-4fdad79b7065",
+      "code": "1100",
+      "name": "Accounts Receivable"
+    },
+    "arResolvedBy": "code_1100",
+    "saleJournalStrategy": "createSaleJournalEntry",
+    "rpc4000AutoCreateRisk": {
+      "blocker": false,
+      "reason": "record_sale RPC _ensure_system_account(4000) would auto-create duplicate code 4000 while Sales Revenue 4100 exists",
+      "has4100": true,
+      "has4000": false,
+      "mitigated": true,
+      "mitigation": "Import uses createSaleJournalEntry (ensureRevenueAccount name/code fallback), not record_sale RPC"
+    },
+    "paymentAccounts": [
+      {
+        "legacyAccountId": 106,
+        "action": "reuse",
+        "newAccountId": "cbd663c5-cfcf-4c1d-84b8-b4a4204c3f0e",
+        "code": "1061",
+        "name": "MCB",
+        "type": "bank",
+        "isGroup": false,
+        "valid": true
+      },
+      {
+        "legacyAccountId": 108,
+        "action": "create",
+        "newAccountId": "767952ce-e3ec-472f-8e8c-0f8001e4e5c7",
+        "name": "DIN FHD MZ",
+        "type": "bank",
+        "isGroup": false,
+        "valid": true
+      },
+      {
+        "legacyAccountId": 115,
+        "action": "create",
+        "newAccountId": "8120ff5b-9d36-4c97-8d3e-ee3a9328a29b",
+        "name": "DIN CHINA Cash",
+        "type": "cash",
+        "isGroup": false,
+        "valid": true
+      },
+      {
+        "legacyAccountId": 133,
+        "action": "create",
+        "newAccountId": "13af87d4-cea5-4085-8cd5-6ea08dc12ada",
+        "name": "WALI DIN T/T",
+        "type": "bank",
+        "isGroup": false,
+        "valid": true
+      },
+      {
+        "legacyAccountId": 157,
+        "action": "reuse",
+        "newAccountId": "f08ae0ee-a156-4c6c-8607-4b02f0cc15fe",
+        "code": "1204",
+        "name": "YAQOOB",
+        "type": "bank",
+        "isGroup": false,
+        "valid": true
+      },
+      {
+        "legacyAccountId": 159,
+        "action": "create",
+        "newAccountId": "a903c6d2-6ba8-4e40-849e-39e6b7394901",
+        "name": "DIN NDM MZ",
+        "type": "bank",
+        "isGroup": false,
+        "valid": true
+      }
+    ],
+    "paymentAccountsValid": true,
+    "parentHeaderCodesExcluded": [
+      "1050",
+      "1060",
+      "1070",
+      "4050",
+      "2090",
+      "3090",
+      "6090",
+      "1090"
+    ],
+    "blockingIssues": [],
+    "warnings": [
+      "Import uses createSaleJournalEntry (ensureRevenueAccount name/code fallback), not record_sale RPC",
+      "Revenue 4050 confirmed as parent/group — posting will use detail child 4100, not 4050"
+    ],
+    "accountCount": 67
+  },
+  "sales": {
+    "csvCount": 34,
+    "ready": 0,
+    "duplicates": 34,
+    "duplicateDetails": [
+      {
+        "legacyTransactionId": 4,
+        "match": "id",
+        "id": "caa62e50-86c6-480a-8fc6-75dea960f9f0"
+      },
+      {
+        "legacyTransactionId": 5,
+        "match": "id",
+        "id": "66bfeeeb-a216-4906-8256-08067a3ac53a"
+      },
+      {
+        "legacyTransactionId": 6,
+        "match": "id",
+        "id": "1c0db133-6a8b-42b9-8084-ea01b0cc01de"
+      },
+      {
+        "legacyTransactionId": 7,
+        "match": "id",
+        "id": "1fd33e3e-9e10-4e78-8b03-6eff10bce58a"
+      },
+      {
+        "legacyTransactionId": 8,
+        "match": "id",
+        "id": "97205e28-e142-49e3-88b1-21e1995d2a1c"
+      },
+      {
+        "legacyTransactionId": 9,
+        "match": "id",
+        "id": "b5f002dd-2cb8-46b8-8f71-eed2a9d43146"
+      },
+      {
+        "legacyTransactionId": 10,
+        "match": "id",
+        "id": "b292483e-dcdf-45ef-8d2a-b6cdf0a660ef"
+      },
+      {
+        "legacyTransactionId": 11,
+        "match": "id",
+        "id": "0ddaacc3-52a5-4ba2-82c8-af1d83e5110c"
+      },
+      {
+        "legacyTransactionId": 12,
+        "match": "id",
+        "id": "87048f8c-2155-4354-88eb-d2994f37e307"
+      },
+      {
+        "legacyTransactionId": 13,
+        "match": "id",
+        "id": "f10718c7-6547-40e0-8249-fe38b7ea0f3a"
+      },
+      {
+        "legacyTransactionId": 14,
+        "match": "id",
+        "id": "d3e6ebd0-34c5-43d2-826d-993c9e29c81e"
+      },
+      {
+        "legacyTransactionId": 15,
+        "match": "id",
+        "id": "a856e5d2-daba-4294-8790-ffb77e21fa44"
+      },
+      {
+        "legacyTransactionId": 16,
+        "match": "id",
+        "id": "74dbe172-c424-4de6-845e-5ca1670fe6eb"
+      },
+      {
+        "legacyTransactionId": 17,
+        "match": "id",
+        "id": "720e9153-23dd-4416-8d0e-b7f49102f20e"
+      },
+      {
+        "legacyTransactionId": 18,
+        "match": "id",
+        "id": "de32d7db-83a0-49fe-8072-59006bced46f"
+      },
+      {
+        "legacyTransactionId": 19,
+        "match": "id",
+        "id": "b9fb32a7-a2e3-4496-8986-8f84a64d38db"
+      },
+      {
+        "legacyTransactionId": 20,
+        "match": "id",
+        "id": "3767cff5-8080-41f6-8b19-cbbcb18d7523"
+      },
+      {
+        "legacyTransactionId": 22,
+        "match": "id",
+        "id": "27439e2d-781f-47df-84b2-c913a3e8c881"
+      },
+      {
+        "legacyTransactionId": 23,
+        "match": "id",
+        "id": "a3c2cef3-3b13-4ef9-81bf-eabb46e01de7"
+      },
+      {
+        "legacyTransactionId": 24,
+        "match": "id",
+        "id": "0fb023b2-7c53-45d9-893c-81641c868883"
+      },
+      {
+        "legacyTransactionId": 25,
+        "match": "id",
+        "id": "ac34ba50-b328-4359-8701-c48b7a41e949"
+      },
+      {
+        "legacyTransactionId": 26,
+        "match": "id",
+        "id": "c08f9c1a-58ee-42d6-83c0-8a315ad744fa"
+      },
+      {
+        "legacyTransactionId": 27,
+        "match": "id",
+        "id": "6f98d6ce-8b46-441b-869b-b0bdfdd14239"
+      },
+      {
+        "legacyTransactionId": 28,
+        "match": "id",
+        "id": "f89d61ab-9220-4dbe-8573-4fea537e3cc4"
+      },
+      {
+        "legacyTransactionId": 29,
+        "match": "id",
+        "id": "574f1fd3-c711-4775-8455-8ee658e1d8b3"
+      },
+      {
+        "legacyTransactionId": 30,
+        "match": "id",
+        "id": "7fd52ccb-eff3-42ba-8d69-cb6c862613c4"
+      },
+      {
+        "legacyTransactionId": 31,
+        "match": "id",
+        "id": "11996154-1024-42e4-8c95-e83170e4734f"
+      },
+      {
+        "legacyTransactionId": 32,
+        "match": "id",
+        "id": "612b8644-0031-48ba-80ed-06713786b5d6"
+      },
+      {
+        "legacyTransactionId": 33,
+        "match": "id",
+        "id": "2e4969d4-1fa1-4f5f-850e-9a8af53ea026"
+      },
+      {
+        "legacyTransactionId": 34,
+        "match": "id",
+        "id": "e20ad2f7-1d4e-4a19-84a1-0cd56d1d2bf5"
+      },
+      {
+        "legacyTransactionId": 35,
+        "match": "id",
+        "id": "ac587364-1977-42b9-8ed9-d877f7aeb781"
+      },
+      {
+        "legacyTransactionId": 36,
+        "match": "id",
+        "id": "b1c856db-7734-411a-8d32-50ea183c25f4"
+      },
+      {
+        "legacyTransactionId": 41,
+        "match": "id",
+        "id": "cd57b46b-06b2-4c2d-8c1a-ea8e4662857d"
+      },
+      {
+        "legacyTransactionId": 42,
+        "match": "id",
+        "id": "efe7e3da-0887-493b-86de-98884dd83824"
+      }
+    ],
+    "readyDetails": []
+  },
+  "saleItems": {
+    "csvCount": 63,
+    "ready": 63,
+    "issues": []
+  },
+  "salePayments": {
+    "csvCount": 70,
+    "ready": 0,
+    "rpcMethod": "record_payment_with_accounting",
+    "paymentType": "received",
+    "referenceType": "sale",
+    "issues": [
+      "Payment 8 txn 4 not in ready sales set",
+      "Payment 10 txn 4 not in ready sales set",
+      "Payment 12 txn 6 not in ready sales set",
+      "Payment 14 txn 9 not in ready sales set",
+      "Payment 16 txn 10 not in ready sales set",
+      "Payment 18 txn 11 not in ready sales set",
+      "Payment 20 txn 13 not in ready sales set",
+      "Payment 22 txn 4 not in ready sales set",
+      "Payment 24 txn 13 not in ready sales set",
+      "Payment 26 txn 13 not in ready sales set",
+      "Payment 28 txn 11 not in ready sales set",
+      "Payment 30 txn 4 not in ready sales set",
+      "Payment 32 txn 4 not in ready sales set",
+      "Payment 34 txn 25 not in ready sales set",
+      "Payment 35 txn 25 not in ready sales set",
+      "Payment 37 txn 7 not in ready sales set",
+      "Payment 39 txn 10 not in ready sales set",
+      "Payment 41 txn 14 not in ready sales set",
+      "Payment 43 txn 15 not in ready sales set",
+      "Payment 44 txn 15 not in ready sales set",
+      "Payment 45 txn 15 not in ready sales set",
+      "Payment 46 txn 25 not in ready sales set",
+      "Payment 47 txn 13 not in ready sales set",
+      "Payment 48 txn 11 not in ready sales set",
+      "Payment 49 txn 4 not in ready sales set",
+      "Payment 50 txn 4 not in ready sales set",
+      "Payment 51 txn 4 not in ready sales set",
+      "Payment 52 txn 9 not in ready sales set",
+      "Payment 53 txn 25 not in ready sales set",
+      "Payment 54 txn 6 not in ready sales set",
+      "Payment 55 txn 29 not in ready sales set",
+      "Payment 56 txn 29 not in ready sales set",
+      "Payment 57 txn 15 not in ready sales set",
+      "Payment 58 txn 10 not in ready sales set",
+      "Payment 59 txn 32 not in ready sales set",
+      "Payment 60 txn 30 not in ready sales set",
+      "Payment 61 txn 4 not in ready sales set",
+      "Payment 62 txn 11 not in ready sales set",
+      "Payment 63 txn 4 not in ready sales set",
+      "Payment 64 txn 4 not in ready sales set",
+      "Payment 72 txn 7 not in ready sales set",
+      "Payment 73 txn 32 not in ready sales set",
+      "Payment 74 txn 10 not in ready sales set",
+      "Payment 75 txn 26 not in ready sales set",
+      "Payment 76 txn 15 not in ready sales set",
+      "Payment 77 txn 30 not in ready sales set",
+      "Payment 78 txn 8 not in ready sales set",
+      "Payment 79 txn 14 not in ready sales set",
+      "Payment 80 txn 4 not in ready sales set",
+      "Payment 81 txn 4 not in ready sales set",
+      "Payment 82 txn 13 not in ready sales set",
+      "Payment 83 txn 9 not in ready sales set",
+      "Payment 84 txn 11 not in ready sales set",
+      "Payment 85 txn 6 not in ready sales set",
+      "Payment 86 txn 25 not in ready sales set",
+      "Payment 87 txn 32 not in ready sales set",
+      "Payment 88 txn 28 not in ready sales set",
+      "Payment 89 txn 4 not in ready sales set",
+      "Payment 90 txn 8 not in ready sales set",
+      "Payment 93 txn 11 not in ready sales set",
+      "Payment 94 txn 12 not in ready sales set",
+      "Payment 95 txn 25 not in ready sales set",
+      "Payment 96 txn 25 not in ready sales set",
+      "Payment 97 txn 32 not in ready sales set",
+      "Payment 98 txn 26 not in ready sales set",
+      "Payment 99 txn 15 not in ready sales set",
+      "Payment 100 txn 8 not in ready sales set",
+      "Payment 102 txn 4 not in ready sales set",
+      "Payment 103 txn 5 not in ready sales set",
+      "Payment 104 txn 30 not in ready sales set"
+    ]
+  },
+  "purchases": {
+    "csvCount": 1,
+    "ready": 0,
+    "duplicates": 1,
+    "duplicateDetails": [
+      {
+        "legacyTransactionId": 3,
+        "match": "id",
+        "id": "a065035c-dca2-4079-837a-9c2aeca9332d"
+      }
+    ],
+    "readyDetails": [],
+    "importStatus": "received",
+    "note": "Historical PO imported as received (no stock IN until finalized)"
+  },
+  "purchasePayments": {
+    "csvCount": 4,
+    "ready": 4,
+    "rpcMethod": "record_payment_with_accounting",
+    "paymentType": "paid",
+    "referenceType": "purchase",
+    "issues": []
+  },
+  "expenses": {
+    "csvCount": 4,
+    "ready": 0,
+    "duplicates": 4,
+    "duplicateDetails": [
+      {
+        "legacyTransactionId": 37,
+        "id": "05e90b26-0d0e-456f-860f-8b4a1cbb14c3"
+      },
+      {
+        "legacyTransactionId": 38,
+        "id": "f30ace2d-3aa5-4f22-8626-e7bfa5891092"
+      },
+      {
+        "legacyTransactionId": 39,
+        "id": "60f31f75-fa7c-4665-811a-187350f7e002"
+      },
+      {
+        "legacyTransactionId": 43,
+        "id": "fd7c9045-7e71-4066-87a4-06e4bbddc101"
+      }
+    ],
+    "readyDetails": [],
+    "rpcAfterInsert": "record_expense_with_accounting"
+  },
+  "excludedByDesign": [
+    "account_transactions (raw GL/cashbook)",
+    "fund transfers",
+    "opening balances",
+    "manual GL rows",
+    "legacy_din_china_skipped_account_transactions.csv",
+    "branch id 1 / DIN COLLECTION",
+    "sell_return CN2025/0001",
+    "unlinked advance payments (transaction_id null)"
+  ],
+  "warnings": [
+    "Import uses createSaleJournalEntry (ensureRevenueAccount name/code fallback), not record_sale RPC",
+    "Revenue 4050 confirmed as parent/group — posting will use detail child 4100, not 4050"
+  ],
+  "blockingErrors": [],
+  "pass": true,
+  "summary": {
+    "branch": "reuse",
+    "saleJournalStrategy": "createSaleJournalEntry",
+    "revenuePostingCode": "4100",
+    "revenueResolvedBy": "code_4100",
+    "paymentAccountsValid": true,
+    "accountsCreate": 4,
+    "accountsReuse": 2,
+    "accountsBlockedParent": 0,
+    "contactsCreate": 0,
+    "contactsReuse": 22,
+    "productsCreate": 0,
+    "productsCreateVariation": 0,
+    "productsReuse": 15,
+    "salesReady": 0,
+    "saleItemsReady": 63,
+    "salePaymentsReady": 0,
+    "purchasesReady": 0,
+    "purchaseItemsReady": 17,
+    "purchasePaymentsReady": 4,
+    "expensesReady": 0,
+    "saleDuplicates": 34,
+    "purchaseDuplicates": 1,
+    "expenseDuplicates": 4
+  }
+}

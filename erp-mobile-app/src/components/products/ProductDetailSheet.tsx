@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { X, Edit2 } from 'lucide-react';
+import { X, Edit2, Copy } from 'lucide-react';
 import { ProductImage } from './ProductImage';
 import type { Product } from '../../api/products';
 import { primaryImageUrl } from '../../utils/productImageUpload';
@@ -11,6 +11,7 @@ interface ProductDetailSheetProps {
   displayStock: number;
   onClose: () => void;
   onEdit: (product: Product) => void;
+  onDuplicate?: (product: Product) => void;
   onPhoto?: (product: Product) => void;
 }
 
@@ -20,6 +21,7 @@ export function ProductDetailSheet({
   displayStock,
   onClose,
   onEdit,
+  onDuplicate,
   onPhoto,
 }: ProductDetailSheetProps) {
   if (!open || !product) return null;
@@ -102,7 +104,18 @@ export function ProductDetailSheet({
           </div>
         </div>
 
-        <div className="p-4 border-t border-[#374151] flex gap-3 sticky bottom-0 bg-[#1F2937]">
+        <div className="p-4 border-t border-[#374151] flex flex-col gap-2 sticky bottom-0 bg-[#1F2937]">
+          {onDuplicate ? (
+            <button
+              type="button"
+              onClick={() => onDuplicate(product)}
+              className="w-full py-3 rounded-lg border border-[#374151] text-white font-medium inline-flex items-center justify-center gap-2 hover:bg-[#111827]"
+            >
+              <Copy className="w-4 h-4" />
+              Duplicate Product
+            </button>
+          ) : null}
+          <div className="flex gap-3">
           <button
             type="button"
             onClick={onClose}
@@ -118,6 +131,7 @@ export function ProductDetailSheet({
             <Edit2 className="w-4 h-4" />
             Edit
           </button>
+          </div>
         </div>
       </div>
     </div>

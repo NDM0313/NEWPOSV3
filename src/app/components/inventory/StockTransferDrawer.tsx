@@ -5,7 +5,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import {
   Select,
   SelectContent,
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Badge } from "../ui/badge";
+import { formatQty } from '@/app/utils/quantity';
 
 type TransferStatus = 'pending' | 'in-transit' | 'completed' | 'cancelled';
 
@@ -126,9 +127,9 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
   const getStatusConfig = (s: TransferStatus) => {
     const configs = {
-      pending: { label: 'Pending', color: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
+      pending: { label: 'Pending', color: 'bg-gray-500/10 text-muted-foreground border-gray-500/20' },
       'in-transit': { label: 'In Transit', color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
-      completed: { label: 'Completed', color: 'bg-green-500/10 text-green-400 border-green-500/20' },
+      completed: { label: 'Completed', color: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20' },
       cancelled: { label: 'Cancelled', color: 'bg-red-500/10 text-red-400 border-red-500/20' }
     };
     return configs[s];
@@ -143,16 +144,16 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-[600px] bg-[#111827] border-l border-gray-800 z-50 shadow-2xl overflow-y-auto">
-        <div className="sticky top-0 bg-[#111827] border-b border-gray-800 px-6 py-4 z-10">
+      <div className="fixed right-0 top-0 h-full w-[600px] bg-background border-l border-border z-50 shadow-2xl overflow-y-auto">
+        <div className="sticky top-0 bg-background border-b border-border px-6 py-4 z-10">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">Stock Transfer</h2>
-              <p className="text-sm text-gray-400">Move inventory between locations</p>
+              <h2 className="text-xl font-bold text-foreground">Stock Transfer</h2>
+              <p className="text-sm text-muted-foreground">Move inventory between locations</p>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
             >
               <X size={24} />
             </button>
@@ -161,23 +162,23 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Product Info */}
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-4">
               {product.image && (
                 <img 
                   src={product.image} 
                   alt={product.name}
-                  className="w-16 h-16 rounded-lg object-cover border border-gray-700"
+                  className="w-16 h-16 rounded-lg object-cover border border-border"
                 />
               )}
               <div className="flex-1">
-                <h3 className="font-semibold text-white">{product.name}</h3>
+                <h3 className="font-semibold text-foreground">{product.name}</h3>
                 <div className="flex items-center gap-3 mt-1">
-                  <code className="text-xs bg-gray-800 px-2 py-1 rounded text-blue-400">
+                  <code className="text-xs bg-muted px-2 py-1 rounded text-blue-400">
                     {product.sku}
                   </code>
-                  <Badge className="bg-green-500/10 text-green-400 border-green-500/20">
-                    Available: {product.currentStock} {product.unit}
+                  <Badge className="bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20">
+                    Available: {formatQty(product.currentStock)} {product.unit}
                   </Badge>
                 </div>
               </div>
@@ -188,10 +189,10 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
           <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">From</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">From</div>
                 <div className="flex items-center gap-2">
                   <MapPin size={16} className="text-purple-400" />
-                  <span className="font-semibold text-white">
+                  <span className="font-semibold text-foreground">
                     {sourceLocation || 'Select source'}
                   </span>
                 </div>
@@ -201,16 +202,16 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
                 <ArrowRight size={24} className="text-purple-400" />
                 {quantity > 0 && (
                   <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                    {quantity} {product.unit}
+                    {formatQty(quantity)} {product.unit}
                   </Badge>
                 )}
               </div>
 
               <div className="flex-1">
-                <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">To</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">To</div>
                 <div className="flex items-center gap-2">
                   <MapPin size={16} className="text-purple-400" />
-                  <span className="font-semibold text-white">
+                  <span className="font-semibold text-foreground">
                     {destinationLocation || 'Select destination'}
                   </span>
                 </div>
@@ -220,15 +221,15 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
           {/* Source Location */}
           <div className="space-y-2">
-            <Label htmlFor="source" className="text-gray-300 flex items-center gap-2">
+            <Label htmlFor="source" className="text-muted-foreground flex items-center gap-2">
               <MapPin size={14} />
               Source Location
             </Label>
             <Select value={sourceLocation} onValueChange={setSourceLocation}>
-              <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+              <SelectTrigger className="bg-card border-border text-foreground">
                 <SelectValue placeholder="Select source location" />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 {LOCATIONS.map(loc => (
                   <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                 ))}
@@ -238,15 +239,15 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
           {/* Destination Location */}
           <div className="space-y-2">
-            <Label htmlFor="destination" className="text-gray-300 flex items-center gap-2">
+            <Label htmlFor="destination" className="text-muted-foreground flex items-center gap-2">
               <MapPin size={14} />
               Destination Location
             </Label>
             <Select value={destinationLocation} onValueChange={setDestinationLocation}>
-              <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+              <SelectTrigger className="bg-card border-border text-foreground">
                 <SelectValue placeholder="Select destination location" />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 {LOCATIONS.filter(loc => loc !== sourceLocation).map(loc => (
                   <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                 ))}
@@ -256,7 +257,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
           {/* Quantity */}
           <div className="space-y-2">
-            <Label htmlFor="quantity" className="text-gray-300">
+            <Label htmlFor="quantity" className="text-muted-foreground">
               Quantity to Transfer ({product.unit})
             </Label>
             <Input
@@ -267,25 +268,25 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
               step="1"
               value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value))}
-              className="bg-gray-900 border-gray-800 text-white"
+              className="bg-card border-border text-foreground"
               placeholder="Enter quantity"
               required
             />
-            <p className="text-xs text-gray-500">
-              Maximum available: {product.currentStock} {product.unit}
+            <p className="text-xs text-muted-foreground">
+              Maximum available: {formatQty(product.currentStock)} {product.unit}
             </p>
           </div>
 
           {/* Transfer Status */}
           <div className="space-y-2">
-            <Label htmlFor="status" className="text-gray-300">
+            <Label htmlFor="status" className="text-muted-foreground">
               Transfer Status
             </Label>
             <Select value={status} onValueChange={(v: TransferStatus) => setStatus(v)}>
-              <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+              <SelectTrigger className="bg-card border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="in-transit">In Transit</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
@@ -301,18 +302,17 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
           {/* Transfer Date */}
           <div className="space-y-2">
-            <CalendarDatePicker
+            <DateTimePicker
               label="Transfer Date"
-              value={transferDate}
-              onChange={(d) => setTransferDate(d || new Date())}
-              showTime={true}
+              value={dateToDateTimePickerValue(transferDate)}
+              onChange={(v) => setTransferDate(dateTimePickerValueToDate(v) || new Date())}
               required
             />
           </div>
 
           {/* Notes */}
           <div className="space-y-2">
-            <Label htmlFor="notes" className="text-gray-300 flex items-center gap-2">
+            <Label htmlFor="notes" className="text-muted-foreground flex items-center gap-2">
               <FileText size={14} />
               Transfer Notes (Optional)
             </Label>
@@ -320,7 +320,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="bg-gray-900 border-gray-800 text-white resize-none"
+              className="bg-card border-border text-foreground resize-none"
               placeholder="Add any notes about this transfer (e.g., reason, carrier info, etc.)..."
               rows={3}
             />
@@ -333,8 +333,8 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
                 <AlertCircle size={20} className="text-red-400 mt-0.5" />
                 <div>
                   <h4 className="font-semibold text-red-400">Invalid Quantity</h4>
-                  <p className="text-sm text-gray-300 mt-1">
-                    Cannot transfer more than available stock ({product.currentStock} {product.unit})
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Cannot transfer more than available stock ({formatQty(product.currentStock)} {product.unit})
                   </p>
                 </div>
               </div>
@@ -347,7 +347,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
                 <AlertCircle size={20} className="text-red-400 mt-0.5" />
                 <div>
                   <h4 className="font-semibold text-red-400">Invalid Transfer</h4>
-                  <p className="text-sm text-gray-300 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     Source and destination locations must be different
                   </p>
                 </div>
@@ -361,7 +361,7 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
               <AlertCircle size={20} className="text-blue-400 mt-0.5" />
               <div>
                 <h4 className="font-semibold text-blue-400 mb-1">Transfer Note</h4>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-muted-foreground">
                   This transfer will create a movement record in the audit log. The total stock quantity remains the same, but location allocation changes.
                 </p>
               </div>
@@ -369,18 +369,18 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-gray-800">
+          <div className="flex gap-3 pt-4 border-t border-border">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              className="flex-1 bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800"
+              className="flex-1 bg-card border-border text-muted-foreground hover:bg-muted"
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-purple-600 hover:bg-purple-500 text-white"
+              className="flex-1 bg-purple-600 hover:bg-purple-500 text-foreground"
               disabled={
                 quantity <= 0 || 
                 quantity > product.currentStock || 

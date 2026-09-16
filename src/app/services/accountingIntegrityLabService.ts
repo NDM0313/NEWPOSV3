@@ -66,10 +66,9 @@ export type LabNavAction =
   | { type: 'purchase'; purchaseId: string; label?: string }
   | {
       type: 'accounting';
-      tab: 'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables';
+      tab: 'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'account_statements' | 'receivables' | 'payables';
       focusJournalEntryId?: string;
       focusAccountId?: string;
-      ledgerType?: 'customer' | 'supplier' | 'user' | 'worker';
       label?: string;
     }
   | { type: 'customer_ledger'; label?: string }
@@ -774,9 +773,9 @@ export async function runReceivablesVsARCheck(companyId: string, branchId?: stri
                 ? ([
                     {
                       type: 'accounting' as const,
-                      tab: 'ledger' as const,
+                      tab: 'account_statements' as const,
                       focusAccountId: arId,
-                      label: 'Ledger (pick AR)',
+                      label: 'Account Statements (AR)',
                     },
                   ] as LabNavAction[])
                 : []),

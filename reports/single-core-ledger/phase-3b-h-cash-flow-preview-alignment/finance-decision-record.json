@@ -1,0 +1,13 @@
+{
+  "run": "PHASE_3B_H_FINANCE_DECISION_RECORD",
+  "reviewer": "Nadeem Khan",
+  "review_date": "2026-06-29",
+  "decisions": {
+    "Q4": { "selected_option": "A", "status": "APPROVED" },
+    "Q5": { "selected_option": "C", "status": "APPROVED" },
+    "Q7": { "selected_option": "B", "status": "APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY" }
+  },
+  "loader_swap_approved": false,
+  "official_cash_flow_behavior_changed": false,
+  "preview_alignment_implemented": true
+}

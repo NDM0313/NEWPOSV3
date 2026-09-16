@@ -1,0 +1,12 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "apk-build",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "status": "PASS",
+  "build_type": "debug",
+  "command": "npm run android:debug:win",
+  "gradle_task": "assembleDebug",
+  "gradle_result": "BUILD SUCCESSFUL in 53s",
+  "play_store_upload": false,
+  "public_release": false
+}

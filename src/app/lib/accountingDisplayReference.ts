@@ -51,6 +51,8 @@ export function sourceLabelFromReferenceType(referenceType: string | null | unde
   if (rt === 'opening_balance_inventory') return 'Opening inventory';
   if (rt === 'payment_adjustment' || rt === 'payment') return 'Payment';
   if (rt === 'expense' || rt === 'extra_expense') return 'Expense';
+  if (rt === 'gl_correction') return 'GL correction';
+  if (rt === 'correction_reversal') return 'Correction reversal';
   if (rt.includes('expense')) return 'Expense';
   return rt.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

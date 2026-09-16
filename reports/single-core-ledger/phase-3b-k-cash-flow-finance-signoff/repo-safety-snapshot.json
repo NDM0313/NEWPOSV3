@@ -1,0 +1,28 @@
+{
+  "phase": "3B-K",
+  "run": "repo-safety-snapshot",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "branch": "main",
+  "head_commit": "636dc140",
+  "head_message": "docs(accounting): prepare Cash Flow residual delta bridge",
+  "origin_main_includes_3b_j": true,
+  "staged_files": [],
+  "phase_scope": "docs_evidence_signoff_only",
+  "deploy_planned": false,
+  "excluded_dirty_files": [
+    "graphify-out/GRAPH_REPORT.md",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.*",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/*",
+    "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.*",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T*.json",
+    "reports/single-core-ledger/phase-2-16-monitoring/*",
+    "reports/single-core-ledger/final-production-ops-handoff/final-office-pc-local-status.*",
+    "scripts/single-core-ledger/*.mjs (untracked helpers)"
+  ],
+  "constraints_acknowledged": {
+    "no_migrations": true,
+    "no_deploy": true,
+    "no_runtime_changes": true,
+    "loader_swap_not_approved": true
+  }
+}

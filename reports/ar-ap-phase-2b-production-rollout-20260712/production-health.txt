@@ -1,0 +1,15 @@
+AR/AP Phase 2b — Production health (read-only)
+Generated: 2026-07-12T02:35:00+05:00
+
+## HTTP
+https://erp.dincouture.pk → 200 OK
+
+## Containers (VPS)
+erp-frontend: Up (healthy)
+supabase-db: Up (healthy)
+
+## VPS git
+/root/NEWPOSV3 HEAD: 8bbb01f043c9b7e1f0aa941b76674f8ed92f2ce7
+
+## Data mutation
+None performed.

@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-30T11:46:45.000Z",
+  "backup_timestamp_utc": "20260630T114645Z",
+  "backup_paths": {
+    "env": "/root/supabase/docker/.env.bak.auth-hostinger-smtp-20260630T114645Z",
+    "compose": "/root/supabase/docker/docker-compose.yml.bak.auth-hostinger-smtp-20260630T114645Z"
+  },
+  "pre_change_masked": {
+    "ENABLE_EMAIL_AUTOCONFIRM": "true",
+    "SMTP_HOST": "supabase-mail",
+    "SMTP_PORT": "2500",
+    "SMTP_USER": "fake_mail_user",
+    "SMTP_PASS": "***MASKED***",
+    "SMTP_ADMIN_EMAIL": "admin@example.com",
+    "SMTP_SENDER_NAME": "fake_sender",
+    "SITE_URL": "https://erp.dincouture.pk",
+    "API_EXTERNAL_URL": "https://supabase.dincouture.pk",
+    "ADDITIONAL_REDIRECT_URLS": "https://erp.dincouture.pk,https://erp.dincouture.pk/,https://erp.dincouture.pk/**"
+  }
+}

@@ -11,6 +11,9 @@ export interface BespokeMetadata {
   notes?: string;
 }
 
+/** Piece-type preset for fabric lines (cart title + hydrate). */
+export type BespokeFabricUsage = 'shirt' | 'dupatta' | 'trouser';
+
 /** Linked loose-fabric inventory row for fulfillment stock deduction. */
 export interface BespokeFabricMaterial {
   product_id: string;
@@ -19,8 +22,10 @@ export interface BespokeFabricMaterial {
   sku?: string;
   unit_code: string;
   quantity: number;
-  /** Captured at pick time for cart line unit price. */
+  /** Display/reference only — stripped from normalize for billing safety. */
   retail_price?: number;
+  /** Shirt / Dupatta / Trouser — shown as cart line title prefix. */
+  usage?: BespokeFabricUsage;
 }
 
 /** Per-line bespoke data stored in sales_items.customization_details (JSONB). */
@@ -166,6 +171,13 @@ export function normalizeFabricMaterials(raw: unknown): BespokeFabricMaterial[] 
       const productId = String(o.product_id ?? '').trim();
       const qty = Number(o.quantity);
       if (!productId || !Number.isFinite(qty) || qty <= 0) return null;
+      const usageRaw = String(o.usage ?? '')
+        .trim()
+        .toLowerCase();
+      const usage: BespokeFabricUsage | undefined =
+        usageRaw === 'shirt' || usageRaw === 'dupatta' || usageRaw === 'trouser'
+          ? usageRaw
+          : undefined;
       return {
         product_id: productId,
         variation_id: o.variation_id ? String(o.variation_id) : undefined,
@@ -173,6 +185,7 @@ export function normalizeFabricMaterials(raw: unknown): BespokeFabricMaterial[] 
         sku: o.sku ? String(o.sku) : undefined,
         unit_code: String(o.unit_code ?? 'm'),
         quantity: qty,
+        ...(usage ? { usage } : {}),
       } satisfies BespokeFabricMaterial;
     })
     .filter((r): r is BespokeFabricMaterial => r != null);

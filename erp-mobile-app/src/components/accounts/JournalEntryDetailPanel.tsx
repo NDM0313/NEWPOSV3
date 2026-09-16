@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, Ban, ExternalLink, Loader2 } from 'lucide-react';
 import {
   allowsDayBookUnifiedEdit,
   getMobileSalePurchaseOpenTarget,
@@ -13,11 +13,13 @@ import {
 } from './AccountsDashboard';
 import { EditTransactionSheet } from './reports/_shared/EditTransactionSheet';
 import { dispatchMobileAccountingInvalidated } from '../../lib/dataInvalidationBus';
+import { useAccountingAttachmentActions } from '../../hooks/useAccountingAttachmentActions';
 import { useAttachmentPreview } from '../../hooks/useAttachmentPreview';
 import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { loadMergedAttachmentsForJournalEntry } from '../../lib/loadMergedAttachments';
 import type { NormalizedAttachment } from '../../lib/normalizeAttachments';
+import { useTransactionCancel, canCancelJournalRow } from '../../hooks/useTransactionCancel';
 
 interface Props {
   entry: AccountEntry;
@@ -39,7 +41,28 @@ export function JournalEntryDetailPanel({
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [showEditEntry, setShowEditEntry] = useState(false);
   const [mergedAttachments, setMergedAttachments] = useState<NormalizedAttachment[]>([]);
+  const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+  const { hasAnyAttachmentHint } = useAccountingAttachmentActions(companyId, branchId);
+
+  const cancelHint = canCancelJournalRow({
+    journalEntryId: entry.id,
+    paymentId: entry.paymentId,
+    referenceType: entry.referenceType,
+  });
+
+  const {
+    cancelBusy,
+    cancelError,
+    beginCancelByJournalEntryId,
+    CancelConfirmPortal,
+  } = useTransactionCancel({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      onBack();
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +82,7 @@ export function JournalEntryDetailPanel({
 
   useEffect(() => {
     let cancelled = false;
+    setAttachmentsLoaded(false);
     (async () => {
       const items = await loadMergedAttachmentsForJournalEntry(companyId, {
         journalEntryId: entry.id,
@@ -67,7 +91,10 @@ export function JournalEntryDetailPanel({
         referenceId: entry.referenceId ?? detail?.reference_id,
         paymentId: entry.paymentId ?? detail?.payment_id,
       });
-      if (!cancelled) setMergedAttachments(items);
+      if (!cancelled) {
+        setMergedAttachments(items);
+        setAttachmentsLoaded(true);
+      }
     })();
     return () => {
       cancelled = true;
@@ -85,6 +112,14 @@ export function JournalEntryDetailPanel({
   ]);
 
   const hasAttachments = mergedAttachments.length > 0;
+  const attachmentHint = hasAnyAttachmentHint({
+    journalEntryId: entry.id,
+    referenceType: entry.referenceType,
+    referenceId: entry.referenceId,
+    paymentId: entry.paymentId,
+    hasAttachments: entry.hasAttachments,
+  });
+  const showHeaderAttachmentIcon = hasAttachments || (attachmentHint && !attachmentsLoaded);
 
   const typeConfig = getAccountEntryDisplayConfig(entry);
   const cashFlow = entryDirection(entry);
@@ -131,9 +166,10 @@ export function JournalEntryDetailPanel({
               <h1 className="font-semibold text-white truncate">{entry.entryNumber}</h1>
               <p className="text-xs text-white/80 truncate">{typeConfig.label}</p>
             </div>
-            {hasAttachments ? (
+            {showHeaderAttachmentIcon ? (
               <AttachmentIndicatorButton
                 onClick={() => openAttachmentPreview(mergedAttachments, 0)}
+                disabled={!hasAttachments}
               />
             ) : null}
           </div>
@@ -296,6 +332,23 @@ export function JournalEntryDetailPanel({
               ) : null}
             </div>
           )}
+
+          {cancelHint.show ? (
+            <button
+              type="button"
+              disabled={cancelBusy}
+              onClick={() => void beginCancelByJournalEntryId(entry.id)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-[#7F1D1D] hover:bg-[#991B1B] rounded-lg text-white font-semibold text-sm disabled:opacity-50"
+            >
+              {cancelBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              {cancelHint.label}
+            </button>
+          ) : null}
+          {cancelError ? (
+            <div className="p-3 bg-[#EF4444]/15 border border-[#EF4444]/40 rounded-lg text-sm text-[#FCA5A5]">
+              {cancelError}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -318,6 +371,7 @@ export function JournalEntryDetailPanel({
         />
       )}
 
+      {CancelConfirmPortal}
       {AttachmentPreviewPortal}
     </>
   );

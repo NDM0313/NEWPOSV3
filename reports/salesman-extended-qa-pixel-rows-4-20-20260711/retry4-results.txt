@@ -1,0 +1,10 @@
+﻿BASELINE: SALESMAN OK
+DRIFT after reports open
+ROW4 more=False reportsTap=False hub=False partyOnly=False finSection=False accounts=False
+ROW4 texts: Sat, Jul 11 | 90┬░F | 87%
+ROW5 N/A: section hidden
+ROW6 BLOCKED: session drift
+ROW4_ALT partyMsg=False myActivity=False
+ROW12-14 DIN_CHINA_RS_visible=False ROW15 masked=False
+ROW16 crash=True ROW17 blankObservedDuringNav=false ROW18 chunk=False
+ROW19 PASS: read-only navigation

@@ -95,11 +95,11 @@ export const ModuleSettings = () => {
   };
 
   return (
-    <div className="flex-1 h-full bg-gray-950 flex flex-col overflow-hidden">
+    <div className="flex-1 h-full bg-input-background flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="px-8 py-6 border-b border-gray-800">
-        <h1 className="text-2xl font-bold text-white mb-2">Modules & Features</h1>
-        <p className="text-gray-400">Enable or disable core business modules. Changes reflect immediately in the sidebar.</p>
+      <div className="px-8 py-6 border-b border-border">
+        <h1 className="text-2xl font-bold text-foreground mb-2">Modules & Features</h1>
+        <p className="text-muted-foreground">Enable or disable core business modules. Changes reflect immediately in the sidebar.</p>
       </div>
 
       {/* Grid Content */}
@@ -114,8 +114,8 @@ export const ModuleSettings = () => {
                 className={cn(
                   "flex flex-col p-6 rounded-xl border transition-all duration-200",
                   isEnabled 
-                    ? `bg-gray-900 border-gray-700 shadow-lg` 
-                    : "bg-gray-900/50 border-gray-800 opacity-80 hover:opacity-100"
+                    ? `bg-card border-border shadow-lg` 
+                    : "bg-muted/40 border-border opacity-80 hover:opacity-100"
                 )}
               >
                 <div className="flex items-start justify-between mb-4">
@@ -124,7 +124,7 @@ export const ModuleSettings = () => {
                   </div>
                   <div className="flex items-center gap-3">
                     {isEnabled && (
-                      <Badge className="bg-green-900/20 text-green-400 border-green-900/50 hover:bg-green-900/30">
+                      <Badge className="bg-green-900/20 text-[var(--erp-money-positive)] border-green-900/50 hover:bg-green-900/30">
                         Active
                       </Badge>
                     )}
@@ -136,17 +136,17 @@ export const ModuleSettings = () => {
                 </div>
 
                 <div className="flex-1 mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-2">{mod.title}</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">{mod.description}</p>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">{mod.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{mod.description}</p>
                 </div>
 
-                <div className="mt-auto pt-4 border-t border-gray-800 flex items-center justify-between">
+                <div className="mt-auto pt-4 border-t border-border flex items-center justify-between">
                   <Button 
                     variant="ghost" 
                     size="sm" 
                     className={cn(
                       "text-xs px-0 hover:bg-transparent", 
-                      isEnabled ? "text-blue-400 hover:text-blue-300" : "text-gray-600 cursor-not-allowed"
+                      isEnabled ? "text-blue-400 hover:text-blue-300" : "text-muted-foreground cursor-not-allowed"
                     )}
                     disabled={!isEnabled}
                     onClick={() => setConfigureModule(mod.id)}
@@ -156,7 +156,7 @@ export const ModuleSettings = () => {
                   </Button>
                   
                   {isEnabled && (
-                    <span className="flex items-center text-xs text-gray-500">
+                    <span className="flex items-center text-xs text-muted-foreground">
                       <CheckCircle2 size={12} className="mr-1 text-green-500" />
                       Installed
                     </span>
@@ -180,7 +180,7 @@ export const ModuleSettings = () => {
 const RentalConfigModal = ({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] bg-gray-950 border-gray-800 text-white">
+      <DialogContent className="sm:max-w-[600px] bg-input-background border-border text-foreground">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-pink-500/10 rounded-lg">
@@ -188,7 +188,7 @@ const RentalConfigModal = ({ open, onOpenChange }: { open: boolean, onOpenChange
             </div>
             <DialogTitle>Configure Rental Logic</DialogTitle>
           </div>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             Define how your rental business operates. These settings affect the booking flow.
           </DialogDescription>
         </DialogHeader>
@@ -196,49 +196,49 @@ const RentalConfigModal = ({ open, onOpenChange }: { open: boolean, onOpenChange
         <div className="py-6 space-y-6">
           {/* Setting 1: Pricing Unit */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium text-white">Pricing Model</Label>
+            <Label className="text-sm font-medium text-foreground">Pricing Model</Label>
             <Select defaultValue="per_event">
-              <SelectTrigger className="bg-gray-900 border-gray-700 text-white w-full">
+              <SelectTrigger className="bg-card border-border text-foreground w-full">
                 <SelectValue placeholder="Select pricing unit" />
               </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-800 text-white">
+              <SelectContent className="bg-popover border-border text-popover-foreground">
                 <SelectItem value="per_event">Per Event (Flat Rate for Duration)</SelectItem>
                 <SelectItem value="per_day">Per Day (Daily Rate)</SelectItem>
                 <SelectItem value="per_hour">Per Hour (Hourly Rate)</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-500">Best for bridal: "Per Event" (covers 3-5 days).</p>
+            <p className="text-xs text-muted-foreground">Best for bridal: "Per Event" (covers 3-5 days).</p>
           </div>
 
           {/* Setting 2: Security Policy */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium text-white">Security Requirements</Label>
+            <Label className="text-sm font-medium text-foreground">Security Requirements</Label>
             <div className="grid grid-cols-1 gap-3">
-              <div className="flex items-start space-x-3 p-3 rounded-lg border border-gray-800 bg-gray-900/50">
+              <div className="flex items-start space-x-3 p-3 rounded-lg border border-border bg-muted/40">
                 <Checkbox id="req_id" defaultChecked className="border-gray-600 data-[state=checked]:bg-pink-600 data-[state=checked]:border-pink-600" />
                 <div className="grid gap-1.5 leading-none">
                   <label
                     htmlFor="req_id"
-                    className="text-sm font-medium leading-none text-white cursor-pointer"
+                    className="text-sm font-medium leading-none text-foreground cursor-pointer"
                   >
                     Require ID Card (Original/Copy)
                   </label>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Mandatory for new customers.
                   </p>
                 </div>
               </div>
               
-              <div className="flex items-start space-x-3 p-3 rounded-lg border border-gray-800 bg-gray-900/50">
+              <div className="flex items-start space-x-3 p-3 rounded-lg border border-border bg-muted/40">
                 <Checkbox id="req_deposit" defaultChecked className="border-gray-600 data-[state=checked]:bg-pink-600 data-[state=checked]:border-pink-600" />
                 <div className="grid gap-1.5 leading-none">
                   <label
                     htmlFor="req_deposit"
-                    className="text-sm font-medium leading-none text-white cursor-pointer"
+                    className="text-sm font-medium leading-none text-foreground cursor-pointer"
                   >
                     Require Security Deposit
                   </label>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Cash or Cheque held until return.
                   </p>
                 </div>
@@ -248,26 +248,26 @@ const RentalConfigModal = ({ open, onOpenChange }: { open: boolean, onOpenChange
 
           {/* Setting 3: Buffer Time */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium text-white">Turnaround Buffer</Label>
+            <Label className="text-sm font-medium text-foreground">Turnaround Buffer</Label>
             <div className="flex gap-3">
               <div className="flex-1">
                 <Input 
                   type="number" 
                   defaultValue="1" 
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                 />
               </div>
               <Select defaultValue="days">
-                <SelectTrigger className="bg-gray-900 border-gray-700 text-white w-32">
+                <SelectTrigger className="bg-card border-border text-foreground w-32">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   <SelectItem value="hours">Hours</SelectItem>
                   <SelectItem value="days">Days</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-gray-500 flex items-center gap-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Clock size={12} />
               Time needed for dry cleaning/repairs before next booking.
             </p>
@@ -275,10 +275,10 @@ const RentalConfigModal = ({ open, onOpenChange }: { open: boolean, onOpenChange
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-border text-muted-foreground hover:text-foreground hover:bg-muted">
             Cancel
           </Button>
-          <Button onClick={() => onOpenChange(false)} className="bg-pink-600 hover:bg-pink-500 text-white font-medium">
+          <Button onClick={() => onOpenChange(false)} className="bg-pink-600 hover:bg-pink-500 text-foreground font-medium">
             Save Configuration
           </Button>
         </DialogFooter>

@@ -1,0 +1,54 @@
+{
+  "phase": "3B-D",
+  "capturedAt": "2026-06-29T12:16:53.046Z",
+  "matrix": [
+    {
+      "company": "DIN CHINA",
+      "profileId": "din-china",
+      "report": "Cash Flow",
+      "branchScope": "Selected branch",
+      "dateOrPeriod": "2000-01-01 to 2026-06-29",
+      "liquidityFilter": "all",
+      "sourceModuleFilter": "all",
+      "userEmail": "din@yahoo.com",
+      "legacySource": "getCashFlowReport → roznamchaService (main loader)",
+      "unifiedPreviewSource": "loadRoznamchaUnifiedPreview → cashFlowUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-china-cash-flow-preview.png",
+      "export": "exports/din-china-cash-flow-preview.json",
+      "status": "CAPTURED",
+      "notes": "Non-zero diff — finance rule confirmation required before any loader swap"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "profileId": "din-bridal",
+      "report": "Cash Flow",
+      "branchScope": "All branches",
+      "dateOrPeriod": "2000-01-01 to 2026-06-29",
+      "liquidityFilter": "all",
+      "sourceModuleFilter": "all",
+      "userEmail": "ndm313@yahoo.com",
+      "legacySource": "getCashFlowReport → roznamchaService (main loader)",
+      "unifiedPreviewSource": "loadRoznamchaUnifiedPreview → cashFlowUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-bridal-cash-flow-preview.png",
+      "export": "exports/din-bridal-cash-flow-preview.json",
+      "status": "CAPTURED",
+      "notes": "Non-zero diff — finance rule confirmation required before any loader swap"
+    },
+    {
+      "company": "DIN COUTURE",
+      "profileId": "din-couture",
+      "report": "Cash Flow",
+      "branchScope": "Selected branch",
+      "dateOrPeriod": "2000-01-01 to 2026-06-29",
+      "liquidityFilter": "all",
+      "sourceModuleFilter": "all",
+      "userEmail": "zhd@dincouture.pk",
+      "legacySource": "getCashFlowReport → roznamchaService (main loader)",
+      "unifiedPreviewSource": "loadRoznamchaUnifiedPreview → cashFlowUnifiedPreviewMapper",
+      "screenshot": "screenshots/din-couture-cash-flow-preview.png",
+      "export": "exports/din-couture-cash-flow-preview.json",
+      "status": "CAPTURED",
+      "notes": "Preview toggle default OFF verified; summary totals match within tolerance"
+    }
+  ]
+}

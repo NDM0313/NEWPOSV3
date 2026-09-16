@@ -1,0 +1,102 @@
+ M docs/accounting/R8_R2_FINAL_MERGE_CHECKLIST.md
+ M docs/accounting/R8_R2_PRODUCTION_EXECUTION_CLOSEOUT_2026-07-17.md
+ M erp-mobile-app/graphify-out/manifest.json
+ M erp-mobile-app/src/api/accounts.ts
+ M erp-mobile-app/src/api/partyGlLedger.ts
+ M erp-mobile-app/src/api/unifiedLedgerRpc.ts
+ M erp-mobile-app/src/components/accounts/reports/AccountLedgerReport.tsx
+ M erp-mobile-app/src/components/accounts/reports/PartyLedgerReport.tsx
+ M erp-mobile-app/src/components/accounts/reports/_shared/index.ts
+ M erp-mobile-app/src/components/shared/AttachmentIndicatorButton.tsx
+ M erp-mobile-app/src/lib/loadMergedAttachments.ts
+ M graphify-out/.graphify_root
+ M graphify-out/GRAPH_REPORT.md
+ M reports/single-core-ledger/din-bridal-monitoring/production-flags-day1.json
+ M reports/single-core-ledger/din-bridal-monitoring/production-monitoring-day1.md
+ M reports/single-core-ledger/din-couture-monitoring/production-flags-day1.json
+ M reports/single-core-ledger/din-couture-monitoring/production-monitoring-day1.md
+ M reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json
+ M reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md
+ M reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json
+ M reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md
+ M reports/single-core-ledger/phase-2-16-monitoring/screenshots/lv2-mr-jalil-parse-failure.png
+?? docs/accounting/R8_R2_PRODUCTION_VERIFICATION_2026-07-17.md
+?? erp-mobile-app/graphify-out/.graphify_root
+?? erp-mobile-app/graphify-out/GRAPH_REPORT.md
+?? erp-mobile-app/graphify-out/cache/
+?? erp-mobile-app/graphify-out/graph.json
+?? erp-mobile-app/releases/IOS_DEVELOPMENT_IPA_BUILD16.md
+?? erp-mobile-app/releases/IOS_DEVELOPMENT_IPA_BUILD17.md
+?? erp-mobile-app/releases/IOS_DEVELOPMENT_IPA_BUILD18.md
+?? erp-mobile-app/releases/IOS_DEVELOPMENT_IPA_BUILD19.md
+?? erp-mobile-app/releases/IOS_DEVELOPMENT_IPA_BUILD20.md
+?? erp-mobile-app/releases/erp-mobile-1.0.5-build16.ipa
+?? erp-mobile-app/releases/erp-mobile-1.0.5-build17.ipa
+?? erp-mobile-app/releases/erp-mobile-1.0.5-build18.ipa
+?? erp-mobile-app/releases/erp-mobile-1.0.5-build19.ipa
+?? erp-mobile-app/releases/erp-mobile-1.0.5-build20.ipa
+?? erp-mobile-app/releases/erp-mobile-1.0.5-build21.ipa
+?? erp-mobile-app/releases/ios-export-build16/
+?? erp-mobile-app/releases/ios-export-build17/
+?? erp-mobile-app/releases/ios-export-build18/
+?? erp-mobile-app/releases/ios-export-build19/
+?? erp-mobile-app/releases/ios-export-build20/
+?? erp-mobile-app/releases/ios-export-build21/
+?? erp-mobile-app/src/components/accounts/reports/_shared/DocumentItemsList.tsx
+?? erp-mobile-app/src/components/accounts/reports/_shared/LedgerPeriodEmptyCard.tsx
+?? erp-mobile-app/src/components/accounts/reports/_shared/resolveLedgerLineDetailTarget.ts
+?? erp-mobile-app/src/components/accounts/reports/_shared/useLedgerDocumentItemsExpand.ts
+?? erp-mobile-app/src/lib/clipboardImage.test.ts
+?? erp-mobile-app/src/lib/clipboardImage.ts
+?? erp-mobile-app/src/lib/enrichLedgerLinesWithCounterparty.ts
+?? erp-mobile-app/src/lib/extractSaleInvoiceNoFromDescription.test.ts
+?? erp-mobile-app/src/lib/extractSaleInvoiceNoFromDescription.ts
+?? erp-mobile-app/src/lib/paymentVoidVisibility.ts
+?? erp-mobile-app/src/lib/roznamchaBranchFilter.test.ts
+?? erp-mobile-app/src/utils/financialYear.test.ts
+?? reports/mobile-single-core-alignment-20260717/
+?? reports/mobile-single-core-phase2-wiring-20260717/
+?? reports/r8-r2-kill-switch-drill-20260712/
+?? reports/r8-r2-production-verification-20260717/
+?? reports/sales-revenue-phase2-closeout-20260712/
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T15-16-56-750Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T15-16-56-750Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T15-25-03-295Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T15-25-03-295Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T15-38-30-875Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T15-38-30-875Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T16-48-46-934Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T16-48-46-934Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T16-52-09-806Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T16-52-09-806Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T17-18-19-294Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T17-18-19-294Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T17-37-09-889Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T17-37-09-889Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T17-53-43-527Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T17-53-43-527Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T18-18-39-938Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T18-18-39-938Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T18-27-38-366Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T18-27-38-366Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T18-42-28-347Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T18-42-28-347Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T19-03-40-385Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T19-03-40-385Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T19-55-31-939Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T19-55-31-939Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T20-16-58-305Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T20-16-58-305Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T20-31-19-621Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T20-31-19-621Z.md
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-17T10-42-03-109Z.json
+?? reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-17T10-42-03-109Z.md
+?? reports/supplier-party-discount-je-posting-qa-20260712/
+?? scripts/single-core-ledger/run-r8-r2-kill-switch-drill-readonly.mjs
+?? scripts/single-core-ledger/run-r8-r2-six-screen-spotcheck.mjs
+?? scripts/single-core-ledger/run-sales-revenue-phase2-closeout.mjs
+?? scripts/single-core-ledger/run-supplier-party-discount-je-posting-qa.mjs
+?? scripts/single-core-ledger/run-supplier-party-discount-service-qa.mjs
+?? scripts/sql/diag_sales_revenue_4000_4100_split.sql
+?? src/app/lib/transactionTimelinePresentation.test.ts
+?? src/app/lib/transactionTimelinePresentation.ts

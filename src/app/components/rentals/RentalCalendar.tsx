@@ -161,17 +161,17 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
   const getRentalById = (id: string) => rentals.find((r) => r.id === id);
 
   return (
-    <div className="flex flex-col h-full min-h-[500px] bg-gray-950 border border-gray-800 rounded-xl overflow-hidden max-h-[75vh]">
-      <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/50 shrink-0">
+    <div className="flex flex-col h-full min-h-[500px] bg-input-background border border-border rounded-xl overflow-hidden max-h-[75vh]">
+      <div className="p-4 border-b border-border flex justify-between items-center bg-muted/40 shrink-0">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1">
-            <Button variant="ghost" size="sm" onClick={handlePrev} className="h-7 w-7 p-0 text-gray-400 hover:text-white">
+          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1">
+            <Button variant="ghost" size="sm" onClick={handlePrev} className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground">
               <ChevronLeft size={16} />
             </Button>
-            <span className="text-sm font-medium text-white px-2 min-w-[120px] text-center">
+            <span className="text-sm font-medium text-foreground px-2 min-w-[120px] text-center">
               {format(currentDate, 'MMMM yyyy')}
             </span>
-            <Button variant="ghost" size="sm" onClick={handleNext} className="h-7 w-7 p-0 text-gray-400 hover:text-white">
+            <Button variant="ghost" size="sm" onClick={handleNext} className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground">
               <ChevronRight size={16} />
             </Button>
           </div>
@@ -181,18 +181,18 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex gap-4 text-xs font-medium text-gray-300">
+          <div className="flex gap-4 text-xs font-medium text-muted-foreground">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-pink-500" /> Booked</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-600" /> Rented</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-600" /> Overdue</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-600" /> Returned</span>
           </div>
-          <div className="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
+          <div className="flex bg-card p-1 rounded-lg border border-border">
             <button
               onClick={() => setViewMode('monthly')}
               className={cn(
                 'px-3 py-1 text-xs font-medium rounded-md transition-all',
-                viewMode === 'monthly' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                viewMode === 'monthly' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               )}
             >
               Monthly
@@ -201,7 +201,7 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
               onClick={() => setViewMode('weekly')}
               className={cn(
                 'px-3 py-1 text-xs font-medium rounded-md transition-all',
-                viewMode === 'weekly' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                viewMode === 'weekly' ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               )}
             >
               Weekly
@@ -211,21 +211,21 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
       </div>
 
       <div className="flex flex-1 overflow-y-auto overflow-x-auto min-h-0">
-        <div className="w-64 flex-shrink-0 border-r border-gray-800 bg-gray-900/30 z-20 flex flex-col">
-          <div className="h-12 border-b border-gray-800 flex items-center px-4 bg-gray-900 font-medium text-sm text-gray-400 sticky top-0 z-10 shrink-0">
+        <div className="w-64 flex-shrink-0 border-r border-border bg-muted/30 z-20 flex flex-col">
+          <div className="h-12 border-b border-border flex items-center px-4 bg-card font-medium text-sm text-muted-foreground sticky top-0 z-10 shrink-0">
             Product Name
           </div>
           <ScrollArea className="flex-1">
             <div className="flex flex-col">
               {loading ? (
-                <div className="p-4 text-gray-500 text-sm">Loading…</div>
+                <div className="p-4 text-muted-foreground text-sm">Loading…</div>
               ) : productsForRows.length === 0 ? (
-                <div className="p-4 text-gray-500 text-sm">No rentable products</div>
+                <div className="p-4 text-muted-foreground text-sm">No rentable products</div>
               ) : (
                 productsForRows.map((product) => (
                   <div
                     key={product.id}
-                    className="h-16 border-b border-gray-800/50 flex items-center px-4 text-sm font-medium text-gray-300 hover:bg-gray-800/30 transition-colors truncate"
+                    className="h-16 border-b border-border flex items-center px-4 text-sm font-medium text-muted-foreground hover:bg-accent/30 transition-colors truncate"
                   >
                     {product.name}
                   </div>
@@ -235,9 +235,9 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
           </ScrollArea>
         </div>
 
-        <ScrollArea className="flex-1 bg-gray-950/50 overflow-x-auto min-w-0">
+        <ScrollArea className="flex-1 bg-muted/40 overflow-x-auto min-w-0">
           <div className="min-w-[1200px]">
-            <div className="flex h-12 border-b border-gray-800 bg-gray-900 sticky top-0 z-10 shrink-0">
+            <div className="flex h-12 border-b border-border bg-card sticky top-0 z-10 shrink-0">
               {days.map((day) => {
                 const isToday = isSameDay(day, new Date());
                 return (
@@ -245,8 +245,8 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
                     key={day.toISOString()}
                     style={{ width: colWidth }}
                     className={cn(
-                      'flex-shrink-0 border-r border-gray-800 flex flex-col items-center justify-center text-xs font-medium',
-                      isToday ? 'bg-blue-900/20 text-blue-400' : 'text-gray-400'
+                      'flex-shrink-0 border-r border-border flex flex-col items-center justify-center text-xs font-medium',
+                      isToday ? 'bg-blue-900/20 text-blue-400' : 'text-muted-foreground'
                     )}
                   >
                     <span>{format(day, 'EEE')}</span>
@@ -263,8 +263,8 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
                     key={day.toISOString()}
                     style={{ width: colWidth }}
                     className={cn(
-                      'flex-shrink-0 border-r border-gray-800/30 h-full',
-                      [0, 6].includes(day.getDay()) ? 'bg-gray-900/20' : ''
+                      'flex-shrink-0 border-r border-border/30 h-full',
+                      [0, 6].includes(day.getDay()) ? 'bg-card/20' : ''
                     )}
                   />
                 ))}
@@ -272,7 +272,7 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
 
               <div className="relative z-10">
                 {productsForRows.map((product) => (
-                  <div key={product.id} className="h-16 border-b border-gray-800/50 relative">
+                  <div key={product.id} className="h-16 border-b border-border relative">
                     {bookings
                       .filter((b) => b.productId === product.id)
                       .map((booking) => {
@@ -293,13 +293,13 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
                                 )}
                               >
                                 <div className="flex flex-col leading-none">
-                                  <span className="text-white text-xs font-bold truncate">{booking.customer}</span>
-                                  <span className="text-white/70 text-[10px] truncate">{booking.rentalNo}</span>
+                                  <span className="text-foreground text-xs font-bold truncate">{booking.customer}</span>
+                                  <span className="text-foreground/70 text-[10px] truncate">{booking.rentalNo}</span>
                                 </div>
                               </div>
                             </PopoverTrigger>
-                            <PopoverContent className="w-80 p-0 bg-gray-900 border-gray-800 text-white shadow-xl">
-                              <div className="p-4 border-b border-gray-800 flex items-center gap-3">
+                            <PopoverContent className="w-80 p-0 bg-card border-border text-foreground shadow-xl">
+                              <div className="p-4 border-b border-border flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center font-bold text-lg">
                                   {booking.customer.charAt(0)}
                                 </div>
@@ -312,7 +312,7 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
                                       booking.status === 'overdue' && 'bg-red-500/20 text-red-400 border-red-500/30',
                                       booking.status === 'booked' && 'bg-pink-500/20 text-pink-400',
                                       booking.status === 'rented' && 'bg-blue-500/20 text-blue-400',
-                                      booking.status === 'returned' && 'bg-green-500/20 text-green-400'
+                                      booking.status === 'returned' && 'bg-green-500/20 text-[var(--erp-money-positive)]'
                                     )}
                                   >
                                     {booking.status}
@@ -326,19 +326,19 @@ export const RentalCalendar = ({ onViewRental }: RentalCalendarProps) => {
                               </div>
                               <div className="p-4 space-y-3">
                                 <div className="flex justify-between text-sm">
-                                  <span className="text-gray-500">Pickup</span>
-                                  <span className="text-white">{format(parseISO(booking.start), 'PPP')}</span>
+                                  <span className="text-muted-foreground">Pickup</span>
+                                  <span className="text-foreground">{format(parseISO(booking.start), 'PPP')}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                  <span className="text-gray-500">Return</span>
-                                  <span className="text-white">{format(parseISO(booking.end), 'PPP')}</span>
+                                  <span className="text-muted-foreground">Return</span>
+                                  <span className="text-foreground">{format(parseISO(booking.end), 'PPP')}</span>
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-gray-800 flex justify-end">
+                                <div className="mt-4 pt-4 border-t border-border flex justify-end">
                                   {onViewRental && (
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      className="text-blue-400 hover:text-white"
+                                      className="text-blue-400 hover:text-foreground"
                                       onClick={() => {
                                         const rental = getRentalById(booking.rentalId);
                                         if (rental) onViewRental(rental);

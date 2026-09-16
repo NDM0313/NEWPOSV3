@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-30T13:18:00.000Z",
+  "status": "BLOCKED_PENDING_STABLE_RUN_AND_FINAL_APPROVAL",
+  "stable_run_weeks_required": "2-4",
+  "backup_tag_required": true,
+  "candidates_for_deprecation": [
+    "Legacy hybrid party ledger compare-only paths after all loaders unified",
+    "Duplicate roznamcha/account statement service shims",
+    "Old diag-only SQL repair scripts (archive, not delete)"
+  ],
+  "grep_scan_required": [
+    "getCustomerLedger legacy-only callers",
+    "legacy_shadow preview toggles default ON",
+    "direct journal posting bypassing unified loaders"
+  ],
+  "rollback": "Keep legacy engines until flags OFF + deploy revert plan tested",
+  "approval": "Written operator sign-off after stable monitoring PASS streak"
+}

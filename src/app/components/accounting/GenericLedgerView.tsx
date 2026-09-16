@@ -12,6 +12,7 @@ import { ModernLedgerTabs } from '@/app/components/customer-ledger-test/modern-o
 import { ModernTransactionModal } from '@/app/components/customer-ledger-test/modern-original/ModernTransactionModal';
 import { buildTransactionsWithOpeningBalance } from '@/app/services/customerLedgerTypes';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 import {
   getSupplierOperationalLedgerData,
   getUserLedgerData,
@@ -34,6 +35,8 @@ import {
 import { CustomerGlJournalTable } from '@/app/components/customer-ledger-test/CustomerGlJournalTable';
 import { Badge } from '@/app/components/ui/badge';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import type { PartyLedgerRoleView } from '@/app/lib/importFxPartyLedgerRoleFilter';
+import { summarizeRoleFilteredApRows } from '@/app/lib/importFxPartyLedgerRoleFilter';
 
 interface GenericLedgerViewProps {
   ledgerType: LedgerEntityType;
@@ -107,11 +110,25 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   const [workerPaymentDialogOpen, setWorkerPaymentDialogOpen] = useState(false);
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0);
   const [showOpeningJournalHistory, setShowOpeningJournalHistory] = useState(false);
+  /** Path 21: supplier merchandise vs Agent FX operational GL (CoA account ledger unchanged). */
+  const [supplierPartyRole, setSupplierPartyRole] = useState<PartyLedgerRoleView>('supplier');
 
   const glEntriesDisplay = useMemo(
     () => dedupeOlderOpeningJournalRows(glEntries, showOpeningJournalHistory),
     [glEntries, showOpeningJournalHistory]
   );
+
+  const glRoleSummary = useMemo(() => {
+    if (ledgerType !== 'supplier' || statementEngine !== 'gl') return null;
+    const body = glEntriesDisplay.filter(
+      (e) => !String(e.description || '').toLowerCase().includes('opening balance')
+    );
+    const openingRow = glEntriesDisplay.find((e) =>
+      String(e.description || '').toLowerCase().includes('opening balance')
+    );
+    const opening = openingRow ? Number(openingRow.running_balance || 0) : 0;
+    return summarizeRoleFilteredApRows(body, opening);
+  }, [glEntriesDisplay, ledgerType, statementEngine]);
 
   const loadOperationalRef = useRef<() => void>(() => {});
   const loadOperational = useCallback(async () => {
@@ -153,12 +170,15 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   useEffect(() => {
     const bump = () => setBalanceRefreshTick((t) => t + 1);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
-    window.addEventListener('accountingEntriesChanged', bump);
+    const unsub = subscribeAccountingReportReload(bump, {
+      companyId,
+      branchId: branchId ?? null,
+    });
     return () => {
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
-      window.removeEventListener('accountingEntriesChanged', bump);
+      unsub();
     };
-  }, []);
+  }, [companyId, branchId]);
 
   useEffect(() => {
     if (statementEngine !== 'gl' || !companyId || !entityId) return;
@@ -180,7 +200,8 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                 companyId,
                 branchId ?? undefined,
                 dateRange.from,
-                dateRange.to
+                dateRange.to,
+                { partyRole: supplierPartyRole }
               )
             : await accountingService.getWorkerPartyGlJournalLedger(
                 entityId,
@@ -208,6 +229,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
     dateRange.from,
     dateRange.to,
     balanceRefreshTick,
+    supplierPartyRole,
   ]);
 
   useEffect(() => {
@@ -275,6 +297,14 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
     window.addEventListener('paymentAdded', handlePaymentAdded);
     window.addEventListener('accountingEntriesChanged', handleAccountingEntriesChanged);
+    const unsubBus = subscribeAccountingReportReload(
+      () => {
+        if (ledgerType === 'supplier' || ledgerType === 'worker' || ledgerType === 'user') {
+          loadOperationalRef.current();
+        }
+      },
+      { companyId, branchId: branchId ?? null },
+    );
 
     return () => {
       window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
@@ -283,8 +313,9 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
       window.removeEventListener('purchaseSaved', handlePurchaseSaved);
       window.removeEventListener('paymentAdded', handlePaymentAdded);
       window.removeEventListener('accountingEntriesChanged', handleAccountingEntriesChanged);
+      unsubBus();
     };
-  }, [ledgerType, entityId]);
+  }, [ledgerType, entityId, companyId, branchId]);
 
   const labels = TAB_LABELS[ledgerType];
   const displayTransactions = operationalData
@@ -297,14 +328,14 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
     : null;
 
   if (!companyId || !entityId) {
-    return <div className="py-8 text-center text-gray-400 text-sm">Select an entity above.</div>;
+    return <div className="py-8 text-center text-muted-foreground text-sm">Select an entity above.</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold text-white">{STATEMENT_TITLE[ledgerType]}</p>
-        <p className="text-[11px] text-gray-500">
+        <p className="text-sm font-semibold text-foreground">{STATEMENT_TITLE[ledgerType]}</p>
+        <p className="text-[11px] text-muted-foreground">
           Operational (Not GL) · GL (Journal) · Reconciliation (Variance). No unlabeled mixed running balance.
         </p>
       </div>
@@ -315,7 +346,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
           type="button"
           onClick={() => loadOperational()}
           disabled={operationalLoading}
-          className="p-3 rounded-lg transition-colors flex items-center justify-center bg-gray-900 border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white disabled:opacity-50"
+          className="p-3 rounded-lg transition-colors flex items-center justify-center bg-card border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           title="Refresh operational statement"
         >
           <RefreshCw size={18} className={operationalLoading ? 'animate-spin' : ''} />
@@ -324,7 +355,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
           <Button
             type="button"
             onClick={() => setWorkerPaymentDialogOpen(true)}
-            className="bg-green-600 hover:bg-green-500 text-white"
+            className="bg-green-600 hover:bg-green-500 text-foreground"
           >
             <Banknote className="w-4 h-4 mr-2" />
             Pay Worker
@@ -377,17 +408,17 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
             className={cn(
               'flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors min-w-[150px]',
               statementEngine === t.id
-                ? 'border-blue-500/80 bg-blue-500/15 text-white'
-                : 'border-gray-700 bg-[#0F1419] text-gray-300 hover:border-gray-600'
+                ? 'border-blue-500/80 bg-blue-500/15 text-foreground'
+                : 'border-border bg-muted/40 text-muted-foreground hover:border-gray-600'
             )}
           >
             <span className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold">{t.label}</span>
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-gray-700/80 text-gray-100">
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted/80 text-gray-100">
                 {t.badge}
               </Badge>
             </span>
-            <span className="text-[11px] text-gray-500 mt-0.5">{t.sub}</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</span>
           </button>
         ))}
       </div>
@@ -409,7 +440,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
             </div>
           ) : ledgerDataForViews ? (
             <>
-              <div className="shrink-0 pb-6 border-b border-gray-800">
+              <div className="shrink-0 pb-6 border-b border-border">
                 <ModernSummaryCards ledgerData={ledgerDataForViews} variant={ledgerType} />
               </div>
               <div>
@@ -427,7 +458,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
               </div>
             </>
           ) : (
-            <p className="text-sm text-gray-500 py-8 text-center">No operational rows in this range.</p>
+            <p className="text-sm text-muted-foreground py-8 text-center">No operational rows in this range.</p>
           )}
         </>
       )}
@@ -443,12 +474,38 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                 : 'Worker Payable (2010) and Advance (1180). Running balance = WP liability minus WA asset (journal net).'}
           </p>
           {ledgerType === 'user' ? (
-            <div className="rounded-xl border border-gray-800 bg-[#0F1419] p-8 text-center text-sm text-gray-400">
+            <div className="rounded-xl border border-border bg-muted/40 p-8 text-center text-sm text-muted-foreground">
               No GL party statement for this user type. Operational tab shows the staff subledger only.
             </div>
           ) : (
             <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
+              {ledgerType === 'supplier' && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs text-muted-foreground">Party role:</span>
+                  {(
+                    [
+                      { id: 'supplier' as const, label: 'Supplier (merchandise)' },
+                      { id: 'agent_fx' as const, label: 'Agent FX (Path 21)' },
+                      { id: 'all' as const, label: 'All (unfiltered)' },
+                    ] as const
+                  ).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setSupplierPartyRole(r.id)}
+                      className={cn(
+                        'text-xs px-2.5 py-1 rounded border transition-colors',
+                        supplierPartyRole === r.id
+                          ? 'border-amber-500/80 bg-amber-500/15 text-foreground'
+                          : 'border-border text-muted-foreground hover:border-gray-600'
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
                 <input
                   type="checkbox"
                   className="rounded border-gray-600"
@@ -459,6 +516,30 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                   Show all opening-balance journal history (edits/reposts). Off = latest opening JE only for a clearer default view.
                 </span>
               </label>
+              {ledgerType === 'supplier' && glRoleSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Opening</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.openingBalance)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Debit</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.totalDebit)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Credit</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.totalCredit)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Payments</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.paymentsPaid)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/30 px-2 py-1.5">
+                    <div className="text-muted-foreground">Closing</div>
+                    <div className="font-semibold tabular-nums">{formatCurrency(glRoleSummary.closingBalance)}</div>
+                  </div>
+                </div>
+              )}
               <CustomerGlJournalTable
                 entries={glEntriesDisplay}
                 loading={glLoading}
@@ -481,7 +562,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
       )}
 
       {statementEngine === 'reconciliation' && (
-        <div className="rounded-xl border border-gray-800 bg-[#0F1419] p-6 space-y-4">
+        <div className="rounded-xl border border-border bg-muted/40 p-6 space-y-4">
           <p className="text-[11px] text-amber-200/85">
             <Badge className="mr-2 bg-amber-600/25 text-amber-100 border-0">Reconciliation</Badge>
             {ledgerType === 'user'
@@ -493,12 +574,12 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
 
           {ledgerType === 'user' && (
             <dl className="grid grid-cols-1 gap-4 text-sm">
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">Operational closing (subledger)</dt>
-                <dd className="text-xl font-semibold text-white mt-1 tabular-nums">
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">Operational closing (subledger)</dt>
+                <dd className="text-xl font-semibold text-foreground mt-1 tabular-nums">
                   {formatCurrency(operationalData?.closingBalance ?? 0)}
                 </dd>
-                <p className="text-[11px] text-gray-500 mt-2">GL party reconciliation — not applicable for user/staff.</p>
+                <p className="text-[11px] text-muted-foreground mt-2">GL party reconciliation — not applicable for user/staff.</p>
               </div>
             </dl>
           )}
@@ -516,20 +597,20 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
 
           {ledgerType === 'supplier' && !reconLoading && !reconError && supplierRecon && (
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">Operational payable (RPC)</dt>
-                <dd className="text-xl font-semibold text-white mt-1 tabular-nums">
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">Operational payable (RPC)</dt>
+                <dd className="text-xl font-semibold text-foreground mt-1 tabular-nums">
                   {formatCurrency(supplierRecon.operationalPayable)}
                 </dd>
               </div>
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">GL AP (journal slice)</dt>
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">GL AP (journal slice)</dt>
                 <dd className="text-xl font-semibold text-violet-200 mt-1 tabular-nums">
                   {formatCurrency(supplierRecon.glApPayable)}
                 </dd>
               </div>
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4 sm:col-span-2">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">Variance (operational − GL)</dt>
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4 sm:col-span-2">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">Variance (operational − GL)</dt>
                 <dd
                   className={cn(
                     'text-2xl font-bold mt-1 tabular-nums',
@@ -538,7 +619,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                 >
                   {formatCurrency(supplierRecon.variance)}
                 </dd>
-                <p className="text-[11px] text-gray-500 mt-2">As of {supplierRecon.asOfDate}.</p>
+                <p className="text-[11px] text-muted-foreground mt-2">As of {supplierRecon.asOfDate}.</p>
               </div>
               <div className="rounded-lg border border-amber-900/30 bg-amber-950/15 p-4 sm:col-span-2">
                 <dt className="text-amber-200/90 text-xs uppercase tracking-wide">Unmapped AP journal entries (company)</dt>
@@ -551,20 +632,20 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
 
           {ledgerType === 'worker' && !reconLoading && !reconError && workerRecon && (
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">Operational pending (RPC)</dt>
-                <dd className="text-xl font-semibold text-white mt-1 tabular-nums">
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">Operational pending (RPC)</dt>
+                <dd className="text-xl font-semibold text-foreground mt-1 tabular-nums">
                   {formatCurrency(workerRecon.operationalPending)}
                 </dd>
               </div>
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">GL worker payable net</dt>
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">GL worker payable net</dt>
                 <dd className="text-xl font-semibold text-violet-200 mt-1 tabular-nums">
                   {formatCurrency(workerRecon.glWorkerPayableNet)}
                 </dd>
               </div>
-              <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4 sm:col-span-2">
-                <dt className="text-gray-500 text-xs uppercase tracking-wide">Variance (operational − GL)</dt>
+              <div className="rounded-lg border border-border bg-[#0B0F14] p-4 sm:col-span-2">
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">Variance (operational − GL)</dt>
                 <dd
                   className={cn(
                     'text-2xl font-bold mt-1 tabular-nums',
@@ -573,14 +654,14 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
                 >
                   {formatCurrency(workerRecon.variance)}
                 </dd>
-                <p className="text-[11px] text-gray-500 mt-2">As of {workerRecon.asOfDate}.</p>
+                <p className="text-[11px] text-muted-foreground mt-2">As of {workerRecon.asOfDate}.</p>
               </div>
               <div className="rounded-lg border border-amber-900/30 bg-amber-950/15 p-4 sm:col-span-2">
                 <dt className="text-amber-200/90 text-xs uppercase tracking-wide">Company unmapped JE counts (hygiene)</dt>
                 <dd className="text-sm text-amber-100 mt-1">
                   AP: {workerRecon.companyUnmappedApCount} · AR: {workerRecon.companyUnmappedArCount} distinct JEs
                 </dd>
-                <p className="text-[11px] text-gray-500 mt-2">
+                <p className="text-[11px] text-muted-foreground mt-2">
                   Worker-specific unmapped detection is not split in this RPC; use Integrity / Reconciliation Center for
                   line review.
                 </p>

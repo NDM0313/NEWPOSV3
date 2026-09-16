@@ -1,0 +1,36 @@
+{
+  "run": "PHASE_3D_FINANCE_APPROVAL_MANIFEST_TEMPLATE",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "finance_status": "PENDING",
+  "approved_by": null,
+  "approved_at": null,
+  "approved_companies": [],
+  "approved_reports": [],
+  "candidate_values": {
+    "din-china": {
+      "balance_sheet": { "as_of": "2026-06-29", "total_assets_pkr": 89754088.52, "liabilities_and_equity_pkr": 89754088.52 },
+      "profit_loss": { "period": "2000-01-01 to 2026-06-29", "revenue_pkr": 49040015, "net_profit_pkr": 8465731.87 }
+    },
+    "din-bridal": {
+      "balance_sheet": { "as_of": "2026-06-29", "total_assets_pkr": 13521792, "liabilities_and_equity_pkr": 13521792 },
+      "profit_loss": { "period": "2000-01-01 to 2026-06-29", "revenue_pkr": 354500, "net_profit_pkr": 119992 }
+    },
+    "din-couture": {
+      "balance_sheet": { "as_of": "2026-06-29", "total_assets_pkr": 22667273, "liabilities_and_equity_pkr": 22667273 },
+      "profit_loss": { "period": "2000-01-01 to 2026-06-29", "revenue_pkr": 26250, "net_profit_pkr": -16750 }
+    }
+  },
+  "rule_confirmations": {
+    "balance_sheet_equity_rollup": { "accepted": false, "note": "BS-FIX / PF-04 net income in equity" },
+    "profit_loss_cogs_heuristic": { "accepted": false, "note": "COST_OF_PRODUCTION_CODES + type heuristics" }
+  },
+  "screenshots_evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/screenshots/",
+  "monitoring_evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/post-capture-monitoring.json",
+  "tests_build_evidence": {
+    "test_unified_ledger": "265/265 PASS",
+    "build": "PASS"
+  },
+  "loader_swap_approved": false,
+  "migrations_approved": false,
+  "notes": "Template only — fill when operator provides explicit finance approval text. Not a loader swap approval."
+}

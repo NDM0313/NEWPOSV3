@@ -1,4 +1,9 @@
-import type { BespokeFabricMaterial, BespokeMetadata, LooseFabricProductOption } from '../types/bespoke';
+import type {
+  BespokeFabricMaterial,
+  BespokeFabricUsage,
+  BespokeMetadata,
+  LooseFabricProductOption,
+} from '../types/bespoke';
 import { buildBespokeMetadataForPersist, normalizeFabricMaterials } from '../types/bespoke';
 
 /** Client-side cart line flags for injected fabric children. */
@@ -19,6 +24,10 @@ export interface BespokeCartLineBase {
   bespokeParentCartId?: BespokeParentCartRef;
   bespokeRole?: BespokeInjectedRole;
   isBespokeInjected?: boolean;
+  /** Piece-type preset attached to injected fabric line (display). */
+  bespokeUsage?: BespokeFabricUsage;
+  /** Catalog retail unit price for UI only — billed price stays 0. */
+  bespokeRefUnitPrice?: number;
 }
 
 export interface BespokeInjectionPayload {
@@ -27,6 +36,47 @@ export interface BespokeInjectionPayload {
 }
 
 export const BESPOKE_GENERIC_SKU_PREFIX = 'CUSTOM-';
+
+export const FABRIC_USAGE_LABELS: Record<BespokeFabricUsage, string> = {
+  shirt: 'Shirt',
+  dupatta: 'Dupatta',
+  trouser: 'Trouser',
+};
+
+const FABRIC_USAGE_PREFIXES: Array<{ usage: BespokeFabricUsage; prefix: string }> = (
+  Object.entries(FABRIC_USAGE_LABELS) as Array<[BespokeFabricUsage, string]>
+).map(([usage, label]) => ({ usage, prefix: `${label} — ` }));
+
+export function parseFabricUsage(raw: unknown): BespokeFabricUsage | undefined {
+  const v = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  if (v === 'shirt' || v === 'dupatta' || v === 'trouser') return v;
+  return undefined;
+}
+
+export function formatFabricLineName(
+  productName: string,
+  usage?: BespokeFabricUsage | null,
+): string {
+  const base = (productName || 'Fabric').trim() || 'Fabric';
+  if (!usage) return base;
+  const label = FABRIC_USAGE_LABELS[usage];
+  return label ? `${label} — ${base}` : base;
+}
+
+export function stripFabricUsagePrefix(name: string): {
+  productName: string;
+  usage?: BespokeFabricUsage;
+} {
+  const raw = String(name ?? '');
+  for (const { usage, prefix } of FABRIC_USAGE_PREFIXES) {
+    if (raw.startsWith(prefix)) {
+      return { productName: raw.slice(prefix.length).trim() || raw, usage };
+    }
+  }
+  return { productName: raw };
+}
 
 export function isBespokeGenericSku(sku: string | null | undefined): boolean {
   if (!sku) return false;
@@ -37,10 +87,8 @@ export function isInjectedBespokeLine(item: BespokeCartLineBase): boolean {
   return !!item.isBespokeInjected || item.bespokeRole === 'fabric' || item.bespokeParentCartId != null;
 }
 
-/** Retail unit price for injected fabric — default 0 so customer bill is not inflated (web parity). */
-export function resolveFabricMaterialRetailPrice(fabric: BespokeFabricMaterial): number {
-  const fromMaterial = Number(fabric.retail_price);
-  if (Number.isFinite(fromMaterial) && fromMaterial > 0) return fromMaterial;
+/** Fabric stock lines bill at 0 — retail is display-only via bespokeRefUnitPrice. */
+export function resolveFabricMaterialRetailPrice(_fabric: BespokeFabricMaterial): number {
   return 0;
 }
 
@@ -55,17 +103,38 @@ function fabricMaterialToOption(mat: BespokeFabricMaterial): Partial<LooseFabric
   };
 }
 
+function pickRawFabricMeta(
+  rawList: BespokeFabricMaterial[],
+  normalized: BespokeFabricMaterial,
+  index: number,
+): { usage?: BespokeFabricUsage; refUnitPrice?: number } {
+  const byIndex = rawList[index];
+  const raw =
+    byIndex && String(byIndex.product_id) === normalized.product_id
+      ? byIndex
+      : rawList.find((r) => String(r.product_id) === normalized.product_id);
+  const usage = parseFabricUsage(raw?.usage ?? normalized.usage);
+  const ref = Number(raw?.retail_price);
+  return {
+    usage,
+    refUnitPrice: Number.isFinite(ref) && ref > 0 ? ref : undefined,
+  };
+}
+
 export function buildFabricCartLine<T extends BespokeCartLineBase>(
   fabric: BespokeFabricMaterial,
   parentCartId: BespokeParentCartRef,
   retailPrice: number,
   createId: () => number | string,
+  opts?: { usage?: BespokeFabricUsage; refUnitPrice?: number },
 ): T {
   const opt = fabricMaterialToOption(fabric);
+  const usage = opts?.usage ?? parseFabricUsage(fabric.usage);
+  const baseName = fabric.product_name || opt.name || 'Fabric';
   return {
     id: createId(),
     productId: fabric.product_id,
-    name: fabric.product_name || opt.name || 'Fabric',
+    name: formatFabricLineName(baseName, usage),
     sku: fabric.sku || opt.sku || '—',
     price: retailPrice,
     qty: fabric.quantity,
@@ -75,6 +144,10 @@ export function buildFabricCartLine<T extends BespokeCartLineBase>(
     bespokeRole: 'fabric',
     isBespokeInjected: true,
     customizationDetails: null,
+    ...(usage ? { bespokeUsage: usage } : {}),
+    ...(opts?.refUnitPrice != null && opts.refUnitPrice > 0
+      ? { bespokeRefUnitPrice: opts.refUnitPrice }
+      : {}),
   } as T;
 }
 
@@ -100,12 +173,21 @@ export function syncFabricChildLines<T extends BespokeCartLineBase>(
     (i) => !(sameCartRef(i.id, parentCartId) === false && i.bespokeParentCartId != null && sameCartRef(i.bespokeParentCartId, parentCartId)),
   );
 
+  const rawList = Array.isArray(fabrics) ? fabrics : [];
   const validFabrics = normalizeFabricMaterials(fabrics).filter(
     (m: BespokeFabricMaterial) => m.product_id && m.quantity > 0,
   );
-  const newFabricLines = validFabrics.map((f: BespokeFabricMaterial) =>
-    buildFabricCartLine<T>(f, parentCartId, resolveFabricPrice(f), createId),
-  );
+  const newFabricLines = validFabrics.map((f: BespokeFabricMaterial, index: number) => {
+    const meta = pickRawFabricMeta(rawList, f, index);
+    const withUsage = meta.usage ? { ...f, usage: meta.usage } : f;
+    return buildFabricCartLine<T>(
+      withUsage,
+      parentCartId,
+      resolveFabricPrice(f),
+      createId,
+      { usage: meta.usage, refUnitPrice: meta.refUnitPrice },
+    );
+  });
 
   const parentIdx = withoutInjected.findIndex((i) => sameCartRef(i.id, parentCartId));
   const metadata =
@@ -165,12 +247,19 @@ export function hydrateFabricDraftsFromChildren<
 >(parentCartId: BespokeParentCartRef, allItems: T[]): BespokeFabricMaterial[] {
   return allItems
     .filter((i) => i.bespokeParentCartId != null && sameCartRef(i.bespokeParentCartId, parentCartId) && i.bespokeRole === 'fabric')
-    .map((i) => ({
-      product_id: String(i.productId),
-      variation_id: i.variationId,
-      product_name: i.name,
-      sku: i.sku,
-      unit_code: i.unit || 'm',
-      quantity: i.qty,
-    }));
+    .map((i) => {
+      const fromName = stripFabricUsagePrefix(i.name);
+      const usage = parseFabricUsage(i.bespokeUsage) ?? fromName.usage;
+      const ref = Number(i.bespokeRefUnitPrice);
+      return {
+        product_id: String(i.productId),
+        variation_id: i.variationId,
+        product_name: fromName.productName,
+        sku: i.sku,
+        unit_code: i.unit || 'm',
+        quantity: i.qty,
+        ...(usage ? { usage } : {}),
+        ...(Number.isFinite(ref) && ref > 0 ? { retail_price: ref } : {}),
+      };
+    });
 }

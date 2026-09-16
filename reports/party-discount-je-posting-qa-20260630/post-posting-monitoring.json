@@ -1,0 +1,25 @@
+{
+  "phase": "post-posting",
+  "generated_at": "2026-06-30T07:59:00.000Z",
+  "overall": "EXPECTED_PARTIAL_FAIL_APPROVED_TEST_MUTATION",
+  "exit_code": 1,
+  "profiles": {
+    "din-china": {
+      "result": "FAIL",
+      "reason": "MR JALIL golden closing 216300 → 216299 after approved PKR 1 customer discount (JE-0003)",
+      "approved_test_mutation": true
+    },
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "approved_party_discount_je": {
+    "journal_entry_id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+    "entry_no": "JE-0003",
+    "amount_pkr": 1
+  },
+  "unexpected_gl_mutations": false,
+  "evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T07-47-00-839Z.json"
+}

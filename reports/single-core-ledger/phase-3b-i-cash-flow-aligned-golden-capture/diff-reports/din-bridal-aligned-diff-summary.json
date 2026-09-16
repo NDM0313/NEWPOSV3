@@ -1,0 +1,36 @@
+{
+  "company": "din-bridal",
+  "phase": "3B-I",
+  "zeroDiff": false,
+  "rowKeyedCounts": {
+    "exact": 2,
+    "strong": 48,
+    "weak": 0,
+    "legacyOnly": 1,
+    "previewOnly": 3,
+    "transferBucket": 0,
+    "openingBucket": 0,
+    "financeExcludedTransfer": 0,
+    "financeExcludedOpening": 0
+  },
+  "transferBucketEffect": {
+    "excludedFromNormalTotals": {
+      "internalTransferRows": 0,
+      "openingBalanceRows": 2,
+      "auditDetailRows": 2
+    },
+    "thematicTransferBucket": 0,
+    "financeExcludedTransfer": 0
+  },
+  "openingBucketEffect": {
+    "excludedFromNormalTotals": 2,
+    "thematicOpeningBucket": 0,
+    "financeExcludedOpening": 0
+  },
+  "approvedRules": {
+    "Q4": "A",
+    "Q5": "C",
+    "Q7": "B"
+  },
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+}

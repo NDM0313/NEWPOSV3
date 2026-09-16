@@ -1,0 +1,22 @@
+{
+  "generated": "2026-06-29",
+  "decision": "PROCEED",
+  "authUserExists": true,
+  "companyExists": true,
+  "transactionCounts": {
+    "sales": 0,
+    "purchases": 0,
+    "payments": 0,
+    "journalEntries": 0,
+    "expenses": 0,
+    "rentals": 0
+  },
+  "bootstrapCounts": {
+    "accounts": 36,
+    "branches": 1,
+    "contacts": 1,
+    "products": 4,
+    "userBranches": 1
+  },
+  "realCompaniesPresent": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"]
+}

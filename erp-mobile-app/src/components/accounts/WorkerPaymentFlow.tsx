@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import type { User } from '../../types';
 import { getWorkersWithPayable, recordWorkerPayment } from '../../api/accounts';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
   type MobilePaymentSheetSubmitResult,
 } from '../shared/MobilePaymentSheet';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 
 interface WorkerPaymentFlowProps {
   onBack: () => void;
@@ -15,6 +17,8 @@ interface WorkerPaymentFlowProps {
   companyId?: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
+  initialWorkerId?: string | null;
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
 interface Worker {
@@ -40,7 +44,16 @@ const WORKER_TYPES = [
 const getWorkerTypeLabel = (type: string) => WORKER_TYPES.find((t) => t.value === type)?.label || type;
 const getWorkerTypeIcon = (type: string) => WORKER_TYPES.find((t) => t.value === type)?.icon || '👤';
 
-export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchId, onViewLedger }: WorkerPaymentFlowProps) {
+export function WorkerPaymentFlow({
+  onBack,
+  onComplete,
+  user,
+  companyId,
+  branchId,
+  onViewLedger,
+  initialWorkerId,
+  ocrSeed,
+}: WorkerPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -49,9 +62,14 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
   useEffect(() => {
     if (!companyId) return;
     getWorkersWithPayable(companyId).then((wRes) => {
-      if (wRes.data) setWorkers(wRes.data.map((w) => ({ ...w, type: w.type || 'worker' })));
+      const list = (wRes.data ?? []).map((w) => ({ ...w, type: w.type || 'worker' }));
+      setWorkers(list);
+      if (initialWorkerId) {
+        const match = list.find((w) => w.id === initialWorkerId);
+        if (match) setSelectedWorker(match);
+      }
     });
-  }, [companyId]);
+  }, [companyId, initialWorkerId]);
 
   const filteredWorkers = workers.filter((w) => {
     const matchesSearch = w.name.toLowerCase().includes(searchQuery.toLowerCase()) || (w.phone || '').includes(searchQuery);
@@ -66,11 +84,12 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
     const methodForApi = payload.method === 'wallet' ? 'mobile_wallet' : payload.method;
     const { data, error } = await recordWorkerPayment({
       companyId,
-      branchId: branchId ?? null,
+      branchId: payload.branchId ?? branchId ?? null,
       workerId: selectedWorker.id,
       workerName: selectedWorker.name,
       amount: payload.amount,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       paymentAccountId: payload.accountId,
       paymentMethod: methodForApi,
       userId: user.id,
@@ -78,27 +97,46 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchI
       notes: payload.notes || undefined,
       paymentReference: payload.reference || undefined,
     });
+    let attachmentWarning: string | null = null;
+    if (data?.id && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: selectedWorker.id,
+        paymentId: data.id,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
     return {
       success: !error && !!data,
       error: error ?? null,
       paymentId: data?.id ?? null,
       referenceNumber: payload.reference || null,
       partyAccountName: `Worker Payable — ${selectedWorker.name}`,
+      attachmentWarning,
     };
   };
 
   if (selectedWorker && companyId) {
+    const ocrAmount = ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined;
     return (
       <MobilePaymentSheet
         mode="pay-worker"
         companyId={companyId}
         branchId={branchId ?? null}
         userId={user.id}
+        userRole={user.role}
+        profileId={user.profileId ?? null}
         partyName={selectedWorker.name}
         referenceNo={getWorkerTypeLabel(selectedWorker.type)}
         outstandingAmount={selectedWorker.totalPayable}
-        initialAmount={selectedWorker.totalPayable}
+        initialAmount={ocrAmount ?? selectedWorker.totalPayable}
         allowOverpayment
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedWorker(null)}
         onSuccess={onComplete}
         onSubmit={handleSubmit}

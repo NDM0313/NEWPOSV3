@@ -219,11 +219,11 @@ export function ShipmentModal({
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+      <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-foreground">
             {editingShipment ? 'Update Shipment' : 'Add Shipment'}
-            {invoiceNo && <span className="text-gray-400 font-normal ml-1">— {invoiceNo}</span>}
+            {invoiceNo && <span className="text-muted-foreground font-normal ml-1">— {invoiceNo}</span>}
           </h3>
           <Button size="sm" variant="ghost" onClick={handleClose} className="h-8 w-8 p-0">
             <X size={16} />
@@ -231,11 +231,11 @@ export function ShipmentModal({
         </div>
         <div className="space-y-4">
           <div>
-            <Label className="text-gray-400 text-sm">Shipment Type</Label>
+            <Label className="text-muted-foreground text-sm">Shipment Type</Label>
             <select
               value={form.shipmentType}
               onChange={(e) => setForm((prev) => ({ ...prev, shipmentType: e.target.value as ShipmentType }))}
-              className="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
+              className="w-full mt-1 bg-input-background border border-border rounded-lg text-foreground h-10 px-3"
             >
               <option value="Courier">Courier (DHL, TCS, etc.)</option>
               <option value="Local">Local Delivery</option>
@@ -243,9 +243,9 @@ export function ShipmentModal({
           </div>
           {form.shipmentType === 'Courier' && (
             <div>
-              <Label className="text-gray-400 text-sm">Courier</Label>
+              <Label className="text-muted-foreground text-sm">Courier</Label>
               {couriers.length === 0 ? (
-                <div className="mt-1 p-3 rounded-lg bg-gray-950 border border-gray-700 text-gray-400 text-sm">
+                <div className="mt-1 p-3 rounded-lg bg-input-background border border-border text-muted-foreground text-sm">
                   No couriers found. Add a courier to select here.
                   <Button
                     type="button"
@@ -270,10 +270,10 @@ export function ShipmentModal({
                       }));
                     }}
                   >
-                    <SelectTrigger className="mt-1 bg-gray-950 border-gray-700 text-white h-10">
+                    <SelectTrigger className="mt-1 bg-input-background border-border text-foreground h-10">
                       <SelectValue placeholder="Select courier" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                    <SelectContent className="bg-input-background border-border text-foreground">
                       <SelectItem value="_none">— Select —</SelectItem>
                       {couriers.filter((c) => c.is_active).map((c) => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -284,7 +284,7 @@ export function ShipmentModal({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="mt-2 w-full border-gray-600 text-gray-300 hover:bg-gray-800"
+                    className="mt-2 w-full border-gray-600 text-muted-foreground hover:bg-muted"
                     onClick={() => setShowAddCourierDialog(true)}
                   >
                     <Plus size={14} className="mr-2" /> Add New Courier
@@ -294,7 +294,7 @@ export function ShipmentModal({
             </div>
           )}
           <div>
-            <Label className="text-gray-400 text-sm">Weight (kg)</Label>
+            <Label className="text-muted-foreground text-sm">Weight (kg)</Label>
             <Input
               type="number"
               min={0}
@@ -302,24 +302,24 @@ export function ShipmentModal({
               value={form.weightKg > 0 ? form.weightKg : ''}
               onChange={(e) => setForm((prev) => ({ ...prev, weightKg: parseFloat(e.target.value) || 0 }))}
               placeholder="0.50"
-              className="mt-1 bg-gray-950 border-gray-700"
+              className="mt-1 bg-input-background border-border"
             />
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">Tracking Number</Label>
+            <Label className="text-muted-foreground text-sm">Tracking Number</Label>
             <Input
               value={form.trackingId}
               onChange={(e) => setForm((prev) => ({ ...prev, trackingId: e.target.value }))}
               placeholder="e.g., DHL-123456789"
-              className="mt-1 bg-gray-950 border-gray-700"
+              className="mt-1 bg-input-background border-border"
             />
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">Shipment Status</Label>
+            <Label className="text-muted-foreground text-sm">Shipment Status</Label>
             <select
               value={form.shipmentStatus}
               onChange={(e) => setForm((prev) => ({ ...prev, shipmentStatus: e.target.value }))}
-              className="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
+              className="w-full mt-1 bg-input-background border border-border rounded-lg text-foreground h-10 px-3"
             >
               {SHIPMENT_STATUS_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
@@ -328,40 +328,40 @@ export function ShipmentModal({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="text-gray-400 text-sm">Charged To Customer (Rs)</Label>
+              <Label className="text-muted-foreground text-sm">Charged To Customer (Rs)</Label>
               <Input
                 type="number"
                 min={0}
                 value={form.chargedToCustomer > 0 ? form.chargedToCustomer : ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, chargedToCustomer: Number(e.target.value) || 0 }))}
                 placeholder="0"
-                className="mt-1 bg-gray-950 border-gray-700"
+                className="mt-1 bg-input-background border-border"
               />
             </div>
             <div>
-              <Label className="text-gray-400 text-sm">Actual Cost (Rs)</Label>
+              <Label className="text-muted-foreground text-sm">Actual Cost (Rs)</Label>
               <Input
                 type="number"
                 min={0}
                 value={form.actualCost > 0 ? form.actualCost : ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, actualCost: Number(e.target.value) || 0 }))}
                 placeholder="0"
-                className="mt-1 bg-gray-950 border-gray-700"
+                className="mt-1 bg-input-background border-border"
               />
             </div>
           </div>
           <div>
-            <Label className="text-gray-400 text-sm">Notes (Optional)</Label>
+            <Label className="text-muted-foreground text-sm">Notes (Optional)</Label>
             <Input
               value={form.notes}
               onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
               placeholder="Additional notes..."
-              className="mt-1 bg-gray-950 border-gray-700"
+              className="mt-1 bg-input-background border-border"
             />
           </div>
         </div>
-        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-800">
-          <Button variant="outline" className="flex-1 border-gray-700" onClick={handleClose}>Cancel</Button>
+        <div className="flex gap-3 pt-4 mt-4 border-t border-border">
+          <Button variant="outline" className="flex-1 border-border" onClick={handleClose}>Cancel</Button>
           <Button
             className="flex-1 bg-blue-600 hover:bg-blue-700"
             disabled={saving || form.chargedToCustomer < 0}
@@ -375,60 +375,60 @@ export function ShipmentModal({
 
       {/* Inline Add Courier dialog – full detail (same as Settings / Courier Reports) */}
       {showAddCourierDialog && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10 rounded-xl p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <h4 className="text-sm font-semibold text-white mb-3">Add Courier</h4>
+        <div className="absolute inset-0 bg-[var(--erp-overlay)] flex items-center justify-center z-10 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h4 className="text-sm font-semibold text-foreground mb-3">Add Courier</h4>
             <div className="space-y-3">
               <div>
-                <Label className="text-gray-400 text-xs">Courier Name *</Label>
+                <Label className="text-muted-foreground text-xs">Courier Name *</Label>
                 <Input
                   value={addCourierForm.name}
                   onChange={(e) => setAddCourierForm((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g. TCS, DHL"
-                  className="mt-1 bg-gray-950 border-gray-700 text-white h-9"
+                  className="mt-1 bg-input-background border-border text-foreground h-9"
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-xs">Default Rate (Rs)</Label>
+                <Label className="text-muted-foreground text-xs">Default Rate (Rs)</Label>
                 <Input
                   type="number"
                   min={0}
                   value={addCourierForm.default_rate > 0 ? addCourierForm.default_rate : ''}
                   onChange={(e) => setAddCourierForm((prev) => ({ ...prev, default_rate: Number(e.target.value) || 0 }))}
                   placeholder="250"
-                  className="mt-1 bg-gray-950 border-gray-700 text-white h-9"
+                  className="mt-1 bg-input-background border-border text-foreground h-9"
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-xs">Tracking URL (use &#123;tracking_id&#125;)</Label>
+                <Label className="text-muted-foreground text-xs">Tracking URL (use &#123;tracking_id&#125;)</Label>
                 <Input
                   value={addCourierForm.tracking_url}
                   onChange={(e) => setAddCourierForm((prev) => ({ ...prev, tracking_url: e.target.value }))}
                   placeholder="https://www.tcsexpress.com/track?trackingNo={tracking_id}"
-                  className="mt-1 bg-gray-950 border-gray-700 text-white h-9 font-mono text-xs"
+                  className="mt-1 bg-input-background border-border text-foreground h-9 font-mono text-xs"
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-xs">API Endpoint (optional)</Label>
+                <Label className="text-muted-foreground text-xs">API Endpoint (optional)</Label>
                 <Input
                   value={addCourierForm.api_endpoint}
                   onChange={(e) => setAddCourierForm((prev) => ({ ...prev, api_endpoint: e.target.value }))}
                   placeholder="https://api.courier.com/v1/ship"
-                  className="mt-1 bg-gray-950 border-gray-700 text-white h-9 font-mono text-xs"
+                  className="mt-1 bg-input-background border-border text-foreground h-9 font-mono text-xs"
                 />
               </div>
               <div>
-                <Label className="text-gray-400 text-xs">API Key (optional)</Label>
+                <Label className="text-muted-foreground text-xs">API Key (optional)</Label>
                 <Input
                   type="password"
                   value={addCourierForm.api_key}
                   onChange={(e) => setAddCourierForm((prev) => ({ ...prev, api_key: e.target.value }))}
                   placeholder="••••••••"
-                  className="mt-1 bg-gray-950 border-gray-700 text-white h-9"
+                  className="mt-1 bg-input-background border-border text-foreground h-9"
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label className="text-gray-400 text-xs">Active</Label>
+                <Label className="text-muted-foreground text-xs">Active</Label>
                 <Switch
                   checked={addCourierForm.is_active ?? true}
                   onCheckedChange={(v) => setAddCourierForm((prev) => ({ ...prev, is_active: v }))}

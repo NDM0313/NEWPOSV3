@@ -1,0 +1,79 @@
+{
+  "run": "LOCAL_CLEANUP_NEXT_BATCH_PLAN",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "batches": {
+    "A_safe_leave_untouched": {
+      "count": 8,
+      "description": "Default — no action required",
+      "files": [
+        "graphify-out/GRAPH_REPORT.md",
+        "reports/single-core-ledger/din-bridal-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-day1.md",
+        "reports/single-core-ledger/din-couture-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/din-couture-monitoring/production-monitoring-day1.md",
+        "reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md"
+      ],
+      "operator_option": "A"
+    },
+    "B_safe_delete_after_approval": {
+      "count": 4,
+      "description": "FAIL monitoring runs not on main",
+      "files": [
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.md",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.md"
+      ],
+      "operator_option": "B"
+    },
+    "C_evidence_commit_later": {
+      "count": 5,
+      "description": "Newest operator PASS + latest pointer",
+      "files": [
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.md",
+        "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+        "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md",
+        "reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json"
+      ],
+      "operator_option": "C"
+    },
+    "D_needs_manual_review": {
+      "count": 8,
+      "description": "DIN BRIDAL golden capture bundle",
+      "files": [
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-raw.json",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-report.md",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/party-ledger.png",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/roznamcha.png",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.md"
+      ],
+      "operator_option": "D"
+    },
+    "E_archive_candidates": {
+      "count": 6,
+      "description": "PASS duplicates — archive to erp-monitoring-logs",
+      "files": [
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.md",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.md"
+      ]
+    },
+    "F_must_not_touch_without_finance": {
+      "count": 2,
+      "description": "Golden PKR truth files",
+      "files": [
+        "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.md"
+      ]
+    }
+  },
+  "operator_options": {
+    "A": "leave all untouched",
+    "B": "delete safe generated noise (Batch B)",
+    "C": "commit evidence candidates (Batch C)",
+    "D": "manually inspect unknown/high-risk (Batch D+F)"
+  }
+}

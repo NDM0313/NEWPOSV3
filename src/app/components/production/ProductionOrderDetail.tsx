@@ -152,13 +152,13 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
   const estimatedProfit = salePrice - totalCost;
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-white animate-in fade-in duration-300">
+    <div className="flex flex-col h-full bg-card text-white animate-in fade-in duration-300">
       
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-gray-800 bg-gray-950/50">
+      <div className="flex items-center justify-between p-6 border-b border-border bg-muted/40">
         <div className="flex items-center gap-4">
           {onBack && (
-            <Button variant="ghost" size="icon" onClick={onBack} className="text-gray-400 hover:text-white">
+            <Button variant="ghost" size="icon" onClick={onBack} className="text-muted-foreground hover:text-foreground">
               <ArrowLeft size={20} />
             </Button>
           )}
@@ -169,13 +169,13 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                 In Production
               </Badge>
             </div>
-            <p className="text-gray-400 text-sm mt-1">Bridal Maxi Red (Custom Size) - Due Dec 30, 2025</p>
+            <p className="text-muted-foreground text-sm mt-1">Bridal Maxi Red (Custom Size) - Due Dec 30, 2025</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button 
             variant="outline" 
-            className="border-gray-700 text-gray-300 gap-2"
+            className="border-border text-muted-foreground gap-2"
             onClick={() => setIsShareModalOpen(true)}
           >
             <Share2 size={16} /> Share Status
@@ -189,28 +189,28 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6">
         <Tabs defaultValue="materials" className="w-full max-w-5xl mx-auto">
-          <TabsList className="w-full justify-start h-auto p-0 bg-transparent border-b border-gray-800 mb-8 overflow-x-auto">
+          <TabsList className="w-full justify-start h-auto p-0 bg-transparent border-b border-border mb-8 overflow-x-auto">
             <TabsTrigger 
               value="materials" 
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-gray-400"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-muted-foreground"
             >
               Material
             </TabsTrigger>
             <TabsTrigger 
               value="services" 
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-gray-400"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-muted-foreground"
             >
               Services (Work)
             </TabsTrigger>
             <TabsTrigger 
               value="logistics" 
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-gray-400"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-muted-foreground"
             >
               Dispatch (DHL)
             </TabsTrigger>
             <TabsTrigger 
               value="summary" 
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-gray-400"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 px-6 py-3 text-muted-foreground"
             >
               Summary
             </TabsTrigger>
@@ -218,10 +218,10 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
 
           {/* Tab 1: Materials */}
           <TabsContent value="materials" className="space-y-6">
-            <Card className="bg-gray-900/50 border-gray-800">
+            <Card className="bg-muted/40 border-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                 <CardTitle className="text-lg font-semibold text-white">Inventory Consumption</CardTitle>
-                 <Button onClick={addMaterial} size="sm" variant="outline" className="border-gray-700 hover:bg-gray-800 text-blue-400">
+                 <CardTitle className="text-lg font-semibold text-foreground">Inventory Consumption</CardTitle>
+                 <Button onClick={addMaterial} size="sm" variant="outline" className="border-border hover:bg-muted text-blue-400">
                     <Plus className="h-4 w-4 mr-2" /> Add Material
                   </Button>
               </CardHeader>
@@ -229,15 +229,15 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                 {materials.map((material) => (
                     <div key={material.id} className="flex gap-4 items-end animate-in slide-in-from-left-2 duration-300">
                       <div className="flex-1">
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Item</Label>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Item</Label>
                         <Select 
                           value={material.itemId} 
                           onValueChange={(val) => updateMaterial(material.id, 'itemId', val)}
                         >
-                          <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                          <SelectTrigger className="bg-input-background border-border text-white">
                             <SelectValue placeholder="Select Item" />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                          <SelectContent className="bg-card border-border text-white">
                             {inventoryItems.map(item => (
                               <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                             ))}
@@ -246,27 +246,27 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                       </div>
                       
                       <div className="w-24">
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Qty</Label>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Qty</Label>
                         <Input 
                           type="number" 
                           value={material.qty}
                           onChange={(e) => updateMaterial(material.id, 'qty', Number(e.target.value))}
-                          className="bg-gray-950 border-gray-700 text-white" 
+                          className="bg-input-background border-border text-white" 
                         />
                       </div>
                       
                       <div className="w-32">
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Unit Cost</Label>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Unit Cost</Label>
                         <Input 
                           value={material.cost}
                           readOnly
-                          className="bg-gray-900/50 border-gray-800 text-gray-400" 
+                          className="bg-muted/40 border-border text-muted-foreground" 
                         />
                       </div>
                       
                       <div className="w-32">
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Total</Label>
-                        <div className="h-10 flex items-center px-3 bg-gray-900/50 border border-gray-800 rounded-md text-white font-mono">
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Total</Label>
+                        <div className="h-10 flex items-center px-3 bg-card border border-border rounded-md text-white font-mono">
                           {material.qty * material.cost}
                         </div>
                       </div>
@@ -275,18 +275,18 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                         variant="ghost" 
                         size="icon"
                         onClick={() => removeMaterial(material.id)}
-                        className="h-10 w-10 text-gray-500 hover:text-red-400 hover:bg-red-950/20"
+                        className="h-10 w-10 text-muted-foreground hover:text-red-400 hover:bg-red-950/20"
                       >
                         <Trash2 size={18} />
                       </Button>
                     </div>
                   ))}
                   
-                  <Separator className="my-6 bg-gray-800" />
+                  <Separator className="my-6 bg-muted" />
                   
-                  <div className="flex justify-between items-center bg-gray-950/30 p-4 rounded-lg border border-gray-800/50">
-                     <span className="text-gray-400">Base Fabric Cost (Allocated)</span>
-                     <span className="font-mono font-medium text-white">Rs {fabricCost.toLocaleString()}</span>
+                  <div className="flex justify-between items-center bg-muted/30 p-4 rounded-lg border border-border">
+                     <span className="text-muted-foreground">Base Fabric Cost (Allocated)</span>
+                     <span className="font-mono font-medium text-foreground">Rs {fabricCost.toLocaleString()}</span>
                   </div>
               </CardContent>
             </Card>
@@ -295,7 +295,7 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
           {/* Tab 2: Services & Handwork */}
           <TabsContent value="services" className="space-y-6">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-white">Vendor Jobs & Services</h3>
+              <h3 className="text-lg font-semibold text-foreground">Vendor Jobs & Services</h3>
               <Button onClick={addService} className="bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20">
                 <Plus className="h-4 w-4 mr-2" /> Add Process
               </Button>
@@ -303,23 +303,23 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
 
             <div className="space-y-4">
               {services.map((service, index) => (
-                <Card key={service.id} className="bg-gray-900/50 border-gray-800 overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
-                  <div className="p-1 bg-gradient-to-r from-blue-600/20 to-transparent border-b border-gray-800"></div>
+                <Card key={service.id} className="bg-muted/40 border-border overflow-hidden animate-in slide-in-from-bottom-2 duration-300">
+                  <div className="p-1 bg-gradient-to-r from-blue-600/20 to-transparent border-b border-border"></div>
                   <CardContent className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                       
                       {/* Left: Process & Vendor */}
                       <div className="md:col-span-3 space-y-4">
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Process Type</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Process Type</Label>
                           <Select 
                             value={service.type} 
                             onValueChange={(val) => updateService(service.id, 'type', val)}
                           >
-                            <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                            <SelectTrigger className="bg-input-background border-border text-white">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                            <SelectContent className="bg-card border-border text-white">
                               <SelectItem value="Dyeing">Dyeing</SelectItem>
                               <SelectItem value="Handwork">Handwork</SelectItem>
                               <SelectItem value="Stitching">Stitching</SelectItem>
@@ -328,20 +328,20 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                           </Select>
                         </div>
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Vendor</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Vendor</Label>
                           <Select 
                             value={service.vendorId} 
                             onValueChange={(val) => updateService(service.id, 'vendorId', val)}
                           >
-                            <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                            <SelectTrigger className="bg-input-background border-border text-white">
                               <SelectValue placeholder="Select Vendor" />
                             </SelectTrigger>
-                            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                            <SelectContent className="bg-card border-border text-white">
                               {vendors.map(v => (
                                 <SelectItem key={v.id} value={v.id}>
                                   <div className="flex flex-col text-left">
                                     <span>{v.name}</span>
-                                    <span className={cn("text-[10px]", v.balance < 0 ? "text-red-400" : "text-green-400")}>
+                                    <span className={cn("text-[10px]", v.balance < 0 ? "text-red-400" : "text-[var(--erp-money-positive)]")}>
                                       Bal: {v.balance}
                                     </span>
                                   </div>
@@ -354,36 +354,36 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
 
                       {/* Middle: Instructions */}
                       <div className="md:col-span-5">
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Instructions</Label>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Instructions</Label>
                         <Textarea 
                           value={service.instructions}
                           onChange={(e) => updateService(service.id, 'instructions', e.target.value)}
                           placeholder="e.g. Gold Dori work on borders"
-                          className="bg-gray-950 border-gray-700 text-white min-h-[105px] resize-none"
+                          className="bg-input-background border-border text-white min-h-[105px] resize-none"
                         />
                       </div>
 
                       {/* Right: Cost & Status */}
                       <div className="md:col-span-3 space-y-4">
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Cost (Payable)</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Cost (Payable)</Label>
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Rs</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">Rs</span>
                             <Input 
                               type="number"
                               value={service.cost}
                               onChange={(e) => updateService(service.id, 'cost', Number(e.target.value))}
-                              className="bg-gray-950 border-gray-700 text-white pl-8 font-mono"
+                              className="bg-input-background border-border text-white pl-8 font-mono"
                             />
                           </div>
-                          <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                          <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
                             <CheckCircle2 size={10} /> Adds to Vendor Ledger
                           </p>
                         </div>
 
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Status</Label>
-                          <div className="flex bg-gray-950 p-1 rounded-lg border border-gray-800">
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Status</Label>
+                          <div className="flex bg-input-background p-1 rounded-lg border border-border">
                              {['Assigned', 'In Progress', 'Received'].map((s) => (
                                <button
                                  key={s}
@@ -393,8 +393,8 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                                    service.status === s 
                                     ? s === 'Received' ? "bg-green-600 text-white shadow" 
                                       : s === 'In Progress' ? "bg-blue-600 text-white shadow"
-                                      : "bg-gray-700 text-white shadow"
-                                    : "text-gray-500 hover:text-gray-300"
+                                      : "bg-muted text-white shadow"
+                                    : "text-muted-foreground hover:text-muted-foreground"
                                  )}
                                >
                                  {s === 'In Progress' ? 'Work' : s}
@@ -410,7 +410,7 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                           variant="ghost" 
                           size="icon"
                           onClick={() => removeService(service.id)}
-                          className="text-gray-600 hover:text-red-400 hover:bg-red-950/20"
+                          className="text-muted-foreground hover:text-red-400 hover:bg-red-950/20"
                         >
                           <Trash2 size={18} />
                         </Button>
@@ -425,7 +425,7 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
 
           {/* Tab 3: Dispatch & Logistics */}
           <TabsContent value="logistics" className="space-y-6">
-            <Card className="bg-gray-900/50 border-gray-800">
+            <Card className="bg-muted/40 border-border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
                   <Truck className="text-blue-500" /> Shipment Details
@@ -437,43 +437,43 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                   <div className="space-y-6">
                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Shipment Type</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Shipment Type</Label>
                           <Select 
                             value={logistics.shipmentType} 
                             onValueChange={(val) => setLogistics({...logistics, shipmentType: val})}
                           >
-                            <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                            <SelectTrigger className="bg-input-background border-border text-white">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                            <SelectContent className="bg-card border-border text-white">
                               <SelectItem value="Local">Local</SelectItem>
                               <SelectItem value="International">International</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Weight / Vol</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Weight / Vol</Label>
                           <div className="relative">
                             <Input 
                               value={logistics.weight}
                               onChange={(e) => setLogistics({...logistics, weight: Number(e.target.value)})}
-                              className="bg-gray-950 border-gray-700 text-white pr-8"
+                              className="bg-input-background border-border text-white pr-8"
                             />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">kg</span>
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">kg</span>
                           </div>
                         </div>
                      </div>
 
                      <div>
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Courier Provider</Label>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Courier Provider</Label>
                         <Select 
                           value={logistics.courier} 
                           onValueChange={(val) => setLogistics({...logistics, courier: val})}
                         >
-                          <SelectTrigger className="bg-gray-950 border-gray-700 text-white">
+                          <SelectTrigger className="bg-input-background border-border text-white">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                          <SelectContent className="bg-card border-border text-white">
                             {couriers.map(c => (
                               <SelectItem key={c} value={c}>{c}</SelectItem>
                             ))}
@@ -485,54 +485,54 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
                      </div>
 
                      <div>
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Tracking ID</Label>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Tracking ID</Label>
                         <div className="relative">
                            <Input 
                              value={logistics.tracking}
                              onChange={(e) => setLogistics({...logistics, tracking: e.target.value})}
                              placeholder="Scan or enter ID"
-                             className="bg-gray-950 border-gray-700 text-white pr-10"
+                             className="bg-input-background border-border text-white pr-10"
                            />
-                           <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 h-4 w-4" />
+                           <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
                         </div>
                      </div>
                   </div>
 
                   {/* Right Column: Costing & Attachment */}
                   <div className="space-y-6">
-                     <div className="bg-gray-950/30 p-4 rounded-lg border border-gray-800/50 space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-300 mb-2">Costing (Crucial)</h4>
+                     <div className="bg-muted/30 p-4 rounded-lg border border-border space-y-4">
+                        <h4 className="text-sm font-semibold text-muted-foreground mb-2">Costing (Crucial)</h4>
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Our Cost (Payable to DHL)</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Our Cost (Payable to DHL)</Label>
                           <div className="relative">
-                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Rs</span>
+                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">Rs</span>
                              <Input 
                                 type="number"
                                 value={logistics.shippingCost}
                                 onChange={(e) => setLogistics({...logistics, shippingCost: Number(e.target.value)})}
-                                className="bg-gray-900 border-gray-700 text-white pl-8 text-orange-400 font-medium" 
+                                className="bg-card border-border text-white pl-8 text-orange-400 font-medium" 
                               />
                           </div>
                         </div>
                         <div>
-                          <Label className="text-xs text-gray-500 mb-1.5 block">Charged to Customer</Label>
+                          <Label className="text-xs text-muted-foreground mb-1.5 block">Charged to Customer</Label>
                           <div className="relative">
-                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Rs</span>
+                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">Rs</span>
                              <Input 
                                 type="number"
                                 value={logistics.customerCharged}
                                 onChange={(e) => setLogistics({...logistics, customerCharged: Number(e.target.value)})}
-                                className="bg-gray-900 border-gray-700 text-white pl-8 text-green-400 font-medium" 
+                                className="bg-card border-border text-white pl-8 text-[var(--erp-money-positive)] font-medium" 
                               />
                           </div>
                         </div>
                      </div>
 
                      <div>
-                        <Label className="text-xs text-gray-500 mb-1.5 block">Attachment (Receipt / Airway Bill)</Label>
-                        <div className="border-2 border-dashed border-gray-800 rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-gray-800/20 transition-colors cursor-pointer bg-gray-950/20 h-32">
-                           <Paperclip className="text-gray-500 mb-2" size={20} />
-                           <span className="text-xs text-gray-400">Click to upload image</span>
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">Attachment (Receipt / Airway Bill)</Label>
+                        <div className="border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-accent/20 transition-colors cursor-pointer bg-input-background/20 h-32">
+                           <Paperclip className="text-muted-foreground mb-2" size={20} />
+                           <span className="text-xs text-muted-foreground">Click to upload image</span>
                         </div>
                      </div>
                   </div>
@@ -544,48 +544,48 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
           {/* Tab 4: Summary */}
           <TabsContent value="summary" className="space-y-6">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="bg-gray-900/50 border-gray-800">
+                <Card className="bg-muted/40 border-border">
                    <CardHeader>
                       <CardTitle className="text-white">Cost Breakdown</CardTitle>
                    </CardHeader>
                    <CardContent className="space-y-4">
-                      <div className="flex justify-between items-center py-2 border-b border-gray-800">
-                         <span className="text-gray-400">Base Fabric</span>
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                         <span className="text-muted-foreground">Base Fabric</span>
                          <span className="text-white font-mono">Rs {fabricCost.toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-gray-800">
-                         <span className="text-gray-400">Material & Accessories</span>
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                         <span className="text-muted-foreground">Material & Accessories</span>
                          <span className="text-white font-mono">Rs {totalMaterialCost.toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-gray-800">
-                         <span className="text-gray-400">Services (Handwork/Stitching)</span>
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                         <span className="text-muted-foreground">Services (Handwork/Stitching)</span>
                          <span className="text-white font-mono">Rs {totalServicesCost.toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between items-center py-2 border-b border-gray-800">
-                         <span className="text-gray-400">Logistics (DHL)</span>
+                      <div className="flex justify-between items-center py-2 border-b border-border">
+                         <span className="text-muted-foreground">Logistics (DHL)</span>
                          <span className="text-white font-mono">Rs {Number(logistics.shippingCost).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-center py-3">
-                         <span className="text-lg font-bold text-white">Total Cost</span>
+                         <span className="text-lg font-bold text-foreground">Total Cost</span>
                          <span className="text-xl font-bold text-white font-mono">Rs {totalCost.toLocaleString()}</span>
                       </div>
                    </CardContent>
                 </Card>
 
-                <Card className="bg-gray-900/50 border-gray-800">
+                <Card className="bg-muted/40 border-border">
                    <CardHeader>
                       <CardTitle className="text-white">Profitability</CardTitle>
                    </CardHeader>
                    <CardContent className="flex flex-col justify-center h-64 space-y-6">
                       <div className="flex justify-between items-end">
-                         <span className="text-gray-400 text-lg">Sale Price</span>
+                         <span className="text-muted-foreground text-lg">Sale Price</span>
                          <span className="text-2xl font-bold text-blue-400">Rs {salePrice.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-end">
-                         <span className="text-gray-400 text-lg">Total Cost</span>
+                         <span className="text-muted-foreground text-lg">Total Cost</span>
                          <span className="text-2xl font-bold text-red-400">- Rs {totalCost.toLocaleString()}</span>
                       </div>
-                      <Separator className="bg-gray-700" />
+                      <Separator className="bg-muted" />
                       <div className="flex justify-between items-end">
                          <span className="text-gray-200 text-xl font-bold">Net Profit</span>
                          <div className="text-right">
@@ -612,19 +612,19 @@ export const ProductionOrderDetail = ({ onBack }: { onBack?: () => void }) => {
       </div>
 
       {/* Footer (Simplified) */}
-      <div className="border-t border-gray-800 bg-gray-950 p-4 z-10">
+      <div className="border-t border-border bg-input-background p-4 z-10">
          <div className="max-w-5xl mx-auto flex justify-between items-center">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-muted-foreground">
                Last saved: Just now
             </div>
             <div className="flex gap-4">
                <div className="text-right">
-                  <span className="text-xs text-gray-400 uppercase block">Total Cost</span>
+                  <span className="text-xs text-muted-foreground uppercase block">Total Cost</span>
                   <span className="font-bold text-white">Rs {totalCost.toLocaleString()}</span>
                </div>
-               <div className="w-px h-10 bg-gray-800"></div>
+               <div className="w-px h-10 bg-muted"></div>
                <div className="text-right">
-                  <span className="text-xs text-gray-400 uppercase block">Net Profit</span>
+                  <span className="text-xs text-muted-foreground uppercase block">Net Profit</span>
                   <span className={cn(
                      "font-bold",
                      estimatedProfit >= 0 ? "text-green-500" : "text-red-500"

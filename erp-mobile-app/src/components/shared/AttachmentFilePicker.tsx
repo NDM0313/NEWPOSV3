@@ -1,8 +1,12 @@
 import { useState } from 'react';
-import { Upload, FileText, Loader2 } from 'lucide-react';
+import { Upload, FileText, Loader2, ScanText } from 'lucide-react';
 import { MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from './MediaSourcePicker';
+import { ReceiptOcrReviewSheet } from './ReceiptOcrReviewSheet';
+import { useReceiptOcrAfterAttach } from '../../hooks/useReceiptOcrAfterAttach';
+import type { ReceiptOcrFormPatch } from '../../lib/ocr/receiptOcrTypes';
+import { isImageFile } from '../../lib/ocr/receiptOcrTypes';
 
 export interface AttachmentFilePickerProps {
   files: File[];
@@ -13,6 +17,10 @@ export interface AttachmentFilePickerProps {
   description?: string;
   /** When 1, picker replaces the selection and disallows multi-select. */
   maxFiles?: number;
+  /** When set with onOcrApply, image attaches open editable OCR review (attach list unchanged). */
+  ocrEnabled?: boolean;
+  onOcrApply?: (patch: ReceiptOcrFormPatch) => void;
+  getExistingNotes?: () => string;
 }
 
 export function AttachmentFilePicker({
@@ -23,9 +31,19 @@ export function AttachmentFilePicker({
   label = 'Attachments (Optional)',
   description = 'PDF, PNG, JPG up to 10MB',
   maxFiles,
+  ocrEnabled = false,
+  onOcrApply,
+  getExistingNotes,
 }: AttachmentFilePickerProps) {
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const singleFile = maxFiles === 1;
+  const ocrOn = ocrEnabled && typeof onOcrApply === 'function';
+
+  const ocr = useReceiptOcrAfterAttach({
+    enabled: ocrOn,
+    onApply: onOcrApply ?? (() => {}),
+    getExistingNotes,
+  });
 
   const processFiles = async (picked: File[]) => {
     if (!picked.length) return;
@@ -37,7 +55,12 @@ export function AttachmentFilePicker({
       skippedMessages.forEach((msg) => onError?.(msg));
       compressionMessages.forEach((msg) => onInfo?.(msg));
       if (processed.length > 0) {
-        onChange(singleFile ? processed : [...files, ...processed]);
+        const next = singleFile ? processed : [...files, ...processed];
+        onChange(next);
+        ocr.rememberImageFromFiles(processed);
+        if (ocrOn && processed.some(isImageFile)) {
+          void ocr.startOcrForFiles(processed);
+        }
       }
     } finally {
       setIsProcessingFiles(false);
@@ -47,6 +70,8 @@ export function AttachmentFilePicker({
   const removeAttachment = (index: number) => {
     onChange(files.filter((_, i) => i !== index));
   };
+
+  const hasImage = files.some(isImageFile);
 
   return (
     <div>
@@ -81,6 +106,22 @@ export function AttachmentFilePicker({
           </button>
         )}
       </MediaSourcePicker>
+      {ocrOn && hasImage && (
+        <button
+          type="button"
+          onClick={() => {
+            const img = [...files].reverse().find(isImageFile);
+            if (img) {
+              ocr.rememberImageFromFiles([img]);
+              void ocr.rescanLastImage();
+            }
+          }}
+          className="mt-2 w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-[#3B82F6] hover:text-[#60A5FA]"
+        >
+          <ScanText className="w-3.5 h-3.5" />
+          Scan receipt fields (OCR)
+        </button>
+      )}
       {files.length > 0 && (
         <ul className="mt-2 space-y-1">
           {files.map((file, idx) => (
@@ -102,6 +143,16 @@ export function AttachmentFilePicker({
             </li>
           ))}
         </ul>
+      )}
+      {ocrOn && (
+        <ReceiptOcrReviewSheet
+          open={ocr.sheetOpen}
+          loading={ocr.loading}
+          draft={ocr.draft}
+          onChangeDraft={ocr.setDraft}
+          onConfirm={ocr.handleConfirm}
+          onSkip={ocr.handleSkip}
+        />
       )}
     </div>
   );

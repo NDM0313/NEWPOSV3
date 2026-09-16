@@ -1,0 +1,12 @@
+{
+  "executedAt": "2026-07-01T07:26:47.475Z",
+  "exitCode": 0,
+  "readOnly": true,
+  "flagsToggled": false,
+  "dbMutations": false,
+  "dinBridal": {
+    "balanceSheet": { "status": "CAPTURED", "pass": true },
+    "profitLoss": { "status": "CAPTURED", "pass": true }
+  },
+  "outputDir": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture"
+}

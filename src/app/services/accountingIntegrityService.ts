@@ -3,6 +3,12 @@
  * No deletes; void only. Business views exclude voided entries.
  */
 
+import {
+  buildStaleReversalVoidReason,
+  correctionReversalReviewEligibility,
+  isStaleCorrectionReversalVoidEligible,
+  type StaleCorrectionReversalContext,
+} from '@/app/lib/staleCorrectionReversalPolicy';
 import { supabase } from '@/lib/supabase';
 
 export interface DuplicateGroup {
@@ -27,8 +33,69 @@ export interface OrphanEntry {
 export interface IntegritySummary {
   duplicateGroups: DuplicateGroup[];
   orphanEntries: OrphanEntry[];
+  staleCorrectionReversals: StaleCorrectionReversalCandidate[];
   voidedCountByType: { reference_type: string; count: number }[];
   activeCountByType: { reference_type: string; count: number }[];
+}
+
+export interface StaleCorrectionReversalCandidate {
+  id: string;
+  entry_no: string | null;
+  entry_date: string | null;
+  description: string | null;
+  amount: number;
+  payment_id: string | null;
+  paymentRef: string | null;
+  sourceEntryNo: string | null;
+  sourceJournalIsVoid: boolean;
+  paymentVoidedAt: string | null;
+  voidReasonSuggested: string;
+}
+
+export interface VoidedJournalAuditRow {
+  id: string;
+  entry_no: string | null;
+  entry_date: string | null;
+  reference_type: string | null;
+  void_reason: string | null;
+  voided_at: string | null;
+  description: string | null;
+}
+
+export interface VoidedJournalAuditBrowseOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export interface VoidedJournalAuditBrowseResult {
+  rows: VoidedJournalAuditRow[];
+  total: number;
+  error?: string;
+}
+
+export interface ActiveCorrectionReversalReviewRow {
+  id: string;
+  entry_no: string | null;
+  entry_date: string | null;
+  description: string | null;
+  amount: number;
+  paymentRef: string | null;
+  sourceEntryNo: string | null;
+  sourceStatus: string;
+  eligibilityStatus: 'eligible' | 'blocked';
+  eligibilityLabel: string;
+}
+
+function mapVoidedJournalAuditRow(row: VoidedJournalAuditRow): VoidedJournalAuditRow {
+  return {
+    id: row.id,
+    entry_no: row.entry_no ?? null,
+    entry_date: row.entry_date ?? null,
+    reference_type: row.reference_type ?? null,
+    void_reason: row.void_reason ?? null,
+    voided_at: row.voided_at ?? null,
+    description: row.description ?? null,
+  };
 }
 
 /**
@@ -124,6 +191,248 @@ export async function getOrphanCandidates(companyId: string): Promise<OrphanEntr
   return orphans;
 }
 
+type CorrectionReversalRow = {
+  id: string;
+  entry_no: string | null;
+  entry_date: string | null;
+  description: string | null;
+  reference_id: string | null;
+  payment_id: string | null;
+  action_fingerprint: string | null;
+  is_void: boolean | null;
+  lines?: Array<{ debit?: number | null; credit?: number | null }>;
+};
+
+function lineAmount(lines: Array<{ debit?: number | null; credit?: number | null }> | undefined): number {
+  if (!lines?.length) return 0;
+  return lines.reduce((sum, l) => sum + Math.max(Number(l.debit) || 0, Number(l.credit) || 0), 0);
+}
+
+type CorrectionReversalContextBundle = {
+  row: CorrectionReversalRow;
+  src: { entry_no: string | null; is_void: boolean } | undefined;
+  pay: { reference_number: string | null; voided_at: string | null } | undefined;
+  ctx: StaleCorrectionReversalContext;
+};
+
+async function fetchActiveCorrectionReversalsWithContext(
+  companyId: string
+): Promise<CorrectionReversalContextBundle[]> {
+  const { data: reversals, error } = await supabase
+    .from('journal_entries')
+    .select(
+      'id, entry_no, entry_date, description, reference_id, payment_id, action_fingerprint, is_void, lines:journal_entry_lines(debit, credit)'
+    )
+    .eq('company_id', companyId)
+    .eq('reference_type', 'correction_reversal')
+    .or('is_void.is.null,is_void.eq.false')
+    .order('entry_date', { ascending: false });
+
+  if (error || !reversals?.length) return [];
+
+  const rows = reversals as CorrectionReversalRow[];
+  const sourceJeIds = [...new Set(rows.map((r) => r.reference_id).filter(Boolean))] as string[];
+  const paymentIds = [...new Set(rows.map((r) => r.payment_id).filter(Boolean))] as string[];
+
+  const sourceJeById = new Map<string, { entry_no: string | null; is_void: boolean }>();
+  if (sourceJeIds.length) {
+    const { data: srcJes } = await supabase
+      .from('journal_entries')
+      .select('id, entry_no, is_void')
+      .eq('company_id', companyId)
+      .in('id', sourceJeIds);
+    for (const j of srcJes || []) {
+      const row = j as { id: string; entry_no: string | null; is_void: boolean | null };
+      sourceJeById.set(row.id, {
+        entry_no: row.entry_no,
+        is_void: row.is_void === true,
+      });
+    }
+  }
+
+  const paymentById = new Map<string, { reference_number: string | null; voided_at: string | null }>();
+  if (paymentIds.length) {
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('id, reference_number, voided_at')
+      .eq('company_id', companyId)
+      .in('id', paymentIds);
+    for (const p of pays || []) {
+      const row = p as { id: string; reference_number: string | null; voided_at: string | null };
+      paymentById.set(row.id, {
+        reference_number: row.reference_number,
+        voided_at: row.voided_at,
+      });
+    }
+  }
+
+  return rows.map((r) => {
+    const src = r.reference_id ? sourceJeById.get(r.reference_id) : undefined;
+    const pay = r.payment_id ? paymentById.get(r.payment_id) : undefined;
+    const ctx: StaleCorrectionReversalContext = {
+      sourceJournalIsVoid: src?.is_void ?? undefined,
+      sourceJournalIsActive: src ? !src.is_void : undefined,
+      paymentVoidedAt: pay?.voided_at ?? (r.payment_id ? null : undefined),
+    };
+    return { row: r, src, pay, ctx };
+  });
+}
+
+function formatCorrectionReversalSourceStatus(
+  src: { entry_no: string | null; is_void: boolean } | undefined,
+  pay: { reference_number: string | null; voided_at: string | null } | undefined
+): string {
+  const parts: string[] = [];
+  if (pay?.reference_number) {
+    parts.push(pay.voided_at ? `Payment ${pay.reference_number} (voided)` : `Payment ${pay.reference_number} (active)`);
+  }
+  if (src?.entry_no) {
+    parts.push(src.is_void ? `Source ${src.entry_no} (voided)` : `Source ${src.entry_no} (active)`);
+  }
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+/**
+ * Active correction_reversal JEs whose source payment/JE is already void — safe to remove from live GL.
+ */
+export async function getStaleCorrectionReversalCandidates(
+  companyId: string
+): Promise<StaleCorrectionReversalCandidate[]> {
+  const bundles = await fetchActiveCorrectionReversalsWithContext(companyId);
+
+  const out: StaleCorrectionReversalCandidate[] = [];
+  for (const { row: r, src, pay, ctx } of bundles) {
+    if (
+      !isStaleCorrectionReversalVoidEligible(
+        {
+          reference_type: 'correction_reversal',
+          is_void: r.is_void,
+          action_fingerprint: r.action_fingerprint,
+          payment_id: r.payment_id,
+          reference_id: r.reference_id,
+        },
+        ctx
+      )
+    ) {
+      continue;
+    }
+    out.push({
+      id: r.id,
+      entry_no: r.entry_no,
+      entry_date: r.entry_date,
+      description: r.description,
+      amount: lineAmount(r.lines),
+      payment_id: r.payment_id,
+      paymentRef: pay?.reference_number ?? null,
+      sourceEntryNo: src?.entry_no ?? null,
+      sourceJournalIsVoid: src?.is_void ?? false,
+      paymentVoidedAt: pay?.voided_at ?? null,
+      voidReasonSuggested: buildStaleReversalVoidReason(
+        r.entry_no,
+        pay?.reference_number ? `payment ${pay.reference_number} already voided` : 'source journal voided'
+      ),
+    });
+  }
+  return out;
+}
+
+/** Read-only review of all active correction_reversal rows with stale-removal eligibility. */
+export async function getActiveCorrectionReversalReview(
+  companyId: string
+): Promise<ActiveCorrectionReversalReviewRow[]> {
+  const bundles = await fetchActiveCorrectionReversalsWithContext(companyId);
+
+  return bundles.map(({ row: r, src, pay, ctx }) => {
+    const eligibility = correctionReversalReviewEligibility(
+      {
+        reference_type: 'correction_reversal',
+        is_void: r.is_void,
+        action_fingerprint: r.action_fingerprint,
+        payment_id: r.payment_id,
+        reference_id: r.reference_id,
+      },
+      ctx
+    );
+    return {
+      id: r.id,
+      entry_no: r.entry_no,
+      entry_date: r.entry_date,
+      description: r.description,
+      amount: lineAmount(r.lines),
+      paymentRef: pay?.reference_number ?? null,
+      sourceEntryNo: src?.entry_no ?? null,
+      sourceStatus: formatCorrectionReversalSourceStatus(src, pay),
+      eligibilityStatus: eligibility.status,
+      eligibilityLabel: eligibility.label,
+    };
+  });
+}
+
+export async function voidStaleCorrectionReversals(
+  companyId: string,
+  ids: string[],
+  reason?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!ids.length) return { success: true };
+  const candidates = await getStaleCorrectionReversalCandidates(companyId);
+  const allowed = new Set(candidates.map((c) => c.id));
+  const toVoid = ids.filter((id) => allowed.has(id));
+  if (!toVoid.length) {
+    return { success: false, error: 'No eligible stale reversal entries to void.' };
+  }
+  if (toVoid.length === 1 && reason) {
+    return voidJournalEntries(companyId, toVoid, reason);
+  }
+  for (const id of toVoid) {
+    const row = candidates.find((c) => c.id === id);
+    const res = await voidJournalEntries(
+      companyId,
+      [id],
+      reason || row?.voidReasonSuggested || buildStaleReversalVoidReason(row?.entry_no)
+    );
+    if (!res.success) return res;
+  }
+  return { success: true };
+}
+
+/** Read-only browse of voided journal headers (audit history — not an actionable hygiene queue). */
+export async function getVoidedJournalAuditBrowse(
+  companyId: string,
+  options: VoidedJournalAuditBrowseOptions = {}
+): Promise<VoidedJournalAuditBrowseResult> {
+  const limit = Math.max(1, options.limit ?? 50);
+  const offset = Math.max(0, options.offset ?? 0);
+
+  const { count, error: countError } = await supabase
+    .from('journal_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .eq('is_void', true);
+
+  if (countError) {
+    return { rows: [], total: 0, error: countError.message };
+  }
+
+  const total = count ?? 0;
+  if (total === 0) return { rows: [], total: 0 };
+
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, entry_date, reference_type, void_reason, voided_at, description')
+    .eq('company_id', companyId)
+    .eq('is_void', true)
+    .order('voided_at', { ascending: false, nullsFirst: false })
+    .order('entry_date', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    return { rows: [], total, error: error.message };
+  }
+
+  const rows = ((data || []) as VoidedJournalAuditRow[]).map(mapVoidedJournalAuditRow);
+  return { rows, total };
+}
+
 /**
  * Void journal entries by IDs (set is_void = true, void_reason, voided_at).
  */
@@ -169,9 +478,10 @@ export async function voidDuplicateGroup(
  * Fetch summary for Test Lab: duplicates, orphans, voided/active counts.
  */
 export async function getIntegritySummary(companyId: string): Promise<IntegritySummary> {
-  const [duplicateGroups, orphanEntries, voidedCount, activeCount] = await Promise.all([
+  const [duplicateGroups, orphanEntries, staleCorrectionReversals, voidedCount, activeCount] = await Promise.all([
     getDuplicateCandidates(companyId),
     getOrphanCandidates(companyId),
+    getStaleCorrectionReversalCandidates(companyId),
     supabase
       .from('journal_entries')
       .select('reference_type')
@@ -199,6 +509,7 @@ export async function getIntegritySummary(companyId: string): Promise<IntegrityS
   return {
     duplicateGroups,
     orphanEntries,
+    staleCorrectionReversals,
     voidedCountByType: voidedCount,
     activeCountByType: activeCount,
   };

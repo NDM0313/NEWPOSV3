@@ -18,14 +18,23 @@ import {
   Ban,
   FileText,
   Pencil,
+  ChevronRight,
+  Paperclip,
 } from 'lucide-react';
 import type { RentalDetail } from '../../api/rentals';
 import * as rentalsApi from '../../api/rentals';
 import { RentalReturnModal } from './RentalReturnModal';
 import { RentalAddPaymentModal } from './RentalAddPaymentModal';
 import { RentalPickupModal } from './RentalPickupModal';
+import { RentalAddAttachmentsSheet } from './RentalAddAttachmentsSheet';
+import { RentalWorkflowBadges } from './RentalWorkflowBadges';
+import { rentalPrimaryStaffName, rentalShowCreatedBySecondary } from '../../lib/rentalWorkflowDisplay';
 import { formatDate } from '../accounts/reports/_shared/format';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { useAttachmentPreview } from '../../hooks/useAttachmentPreview';
 
 export type RentalDetailInitialAction = 'pickup' | 'return' | 'payment';
 
@@ -37,16 +46,31 @@ interface ViewRentalDetailsProps {
   onConsumedInitialAction?: () => void;
   onBack: () => void;
   onRefresh: () => void;
+  /** Open full booking editor (draft/booked). */
+  onEditBooking?: (rentalId: string) => void;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  draft: 'bg-[#6B7280] text-[#9CA3AF]',
-  booked: 'bg-pink-500/20 text-pink-400 border border-pink-500/30',
-  rented: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  returned: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  overdue: 'bg-red-500/20 text-red-400 border border-red-500/30',
-  cancelled: 'bg-[#6B7280]/30 text-[#9CA3AF]',
-};
+
+function DetailStaffHeader({
+  salesmanName,
+  createdByName,
+}: {
+  salesmanName?: string | null;
+  createdByName?: string | null;
+}) {
+  const primary = rentalPrimaryStaffName(salesmanName, createdByName);
+  const showSecondary = rentalShowCreatedBySecondary(salesmanName, createdByName);
+  return (
+    <div className="mt-1 px-1">
+      <p className="text-xs text-[#9CA3AF]">
+        Salesman: <span className="text-[#D1D5DB]">{primary}</span>
+      </p>
+      {showSecondary && createdByName ? (
+        <p className="text-[10px] text-[#6B7280]">Created: {createdByName}</p>
+      ) : null}
+    </div>
+  );
+}
 
 export function ViewRentalDetails({
   rentalId,
@@ -56,6 +80,7 @@ export function ViewRentalDetails({
   onConsumedInitialAction,
   onBack,
   onRefresh,
+  onEditBooking,
 }: ViewRentalDetailsProps) {
   const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const [rental, setRental] = useState<RentalDetail | null>(null);
@@ -68,6 +93,9 @@ export function ViewRentalDetails({
   const [billRefEdit, setBillRefEdit] = useState(false);
   const [billRefDraft, setBillRefDraft] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
+  const [attachmentsSheetOpen, setAttachmentsSheetOpen] = useState(false);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
   const load = () => {
     if (!rentalId) return;
@@ -135,15 +163,7 @@ export function ViewRentalDetails({
     onRefresh();
   };
 
-  const handlePickup = async (payload: {
-    actualPickupDate: string;
-    notes?: string;
-    documentType: string;
-    documentNumber: string;
-    securityDocumentImageUrl?: string | null;
-    documentReceived: boolean;
-    remainingPaymentConfirmed: boolean;
-  }) => {
+  const handlePickup = async (payload: rentalsApi.MarkRentalPickedUpPayload) => {
     if (!companyId) return;
     setActionLoading(true);
     const { error: err } = await rentalsApi.markRentalPickedUp(rentalId, companyId, payload, effectiveUserId || null);
@@ -202,14 +222,16 @@ export function ViewRentalDetails({
     );
   }
 
-  const statusColor = STATUS_COLOR[rental.status] ?? 'bg-[#374151] text-[#9CA3AF]';
   const canReturn = ['rented', 'overdue'].includes(rental.status);
   const canPickup = rental.status === 'booked';
   const canDelete = ['draft', 'booked'].includes(rental.status);
   const canCancel = ['draft', 'booked'].includes(rental.status);
   const canEditBillRef = ['draft', 'booked'].includes(rental.status);
+  const canEditBooking = ['draft', 'booked'].includes(rental.status) && Boolean(onEditBooking);
   const hasSecurityDoc =
     !!(rental.securityDocumentType || rental.securityDocumentNumber || rental.securityDocumentImageUrl);
+  const bookingAttachments = normalizeAttachments(rental.attachments);
+  const canAddAttachments = ['draft', 'booked', 'rented', 'overdue', 'returned'].includes(rental.status);
 
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
@@ -222,11 +244,21 @@ export function ViewRentalDetails({
           <div className="w-9" />
         </div>
         {rental.documentNumber && !billRefEdit && (
-          <p className="text-xs text-[#8B5CF6] mt-1 px-1">Bill: {rental.documentNumber}</p>
+          <p className="text-[13.8px] font-bold text-white mt-1 px-1">Bill: {rental.documentNumber}</p>
         )}
+        <DetailStaffHeader salesmanName={rental.salesmanName} createdByName={rental.createdByName} />
       </div>
 
       <div className="p-4 space-y-4">
+        {canEditBooking && (
+          <button
+            type="button"
+            onClick={() => onEditBooking?.(rental.id)}
+            className="w-full py-3 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-xl text-white font-medium"
+          >
+            Edit Booking
+          </button>
+        )}
         {canEditBillRef && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
@@ -279,10 +311,8 @@ export function ViewRentalDetails({
         )}
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className={`px-2 py-1 rounded-lg text-xs font-medium capitalize ${statusColor}`}>
-              {rental.status}
-            </span>
+          <div className="mb-3">
+            <RentalWorkflowBadges status={rental.status} due={rental.dueAmount} />
           </div>
           <div className="flex items-center gap-2 text-[#9CA3AF] mb-1">
             <User className="w-4 h-4" />
@@ -334,6 +364,18 @@ export function ViewRentalDetails({
           </div>
         </div>
 
+        <AttachmentsSection items={bookingAttachments} onOpenPreview={openAttachmentPreview} />
+        {canAddAttachments && companyId && (
+          <button
+            type="button"
+            onClick={() => setAttachmentsSheetOpen(true)}
+            className="w-full py-3 bg-[#1F2937] border border-[#374151] hover:border-[#8B5CF6]/50 rounded-xl text-[#C4B5FD] font-medium flex items-center justify-center gap-2"
+          >
+            <Paperclip className="w-4 h-4" />
+            {bookingAttachments.length > 0 ? 'Add / update attachments' : 'Add attachments'}
+          </button>
+        )}
+
         {hasSecurityDoc && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
@@ -371,12 +413,47 @@ export function ViewRentalDetails({
               <CreditCard className="w-4 h-4" /> Payments
             </h3>
             <ul className="space-y-2">
-              {rental.payments.map((p) => (
-                <li key={p.id} className="flex justify-between text-sm">
-                  <span className="text-[#9CA3AF]">{p.paymentDate} · {p.method}</span>
-                  <span className="text-white">Rs. {p.amount.toLocaleString()}</span>
-                </li>
-              ))}
+              {rental.payments.map((p) => {
+                const editTargetId = p.sourcePaymentId || p.journalEntryId || null;
+                const rowBody = (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
+                      <p className="text-xs text-[#9CA3AF]">{p.method} • {p.paymentDate}</p>
+                      {p.referenceNo && p.referenceNo !== '—' && (
+                        <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>
+                      )}
+                      {p.notes && (
+                        <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>
+                      )}
+                      {!p.referenceNo && p.reference && (
+                        <p className="text-xs text-[#6B7280]">{p.reference}</p>
+                      )}
+                      {editTargetId ? (
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / edit</p>
+                      ) : null}
+                    </div>
+                    {editTargetId ? (
+                      <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0 mt-0.5" />
+                    ) : null}
+                  </>
+                );
+                return (
+                  <li key={p.id} className="border-b border-[#374151] last:border-0">
+                    {editTargetId ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewPaymentId(editTargetId)}
+                        className="w-full flex justify-between items-start text-sm py-2 gap-2 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 transition-colors"
+                      >
+                        {rowBody}
+                      </button>
+                    ) : (
+                      <div className="flex justify-between items-start text-sm py-2 gap-2">{rowBody}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -435,6 +512,7 @@ export function ViewRentalDetails({
         <RentalReturnModal
           rental={rental}
           companyId={companyId}
+          branchId={rental.branchId ?? null}
           onClose={() => setReturnOpen(false)}
           onConfirm={handleReturn}
           loading={actionLoading}
@@ -456,12 +534,46 @@ export function ViewRentalDetails({
           onSuccess={handlePaymentSuccess}
         />
       )}
-      {pickupOpen && (
+      {pickupOpen && companyId && (
         <RentalPickupModal
           rental={rental}
+          companyId={companyId}
           onClose={() => setPickupOpen(false)}
           onConfirm={handlePickup}
+          onAddPayment={() => setPaymentOpen(true)}
           loading={actionLoading}
+        />
+      )}
+      {attachmentsSheetOpen && companyId && (
+        <RentalAddAttachmentsSheet
+          open={attachmentsSheetOpen}
+          companyId={companyId}
+          rentalId={rental.id}
+          existingRaw={rental.attachments}
+          bookingLabel={rental.bookingNo}
+          onClose={() => setAttachmentsSheetOpen(false)}
+          onSaved={(merged) => {
+            setRental((prev) => (prev ? { ...prev, attachments: merged } : prev));
+            onRefresh();
+          }}
+        />
+      )}
+      {AttachmentPreviewPortal}
+      {viewPaymentId && companyId && (
+        <TransactionDetailSheet
+          paymentId={viewPaymentId}
+          companyId={companyId}
+          branchId={rental.branchId ?? null}
+          onClose={() => {
+            setViewPaymentId(null);
+            load();
+            onRefresh();
+          }}
+          onCancelled={() => {
+            setViewPaymentId(null);
+            load();
+            onRefresh();
+          }}
         />
       )}
     </div>

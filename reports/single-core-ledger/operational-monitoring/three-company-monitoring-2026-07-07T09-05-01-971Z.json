@@ -1,0 +1,349 @@
+{
+  "run": "THREE_COMPANY_OPERATIONAL_MONITORING",
+  "generated_at": "2026-07-07T09:18:01.240Z",
+  "timestamp_slug": "2026-07-07T09-05-01-971Z",
+  "overall": "FAIL",
+  "credential_policy": "per-company-preferred",
+  "generic_fallback_allowed": true,
+  "flag_guard": {
+    "ok": true,
+    "rows": [
+      {
+        "name": "DIN BRIDAL",
+        "loaders_on": 8
+      },
+      {
+        "name": "DIN CHINA",
+        "loaders_on": 8
+      },
+      {
+        "name": "DIN COUTURE",
+        "loaders_on": 8
+      }
+    ],
+    "unexpected": [],
+    "other_company_loaders_on": 0
+  },
+  "profiles": [
+    {
+      "profileId": "din-china",
+      "email": "din@yahoo.com",
+      "emailSource": "profile-default",
+      "passwordSource": "per-company",
+      "exitCode": 1,
+      "pass": false,
+      "checks": [
+        {
+          "result": "PASS",
+          "check": "DIN CHINA expected flags ON",
+          "notes": "keys=18/18"
+        },
+        {
+          "result": "PASS",
+          "check": "no other company loaders ON",
+          "notes": "count=0"
+        },
+        {
+          "result": "PASS",
+          "check": "admin login",
+          "notes": ""
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha main loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha preview legacy_shadow",
+          "notes": "actual=legacy_shadow"
+        },
+        {
+          "result": "FAIL",
+          "check": "Roznamcha Cash In golden",
+          "notes": "actual=134446812"
+        },
+        {
+          "result": "FAIL",
+          "check": "Roznamcha Cash Out golden",
+          "notes": "actual=73753626"
+        },
+        {
+          "result": "FAIL",
+          "check": "Roznamcha Closing golden",
+          "notes": "actual=60693186"
+        },
+        {
+          "result": "PASS",
+          "check": "Account Statement loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Account Statement MR JALIL",
+          "notes": "closing=216299"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance debit = credit",
+          "notes": "debit=412957272.02 credit=412957272.02"
+        },
+        {
+          "result": "FAIL",
+          "check": "Trial Balance golden total",
+          "notes": "debit=412957272.02"
+        },
+        {
+          "result": "PASS",
+          "check": "Party Ledger loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Party Ledger MR JALIL",
+          "notes": "closing=216299"
+        },
+        {
+          "result": "PASS",
+          "check": "Ledger V2 loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Ledger V2 MR JALIL",
+          "notes": "closing=216299"
+        },
+        {
+          "result": "FAIL",
+          "check": "Admin Compare Pilot Batch 9/9",
+          "notes": "compared=9 pass=0 fail=9"
+        },
+        {
+          "result": "PASS",
+          "check": "no material console/RPC errors",
+          "notes": "none"
+        }
+      ],
+      "phaseResult": "FAIL"
+    },
+    {
+      "profileId": "din-bridal",
+      "email": "ndm313@yahoo.com",
+      "emailSource": "built-in-default",
+      "passwordSource": "per-company",
+      "exitCode": 0,
+      "pass": true,
+      "checks": [
+        {
+          "result": "PASS",
+          "check": "DIN BRIDAL expected flags ON",
+          "notes": "keys=18/18"
+        },
+        {
+          "result": "PASS",
+          "check": "no other company loaders ON",
+          "notes": "count=0"
+        },
+        {
+          "result": "PASS",
+          "check": "admin login",
+          "notes": ""
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha main loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha preview legacy_shadow",
+          "notes": "actual=legacy_shadow"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Cash In golden",
+          "notes": "actual=2968850"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Cash Out golden",
+          "notes": "actual=1794607"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Closing golden",
+          "notes": "actual=1174243"
+        },
+        {
+          "result": "PASS",
+          "check": "Account Statement loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Account Statement MR REHAN ALI",
+          "notes": "closing=530000"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance debit = credit",
+          "notes": "debit=26330077 credit=26330077"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance golden total",
+          "notes": "debit=26330077"
+        },
+        {
+          "result": "PASS",
+          "check": "Party Ledger loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Party Ledger MR REHAN ALI",
+          "notes": "closing=530000"
+        },
+        {
+          "result": "PASS",
+          "check": "Ledger V2 loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Ledger V2 MR REHAN ALI",
+          "notes": "closing=530000"
+        },
+        {
+          "result": "WAIVED",
+          "check": "Admin Compare Pilot Batch",
+          "notes": "skipped for din-bridal profile"
+        },
+        {
+          "result": "PASS",
+          "check": "no material console/RPC errors",
+          "notes": "none"
+        }
+      ],
+      "phaseResult": "PASS"
+    },
+    {
+      "profileId": "din-couture",
+      "email": "zhd@dincouture.pk",
+      "emailSource": "built-in-default",
+      "passwordSource": "per-company",
+      "exitCode": 0,
+      "pass": true,
+      "checks": [
+        {
+          "result": "PASS",
+          "check": "DIN COUTURE expected flags ON",
+          "notes": "keys=18/18"
+        },
+        {
+          "result": "PASS",
+          "check": "no other company loaders ON",
+          "notes": "count=0"
+        },
+        {
+          "result": "PASS",
+          "check": "admin login",
+          "notes": ""
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha main loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha preview legacy_shadow",
+          "notes": "actual=legacy_shadow"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Cash In golden",
+          "notes": "actual=85000"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Cash Out golden",
+          "notes": "actual=34500"
+        },
+        {
+          "result": "PASS",
+          "check": "Roznamcha Closing golden",
+          "notes": "actual=50500"
+        },
+        {
+          "result": "PASS",
+          "check": "Account Statement loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Account Statement DHARIA",
+          "notes": "closing=4488088"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance debit = credit",
+          "notes": "debit=49747104 credit=49747104"
+        },
+        {
+          "result": "PASS",
+          "check": "Trial Balance golden total",
+          "notes": "debit=49747104"
+        },
+        {
+          "result": "PASS",
+          "check": "Party Ledger loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Party Ledger DHARIA",
+          "notes": "closing=4488088"
+        },
+        {
+          "result": "PASS",
+          "check": "Ledger V2 loader unified",
+          "notes": "actual=unified"
+        },
+        {
+          "result": "PASS",
+          "check": "Ledger V2 DHARIA",
+          "notes": "closing=4488088"
+        },
+        {
+          "result": "WAIVED",
+          "check": "Admin Compare Pilot Batch",
+          "notes": "skipped for din-couture profile"
+        },
+        {
+          "result": "PASS",
+          "check": "no material console/RPC errors",
+          "notes": "none"
+        }
+      ],
+      "phaseResult": "PASS"
+    }
+  ],
+  "migrations_run": false,
+  "gl_mutations": false
+}

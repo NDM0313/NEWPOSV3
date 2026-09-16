@@ -1,0 +1,15 @@
+{
+  "run": "PHASE_3B_CURRENT_IMPLEMENTATION_MAP",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "page": "src/app/components/reports/CashFlowReportPage.tsx",
+  "main_loader": "src/app/services/cashFlowReportService.ts#getCashFlowReport",
+  "legacy_data_source": "roznamchaService.getRoznamcha",
+  "unified_roznamcha_main": "src/app/services/roznamchaUnifiedMainService.ts",
+  "unified_roznamcha_main_wired_to_cash_flow": false,
+  "phase_3b_preview_source": "roznamchaUnifiedPreviewService + cashFlowUnifiedPreviewMapper",
+  "preview_panel": "src/app/components/accounting/CashFlowUnifiedPreviewPanel.tsx",
+  "filters": ["date_range", "branch", "liquidity", "payment_account", "source_module", "audit_mode", "search_ui_only"],
+  "visibility_contract": "src/app/lib/reportVisibilityContract.ts",
+  "export_print": ["CSV", "PDF via useReportExport"],
+  "safe_preview_insertion": "after ReportBasisBanner, toggle default OFF"
+}

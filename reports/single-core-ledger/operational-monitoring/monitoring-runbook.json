@@ -1,0 +1,36 @@
+{
+  "title": "three-company-unified-ledger-operational-monitoring-runbook",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "commit_reconciliation": {
+    "0a818da2": "three-company baseline archive",
+    "50547061": "monitoring automation + successful rerun evidence"
+  },
+  "production_url": "https://erp.dincouture.pk",
+  "profiles": ["din-china", "din-bridal", "din-couture"],
+  "credential_policy": {
+    "per_company_preferred": true,
+    "email_env_keys": {
+      "din-china": "QA_BROWSER_EMAIL_CHINA",
+      "din-bridal": "QA_BROWSER_EMAIL_BRIDAL",
+      "din-couture": "QA_BROWSER_EMAIL_COUTURE"
+    },
+    "password_env_keys": {
+      "din-china": "QA_BROWSER_PASSWORD_CHINA",
+      "din-bridal": "QA_BROWSER_PASSWORD_BRIDAL",
+      "din-couture": "QA_BROWSER_PASSWORD_COUTURE"
+    },
+    "generic_email_for_three_company_run": "blocked",
+    "generic_password_fallback_env": "ALLOW_GENERIC_MONITORING_CREDENTIAL_FALLBACK",
+    "golden_party_timeout_hint": "credential_binding_not_accounting"
+  },
+  "commands": {
+    "all_profiles_recommended": "npm run monitor:three-company-unified-ledger",
+    "single_profile": "MONITORING_PROFILE=<profile> node scripts/single-core-ledger/run-unified-ledger-monitoring-verify.mjs"
+  },
+  "latest_evidence": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+  "policies": {
+    "no_auto_fix": true,
+    "no_migrations_in_monitoring": true,
+    "credentials_env_only": true
+  }
+}

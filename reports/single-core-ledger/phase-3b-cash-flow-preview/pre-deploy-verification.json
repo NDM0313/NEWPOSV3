@@ -1,0 +1,13 @@
+{
+  "run": "PHASE_3B_PRE_DEPLOY_VERIFICATION",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "deploy_commit": "99f2e3b3",
+  "test_unified_ledger": "272/272 PASS",
+  "build": "PASS",
+  "migration_files_in_deploy": false,
+  "sql_to_apply": false,
+  "feature_flags_changed": false,
+  "credentials_printed": false,
+  "runtime_scope": "preview_only_cash_flow_ui",
+  "overall": "PASS"
+}

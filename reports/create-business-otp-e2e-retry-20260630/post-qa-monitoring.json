@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-06-30T14:12:00.000Z",
+  "overall": "PASS",
+  "exit_code": 0,
+  "note": "Same snapshot as pre-QA; no signup or GL changes",
+  "migrations_run": false,
+  "gl_mutations": false
+}

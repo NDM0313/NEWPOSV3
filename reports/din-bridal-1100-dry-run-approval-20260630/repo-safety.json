@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-06-30T14:30:00.000Z",
+  "status": "PASS",
+  "git": {
+    "branch": "main",
+    "head": "6dac5ff6a6f262f7d3ca5ae21d2656885903615f",
+    "otp_e2e_commit_present": true,
+    "staged_files": false,
+    "credentials_staged": false
+  }
+}

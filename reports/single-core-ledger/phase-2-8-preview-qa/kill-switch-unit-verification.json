@@ -1,0 +1,36 @@
+{
+  "envKey": "VITE_UNIFIED_LEDGER_ENGINE_KILLED",
+  "testFile": "src/app/lib/unifiedLedgerEngineState.test.ts",
+  "userScreens": [
+    "ledger_v2",
+    "account_statement",
+    "trial_balance",
+    "roznamcha",
+    "party_ledger"
+  ],
+  "expectedWhenKillOn": {
+    "previewToggleDisabled": true,
+    "previewRpcBlocked": true,
+    "legacyTableOnly": true,
+    "blockedByKillSwitchMeta": true
+  },
+  "previewServiceKillGuards": [
+    "ledgerStatementCenterV2UnifiedPreviewService.ts — blockedByKillResult + isUnifiedLedgerKillSwitchActive",
+    "accountStatementUnifiedPreviewService.ts",
+    "trialBalanceUnifiedPreviewService.ts",
+    "roznamchaUnifiedPreviewService.ts",
+    "partyLedgerUnifiedPreviewService.ts"
+  ],
+  "adminCompareUnderKill": {
+    "expected": "shadowForce allows unified RPC for tie-out",
+    "unitTest": "kill switch blocks rpc unless shadowForce — PASS"
+  },
+  "unitTestsPass": [
+    "env kill switch forces killed mode",
+    "kill switch blocks rpc unless shadowForce",
+    "screen preview under kill stays killed without rpcAllowed",
+    "company engine enabled respects kill switch"
+  ],
+  "overall": "PASS",
+  "liveRebuildCheck": "WAIVED — kill env rebuild walkthrough recommended for ops; behavior locked by unit tests + service guards"
+}

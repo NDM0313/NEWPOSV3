@@ -210,7 +210,7 @@ export function MatrixTab() {
     return (
       <div className="space-y-6">
         <h2 className="text-xl font-bold text-white">Permissions</h2>
-        <div className="p-8 text-center text-gray-400">Loading permissions…</div>
+        <div className="p-8 text-center text-muted-foreground">Loading permissions…</div>
       </div>
     );
   }
@@ -219,11 +219,11 @@ export function MatrixTab() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-white">Permissions by module</h2>
-        <p className="text-gray-400 text-sm mt-1">Enable modules and set actions per role. No database structure change.</p>
+        <p className="text-muted-foreground text-sm mt-1">Enable modules and set actions per role. No database structure change.</p>
       </div>
 
       <div>
-        <p className="text-sm text-gray-400 mb-2">Select role to edit</p>
+        <p className="text-sm text-muted-foreground mb-2">Select role to edit</p>
         <div className="flex flex-wrap gap-2">
           {ENGINE_ROLES.map((r) => (
             <button
@@ -233,7 +233,7 @@ export function MatrixTab() {
                 'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors',
                 selectedRole === r.id
                   ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
-                  : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-white'
+                  : 'bg-muted/60 border-border text-muted-foreground hover:border-gray-600 hover:text-foreground'
               )}
             >
               <r.icon size={16} />
@@ -243,11 +243,11 @@ export function MatrixTab() {
         </div>
       </div>
 
-      <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-4 flex items-center gap-3">
+      <div className="bg-muted/60 border border-border rounded-lg p-4 flex items-center gap-3">
         {selectedMeta && <selectedMeta.icon className="text-amber-500 shrink-0" size={24} />}
         <div>
-          <p className="font-semibold text-white">{selectedMeta?.label}</p>
-          <p className="text-sm text-gray-400">{desc}</p>
+          <p className="font-semibold text-foreground">{selectedMeta?.label}</p>
+          <p className="text-sm text-muted-foreground">{desc}</p>
         </div>
       </div>
 
@@ -263,21 +263,21 @@ export function MatrixTab() {
             <div
               className={cn(
                 'rounded-lg border transition-colors',
-                enabled ? 'border-gray-600 bg-gray-800/40' : 'border-gray-800 bg-gray-900/40'
+                enabled ? 'border-gray-600 bg-muted/40' : 'border-border bg-card/40'
               )}
             >
               <div className="flex items-center gap-3 p-4">
                 <button
                   type="button"
                   onClick={() => toggleOpen(module)}
-                  className="p-1 rounded text-gray-400 hover:text-white shrink-0"
+                  className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0"
                   aria-expanded={open}
                 >
                   {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-white">{MODULE_LABELS[module] ?? module}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="font-medium text-foreground">{MODULE_LABELS[module] ?? module}</p>
+                  <p className="text-xs text-muted-foreground">
                     {enabled ? `${actions.filter((a) => getAllowed(module, a)).length} of ${actions.length} actions allowed` : 'Module disabled'}
                   </p>
                 </div>
@@ -290,11 +290,11 @@ export function MatrixTab() {
               </div>
 
               {open && (
-                <div className="border-t border-gray-800 px-4 pb-4 pt-3">
+                <div className="border-t border-border px-4 pb-4 pt-3">
                   {(MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(module) && (
                     <div className="space-y-4">
                       <div>
-                        <Label className="text-gray-300 text-sm font-medium mb-2 block">Visibility (one scope)</Label>
+                        <Label className="text-muted-foreground text-sm font-medium mb-2 block">Visibility (one scope)</Label>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
                           {VISIBILITY_SCOPE_CARDS.map((card) => {
                             const selected = getCurrentVisibilityScope(module) === card.value;
@@ -308,20 +308,20 @@ export function MatrixTab() {
                                   'rounded-lg border p-3 text-left transition-all',
                                   selected
                                     ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30 shadow shadow-blue-500/10'
-                                    : 'border-gray-700 bg-gray-800/50 hover:border-gray-600 text-gray-300'
+                                    : 'border-border bg-muted/50 hover:border-gray-600 text-muted-foreground'
                                 )}
                               >
                                 <p className={cn('font-medium text-sm', selected ? 'text-blue-300' : 'text-white')}>
                                   {card.title}
                                 </p>
-                                <p className="text-xs mt-1 text-gray-500">{card.description}</p>
+                                <p className="text-xs mt-1 text-muted-foreground">{card.description}</p>
                               </button>
                             );
                           })}
                         </div>
                       </div>
                       <div>
-                        <Label className="text-gray-300 text-sm font-medium">Actions</Label>
+                        <Label className="text-muted-foreground text-sm font-medium">Actions</Label>
                         <div className="mt-2 flex flex-wrap gap-6">
                           {actions.filter((a) => (VISIBILITY_SCOPE_ACTIONS as readonly string[]).indexOf(a) < 0).map((action) => (
                             <div key={action} className="flex items-center gap-2">
@@ -331,7 +331,7 @@ export function MatrixTab() {
                                 onCheckedChange={(c) => setAllowed(module, action, c === true)}
                                 disabled={saving}
                               />
-                              <Label htmlFor={`${module}-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
+                              <Label htmlFor={`${module}-${action}`} className="text-muted-foreground text-sm font-normal cursor-pointer">
                                 {ACTION_LABELS[action] ?? action.replace(/_/g, ' ')}
                               </Label>
                             </div>
@@ -343,7 +343,7 @@ export function MatrixTab() {
 
                   {!(MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(module) && (
                     <div className="space-y-2">
-                      <Label className="text-gray-300 text-sm font-medium">Actions</Label>
+                      <Label className="text-muted-foreground text-sm font-medium">Actions</Label>
                       <div className="mt-2 flex flex-wrap gap-6">
                         {actions.map((action) => (
                           <div key={action} className="flex items-center gap-2">
@@ -353,7 +353,7 @@ export function MatrixTab() {
                               onCheckedChange={(c) => setAllowed(module, action, c === true)}
                               disabled={saving}
                             />
-                            <Label htmlFor={`${module}-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
+                            <Label htmlFor={`${module}-${action}`} className="text-muted-foreground text-sm font-normal cursor-pointer">
                               {ACTION_LABELS[action] ?? action.replace(/_/g, ' ')}
                             </Label>
                           </div>
@@ -366,27 +366,27 @@ export function MatrixTab() {
             </div>
             {/* Branch Access Section (below Sales) */}
             {module === 'sales' && (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-700">
+              <div className="rounded-lg border border-border bg-muted/40 p-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-border">
                   <Building2 size={18} className="text-blue-400 shrink-0" />
                   <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
                 </div>
                 <div className="pt-3 space-y-2">
-                  <p className="text-xs text-gray-500">Branch selection depends on company branch count. Per-user assignment in <strong>Users</strong> tab.</p>
+                  <p className="text-xs text-muted-foreground">Branch selection depends on company branch count. Per-user assignment in <strong>Users</strong> tab.</p>
                   {branchMode === 'AUTO' && (
-                    <div className="flex items-center gap-2 text-sm text-gray-300">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">AUTO</span>
                       <span><strong>Auto (Single Branch Company)</strong> — One branch; automatically assigned. user_branches not required.</span>
                     </div>
                   )}
                   {branchMode === 'RESTRICTED' && (
-                    <div className="flex items-center gap-2 text-sm text-gray-300">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">R</span>
                       <span><strong>Restricted (Multi Branch Company)</strong> — {branchCount} branches; assign per user in Users tab. user_branches required.</span>
                     </div>
                   )}
                   {branchMode === null && branchCount === 0 && (
-                    <p className="text-sm text-gray-500">Company branch count: 0 (create branches in Settings).</p>
+                    <p className="text-sm text-muted-foreground">Company branch count: 0 (create branches in Settings).</p>
                   )}
                 </div>
               </div>
@@ -398,24 +398,24 @@ export function MatrixTab() {
 
       <div className="flex flex-wrap gap-4">
         <div className="bg-green-500/10 border border-green-500/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-gray-400">Allowed</p>
+          <p className="text-xs text-muted-foreground">Allowed</p>
           <p className="text-xl font-bold text-green-500">{totalAllowed}</p>
         </div>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-gray-400">Denied</p>
+          <p className="text-xs text-muted-foreground">Denied</p>
           <p className="text-xl font-bold text-red-500">{totalDenied}</p>
         </div>
         <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-gray-400">Ratio</p>
+          <p className="text-xs text-muted-foreground">Ratio</p>
           <p className="text-xl font-bold text-purple-500">{ratio}%</p>
         </div>
       </div>
 
       <div className="border border-blue-500/30 bg-blue-500/5 rounded-lg p-4 max-w-2xl">
-        <h3 className="font-semibold text-white flex items-center gap-2 mb-2">
+        <h3 className="font-semibold text-foreground flex items-center gap-2 mb-2">
           <Info className="text-blue-400 shrink-0" size={18} /> How to change access
         </h3>
-        <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
+        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
           <li>Select a role above, then turn <strong>Enable Module</strong> on for each module this role may use.</li>
           <li>Expand a module to set view scope (Sales) or individual actions (Accounting, Inventory, etc.).</li>
           <li>Changes save immediately. Owner/Admin get full access regardless of this matrix.</li>

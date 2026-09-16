@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-06-30T12:00:00.000Z",
+  "status": "PASS",
+  "source": "secure local shell (loaded from operator erp-mobile-app/.env session vars, not committed)",
+  "required_fields": {
+    "SMTP_HOST": { "expected": "smtp.hostinger.com", "found": "smtp.hostinger.com", "ok": true },
+    "SMTP_PORT": { "expected": "587", "found": "587", "ok": true },
+    "SMTP_USER": { "expected": "noreply@dincouture.pk", "found": "noreply@dincouture.pk", "ok": true },
+    "SMTP_PASS": { "expected": "SET", "found": "SET(len=12)", "ok": true },
+    "SMTP_ADMIN_EMAIL": { "expected": "noreply@dincouture.pk", "found": "noreply@dincouture.pk", "ok": true },
+    "SMTP_SENDER_NAME": { "expected": "DIN Collection ERP", "found": "DIN Collection ERP", "ok": true }
+  },
+  "action": "PROCEED with VPS .env update"
+}

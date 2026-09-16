@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-07-05T14:35:00+05:00",
+  "localDate": "2026-07-05",
+  "testUnit": { "pass": 126, "fail": 0, "status": "PASS" },
+  "testUnifiedLedger": { "pass": 335, "fail": 0, "status": "PASS" },
+  "build": { "status": "PASS", "durationSeconds": 55 },
+  "repoHeadAtTest": "bcbd5fe479da76f9a26294f1a057207fd9f169de",
+  "safety": {
+    "migrations_run": false,
+    "production_data_mutation": false,
+    "gl_semantics_changed": false,
+    "inventory_semantics_changed": false,
+    "r8_run": false,
+    "play_store_upload": false,
+    "credentials_committed": false
+  },
+  "deployStatus": "NOT_DEPLOYED — awaiting Nadeem frontend deploy approval"
+}

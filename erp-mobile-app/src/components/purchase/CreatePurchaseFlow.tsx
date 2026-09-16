@@ -18,14 +18,17 @@ import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { useSubmitLock } from '../../contexts/LoadingContext';
-import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { localNowDateTimeString, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
+import { formatQty } from '../../utils/quantity';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 import { NumericInput } from '../common/NumericInput';
 import { unitAllowsDecimal } from '../../lib/unitDecimal';
 import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 
 const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -111,7 +114,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentError, setAttachmentError] = useState('');
-  const [poDate, setPoDate] = useState(() => localNowDateString());
+  const [poDate, setPoDate] = useState(() => localNowDateTimeString());
   const lastItemRef = useRef<HTMLDivElement | null>(null);
   const { runSingleFlight, isRunning: isSubmitRunning } = useSingleFlightAction();
 
@@ -169,11 +172,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const total = subtotal - discount;
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredProducts = filterAndRankProducts(products, search, productMatchesSearch);
 
   const addItem = (
     product: ProductForPurchase,
@@ -652,16 +651,13 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
             </div>
           </div>
 
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">PO date</label>
-            <input
-              type="date"
-              max={localNowDateString()}
-              value={poDate}
-              onChange={(e) => setPoDate(e.target.value)}
-              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
-            />
-          </div>
+          <DateTimeInputField
+            label="PO date & time"
+            required
+            value={poDate}
+            onChange={setPoDate}
+            max={localNowDateTimeString().slice(0, 10)}
+          />
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Purchase Type</label>
@@ -814,6 +810,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         <PaymentDialog
           totalAmount={total}
           companyId={companyId}
+          branchId={branchId}
           onBack={() => setStep('summary')}
           onComplete={(result) => handleSaveWithPayment(result)}
           saving={saving || isSubmitRunning}
@@ -920,7 +917,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                       <p className="text-sm font-medium truncate">{label || v.sku}</p>
                       <p className="text-xs text-[#9CA3AF] mt-0.5">Rs. {(v.price || 0).toLocaleString()}</p>
                       {typeof v.stock === 'number' && (
-                        <p className={`text-xs mt-0.5 ${v.stock < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>Stock: {v.stock}</p>
+                        <p className={`text-xs mt-0.5 tabular-nums ${v.stock < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>Stock: {formatQty(v.stock)}</p>
                       )}
                     </button>
                   );

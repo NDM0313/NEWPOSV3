@@ -89,14 +89,14 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-white">
+    <div className="flex flex-col h-full bg-card text-foreground">
       {/* Header */}
-      <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+      <div className="p-6 border-b border-border flex justify-between items-center bg-card sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold">Add New Product</h2>
-          <p className="text-sm text-gray-400">Complete product details for inventory</p>
+          <p className="text-sm text-muted-foreground">Complete product details for inventory</p>
         </div>
-        <button onClick={onCancel} className="p-2 hover:bg-gray-800 rounded-full">
+        <button onClick={onCancel} className="p-2 hover:bg-muted rounded-full">
           <X size={20} />
         </button>
       </div>
@@ -105,7 +105,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
         {/* Product Type Segmented Control */}
         <div className="space-y-3">
           <Label className="text-gray-200">Product Type *</Label>
-          <div className="grid grid-cols-3 gap-2 p-1 bg-gray-800/50 rounded-lg border border-gray-700">
+          <div className="grid grid-cols-3 gap-2 p-1 bg-muted/50 rounded-lg border border-border">
             <button
               type="button"
               onClick={() => setProductType('standard')}
@@ -113,7 +113,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                 "py-3 px-4 rounded-md font-medium text-sm transition-all duration-200",
                 productType === 'standard'
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-gray-400 hover:text-white hover:bg-gray-700/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
               Standard
@@ -125,7 +125,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                 "py-3 px-4 rounded-md font-medium text-sm transition-all duration-200",
                 productType === 'variable'
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-gray-400 hover:text-white hover:bg-gray-700/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
               Variable
@@ -137,7 +137,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                 "py-3 px-4 rounded-md font-medium text-sm transition-all duration-200",
                 productType === 'combo'
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-gray-400 hover:text-white hover:bg-gray-700/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
               Combo
@@ -157,7 +157,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
               <Input 
                 id="p-name" 
                 placeholder="e.g. Cotton Premium Shirt" 
-                className="bg-gray-800 border-gray-700 text-white mt-1" 
+                className="bg-muted border-border text-foreground mt-1" 
                 required 
               />
             </div>
@@ -169,7 +169,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                   <Input 
                     id="sku" 
                     placeholder="AUTO-GENERATED" 
-                    className="bg-gray-800 border-gray-700 text-white mt-1" 
+                    className="bg-muted border-border text-foreground mt-1" 
                   />
                 </div>
                 <div>
@@ -177,7 +177,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                   <Input 
                     id="barcode" 
                     placeholder="Enter barcode" 
-                    className="bg-gray-800 border-gray-700 text-white mt-1" 
+                    className="bg-muted border-border text-foreground mt-1" 
                   />
                 </div>
               </>
@@ -237,37 +237,37 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
               </Button>
             </div>
 
-            <div className="border border-gray-700 rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-800/50">
+                  <thead className="bg-muted/50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                         Variant Name
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                         SKU
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                         Price
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                         Stock
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase w-16">
+                      <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase w-16">
                         Action
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-800">
+                  <tbody className="divide-y divide-border">
                     {variants.map((variant) => (
-                      <tr key={variant.id} className="hover:bg-gray-800/30">
+                      <tr key={variant.id} className="hover:bg-accent/30">
                         <td className="px-4 py-3">
                           <Input
                             value={variant.name}
                             onChange={(e) => updateVariant(variant.id, 'name', e.target.value)}
                             placeholder="e.g., Small"
-                            className="bg-gray-800 border-gray-700 text-white h-9"
+                            className="bg-muted border-border text-foreground h-9"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -275,7 +275,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                             value={variant.sku}
                             onChange={(e) => updateVariant(variant.id, 'sku', e.target.value)}
                             placeholder="SKU-001"
-                            className="bg-gray-800 border-gray-700 text-white h-9"
+                            className="bg-muted border-border text-foreground h-9"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -284,7 +284,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                             value={variant.price}
                             onChange={(e) => updateVariant(variant.id, 'price', parseFloat(e.target.value))}
                             placeholder="0"
-                            className="bg-gray-800 border-gray-700 text-white h-9"
+                            className="bg-muted border-border text-foreground h-9"
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -293,7 +293,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                             value={variant.stock}
                             onChange={(e) => updateVariant(variant.id, 'stock', parseInt(e.target.value))}
                             placeholder="0"
-                            className="bg-gray-800 border-gray-700 text-white h-9"
+                            className="bg-muted border-border text-foreground h-9"
                           />
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -336,20 +336,20 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
               {comboProducts.map((product) => (
                 <div
                   key={product.id}
-                  className="flex items-center gap-4 p-4 bg-gray-800/50 border border-gray-700 rounded-lg"
+                  className="flex items-center gap-4 p-4 bg-muted/50 border border-border rounded-lg"
                 >
                   {/* Thumbnail placeholder */}
-                  <div className="w-16 h-16 bg-gray-700 rounded-lg flex items-center justify-center shrink-0">
-                    <Box size={24} className="text-gray-500" />
+                  <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                    <Box size={24} className="text-muted-foreground" />
                   </div>
 
                   {/* Product selector */}
                   <div className="flex-1">
                     <Select>
-                      <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                      <SelectTrigger className="bg-muted border-border text-foreground">
                         <SelectValue placeholder="Select Product" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
                         <SelectItem value="shirt">Cotton Shirt</SelectItem>
                         <SelectItem value="jeans">Denim Jeans</SelectItem>
                         <SelectItem value="jacket">Leather Jacket</SelectItem>
@@ -364,7 +364,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                       value={product.quantity}
                       min="1"
                       placeholder="Qty"
-                      className="bg-gray-800 border-gray-700 text-white"
+                      className="bg-muted border-border text-foreground"
                     />
                   </div>
 
@@ -396,7 +396,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                   id="purchase-price" 
                   type="number" 
                   placeholder="0.00" 
-                  className="bg-gray-800 border-gray-700 text-white mt-1" 
+                  className="bg-muted border-border text-foreground mt-1" 
                 />
               </div>
               <div>
@@ -405,7 +405,7 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
                   id="selling-price" 
                   type="number" 
                   placeholder="0.00" 
-                  className="bg-green-900/30 border-green-700 text-white mt-1" 
+                  className="bg-green-900/30 border-green-700 text-foreground mt-1" 
                   required 
                 />
               </div>
@@ -420,12 +420,12 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
             {...getRootProps()} 
             className={clsx(
               "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors",
-              isDragActive ? "border-blue-500 bg-blue-500/10" : "border-gray-700 hover:border-gray-500 bg-gray-800/50"
+              isDragActive ? "border-blue-500 bg-blue-500/10" : "border-border hover:border-gray-500 bg-muted/50"
             )}
           >
             <input {...getInputProps()} />
-            <Upload size={32} className="text-gray-500 mb-3" />
-            <p className="text-gray-400 text-center">
+            <Upload size={32} className="text-muted-foreground mb-3" />
+            <p className="text-muted-foreground text-center">
               Drag & drop images here, or <span className="text-blue-500">browse</span>
             </p>
           </div>
@@ -433,11 +433,11 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
           {images.length > 0 && (
             <div className="grid grid-cols-4 gap-4">
               {images.map((file, idx) => (
-                <div key={idx} className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+                <div key={idx} className="relative group aspect-square bg-muted rounded-lg overflow-hidden border border-border">
                   <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
                   <button 
                     onClick={(e) => { e.stopPropagation(); setImages(images.filter((_, i) => i !== idx)); }}
-                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-1 right-1 bg-red-500 text-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X size={12} />
                   </button>
@@ -449,10 +449,10 @@ export const ProductTypeForm = ({ onCancel, onSave }: ProductTypeFormProps) => {
       </div>
 
       {/* Footer */}
-      <div className="p-6 border-t border-gray-800 bg-gray-900 sticky bottom-0 z-10 flex gap-4">
+      <div className="p-6 border-t border-border bg-card sticky bottom-0 z-10 flex gap-4">
         <button 
           onClick={onCancel}
-          className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-colors"
+          className="flex-1 bg-muted hover:bg-muted text-foreground py-3 rounded-xl font-bold transition-colors"
         >
           Cancel
         </button>

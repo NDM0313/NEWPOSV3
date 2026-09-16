@@ -1,0 +1,11 @@
+{
+  "run": "PHASE_3B_F_PRODUCTION_DEPLOY",
+  "generated_at": "2026-06-29T13:40:00.000Z",
+  "command": "ssh dincouture-vps \"cd /root/NEWPOSV3 && git fetch origin main && git pull origin main && bash deploy/vps-build-erp-only.sh\"",
+  "deployed_commit": "5433ac2c",
+  "production_url": "https://erp.dincouture.pk",
+  "post_deploy_smoke": "PASS",
+  "row_export_capture": "PASS",
+  "loader_swap": "BLOCKED",
+  "official_totals_changed": false
+}

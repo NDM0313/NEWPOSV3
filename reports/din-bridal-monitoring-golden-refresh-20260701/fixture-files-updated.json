@@ -1,0 +1,21 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "fixture-files-updated",
+  "generated_at": "2026-07-01T14:05:00.000Z",
+  "files": [
+    {
+      "path": "scripts/single-core-ledger/monitoring-company-profiles.json",
+      "profile": "din-bridal",
+      "fields_updated": ["trial_balance_debit_credit_pkr", "roznamcha_cash_in_pkr", "roznamcha_closing_pkr"]
+    },
+    {
+      "path": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+      "fields_updated": ["fixtures.trial_balance_debit_pkr", "fixtures.trial_balance_credit_pkr", "fixtures.roznamcha_cash_in_pkr", "fixtures.roznamcha_closing_pkr", "rpc_proxy_baseline", "notes", "browser_capture_at"]
+    },
+    {
+      "path": "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+      "fields_updated": ["all fixture table values", "captured date"]
+    }
+  ],
+  "not_updated": ["din-china", "din-couture", "feature flags", "production data"]
+}

@@ -1,0 +1,7 @@
+{
+  "run": "LOCAL_BROWSER_QA",
+  "production_receipts_created": false,
+  "automated_policy_tests": "PASS",
+  "manual_ui": "deferred_post_deploy",
+  "cleanup_verified_readonly": true
+}

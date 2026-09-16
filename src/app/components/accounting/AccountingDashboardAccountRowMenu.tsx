@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
+import { isPartyOrLinkedLeafAccount } from '@/app/lib/addAccountCoaPicker';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
 import type { AccountsHierarchyRowModel } from './useAccountsHierarchyModel';
@@ -57,6 +58,8 @@ type Props = {
   onOpenAccountStatements: (accountId: string) => void;
   canPostAccounting?: boolean;
   onTransferBalance?: (accountId: string) => void;
+  /** Open Professional Create Account with this row as parent. */
+  onAddChildAccount?: (accountId: string) => void;
 };
 
 export function AccountingDashboardAccountRowMenu({
@@ -71,6 +74,7 @@ export function AccountingDashboardAccountRowMenu({
   onOpenAccountStatements,
   canPostAccounting = false,
   onTransferBalance,
+  onAddChildAccount,
 }: Props) {
   const account = row.account;
   const code = (account as { code?: string }).code;
@@ -79,13 +83,13 @@ export function AccountingDashboardAccountRowMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-gray-400 hover:text-white hover:bg-gray-800">
+        <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground hover:bg-muted">
           <MoreVertical size={16} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 bg-gray-950/95 border-gray-800 text-gray-200 shadow-xl backdrop-blur-sm">
+      <DropdownMenuContent align="end" className="w-56 bg-input-background/95 border-border text-gray-200 shadow-xl backdrop-blur-sm">
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          className="gap-2 focus:bg-muted cursor-pointer"
           onClick={() =>
             toast.message(`${account.name}${code ? ` · ${code}` : ''}`, {
               description: `Balance (GL): ${account.balance ?? 0}`,
@@ -95,7 +99,7 @@ export function AccountingDashboardAccountRowMenu({
           <Eye size={14} className="shrink-0" /> View Details
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          className="gap-2 focus:bg-muted cursor-pointer"
           onClick={() => {
             setEditingAccount(account);
             setIsEditAccountOpen(true);
@@ -104,7 +108,7 @@ export function AccountingDashboardAccountRowMenu({
           <Edit size={14} className="shrink-0" /> Edit Account
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          className="gap-2 focus:bg-muted cursor-pointer"
           onClick={() => {
             setLedgerAccount({
               id: account.id,
@@ -117,7 +121,7 @@ export function AccountingDashboardAccountRowMenu({
           <FileText size={14} className="shrink-0" /> {controlKind ? 'Open GL ledger' : 'View Ledger'}
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          className="gap-2 focus:bg-muted cursor-pointer"
           onClick={() => {
             if (!account.id) return;
             onOpenAccountStatements(account.id);
@@ -125,9 +129,9 @@ export function AccountingDashboardAccountRowMenu({
         >
           <BarChart3 size={14} className="shrink-0" /> Statement
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-gray-800" />
+        <DropdownMenuSeparator className="bg-muted" />
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          className="gap-2 focus:bg-muted cursor-pointer"
           onClick={() => {
             if (!canPostAccounting) {
               toast.error('Transfer requires Manager or Admin posting permission.');
@@ -143,15 +147,35 @@ export function AccountingDashboardAccountRowMenu({
           <ArrowLeftRight size={14} className="shrink-0" /> Transfer Balance
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
-          onClick={() => toast.info('Add child account — use Create New Account (Professional) and pick parent.')}
+          className="gap-2 focus:bg-muted cursor-pointer"
+          onClick={() => {
+            if (!account.id) return;
+            if (
+              isPartyOrLinkedLeafAccount({
+                id: account.id,
+                name: account.name,
+                code,
+                linked_contact_id: (account as { linked_contact_id?: string | null }).linked_contact_id,
+              })
+            ) {
+              toast.error(
+                'Party AR/AP/WP sub-ledgers cannot be parents for manual CoA accounts. Use Contacts or a control account (e.g. 1100 / 2000).'
+              );
+              return;
+            }
+            if (!onAddChildAccount) {
+              toast.info('Add child account — use Create New Account (Professional) and pick parent.');
+              return;
+            }
+            onAddChildAccount(account.id);
+          }}
         >
           <FolderPlus size={14} className="shrink-0" /> Add Child Account
         </DropdownMenuItem>
-        <DropdownMenuItem className="gap-2 focus:bg-gray-800 cursor-pointer" onClick={() => toast.info('Duplicate account — coming soon')}>
+        <DropdownMenuItem className="gap-2 focus:bg-muted cursor-pointer" onClick={() => toast.info('Duplicate account — coming soon')}>
           <Copy size={14} className="shrink-0" /> Duplicate
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-gray-800" />
+        <DropdownMenuSeparator className="bg-muted" />
         <DropdownMenuItem
           className="gap-2 text-red-400 focus:text-red-300 focus:bg-red-950/40 cursor-pointer"
           onClick={() => toast.error('Account delete is not enabled from this menu.')}
@@ -160,9 +184,9 @@ export function AccountingDashboardAccountRowMenu({
         </DropdownMenuItem>
         {controlKind && (
           <>
-            <DropdownMenuSeparator className="bg-gray-800" />
+            <DropdownMenuSeparator className="bg-muted" />
             <DropdownMenuItem
-              className="gap-2 focus:bg-gray-800 cursor-pointer"
+              className="gap-2 focus:bg-muted cursor-pointer"
               onClick={() =>
                 setControlBreakdown({
                   account: { id: account.id!, name: account.name || '', code },
@@ -177,7 +201,7 @@ export function AccountingDashboardAccountRowMenu({
         {controlKind && controlKind !== 'suspense' && (
           <>
             <DropdownMenuItem
-              className="gap-2 focus:bg-gray-800 cursor-pointer"
+              className="gap-2 focus:bg-muted cursor-pointer"
               onClick={() => {
                 setCurrentView('contacts');
                 toast.info(
@@ -192,7 +216,7 @@ export function AccountingDashboardAccountRowMenu({
               <Users size={14} className="shrink-0" /> Open operational (Contacts)
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="gap-2 focus:bg-gray-800 cursor-pointer"
+              className="gap-2 focus:bg-muted cursor-pointer"
               onClick={() => {
                 setCurrentView('contacts');
                 toast.info('On Contacts, use reconciliation copy vs GL control for variance context.');
@@ -201,7 +225,7 @@ export function AccountingDashboardAccountRowMenu({
               <Scale size={14} className="shrink-0" /> Open reconciliation (Contacts)
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="gap-2 focus:bg-gray-800 cursor-pointer"
+              className="gap-2 focus:bg-muted cursor-pointer"
               onClick={() => setCurrentView('ar-ap-reconciliation-center')}
             >
               <ShieldAlert size={14} className="shrink-0" /> AR/AP Reconciliation Center
@@ -210,7 +234,7 @@ export function AccountingDashboardAccountRowMenu({
         )}
         {controlKind === 'suspense' && (
           <DropdownMenuItem
-            className="gap-2 focus:bg-gray-800 cursor-pointer"
+            className="gap-2 focus:bg-muted cursor-pointer"
             onClick={() => setCurrentView('ar-ap-reconciliation-center')}
           >
             <ShieldAlert size={14} className="shrink-0" /> Reconciliation Center (suspense)
@@ -218,18 +242,18 @@ export function AccountingDashboardAccountRowMenu({
         )}
         {accountsViewMode === 'professional' && (
           <>
-            <DropdownMenuSeparator className="bg-gray-800" />
-            <DropdownMenuItem className="gap-2 focus:bg-gray-800 cursor-pointer" onClick={() => toast.info('View Transactions — coming soon')}>
+            <DropdownMenuSeparator className="bg-muted" />
+            <DropdownMenuItem className="gap-2 focus:bg-muted cursor-pointer" onClick={() => toast.info('View Transactions — coming soon')}>
               <List size={14} className="shrink-0" /> View Transactions
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 focus:bg-gray-800 cursor-pointer" onClick={() => toast.info('Account Summary — coming soon')}>
+            <DropdownMenuItem className="gap-2 focus:bg-muted cursor-pointer" onClick={() => toast.info('Account Summary — coming soon')}>
               <BarChart3 size={14} className="shrink-0" /> Account Summary
             </DropdownMenuItem>
           </>
         )}
-        <DropdownMenuSeparator className="bg-gray-800" />
+        <DropdownMenuSeparator className="bg-muted" />
         <DropdownMenuItem
-          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          className="gap-2 focus:bg-muted cursor-pointer"
           onClick={async () => {
             try {
               await accountService.updateAccount(account.id!, {
@@ -255,7 +279,7 @@ export function AccountingDashboardAccountRowMenu({
         </DropdownMenuItem>
         {(account.type === 'Cash' || account.accountType === 'Cash') && (
           <DropdownMenuItem
-            className="gap-2 focus:bg-gray-800 cursor-pointer"
+            className="gap-2 focus:bg-muted cursor-pointer"
             onClick={async () => {
               try {
                 const cashAccounts = accounting.accounts.filter(
@@ -278,7 +302,7 @@ export function AccountingDashboardAccountRowMenu({
         )}
         {(account.type === 'Bank' || account.accountType === 'Bank') && (
           <DropdownMenuItem
-            className="gap-2 focus:bg-gray-800 cursor-pointer"
+            className="gap-2 focus:bg-muted cursor-pointer"
             onClick={async () => {
               try {
                 const bankAccounts = accounting.accounts.filter(

@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-06-30T12:00:00.000Z",
+  "run_name": "R1B ADMIN COMPARE RETAINED-JE BASELINE CLOSURE",
+  "branch": "main",
+  "head": "8813bb6b2c1fd54a5710d9c0bfc611b01b17ecd1",
+  "origin_main": "8813bb6b2c1fd54a5710d9c0bfc611b01b17ecd1",
+  "staged_files": [],
+  "credentials_staged": false,
+  "prior_evidence_commits": ["37721e48", "a83522f7", "8813bb6b"],
+  "retained_je": {
+    "entry_no": "JE-0003",
+    "je_id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+    "company": "DIN CHINA",
+    "party": "MR JALIL",
+    "amount_pkr": 1,
+    "reference_type": "party_discount",
+    "date": "2026-06-30"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "run": "PHASE_3_REMAINING_OPTIONAL_SCREEN_AUDIT",
+  "generatedAt": "2026-06-29",
+  "risks": [
+    { "id": "R-OPT-01", "title": "TB unified main vs BS/P&L legacy totals diverge", "severity": "high", "likelihood": "medium", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "R-OPT-02", "title": "Cash Flow vs unified Roznamcha main diverge", "severity": "high", "likelihood": "medium", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "R-OPT-03", "title": "Premature loader flag enable", "severity": "critical", "likelihood": "low", "classification": "BLOCKED_DATA_MUTATION" },
+    { "id": "R-OPT-04", "title": "Invented golden numbers", "severity": "high", "likelihood": "low", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "R-OPT-05", "title": "Mobile vs web balance mismatch", "severity": "medium", "likelihood": "high", "classification": "TEST_ONLY" },
+    { "id": "R-OPT-06", "title": "COGS mapping affects net profit", "severity": "medium", "likelihood": "medium", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "R-OPT-07", "title": "R7 roznamcha_payment RPC", "severity": "medium", "likelihood": "n/a", "classification": "BLOCKED_R7" },
+    { "id": "R-OPT-08", "title": "R8 before optional screens complete", "severity": "high", "likelihood": "low", "classification": "BLOCKED_R8" },
+    { "id": "R-OPT-09", "title": "Branch NULL rule mismatch", "severity": "medium", "likelihood": "medium", "classification": "PREVIEW_ONLY_SAFE" },
+    { "id": "R-OPT-10", "title": "correction_reversal visibility mismatch", "severity": "medium", "likelihood": "medium", "classification": "NEEDS_RUNTIME_CHANGE" }
+  ],
+  "stopConditions": [
+    "finance_golden_not_approved",
+    "preview_compare_fails_three_companies",
+    "operator_phase_not_approved",
+    "r7_r8_next_company_mixed_in",
+    "unapproved_migration_or_gl_mutation"
+  ]
+}

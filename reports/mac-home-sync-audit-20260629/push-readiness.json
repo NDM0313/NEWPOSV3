@@ -1,0 +1,20 @@
+{
+  "generated": "2026-06-29",
+  "decision": "PUSH_READY",
+  "criteria": {
+    "testsPass": true,
+    "buildPass": true,
+    "noConflictMarkers": true,
+    "noUnrelatedStaged": true,
+    "noCredentials": true,
+    "graphifyOutNotStaged": true,
+    "featureReviewNoBlocker": true,
+    "activeTaskRegisterCreated": true,
+    "browserQaPending": true
+  },
+  "commitsToPush": 1,
+  "commitSha": "ae6c69d0",
+  "pushExecuted": false,
+  "deployStatus": "DEPLOY_BLOCKED",
+  "nextAction": "Operator approval required for git push origin main"
+}

@@ -1,0 +1,24 @@
+OLD ERP SCE EVIDENCE RECOVERY — BASELINE
+Date: 2026-07-15
+
+BRANCH: main
+HEAD: 26fb708616532db13c41ad73acf699d07fc84ea1
+ORIGIN_MAIN: 26fb708616532db13c41ad73acf699d07fc84ea1
+CONTAINS_26fb7086: YES
+STAGED: (none at start)
+
+WORKING TREE (EXCLUDED UNRELATED WIP):
+- docs/accounting/ACCOUNTING_REPORTS_INDEX.md (modified)
+- graphify-out/
+- migration-tools/* cashbook / repair
+- Ledger V2 / attachments / accountingService WIP
+- docs/accounting/*IMPORT_GAP*
+- docs/audit/*
+- tmp/
+
+STASH: present (local WIP) — not restored; no missing-folder names in stash@{0..5} name lists
+REFLOG: audit commit 26fb7086 is HEAD
+
+UNSAFE STAGED: none
+RUNTIME CHANGED: no
+DEPLOY: no

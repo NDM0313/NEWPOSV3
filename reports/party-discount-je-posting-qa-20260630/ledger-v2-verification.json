@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-06-30T07:46:42.418Z",
+  "overall": "PASS",
+  "closing_before": 216300,
+  "closing_after": 216299,
+  "closing_delta": -1,
+  "expected_delta": -1,
+  "rows_before": 39,
+  "rows_after_all_filter": 39,
+  "rows_discount_filter": 9,
+  "discount_filter_shows_row": true,
+  "all_filter_shows_row": true,
+  "unified_preview_works": true,
+  "statement_reloaded": true
+}

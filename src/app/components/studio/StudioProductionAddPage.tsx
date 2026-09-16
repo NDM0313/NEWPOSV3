@@ -133,12 +133,12 @@ export const StudioProductionAddPage = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-white">
-      <div className="border-b border-gray-800 bg-gray-900/50 px-6 py-4 flex items-center gap-4 shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => setCurrentView('studio-sales-list-new')} className="text-gray-400 hover:text-white">
+    <div className="flex flex-col h-full bg-input-background text-foreground">
+      <div className="border-b border-border bg-muted/40 px-6 py-4 flex items-center gap-4 shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => setCurrentView('studio-sales-list-new')} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft size={20} />
         </Button>
-        <h1 className="text-xl font-bold text-white">Add Production Job</h1>
+        <h1 className="text-xl font-bold text-foreground">Add Production Job</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 overflow-auto px-6 py-6 max-w-2xl space-y-6">
@@ -159,7 +159,7 @@ export const StudioProductionAddPage = () => {
         )}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-gray-400">Production Date *</Label>
+            <Label className="text-muted-foreground">Production Date *</Label>
             <DatePicker
               value={form.production_date}
               onChange={(v) => setForm(f => ({ ...f, production_date: v }))}
@@ -169,11 +169,11 @@ export const StudioProductionAddPage = () => {
             />
           </div>
           <div>
-            <Label className="text-gray-400">Product *</Label>
+            <Label className="text-muted-foreground">Product *</Label>
             <select
               value={form.product_id}
               onChange={(e) => setForm(f => ({ ...f, product_id: e.target.value }))}
-              className={cn('w-full mt-1 h-10 rounded-md border bg-gray-900 border-gray-700 text-white px-3')}
+              className={cn('w-full mt-1 h-10 rounded-md border bg-card border-border text-foreground px-3')}
               required
             >
               <option value="">Select product</option>
@@ -184,23 +184,23 @@ export const StudioProductionAddPage = () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-gray-400">Quantity *</Label>
+            <Label className="text-muted-foreground">Quantity *</Label>
             <Input
               type="number"
               min={0.01}
               step={1}
               value={form.quantity}
               onChange={(e) => setForm(f => ({ ...f, quantity: Number(e.target.value) || 0 }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              className="bg-card border-border text-foreground mt-1"
               required
             />
           </div>
           <div>
-            <Label className="text-gray-400">Unit</Label>
+            <Label className="text-muted-foreground">Unit</Label>
             <Input
               value={form.unit}
               onChange={(e) => setForm(f => ({ ...f, unit: e.target.value }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              className="bg-card border-border text-foreground mt-1"
               placeholder="piece"
             />
           </div>
@@ -208,32 +208,32 @@ export const StudioProductionAddPage = () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-gray-400">Estimated Cost</Label>
+            <Label className="text-muted-foreground">Estimated Cost</Label>
             <Input
               type="number"
               min={0}
               step={0.01}
               value={form.estimated_cost}
               onChange={(e) => setForm(f => ({ ...f, estimated_cost: Number(e.target.value) || 0 }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              className="bg-card border-border text-foreground mt-1"
             />
           </div>
           <div>
-            <Label className="text-gray-400">Actual Cost</Label>
+            <Label className="text-muted-foreground">Actual Cost</Label>
             <Input
               type="number"
               min={0}
               step={0.01}
               value={form.actual_cost}
               onChange={(e) => setForm(f => ({ ...f, actual_cost: Number(e.target.value) || 0 }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              className="bg-card border-border text-foreground mt-1"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-gray-400">Start Date</Label>
+            <Label className="text-muted-foreground">Start Date</Label>
             <DatePicker
               value={form.start_date || ''}
               onChange={(v) => setForm(f => ({ ...f, start_date: v || null }))}
@@ -242,7 +242,7 @@ export const StudioProductionAddPage = () => {
             />
           </div>
           <div>
-            <Label className="text-gray-400">Expected Completion</Label>
+            <Label className="text-muted-foreground">Expected Completion</Label>
             <DatePicker
               value={form.expected_date || ''}
               onChange={(v) => setForm(f => ({ ...f, expected_date: v || null }))}
@@ -253,11 +253,11 @@ export const StudioProductionAddPage = () => {
         </div>
 
         <div>
-          <Label className="text-gray-400">Assigned Worker / Karigar</Label>
+          <Label className="text-muted-foreground">Assigned Worker / Karigar</Label>
           <select
             value={form.assigned_worker_id || ''}
             onChange={(e) => setForm(f => ({ ...f, assigned_worker_id: e.target.value || null }))}
-            className={cn('w-full mt-1 h-10 rounded-md border bg-gray-900 border-gray-700 text-white px-3')}
+            className={cn('w-full mt-1 h-10 rounded-md border bg-card border-border text-foreground px-3')}
           >
             <option value="">None</option>
             {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -265,11 +265,11 @@ export const StudioProductionAddPage = () => {
         </div>
 
         <div>
-          <Label className="text-gray-400">Notes</Label>
+          <Label className="text-muted-foreground">Notes</Label>
           <Textarea
             value={form.notes || ''}
             onChange={(e) => setForm(f => ({ ...f, notes: e.target.value || null }))}
-            className="bg-gray-900 border-gray-700 text-white mt-1"
+            className="bg-card border-border text-foreground mt-1"
             rows={2}
           />
         </div>
@@ -279,7 +279,7 @@ export const StudioProductionAddPage = () => {
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Package size={18} />}
             Create Production Job
           </Button>
-          <Button type="button" variant="outline" onClick={() => setCurrentView('studio-sales-list-new')} className="border-gray-600 text-gray-300">
+          <Button type="button" variant="outline" onClick={() => setCurrentView('studio-sales-list-new')} className="border-gray-600 text-muted-foreground">
             Cancel
           </Button>
         </div>

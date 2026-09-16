@@ -1,0 +1,19 @@
+{
+  "run": "MOBILE_APK_MANUAL_ADMIN_QA",
+  "task": "pre-record-monitoring",
+  "generated_at": "2026-07-01T12:09:34.967Z",
+  "status": "FAIL",
+  "timestamp_slug": "2026-07-01T11-58-38-675Z",
+  "din_china": "PASS",
+  "din_bridal": "FAIL",
+  "din_couture": "PASS",
+  "admin_compare_din_china": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "din_bridal_failures": [
+    "Roznamcha Cash In golden",
+    "Roznamcha Closing golden",
+    "Trial Balance golden total"
+  ],
+  "note": "Pre-existing DIN BRIDAL roznamcha/TB golden drift; unrelated to mobile device QA session"
+}

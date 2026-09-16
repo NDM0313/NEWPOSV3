@@ -1,0 +1,11 @@
+{
+  "generated": "2026-06-29",
+  "authUserAbsent": true,
+  "companyAbsent": true,
+  "orphanRows": 0,
+  "realCompaniesCount": 3,
+  "migrationsRun": false,
+  "featureFlagsChanged": false,
+  "glMutations": false,
+  "result": "PASS"
+}

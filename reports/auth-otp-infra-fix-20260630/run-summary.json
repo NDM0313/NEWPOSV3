@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-06-30T11:36:00.000Z",
+  "run_name": "PRODUCTION AUTH OTP INFRA FIX — DISABLE AUTOCONFIRM + REAL SMTP",
+  "status": "BLOCKED",
+  "block_reason": "BLOCKED_MISSING_SMTP_CONFIG",
+  "autoconfirm": {
+    "old": "true",
+    "new": "unchanged (true)"
+  },
+  "smtp_configured": false,
+  "smtp_masked": {
+    "host": "supabase-mail",
+    "port": "2500",
+    "user": "fake_mail_user",
+    "admin_email": "admin@example.com",
+    "sender_name": "fake_sender"
+  },
+  "auth_health": "baseline healthy — no restart performed",
+  "email_delivery": "SKIPPED",
+  "existing_login": "validated via three-company monitoring PASS",
+  "monitoring": "PASS",
+  "tests_build": "PASS (303+122 tests, build ok)",
+  "rollback_path": "/root/supabase/docker/.env.bak.auth-otp-infra-20260630T112048Z",
+  "deploy": "NO FRONTEND DEPLOY",
+  "next_action": "Operator provides real SMTP via secure shell; re-run infra fix; then Create Business OTP E2E with disposable inbox"
+}

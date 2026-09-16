@@ -1,6 +1,5 @@
 /**
- * Accounting Developer Center tab slugs + URL query helpers (Phase C1).
- * Read-only routing only — no service/repair imports.
+ * Accounting Developer Center tab slugs + URL query helpers.
  */
 
 export const DEVELOPER_CENTER_TAB_IDS = [
@@ -11,6 +10,9 @@ export const DEVELOPER_CENTER_TAB_IDS = [
   'daybook',
   'payment',
   'journal',
+  'repair',
+  'opening',
+  'audit',
 ] as const;
 
 export type DeveloperCenterTabId = (typeof DEVELOPER_CENTER_TAB_IDS)[number];
@@ -22,7 +24,7 @@ export interface PhaseCShellTabDef {
   blurb: string;
 }
 
-/** Navigable Phase C shells (logic ships in C2–C6). */
+/** Report trace tabs (Phase C2–C6). */
 export const PHASE_C_SHELL_TABS: PhaseCShellTabDef[] = [
   {
     id: 'roznamcha',
@@ -56,8 +58,30 @@ export const PHASE_C_SHELL_TABS: PhaseCShellTabDef[] = [
   },
 ];
 
-/** Permanently disabled — not Phase C shells. */
-export const DISABLED_PLACEHOLDER_TABS = ['Opening Balance', 'Repair Queue', 'Audit Log'] as const;
+/** Phase D/E tabs beyond trace shells. */
+export const PHASE_DE_TABS: PhaseCShellTabDef[] = [
+  {
+    id: 'repair',
+    label: 'Repair Queue',
+    phase: 'Phase D',
+    blurb: 'Dry-run previews and confirm-gated sequence sync.',
+  },
+  {
+    id: 'opening',
+    label: 'Opening Balance',
+    phase: 'Phase E',
+    blurb: 'Operational opening vs GL opening JE gap preview.',
+  },
+  {
+    id: 'audit',
+    label: 'Audit Log',
+    phase: 'Phase E',
+    blurb: 'Read-only repair and integrity resolution history.',
+  },
+];
+
+/** No disabled placeholders — all spec tabs implemented or gated in-tab. */
+export const DISABLED_PLACEHOLDER_TABS = [] as const;
 
 const TAB_SET = new Set<string>(DEVELOPER_CENTER_TAB_IDS);
 
@@ -77,7 +101,11 @@ export function parseDeveloperCenterQuery(search: string): string {
 
 /** Tabs that accept and preserve the `q` deep-link query param. */
 export function tabAcceptsQueryParam(tab: DeveloperCenterTabId): boolean {
-  return tab === 'trace' || PHASE_C_SHELL_TABS.some((t) => t.id === tab);
+  return (
+    tab === 'trace' ||
+    tab === 'opening' ||
+    PHASE_C_SHELL_TABS.some((t) => t.id === tab)
+  );
 }
 
 export function buildDeveloperCenterSearch(tab: DeveloperCenterTabId, query?: string): string {

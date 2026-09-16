@@ -91,8 +91,8 @@ export const FreightPopover = ({ onSave, currentDetails }: FreightPopoverProps) 
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0 bg-gray-900 border-gray-800 text-white shadow-xl" align="end">
-        <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-950">
+      <PopoverContent className="w-80 p-0 bg-card border-border text-foreground shadow-xl" align="end">
+        <div className="p-4 border-b border-border flex justify-between items-center bg-input-background">
           <h4 className="font-semibold text-sm flex items-center gap-2">
             <Truck size={16} className="text-orange-500" />
             Add Landing Costs
@@ -106,35 +106,35 @@ export const FreightPopover = ({ onSave, currentDetails }: FreightPopoverProps) 
         
         <div className="p-4 space-y-4">
           <div className="space-y-2">
-            <Label className="text-xs text-gray-400">Description</Label>
+            <Label className="text-xs text-muted-foreground">Description</Label>
             <Input 
               placeholder="e.g. TCS Charges, Labor, Freight" 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="bg-gray-800 border-gray-700 h-8 text-sm"
+              className="bg-muted border-border h-8 text-sm"
             />
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs text-gray-400">Amount</Label>
+            <Label className="text-xs text-muted-foreground">Amount</Label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
               <Input 
                 type="number" 
                 placeholder="0.00" 
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="bg-gray-800 border-gray-700 h-8 pl-7 text-sm"
+                className="bg-muted border-border h-8 pl-7 text-sm"
               />
             </div>
           </div>
 
-          <Separator className="bg-gray-800" />
+          <Separator className="bg-muted" />
 
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <Label htmlFor="invoice-toggle" className="text-sm font-medium">Include in Supplier Invoice?</Label>
-              <p className="text-[10px] text-gray-500 leading-tight">
+              <p className="text-[10px] text-muted-foreground leading-tight">
                 {includeInInvoice 
                   ? "Amount will be added to Supplier's Pending Balance."
                   : "Amount paid immediately to Transporter."}
@@ -150,12 +150,12 @@ export const FreightPopover = ({ onSave, currentDetails }: FreightPopoverProps) 
 
           {!includeInInvoice && (
             <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-              <Label className="text-xs text-gray-400">Payment Method</Label>
+              <Label className="text-xs text-muted-foreground">Payment Method</Label>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger className="bg-gray-800 border-gray-700 h-8 text-sm">
+                <SelectTrigger className="bg-muted border-border h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                <SelectContent className="bg-muted border-border text-foreground">
                   <SelectItem value="cash">Cash</SelectItem>
                   <SelectItem value="bank">Bank Transfer</SelectItem>
                 </SelectContent>
@@ -167,7 +167,7 @@ export const FreightPopover = ({ onSave, currentDetails }: FreightPopoverProps) 
             </div>
           )}
 
-          <Button onClick={handleSave} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-semibold shadow-lg shadow-orange-600/10 mt-2">
+          <Button onClick={handleSave} className="w-full bg-orange-600 hover:bg-orange-500 text-foreground font-semibold shadow-lg shadow-orange-600/10 mt-2">
             Apply Cost
           </Button>
         </div>

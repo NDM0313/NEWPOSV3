@@ -278,6 +278,7 @@ export async function getSingleCustomerPartyReconciliation(
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
+      p_as_of_date: end,
     }),
     supabase.rpc('count_unmapped_ar_ap_journal_entries', {
       p_company_id: companyId,
@@ -355,6 +356,7 @@ export async function getSingleSupplierPartyReconciliation(
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
+      p_as_of_date: end,
     }),
     supabase.rpc('count_unmapped_ar_ap_journal_entries', {
       p_company_id: companyId,
@@ -436,6 +438,7 @@ export async function getSingleWorkerPartyReconciliation(
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
+      p_as_of_date: end,
     }),
     supabase.rpc('count_unmapped_ar_ap_journal_entries', {
       p_company_id: companyId,

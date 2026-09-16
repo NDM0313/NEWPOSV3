@@ -1,0 +1,45 @@
+{
+  "company": "DIN COUTURE",
+  "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+  "finance_sign_off_ref": "reports/single-core-ledger/din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md",
+  "status": "GOLDEN_CAPTURE_COMPLETE",
+  "golden_party": {
+    "name": "DHARIA",
+    "party_id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
+    "account_code": "AR-CUS0010",
+    "search_pattern": "DHARIA"
+  },
+  "branch_scope": "all",
+  "branches": [
+    {
+      "id": "df93b9e4-feea-4b8b-8103-e630c185261b",
+      "name": "SHOP A13"
+    }
+  ],
+  "fixtures": {
+    "golden_party_closing_pkr": 4488088,
+    "ledger_v2_golden_party_closing_pkr": 4488088,
+    "account_statement_golden_party_closing_pkr": 4488088,
+    "party_ledger_golden_party_closing_pkr": 4488088,
+    "trial_balance_debit_pkr": 49747104,
+    "trial_balance_credit_pkr": 49747104,
+    "roznamcha_cash_in_pkr": 85000,
+    "roznamcha_cash_out_pkr": 34500,
+    "roznamcha_closing_pkr": 50500
+  },
+  "rpc_proxy_baseline": {
+    "note": "R3 shadow RPC baseline — superseded by browser capture before enablement"
+  },
+  "notes": [
+    "Finance sign-off recorded 2026-06-27.",
+    "Browser legacy capture required before flag enablement.",
+    "Browser capture 2026-06-27T13:12:05.217Z — legacy UI goldens for DHARIA."
+  ],
+  "capture_method": "legacy_browser",
+  "browser_capture_at": "2026-06-27T13:12:05.217Z",
+  "browser_capture_evidence": "reports/single-core-ledger/din-couture-monitoring/golden-capture/",
+  "date_range": {
+    "start": "2000-01-01",
+    "end": "2026-06-27"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "activity-classification",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "trial_balance": {
+    "classification": "LEGITIMATE_LIVE_BUSINESS_ACTIVITY",
+    "secondary": "STALE_MONITORING_GOLDENS_AFTER_LIVE_ACTIVITY",
+    "evidence": ["RCV-0075 +80000", "JE-0205 +79325", "RCV-0076 +42000 sum exactly +201325 at 12:43"],
+    "refs": ["RCV-0075", "JE-0205", "RCV-0076", "RCV-0077"],
+    "golden_refresh_appropriate": true,
+    "repair_required": false,
+    "mobile_release_after_role_qa": "blocked_until_golden_refresh_approved",
+    "monitoring_blocked_until_fixture_refresh": true
+  },
+  "roznamcha": {
+    "classification": "LEGITIMATE_LIVE_BUSINESS_ACTIVITY",
+    "secondary": "STALE_MONITORING_GOLDENS_AFTER_LIVE_ACTIVITY",
+    "evidence": ["RCV-0075 +80000 cash", "RCV-0076 +42000 cash sum exactly +122000 at 12:43"],
+    "refs": ["RCV-0075", "RCV-0076", "RCV-0077"],
+    "golden_refresh_appropriate": true,
+    "repair_required": false,
+    "mobile_admin_qa_valid": true
+  },
+  "mobile_apk_regression": false,
+  "report_bug": false,
+  "monitoring_bug": false
+}

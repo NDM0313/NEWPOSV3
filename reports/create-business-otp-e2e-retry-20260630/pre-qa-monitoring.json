@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-30T14:12:00.000Z",
+  "overall": "PASS",
+  "exit_code": 0,
+  "din_china_admin_compare": "compared=9 pass=9 fail=0",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence_file": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json"
+}

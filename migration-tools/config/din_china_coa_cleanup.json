@@ -1,0 +1,53 @@
+{
+  "description": "Post-import metadata cleanup for six DIN CHINA legacy payment accounts (DC* codes → canonical child codes under 1050/1060/agent groups).",
+  "accounts": [
+    {
+      "legacyCode": "DC0115",
+      "accountId": "8120ff5b-9d36-4c97-8d3e-ee3a9328a29b",
+      "currentCode": "1051",
+      "newName": "China Cash",
+      "parentRole": "cash",
+      "preferredType": "cash"
+    },
+    {
+      "legacyCode": "DC0106",
+      "accountId": "cbd663c5-cfcf-4c1d-84b8-b4a4204c3f0e",
+      "currentCode": "1061",
+      "newName": "MCB",
+      "parentRole": "bank",
+      "preferredType": "bank"
+    },
+    {
+      "legacyCode": "DC0108",
+      "accountId": "767952ce-e3ec-472f-8e8c-0f8001e4e5c7",
+      "currentCode": "1062",
+      "newName": "FHD MZ",
+      "parentRole": "bank",
+      "preferredType": "bank"
+    },
+    {
+      "legacyCode": "DC0159",
+      "accountId": "a903c6d2-6ba8-4e40-849e-39e6b7394901",
+      "currentCode": "1063",
+      "newName": "NDM MZ",
+      "parentRole": "bank",
+      "preferredType": "bank"
+    },
+    {
+      "legacyCode": "DC0133",
+      "accountId": "13af87d4-cea5-4085-8cd5-6ea08dc12ada",
+      "currentCode": "1202",
+      "newName": "WALI T/T",
+      "parentRole": "tt_agent_clearing",
+      "preferredType": "bank"
+    },
+    {
+      "legacyCode": "DC0157",
+      "accountId": "f08ae0ee-a156-4c6c-8607-4b02f0cc15fe",
+      "currentCode": "1204",
+      "newName": "YAQOOB",
+      "parentRole": "agent_clearing",
+      "preferredType": "bank"
+    }
+  ]
+}

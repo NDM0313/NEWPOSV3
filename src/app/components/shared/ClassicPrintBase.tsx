@@ -357,7 +357,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
                 {onClose && (
                   <Button
                     onClick={onClose}
-                    className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+                    className="bg-gray-600 text-foreground px-4 py-2 rounded-lg hover:bg-muted"
                   >
                     <X size={16} className="mr-2" />
                     Close

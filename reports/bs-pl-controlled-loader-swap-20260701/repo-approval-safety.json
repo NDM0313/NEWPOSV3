@@ -1,0 +1,35 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "runDate": "2026-07-01",
+  "status": "APPROVAL_CONFIRMED",
+  "branch": "main",
+  "head": "f06a7ed7f539ac04f26bd4dc852551cb77478b64",
+  "originMain": "f06a7ed7f539ac04f26bd4dc852551cb77478b64",
+  "syncedWithOrigin": true,
+  "stagedCredentials": false,
+  "unrelatedDirtyFilesLeftUnstaged": true,
+  "operatorApproval": {
+    "present": true,
+    "unchanged": true,
+    "reviewer": "Nadeem Khan",
+    "date": "2026-07-01",
+    "rollbackAccepted": true,
+    "scope": "Balance Sheet and Profit & Loss loader swap only",
+    "forbiddenConfirmed": [
+      "no GL/data mutations",
+      "no Cash Flow changes",
+      "no R8 legacy retirement",
+      "no supplier party_discount JE"
+    ],
+    "text": "I approve the BS/P&L controlled loader swap phase for DIN CHINA, DIN BRIDAL, and DIN COUTURE. I understand the finance approval pack and comparison results. I confirm the DIN BRIDAL post-1100 BS/P&L re-capture is zero-diff and acceptable for finance review. I accept the Balance Sheet equity rollup rule as currently documented. I accept the Profit & Loss COGS / cost-of-production mapping as currently documented. Scope: Balance Sheet and Profit & Loss loader swap only. No GL/data mutations are approved. No Cash Flow changes are approved. No R8 legacy retirement is approved. No supplier party_discount JE is approved. Rollback plan accepted: yes. Reviewer/operator: Nadeem Khan. Date: 2026-07-01"
+  },
+  "evidenceCommits": [
+    { "sha": "6dac5ff6", "description": "Create Business OTP Phase B E2E complete" },
+    { "sha": "95a041d7", "description": "DIN BRIDAL 1100 Option C apply" },
+    { "sha": "1ab6e550", "description": "DIN BRIDAL TB golden refresh" },
+    { "sha": "5333b1de", "description": "Office BS/P&L finance approval pack" },
+    { "sha": "bc1a768d", "description": "DIN BRIDAL post-1100 BS/P&L recapture" },
+    { "sha": "f06a7ed7", "description": "Post-1100 recapture push verification" }
+  ],
+  "executorTimestamp": "2026-07-01T08:10:00.000Z"
+}

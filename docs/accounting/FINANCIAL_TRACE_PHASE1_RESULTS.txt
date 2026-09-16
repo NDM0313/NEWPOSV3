@@ -1,0 +1,182 @@
+       audit_section        
+----------------------------
+ === 0. Session context ===
+(1 row)
+
+              company_id              | company_name | as_of_date 
+--------------------------------------+--------------+------------
+ 597a5292-14c8-4cd8-96bd-c61b5a0d8c92 | DIN BRIDAL   | 2026-06-11
+(1 row)
+
+                      audit_section                      
+---------------------------------------------------------
+ === 1A. AR/AP integrity lab snapshot (all branches) ===
+(1 row)
+
+ gl_ar_net_dr_minus_cr | gl_ap_net_credit | unposted_document_count | unmapped_ar_je_count | unmapped_ap_je_count | unmapped_ap_supplier_je_count | unmapped_ap_worker_je_count | manual_adjustment_je_count | suspense_net_balance 
+-----------------------+------------------+-------------------------+----------------------+----------------------+-------------------------------+-----------------------------+----------------------------+----------------------
+            2216951.00 |       -547191.00 |                       3 |                   14 |                    0 |                             0 |                           0 |                          0 |                    0
+(1 row)
+
+                            audit_section                            
+---------------------------------------------------------------------
+ === 1B. GL AR/AP control accounts (lifetime net, void excluded) ===
+(1 row)
+
+ code |        name         | net_dr_minus_cr | total_debit | total_credit | line_count 
+------+---------------------+-----------------+-------------+--------------+------------
+ 1100 | Accounts Receivable |      -166650.00 |   110000.00 |    276650.00 |          8
+ 2000 | Accounts Payable    |            0.00 |        0.00 |         0.00 |          0
+ 2010 | Worker Payable      |            0.00 |        0.00 |         0.00 |          0
+(3 rows)
+
+                                 audit_section                                 
+-------------------------------------------------------------------------------
+ === 1C. Operational receivables/payables sum (RPC proxy — open documents) ===
+(1 row)
+
+ sales_due_sum_non_cancelled | purchases_due_sum_non_cancelled | sales_with_due_count | purchases_with_due_count 
+-----------------------------+---------------------------------+----------------------+--------------------------
+                   288000.00 |                            0.00 |                    3 |                        0
+(1 row)
+
+               audit_section                
+--------------------------------------------
+ === 1D. Queue counts (AR/AP lab views) ===
+(1 row)
+
+ unposted_docs | unmapped_distinct_jes | manual_je_rows 
+---------------+-----------------------+----------------
+             3 |                    14 |              0
+(1 row)
+
+                audit_section                
+---------------------------------------------
+ === 2A. Contact Inayat + AR sub-account ===
+(1 row)
+
+              contact_id              |  name  | opening_balance |            ar_account_id             |  ar_code   |       ar_name       |          linked_contact_id           
+--------------------------------------+--------+-----------------+--------------------------------------+------------+---------------------+--------------------------------------
+ bdd9d744-006c-4c37-a579-9bef2325a745 | Inayat |            0.00 | d73b02e8-b2d9-47a1-8b20-70e6fbf7d672 | AR-CUS0058 | Receivable — Inayat | bdd9d744-006c-4c37-a579-9bef2325a745
+(1 row)
+
+           audit_section            
+------------------------------------
+ === 2B. REN-0002 rental header ===
+(1 row)
+
+                  id                  | booking_no |             customer_id              | customer_name | status  | rental_charges | total_amount | paid_amount | due_amount | damage_charges | penalty_paid |              branch_id               | branch_name 
+--------------------------------------+------------+--------------------------------------+---------------+---------+----------------+--------------+-------------+------------+----------------+--------------+--------------------------------------+-------------
+ dd23f9b3-546c-407c-8e5c-afda407dd882 | REN-0002   | bdd9d744-006c-4c37-a579-9bef2325a745 | Inayat        | overdue |       60000.00 |     60000.00 |    60000.00 |       0.00 |           0.00 | f            | cc920703-97a0-43a4-95d4-9262996c2af7 | Main Branch
+(1 row)
+
+                   audit_section                   
+---------------------------------------------------
+ === 2C. REN-0002 rental_payments + linked JEs ===
+(1 row)
+
+                  id                  |  reference   | payment_date |  amount  |         voided_at          |           journal_entry_id           | entry_no | je_ref_type | je_void |             je_branch_id             | cash_account_code | cash_account_name 
+--------------------------------------+--------------+--------------+----------+----------------------------+--------------------------------------+----------+-------------+---------+--------------------------------------+-------------------+-------------------
+ 1865ea77-54bf-4f8d-a909-592863dd753c | HQ-RCV-0003  | 2026-06-02   | 50000.00 |                            | 0a8f5b2c-397d-46a6-b299-3a3ef49b4f7b | JE-0004  | rental      | f       | cc920703-97a0-43a4-95d4-9262996c2af7 | 1002              | CASH G140
+ cc341b16-c127-432b-b182-ff132955bde8 | REN-0002-PAY | 2026-06-04   | 10000.00 | 2026-06-05 09:14:28.155+00 | 2655a04a-3323-4e7a-8496-42b0fa4d88e7 | JE-0011  | rental      | t       | cc920703-97a0-43a4-95d4-9262996c2af7 | 1002              | CASH G140
+ 4b01eaa7-86b6-4a61-8f9e-48e5f5662129 | HQ-RCV-0006  | 2026-06-04   | 10000.00 |                            | b7c07c56-fb71-404c-97f4-b9756b05c2b5 | JE-0012  | rental      | f       | cc920703-97a0-43a4-95d4-9262996c2af7 | 1002              | CASH G140
+(3 rows)
+
+                        audit_section                         
+--------------------------------------------------------------
+ === 2D. payments rows tied to REN-0002 / Inayat / HQ-RCV ===
+(1 row)
+
+ reference_number | payment_date | amount | reference_type | reference_id | contact_id | voided_at | payment_account_id | account_code | je_id | entry_no | je_ref_type | je_void 
+------------------+--------------+--------+----------------+--------------+------------+-----------+--------------------+--------------+-------+----------+-------------+---------
+(0 rows)
+
+                         audit_section                          
+----------------------------------------------------------------
+ === 2E. AR sub-ledger net for Inayat (if AR account found) ===
+(1 row)
+
+              contact_id              |            ar_account_id             | ar_net_dr_minus_cr | line_count 
+--------------------------------------+--------------------------------------+--------------------+------------
+ bdd9d744-006c-4c37-a579-9bef2325a745 | d73b02e8-b2d9-47a1-8b20-70e6fbf7d672 |          -30000.00 |          3
+(1 row)
+
+               audit_section                
+--------------------------------------------
+ === 3A. Saqib contact + AR-CUS0060 net ===
+(1 row)
+
+              contact_id              |            ar_account_id             |  ar_code   | ar_net_dr_minus_cr 
+--------------------------------------+--------------------------------------+------------+--------------------
+ e63ee52a-eca0-43c5-b7cc-bba5e278e646 | 9720eeef-acb2-474f-9398-8cc0de3b2081 | AR-CUS0060 |             -10.00
+(1 row)
+
+               audit_section                
+--------------------------------------------
+ === 3B. RCV-0008 payment + JE metadata ===
+(1 row)
+
+                  id                  | reference_number |  amount  | payment_date | payment_ref_type |             reference_id             | contact_id |                notes                |                je_id                 | entry_no | je_ref_type |           je_description            | is_void 
+--------------------------------------+------------------+----------+--------------+------------------+--------------------------------------+------------+-------------------------------------+--------------------------------------+----------+-------------+-------------------------------------+---------
+ 315c21c2-ed7b-4a3f-97d6-4ca4f3c34f44 | RCV-0008         | 17000.00 | 2026-06-03   | rental           | 14d4c6fd-c55f-4753-96df-7d16d0319542 |            | Receipt RCV-0008 (Walk-in Customer) | 56080f6a-db9a-4d5d-a5b6-7144571e2528 | RCV-0008 | payment     | Receipt RCV-0008 (Walk-in Customer) | f
+(1 row)
+
+                   audit_section                    
+----------------------------------------------------
+ === 3C. RCV-0008 in unmapped view (if present) ===
+(1 row)
+
+           journal_entry_id           | entry_no | entry_date |              company_id              |              branch_id               |           journal_line_id            |              account_id              | account_code |    account_name    | debit |  credit  | reference_type |             reference_id             | control_bucket | ap_sub_bucket | contact_mapping_status |                                   reason                                   
+--------------------------------------+----------+------------+--------------------------------------+--------------------------------------+--------------------------------------+--------------------------------------+--------------+--------------------+-------+----------+----------------+--------------------------------------+----------------+---------------+------------------------+----------------------------------------------------------------------------
+ 56080f6a-db9a-4d5d-a5b6-7144571e2528 | RCV-0008 | 2026-06-03 | 597a5292-14c8-4cd8-96bd-c61b5a0d8c92 | cc920703-97a0-43a4-95d4-9262996c2af7 | 1c20dd8a-de61-413a-a42f-819aaf2fcd85 | 9720eeef-acb2-474f-9398-8cc0de3b2081 | AR-CUS0060   | Receivable — Saqib |  0.00 | 17000.00 | payment        | 315c21c2-ed7b-4a3f-97d6-4ca4f3c34f44 | AR             |               | unclassified_reference | Reference type is not on the AR/AP whitelist; subledger mapping uncertain.
+(1 row)
+
+                       audit_section                       
+-----------------------------------------------------------
+ === 4A. Walk-in on_account payments in unmapped queue ===
+(1 row)
+
+           journal_entry_id           | entry_no | je_ref_type | contact_mapping_status |                                   reason                                   | control_bucket | reference_number | payment_ref_type |          payment_contact_id          |  ar_code   |         ar_linked_contact_id         
+--------------------------------------+----------+-------------+------------------------+----------------------------------------------------------------------------+----------------+------------------+------------------+--------------------------------------+------------+--------------------------------------
+ 0cc6d892-77d2-457c-8766-016e946192c2 | RCV-0017 | payment     | unclassified_reference | Reference type is not on the AR/AP whitelist; subledger mapping uncertain. | AR             | RCV-0017         | on_account       | 4549c5de-0599-435a-a6ab-6e622f99be64 | AR-CUS0001 | 4549c5de-0599-435a-a6ab-6e622f99be64
+ 624dce76-d258-40c9-9587-3263939d37f6 | RCV-0018 | payment     | unclassified_reference | Reference type is not on the AR/AP whitelist; subledger mapping uncertain. | AR             | RCV-0018         | on_account       | 4549c5de-0599-435a-a6ab-6e622f99be64 | AR-CUS0001 | 4549c5de-0599-435a-a6ab-6e622f99be64
+ 55c02967-f109-4354-ac5f-05302f805643 | RCV-0019 | payment     | unclassified_reference | Reference type is not on the AR/AP whitelist; subledger mapping uncertain. | AR             | RCV-0019         | on_account       | 4549c5de-0599-435a-a6ab-6e622f99be64 | AR-CUS0001 | 4549c5de-0599-435a-a6ab-6e622f99be64
+(3 rows)
+
+                  audit_section                  
+-------------------------------------------------
+ === 5A. Unposted queue — order-status sales ===
+(1 row)
+
+ document_no | source_type | unposted_amount |                                 reason                                  | sale_status |   total   | paid_amount | sale_due_amount | customer_name | has_sale_je 
+-------------+-------------+-----------------+-------------------------------------------------------------------------+-------------+-----------+-------------+-----------------+---------------+-------------
+ SL-0005     | sale        |        96000.00 | No non-void journal with reference_type=sale and reference_id=this sale | order       |  96000.00 |    25000.00 |        96000.00 | Patras        | f
+ SL-0006     | sale        |       150000.00 | No non-void journal with reference_type=sale and reference_id=this sale | order       | 150000.00 |        0.00 |       150000.00 | Patras        | f
+ SL-0012     | sale        |        42000.00 | No non-void journal with reference_type=sale and reference_id=this sale | order       |  57000.00 |    15000.00 |        42000.00 | MAHVISH IQBAL | f
+(3 rows)
+
+                       audit_section                       
+-----------------------------------------------------------
+ === 5B. Payments on order-status sales (SL-0005/6/12) ===
+(1 row)
+
+ invoice_no | status | reference_number | amount | payment_date | reference_type | entry_no | je_ref_type | je_void 
+------------+--------+------------------+--------+--------------+----------------+----------+-------------+---------
+(0 rows)
+
+                          audit_section                           
+------------------------------------------------------------------
+ === 6. Party AR GL net vs sum of AR-CUS sub-ledgers (sanity) ===
+(1 row)
+
+         slice         | net_dr_minus_cr 
+-----------------------+-----------------
+ 1100_control          |      -166650.00
+ AR-CUS_subledgers_sum |      2423601.00
+(2 rows)
+
+               audit_section                
+--------------------------------------------
+ === END Phase 1 diagnostic (read-only) ===
+(1 row)
+

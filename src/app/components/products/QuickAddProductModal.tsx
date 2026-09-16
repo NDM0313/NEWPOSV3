@@ -177,18 +177,18 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[700px] bg-gray-900 text-white border-gray-800 p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[700px] bg-card text-foreground border-border p-0 gap-0 overflow-hidden">
         <DialogHeader className="sr-only">
           <DialogTitle>Quick Add Product</DialogTitle>
         </DialogHeader>
         {/* Header */}
-        <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-950">
-          <div className="text-xl font-bold text-white flex items-center gap-2">
+        <div className="p-6 border-b border-border flex justify-between items-center bg-input-background">
+          <div className="text-xl font-bold text-foreground flex items-center gap-2">
             <Wand2 className="w-5 h-5 text-blue-500" />
             Quick Add Product
           </div>
           <div className="flex items-center gap-3">
-             <Label htmlFor="type-mode" className="text-sm text-gray-400 font-medium cursor-pointer">
+             <Label htmlFor="type-mode" className="text-sm text-muted-foreground font-medium cursor-pointer">
                {isVariable ? 'Variable' : 'Simple'} Product
              </Label>
              <Switch 
@@ -205,21 +205,21 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
           {/* Row 1: Basic Info */}
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12 md:col-span-5">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 block">Product Name</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Product Name</Label>
               <Input 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Product Name"
-                className="bg-gray-800 border-gray-700 text-white focus:ring-blue-500/20"
+                className="bg-muted border-border text-foreground focus:ring-blue-500/20"
               />
             </div>
             <div className="col-span-4 md:col-span-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 block">Category</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Category</Label>
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-10">
+                <SelectTrigger className="bg-muted border-border text-foreground h-10">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   <SelectItem value="fabric">Fabric</SelectItem>
                   <SelectItem value="stitched">Stitched</SelectItem>
                   <SelectItem value="accessories">Accessories</SelectItem>
@@ -227,24 +227,24 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
               </Select>
             </div>
              <div className="col-span-4 md:col-span-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 block">Brand</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Brand</Label>
               <Select value={brand} onValueChange={setBrand}>
-                <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-10">
+                <SelectTrigger className="bg-muted border-border text-foreground h-10">
                   <SelectValue placeholder="Brand" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                    <SelectItem value="local">Local</SelectItem>
                    <SelectItem value="brand_a">Brand A</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="col-span-4 md:col-span-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 block">Unit</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Unit</Label>
               <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-10">
+                <SelectTrigger className="bg-muted border-border text-foreground h-10">
                   <SelectValue placeholder="Unit" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-popover border-border text-popover-foreground">
                   <SelectItem value="pcs">Pc</SelectItem>
                   <SelectItem value="suit">Suit</SelectItem>
                   <SelectItem value="mtr">Mtr</SelectItem>
@@ -253,40 +253,40 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
             </div>
           </div>
 
-          <Separator className="bg-gray-800" />
+          <Separator className="bg-muted" />
 
           {/* Simple Product Mode */}
           {!isVariable && (
              <div className="grid grid-cols-3 gap-4">
                 <div>
-                   <Label className="text-gray-400 mb-1.5 block">Price</Label>
+                   <Label className="text-muted-foreground mb-1.5 block">Price</Label>
                    <div className="relative">
-                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                      <Input 
                         value={price}
                         onChange={(e) => setPrice(e.target.value)}
                         placeholder="0.00"
                         type="number"
-                        className="bg-gray-800 border-gray-700 text-white pl-8"
+                        className="bg-muted border-border text-foreground pl-8"
                      />
                    </div>
                 </div>
                 <div>
-                   <Label className="text-gray-400 mb-1.5 block">Quantity</Label>
+                   <Label className="text-muted-foreground mb-1.5 block">Quantity</Label>
                    <Input 
                       value={qty}
                       onChange={(e) => setQty(e.target.value)}
                       placeholder="0"
                       type="number"
-                      className="bg-gray-800 border-gray-700 text-white"
+                      className="bg-muted border-border text-foreground"
                    />
                 </div>
                 <div>
-                   <Label className="text-gray-400 mb-1.5 block">SKU (Auto)</Label>
+                   <Label className="text-muted-foreground mb-1.5 block">SKU (Auto)</Label>
                    <Input 
                       value={sku}
                       readOnly
-                      className="bg-gray-800/50 border-gray-700 text-gray-400 font-mono text-sm"
+                      className="bg-muted/50 border-border text-muted-foreground font-mono text-sm"
                    />
                 </div>
              </div>
@@ -297,7 +297,7 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
             <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
               
               {/* Attribute Inputs */}
-              <div className="grid grid-cols-2 gap-6 p-4 bg-gray-800/30 rounded-lg border border-gray-800">
+              <div className="grid grid-cols-2 gap-6 p-4 bg-accent/30 rounded-lg border border-border">
                 <div className="space-y-2">
                   <Label className="text-blue-400 font-medium">Colors</Label>
                   <Input 
@@ -305,16 +305,16 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
                     onChange={(e) => setColorInput(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, colors, setColors, colorInput, setColorInput)}
                     placeholder="Type color & Enter (e.g. Red)"
-                    className="bg-gray-900 border-gray-700 text-white h-9"
+                    className="bg-card border-border text-foreground h-9"
                   />
                   <div className="flex flex-wrap gap-2 min-h-[24px]">
                     {colors.map(c => (
                       <Badge key={c} variant="secondary" className="bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 gap-1 pr-1">
                         {c}
-                        <button onClick={() => removeAttribute(c, colors, setColors)} className="hover:text-white"><X size={12} /></button>
+                        <button onClick={() => removeAttribute(c, colors, setColors)} className="hover:text-foreground"><X size={12} /></button>
                       </Badge>
                     ))}
-                    {colors.length === 0 && <span className="text-xs text-gray-600 italic">No colors added</span>}
+                    {colors.length === 0 && <span className="text-xs text-muted-foreground italic">No colors added</span>}
                   </div>
                 </div>
 
@@ -325,16 +325,16 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
                     onChange={(e) => setSizeInput(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, sizes, setSizes, sizeInput, setSizeInput)}
                     placeholder="Type size & Enter (e.g. Small)"
-                    className="bg-gray-900 border-gray-700 text-white h-9"
+                    className="bg-card border-border text-foreground h-9"
                   />
                   <div className="flex flex-wrap gap-2 min-h-[24px]">
                     {sizes.map(s => (
                       <Badge key={s} variant="secondary" className="bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 gap-1 pr-1">
                         {s}
-                        <button onClick={() => removeAttribute(s, sizes, setSizes)} className="hover:text-white"><X size={12} /></button>
+                        <button onClick={() => removeAttribute(s, sizes, setSizes)} className="hover:text-foreground"><X size={12} /></button>
                       </Badge>
                     ))}
-                    {sizes.length === 0 && <span className="text-xs text-gray-600 italic">No sizes added</span>}
+                    {sizes.length === 0 && <span className="text-xs text-muted-foreground italic">No sizes added</span>}
                   </div>
                 </div>
               </div>
@@ -343,7 +343,7 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
               {variants.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-semibold text-gray-300">Generated Variants ({variants.length})</h4>
+                    <h4 className="text-sm font-semibold text-muted-foreground">Generated Variants ({variants.length})</h4>
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -354,9 +354,9 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
                     </Button>
                   </div>
                   
-                  <div className="border border-gray-800 rounded-lg overflow-hidden">
+                  <div className="border border-border rounded-lg overflow-hidden">
                     <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-950 text-gray-400">
+                      <thead className="bg-input-background text-muted-foreground">
                         <tr>
                           <th className="px-4 py-3 font-medium">Variant</th>
                           <th className="px-4 py-3 font-medium w-32">Price</th>
@@ -364,17 +364,17 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
                           <th className="px-4 py-3 font-medium w-40 text-right">SKU</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-800 bg-gray-900">
+                      <tbody className="divide-y divide-border bg-card">
                         {variants.map((variant) => (
-                          <tr key={variant.id} className="group hover:bg-gray-800/50">
-                            <td className="px-4 py-2 font-medium text-white">
+                          <tr key={variant.id} className="group hover:bg-muted/50">
+                            <td className="px-4 py-2 font-medium text-foreground">
                               {variant.name}
                             </td>
                             <td className="px-4 py-2">
                               <Input 
                                 value={variant.price}
                                 onChange={(e) => updateVariant(variant.id, 'price', e.target.value)}
-                                className="h-8 bg-gray-950 border-gray-700"
+                                className="h-8 bg-input-background border-border"
                                 placeholder="0.00"
                                 type="number"
                               />
@@ -383,12 +383,12 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
                               <Input 
                                 value={variant.qty}
                                 onChange={(e) => updateVariant(variant.id, 'qty', e.target.value)}
-                                className="h-8 bg-gray-950 border-gray-700"
+                                className="h-8 bg-input-background border-border"
                                 placeholder="0"
                                 type="number"
                               />
                             </td>
-                            <td className="px-4 py-2 text-right text-xs text-gray-500 font-mono">
+                            <td className="px-4 py-2 text-right text-xs text-muted-foreground font-mono">
                               {variant.sku}
                             </td>
                           </tr>
@@ -403,8 +403,8 @@ export const QuickAddProductModal = ({ isOpen, onClose, onSaveAndAdd, initialNam
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-800 bg-gray-950 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white">
+        <div className="p-6 border-t border-border bg-input-background flex justify-end gap-3">
+          <Button variant="ghost" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             Cancel
           </Button>
           <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-600/20">

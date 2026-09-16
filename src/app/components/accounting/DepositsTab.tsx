@@ -102,13 +102,13 @@ export const DepositsTab: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold text-white">Security Deposits</h3>
-          <p className="text-sm text-gray-400">Rental security deposits from database</p>
+          <h3 className="text-lg font-bold text-foreground">Security Deposits</h3>
+          <p className="text-sm text-muted-foreground">Rental security deposits from database</p>
         </div>
         <Button
           variant="outline"
           size="sm"
-          className="border-gray-700 text-gray-300 hover:bg-gray-800"
+          className="border-border text-muted-foreground hover:bg-muted"
           onClick={loadDeposits}
         >
           <RefreshCw size={14} className="mr-1.5" />
@@ -118,39 +118,39 @@ export const DepositsTab: React.FC = () => {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Collected</p>
-          <p className="text-xl font-bold text-green-400">{formatCurrency(totalCollected)}</p>
-          <p className="text-xs text-gray-500 mt-1">Security deposits received</p>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-1">Total Collected</p>
+          <p className="text-xl font-bold text-[var(--erp-money-positive)]">{formatCurrency(totalCollected)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Security deposits received</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Refunded</p>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-1">Total Refunded</p>
           <p className="text-xl font-bold text-orange-400">{formatCurrency(totalRefunded)}</p>
-          <p className="text-xs text-gray-500 mt-1">Refunded to customers</p>
+          <p className="text-xs text-muted-foreground mt-1">Refunded to customers</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Net Held</p>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-1">Net Held</p>
           <p className={cn(
             "text-xl font-bold",
             netHeld >= 0 ? "text-blue-400" : "text-red-400"
           )}>{formatCurrency(netHeld)}</p>
-          <p className="text-xs text-gray-500 mt-1">Currently held</p>
+          <p className="text-xs text-muted-foreground mt-1">Currently held</p>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         {rows.length === 0 ? (
           <div className="text-center py-12">
-            <Shield size={48} className="mx-auto text-gray-600 mb-3" />
-            <p className="text-gray-400 text-sm">No security deposits</p>
-            <p className="text-gray-500 text-xs mt-1">Deposits from rentals will appear here</p>
+            <Shield size={48} className="mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground text-sm">No security deposits</p>
+            <p className="text-muted-foreground text-xs mt-1">Deposits from rentals will appear here</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-900 border-b border-gray-800">
-                <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <thead className="bg-card border-b border-border">
+                <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   <th className="px-4 py-3 text-left">Rental #</th>
                   <th className="px-4 py-3 text-left">Customer</th>
                   <th className="px-4 py-3 text-left">Status</th>
@@ -163,25 +163,25 @@ export const DepositsTab: React.FC = () => {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="px-4 py-3 text-sm font-medium text-white">{row.rentalNo}</td>
-                    <td className="px-4 py-3 text-sm text-gray-300">{row.customerName}</td>
+                  <tr key={row.id} className="border-b border-border hover:bg-accent/30">
+                    <td className="px-4 py-3 text-sm font-medium text-foreground">{row.rentalNo}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{row.customerName}</td>
                     <td className="px-4 py-3">
                       <Badge className={
                         row.status === 'returned' || row.status === 'closed'
-                          ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                          ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
                           : row.status === 'overdue'
                           ? 'bg-red-500/10 text-red-400 border-red-500/30'
                           : row.status === 'cancelled'
-                          ? 'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                          ? 'bg-gray-500/10 text-muted-foreground border-gray-500/30'
                           : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                       }>
                         {statusLabel[row.status] || row.status}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">{row.startDate}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400">{row.returnDate}</td>
-                    <td className="px-4 py-3 text-sm text-green-400 font-medium text-right">{formatCurrency(row.securityDeposit)}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{row.startDate}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{row.returnDate}</td>
+                    <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] font-medium text-right">{formatCurrency(row.securityDeposit)}</td>
                     <td className="px-4 py-3 text-sm text-orange-400 text-right">{formatCurrency(row.refundAmount)}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-right">{formatCurrency(row.netHeld)}</td>
                   </tr>

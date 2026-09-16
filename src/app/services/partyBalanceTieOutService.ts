@@ -539,6 +539,7 @@ export async function runPartyBalanceTieOut(input: PartyBalanceTieOutInput): Pro
   const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
     p_company_id: companyId,
     p_branch_id: b,
+    p_as_of_date: null,
   });
   let rpcAr = 0;
   let rpcAp = 0;

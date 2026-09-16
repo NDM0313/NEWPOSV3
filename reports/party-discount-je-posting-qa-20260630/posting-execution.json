@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-30T07:46:42.413Z",
+  "company": "DIN CHINA",
+  "party": "MR JALIL",
+  "party_type": "customer",
+  "amount_pkr": 1,
+  "entry_date": "2026-06-30",
+  "notes": "Controlled QA test — Party Ledger Discount PKR 1",
+  "success_toast": true,
+  "dialog_closed": true,
+  "posting_result": "PASS",
+  "captured_network_je_ids": [],
+  "journal_entry_id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+  "entry_no": "JE-0003",
+  "action_fingerprint": "party_discount:30bd8592-3384-4f34-899a-f3907e336485:customer:fe7ec33d-fd6d-4aa6-8d21-416e383b4c93:2026-06-30:1"
+}

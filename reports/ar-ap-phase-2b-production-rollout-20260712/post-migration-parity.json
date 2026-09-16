@@ -1,0 +1,44 @@
+{
+  "overall": "FAIL",
+  "generated": "2026-07-12T06:46:41Z",
+  "results": [
+    {
+      "company": "DIN COUTURE",
+      "result": "PASS",
+      "legacy": { "ar": 22625273, "ap": 26908831, "wp": 0, "count": 84 },
+      "unified": { "ar": 22625273, "ap": 26908831, "wp": 0, "count": 84 },
+      "maxAbsDelta": 0
+    },
+    {
+      "company": "DIN BRIDAL",
+      "result": "FAIL",
+      "legacy": { "ar": 2025800, "ap": -547191, "wp": 0, "count": 142 },
+      "unified": { "ar": 1945950, "ap": -547191, "wp": 0, "count": 142 },
+      "maxAbsDelta": 79850,
+      "drivers": [
+        {
+          "name": "Walk-in Customer old",
+          "contact_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+          "legacy_ar": 171500,
+          "unified_ar_effective_party": 91500,
+          "ar_delta": -80000,
+          "unified_ar_official_gl": 171500
+        },
+        {
+          "name": "Walk-in Customer",
+          "contact_id": "a3c6ea52-a705-48c9-a3ac-e42e423526de",
+          "legacy_ar": -150,
+          "unified_ar_effective_party": 0,
+          "ar_delta": 150
+        }
+      ]
+    },
+    {
+      "company": "DIN CHINA",
+      "result": "PASS",
+      "legacy": { "ar": 14189222.98, "ap": 1140286.4, "wp": 0, "count": 35 },
+      "unified": { "ar": 14189222.98, "ap": 1140286.4, "wp": 0, "count": 35 },
+      "maxAbsDelta": 0
+    }
+  ]
+}

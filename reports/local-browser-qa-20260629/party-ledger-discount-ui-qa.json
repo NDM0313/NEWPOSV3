@@ -1,0 +1,22 @@
+{
+  "generated": "2026-06-29",
+  "route": "/reports/ledger-statement-center-v2",
+  "result": "PASS",
+  "customer": {
+    "party": "MR JALIL",
+    "discountButton": true,
+    "modalTitle": "Customer discount",
+    "coaSummary": "Dr 5200 Discount Allowed · Cr party AR",
+    "validationOnEmptySubmit": "Enter a valid discount amount.",
+    "closedWithoutPosting": true,
+    "unifiedPreviewPresent": true,
+    "discountFilterOption": true
+  },
+  "supplier": {
+    "party": "MR DIN MOHAMMAD",
+    "discountButton": true,
+    "modalTitle": "Supplier discount",
+    "coaSummary": "Dr party AP · Cr 5210 Discount Received",
+    "closedWithoutPosting": true
+  }
+}

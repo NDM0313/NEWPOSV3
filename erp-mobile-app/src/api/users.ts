@@ -80,7 +80,38 @@ export async function getSalesmen(companyId: string): Promise<{ data: SalesmanRo
 }
 
 /** Roles eligible for Salary expense payee (mirrors web `userService.getUsersForSalary`). Workers are excluded. */
-const SALARY_EXPENSE_ROLES = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'] as const;
+const SALARY_EXPENSE_ROLES = [
+  'owner',
+  'admin',
+  'manager',
+  'staff',
+  'salesman',
+  'operator',
+  'cashier',
+  'inventory',
+] as const;
+
+type SalaryUserQueryRow = {
+  id: string;
+  full_name?: string | null;
+  role?: string | null;
+  email?: string | null;
+  is_active?: boolean;
+  permissions?: Record<string, unknown> | null;
+  can_be_assigned_as_salesman?: boolean | null;
+};
+
+/** Mirrors web `userService.getUsersForSalary` eligibility rules. */
+export function isSalaryPayeeEligible(row: SalaryUserQueryRow): boolean {
+  const role = String(row.role ?? '').toLowerCase();
+  if ((SALARY_EXPENSE_ROLES as readonly string[]).includes(role)) return true;
+  const perms = (row.permissions ?? {}) as Record<string, unknown>;
+  if (perms.canBeAssignedAsSalesman === true) return true;
+  if ((perms as { sales?: { canBeAssignedAsSalesman?: boolean } }).sales?.canBeAssignedAsSalesman === true) {
+    return true;
+  }
+  return row.can_be_assigned_as_salesman === true;
+}
 
 export interface SalaryUserRow {
   id: string;
@@ -97,21 +128,24 @@ export async function getUsersForSalary(companyId: string): Promise<{ data: Sala
 
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, full_name, role, email, is_active')
+    .select('id, full_name, role, email, is_active, permissions, can_be_assigned_as_salesman')
     .eq('company_id', companyId);
 
   if (error) return { data: [], error: error.message };
 
-  type Row = { id: string; full_name?: string | null; role?: string | null; email?: string | null; is_active?: boolean };
-  const active = (users || []).filter((u) => (u as Row).is_active !== false);
-  const roleOk = (r: string) => (SALARY_EXPENSE_ROLES as readonly string[]).includes(r);
-  const filtered = active.filter((u) => {
-    const role = String((u as Row).role ?? '').toLowerCase();
-    return roleOk(role);
-  });
+  const active = (users || []).filter((u) => (u as SalaryUserQueryRow).is_active !== false);
+  const filtered = active
+    .filter((u) => isSalaryPayeeEligible(u as SalaryUserQueryRow))
+    .sort((a, b) =>
+      String((a as SalaryUserQueryRow).full_name ?? '').localeCompare(
+        String((b as SalaryUserQueryRow).full_name ?? ''),
+        undefined,
+        { sensitivity: 'base' },
+      ),
+    );
 
   const data: SalaryUserRow[] = filtered.map((u) => {
-    const r = u as Row;
+    const r = u as SalaryUserQueryRow;
     return {
       id: String(r.id),
       full_name: String(r.full_name ?? '—'),

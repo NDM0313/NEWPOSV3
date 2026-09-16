@@ -1,0 +1,20 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "baseline-verification",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "status": "PASS",
+  "monitoring": {
+    "command": "npm run monitor:three-company-unified-ledger",
+    "overall": "PASS",
+    "timestamp_slug": "2026-07-01T10-24-06-616Z",
+    "din_china": "PASS",
+    "din_bridal": "PASS",
+    "din_couture": "PASS",
+    "admin_compare_din_china": "9/9 PASS",
+    "migrations_run": false,
+    "gl_mutations": false
+  },
+  "test_unified_ledger": { "pass": 328, "fail": 0, "status": "PASS" },
+  "test_unit": { "pass": 122, "fail": 0, "status": "PASS" },
+  "build": { "command": "npm run build", "status": "PASS", "note": "verified earlier in run; web build unchanged" }
+}

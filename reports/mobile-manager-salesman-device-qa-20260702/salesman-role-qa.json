@@ -1,0 +1,5 @@
+{
+  "classification": "SALESMAN_QA_BLOCKED",
+  "executed": false,
+  "blockers": ["SALESMAN_QA_BLOCKED_CREDENTIALS", "NO_ADB_DEVICE"]
+}

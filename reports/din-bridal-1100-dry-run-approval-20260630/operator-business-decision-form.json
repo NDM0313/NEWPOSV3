@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-06-30T14:30:00.000Z",
+  "default_apply_approval": false,
+  "questions": [
+    {"id": 1, "prompt": "Is Rs 136,500 real receivable/advance or wrong/orphan?", "diagnostic_hint": "wrong allocation on control 1100"},
+    {"id": 2, "prompt": "Which customer/contact?", "candidates": ["Miss NAGHMANA RAJA 78750", "ASIM 57750"]},
+    {"id": 3, "prompt": "Clear via equity/adjustment or correct?", "diagnostic_hint": "Option C reclass preferred"},
+    {"id": 4, "prompt": "Keep on control 1100 or move to sub-ledger?", "diagnostic_hint": "move to AR-CUS0056/AR-CUS0012"},
+    {"id": 5, "prompt": "Apply approval granted?", "default": "NO"}
+  ]
+}

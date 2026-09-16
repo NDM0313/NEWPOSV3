@@ -1,0 +1,49 @@
+{
+  "tenant": {
+    "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+    "companyName": "DIN CHINA"
+  },
+  "contact": {
+    "contactId": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
+    "contactName": "MR JALIL",
+    "expectedClosingBalancePkr": 216300,
+    "tolerancePkr": 0.01
+  },
+  "cloneReference": "ledger_stage_20260625_prodcheck",
+  "gateA": "PASS 3/3",
+  "tieOut": "PASS 9/9",
+  "crossScreenUnitVerification": [
+    {
+      "surface": "Ledger V2 preview",
+      "test": "MR JALIL golden closing sets goldenPass when preview matches 216300",
+      "file": "src/app/lib/ledgerStatementV2UnifiedPreviewDiff.test.ts",
+      "result": "PASS"
+    },
+    {
+      "surface": "Account Statement preview",
+      "test": "MR JALIL golden closing sets goldenPass",
+      "file": "src/app/lib/accountStatementUnifiedPreviewDiff.test.ts",
+      "result": "PASS"
+    },
+    {
+      "surface": "Party Ledger preview",
+      "test": "comparePartyLedgerUnifiedPreview sets goldenPass for MR JALIL unified closing",
+      "file": "src/app/lib/partyLedgerUnifiedPreviewDiff.test.ts",
+      "result": "PASS"
+    },
+    {
+      "surface": "Golden fixtures",
+      "test": "balanceMatchesGolden for MR JALIL",
+      "file": "src/app/lib/unifiedLedgerGoldenFixtures.test.ts",
+      "result": "PASS"
+    },
+    {
+      "surface": "Pilot batch matrix",
+      "test": "pilot batch matrix is 9 comparisons",
+      "file": "src/app/lib/unifiedLedgerGoldenFixtures.test.ts",
+      "result": "PASS"
+    }
+  ],
+  "liveRpcCrossScreen": "WAIVED — live DIN CHINA unified RPC parity on all surfaces deferred to optional ops session; clone validation 9/9 on record",
+  "overall": "PASS (unit + historical clone tie-out)"
+}

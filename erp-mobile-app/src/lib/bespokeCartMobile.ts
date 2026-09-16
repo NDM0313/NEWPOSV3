@@ -24,6 +24,8 @@ function productsToBaseLines(products: Product[]): BespokeCartLineBase[] {
     bespokeParentCartId: p.bespokeParentCartId,
     bespokeRole: p.bespokeRole,
     isBespokeInjected: p.isBespokeInjected,
+    bespokeUsage: p.bespokeUsage,
+    bespokeRefUnitPrice: p.bespokeRefUnitPrice,
   }));
 }
 
@@ -46,6 +48,10 @@ function syncedLinesToProducts(synced: BespokeCartLineBase[], cartProducts: Prod
       bespokeRole: line.bespokeRole,
       isBespokeInjected: line.isBespokeInjected,
       packingDetails: existing?.packingDetails,
+      ...(line.bespokeUsage ? { bespokeUsage: line.bespokeUsage } : {}),
+      ...(line.bespokeRefUnitPrice != null && line.bespokeRefUnitPrice > 0
+        ? { bespokeRefUnitPrice: line.bespokeRefUnitPrice }
+        : {}),
     };
   });
 }

@@ -66,6 +66,12 @@ export interface ThermalSettings {
   showQR: boolean;
   showCashier: boolean;
   compactMode: boolean;
+  /** Thermal roll width — synced to companies.paper_size on save. */
+  paperSize?: '58mm' | '80mm';
+  /** Windows default printer name for POS automation (hint only). */
+  posPrinterDeviceName?: string;
+  /** User acknowledged silent print requires browser launch flags. */
+  kioskPrintingHintAcknowledged?: boolean;
 }
 
 export interface PdfExportSettings {
@@ -73,6 +79,74 @@ export interface PdfExportSettings {
   fontFamily: string;
   includeWatermark: boolean;
 }
+
+/** Tabular report PDF/CSV defaults (Stock Report, Product Sell, …). */
+export interface ReportExportSettings {
+  stockReportOrientation: Orientation;
+  productSellOrientation: Orientation;
+  /** Account Statements / party ledger statement PDF default. */
+  ledgerReportOrientation?: Orientation;
+  /** Daily cash book (Roznamcha). */
+  roznamchaOrientation?: Orientation;
+  /** Cash Flow operational grid. */
+  cashFlowOrientation?: Orientation;
+  /** Journal Day Book. */
+  dayBookOrientation?: Orientation;
+  /** Trial Balance, P&L, Balance Sheet, etc. */
+  financialReportOrientation?: Orientation;
+  /** Stock Ledger by Product (movement history). */
+  stockMovementHistoryOrientation?: Orientation;
+  /** Show branded header block on tabular report PDF/print. */
+  showReportHeader?: boolean;
+  /** Show page-number footer on tabular report PDF/print. */
+  showReportFooter?: boolean;
+  /** Document base font (titles / meta fallback). */
+  reportFontSize?: number;
+  /** Table body / data-list rows. */
+  reportDataListFontSize?: number;
+  /** Column header row. */
+  reportTableHeaderFontSize?: number;
+  /** Opening / Closing / totals summary band. */
+  reportSummaryFontSize?: number;
+  /** Horizontal th/td padding (narrower = denser columns). */
+  reportColumnPaddingPx?: number;
+  /** When false, PDF/print money cells omit the currency symbol. */
+  reportShowCurrencySymbol?: boolean;
+  /**
+   * Ledger PDF column widths: percent (5–30) or `'auto'`.
+   * Auto columns share remaining table width after fixed %.
+   */
+  reportLedgerColumnWidths?: Partial<Record<LedgerColumnWidthKey, LedgerColumnWidthSetting>>;
+}
+
+/** Percent or auto for a ledger print column. */
+export type LedgerColumnWidthSetting = number | 'auto';
+
+/** Ledger print columns with configurable width (all may be auto or %). */
+export type LedgerColumnWidthKey =
+  | 'date'
+  | 'reference'
+  | 'type'
+  | 'description'
+  | 'branch'
+  | 'debit'
+  | 'credit'
+  | 'balance'
+  | 'payment'
+  | 'createdBy';
+
+export const DEFAULT_LEDGER_COLUMN_WIDTHS: Record<LedgerColumnWidthKey, LedgerColumnWidthSetting> = {
+  date: 9,
+  reference: 11,
+  type: 'auto',
+  description: 'auto',
+  branch: 'auto',
+  debit: 11,
+  credit: 11,
+  balance: 12,
+  payment: 'auto',
+  createdBy: 'auto',
+};
 
 export type DocumentTemplateId =
   | 'sales_invoice'
@@ -91,6 +165,7 @@ export interface CompanyPrintingSettings {
   layout?: LayoutEditor;
   thermal?: ThermalSettings;
   pdf?: PdfExportSettings;
+  reportExport?: ReportExportSettings;
   documentTemplates?: DocumentTemplateId[];
   defaultInvoiceType?: InvoiceTypeId;
 }
@@ -143,12 +218,35 @@ export const DEFAULT_THERMAL: ThermalSettings = {
   showQR: false,
   showCashier: true,
   compactMode: true,
+  paperSize: '58mm',
+  posPrinterDeviceName: 'POSPrinter POS58',
+  kioskPrintingHintAcknowledged: false,
 };
 
 export const DEFAULT_PDF: PdfExportSettings = {
   fontSize: 12,
   fontFamily: 'Inter',
   includeWatermark: false,
+};
+
+export const DEFAULT_REPORT_EXPORT: ReportExportSettings = {
+  stockReportOrientation: 'landscape',
+  productSellOrientation: 'portrait',
+  ledgerReportOrientation: 'portrait',
+  roznamchaOrientation: 'landscape',
+  cashFlowOrientation: 'landscape',
+  dayBookOrientation: 'landscape',
+  financialReportOrientation: 'portrait',
+  stockMovementHistoryOrientation: 'landscape',
+  showReportHeader: true,
+  showReportFooter: true,
+  reportFontSize: 11,
+  reportDataListFontSize: 10,
+  reportTableHeaderFontSize: 9,
+  reportSummaryFontSize: 9,
+  reportColumnPaddingPx: 4,
+  reportShowCurrencySymbol: true,
+  reportLedgerColumnWidths: { ...DEFAULT_LEDGER_COLUMN_WIDTHS },
 };
 
 export const DEFAULT_DOCUMENT_TEMPLATES: DocumentTemplateId[] = [
@@ -168,6 +266,14 @@ export function mergeWithDefaults(partial: CompanyPrintingSettings | null | unde
     layout: { ...DEFAULT_LAYOUT, ...partial?.layout },
     thermal: { ...DEFAULT_THERMAL, ...partial?.thermal },
     pdf: { ...DEFAULT_PDF, ...partial?.pdf },
+    reportExport: {
+      ...DEFAULT_REPORT_EXPORT,
+      ...partial?.reportExport,
+      reportLedgerColumnWidths: {
+        ...DEFAULT_LEDGER_COLUMN_WIDTHS,
+        ...partial?.reportExport?.reportLedgerColumnWidths,
+      },
+    },
     documentTemplates: partial?.documentTemplates?.length ? partial.documentTemplates : DEFAULT_DOCUMENT_TEMPLATES,
     defaultInvoiceType: partial?.defaultInvoiceType ?? 'standard',
   };
