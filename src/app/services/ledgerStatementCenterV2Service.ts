@@ -54,8 +54,6 @@ export type LedgerV2EnrichmentOpts = {
   viewedAccountNames?: string[];
 };
 
-const slice200 = <T>(arr: T[]) => arr.slice(0, 200);
-
 const COMPANY_WIDE_BRANCH_LABEL = 'All branches';
 
 function formatBranchLabel(branch?: { name?: string | null; code?: string | null } | null): string {
@@ -130,14 +128,18 @@ export async function enrichLedgerV2PaymentAndAuthorship(
   const linesByJe = new Map<string, CounterAccountLine[]>();
 
   if (jeIds.length) {
-    const { data: jeRows } = await supabase
-      .from('journal_entries')
-      .select(
-        'id, created_by, payment_id, branch_id, reference_type, reference_id, branch:branches(name, code)',
-      )
-      .eq('company_id', companyId)
-      .in('id', slice200(jeIds));
-    (jeRows || []).forEach(
+    const jeRows = await fetchInBatches(jeIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select(
+          'id, created_by, payment_id, branch_id, reference_type, reference_id, branch:branches(name, code)',
+        )
+        .eq('company_id', companyId)
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    jeRows.forEach(
       (r: {
         id: string;
         created_by?: string | null;
@@ -298,11 +300,15 @@ async function enrichLedgerV2BranchFromDocuments(
 
   const saleIds = [...new Set(saleRefByJe.values())];
   if (saleIds.length) {
-    const { data } = await supabase
-      .from('sales')
-      .select('id, branch:branches(name, code)')
-      .in('id', slice200(saleIds));
-    (data || []).forEach((s: { id: string; branch?: { name?: string; code?: string } | null }) => {
+    const sales = await fetchInBatches(saleIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('id, branch:branches(name, code)')
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    sales.forEach((s: { id: string; branch?: { name?: string; code?: string } | null }) => {
       const label = formatBranchLabel(s.branch);
       if (!isLedgerV2Placeholder(label)) saleBranchById.set(s.id, label);
     });
@@ -310,11 +316,15 @@ async function enrichLedgerV2BranchFromDocuments(
 
   const purchaseIds = [...new Set(purchaseRefByJe.values())];
   if (purchaseIds.length) {
-    const { data } = await supabase
-      .from('purchases')
-      .select('id, branch:branches(name, code)')
-      .in('id', slice200(purchaseIds));
-    (data || []).forEach((p: { id: string; branch?: { name?: string; code?: string } | null }) => {
+    const purchases = await fetchInBatches(purchaseIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('purchases')
+        .select('id, branch:branches(name, code)')
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    purchases.forEach((p: { id: string; branch?: { name?: string; code?: string } | null }) => {
       const label = formatBranchLabel(p.branch);
       if (!isLedgerV2Placeholder(label)) purchaseBranchById.set(p.id, label);
     });
@@ -695,7 +705,7 @@ function collectDocIdsFromRow(r: LedgerStatementV2Row): {
 
 /**
  * Mark `hasAttachments` from JE / payment / sale / purchase / rental attachment sets.
- * Soft-caps batch lookups at 200 ids. Safe for legacy and unified main loaders.
+ * Batches all IDs (no soft-cap) so busy ledgers still flag shared transfer JE attachments.
  */
 export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]): Promise<void> {
   const jeIds = [...new Set(rows.map((r) => r.journalEntryId).filter(Boolean))] as string[];
@@ -723,14 +733,17 @@ export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]
   const jePurchaseRefById = new Map<string, string>();
   const jeRentalRefById = new Map<string, string>();
   const jePaymentRefById = new Map<string, string>();
-  const slice200 = <T>(arr: T[]) => arr.slice(0, 200);
 
   if (jeIds.length) {
-    const { data: jeRows } = await supabase
-      .from('journal_entries')
-      .select('id, attachments, reference_type, reference_id, payment_id')
-      .in('id', slice200(jeIds));
-    (jeRows || []).forEach(
+    const jeRows = await fetchInBatches(jeIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select('id, attachments, reference_type, reference_id, payment_id')
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    jeRows.forEach(
       (r: {
         id: string;
         attachments?: unknown;
@@ -766,29 +779,45 @@ export async function enrichLedgerV2AttachmentFlags(rows: LedgerStatementV2Row[]
   }
   const payIds = [...payIdSet];
   if (payIds.length) {
-    const { data } = await supabase.from('payments').select('id, attachments').in('id', slice200(payIds));
-    (data || []).forEach((r: { id: string; attachments?: unknown }) => {
+    const payRows = await fetchInBatches(payIds, async (chunk) => {
+      const { data, error } = await supabase.from('payments').select('id, attachments').in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    payRows.forEach((r: { id: string; attachments?: unknown }) => {
       if (hasAttachmentPayload(r.attachments)) payHas.add(r.id);
     });
   }
   const saleIds = [...saleIdSet];
   if (saleIds.length) {
-    const { data } = await supabase.from('sales').select('id, attachments').in('id', slice200(saleIds));
-    (data || []).forEach((r: { id: string; attachments?: unknown }) => {
+    const saleRows = await fetchInBatches(saleIds, async (chunk) => {
+      const { data, error } = await supabase.from('sales').select('id, attachments').in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    saleRows.forEach((r: { id: string; attachments?: unknown }) => {
       if (hasAttachmentPayload(r.attachments)) saleHas.add(r.id);
     });
   }
   const rentalIds = [...rentalIdSet];
   if (rentalIds.length) {
-    const { data } = await supabase.from('rentals').select('id, attachments').in('id', slice200(rentalIds));
-    (data || []).forEach((r: { id: string; attachments?: unknown }) => {
+    const rentalRows = await fetchInBatches(rentalIds, async (chunk) => {
+      const { data, error } = await supabase.from('rentals').select('id, attachments').in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    rentalRows.forEach((r: { id: string; attachments?: unknown }) => {
       if (hasAttachmentPayload(r.attachments)) rentalHas.add(r.id);
     });
   }
   const purchaseIds = [...purchaseIdSet];
   if (purchaseIds.length) {
-    const { data } = await supabase.from('purchases').select('id, attachments').in('id', slice200(purchaseIds));
-    (data || []).forEach((r: { id: string; attachments?: unknown }) => {
+    const purchaseRows = await fetchInBatches(purchaseIds, async (chunk) => {
+      const { data, error } = await supabase.from('purchases').select('id, attachments').in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    purchaseRows.forEach((r: { id: string; attachments?: unknown }) => {
       if (hasAttachmentPayload(r.attachments)) purchaseHas.add(r.id);
     });
   }
