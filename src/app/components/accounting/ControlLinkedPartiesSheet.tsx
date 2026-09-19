@@ -13,8 +13,26 @@ import {
   nearestPartyControlAncestorId,
   officialPartyControlTitle,
 } from '@/app/lib/partyControlAccounts';
+import { isCanonicalPartySubledgerCode } from '@/app/lib/preferCanonicalPartySubledgerAccounts';
 
 const SHEET_CONTROL_CODES = new Set(['1100', '2000', '2010', '1180']);
+
+function pickLinkedAccountForContact(
+  allAccounts: Account[],
+  contactId: string,
+): Account | undefined {
+  const linked = allAccounts.filter(
+    (x) => String(x.linked_contact_id || '').trim() === contactId,
+  );
+  if (linked.length === 0) return undefined;
+  const canonical = linked.find((x) => isCanonicalPartySubledgerCode(x.code));
+  if (canonical) return canonical;
+  return [...linked].sort(
+    (a, b) =>
+      String(a.code || '').localeCompare(String(b.code || '')) ||
+      String(a.id).localeCompare(String(b.id)),
+  )[0];
+}
 
 function partyRoleLabel(type: string | null | undefined): string {
   const t = String(type || '').toLowerCase();
@@ -95,7 +113,7 @@ export function ControlLinkedPartiesSheet({
         const bal = balanceForControl(code, slice);
         if (Math.abs(bal) < 1e-6) return;
         seen.add(contactId);
-        const linkedAcc = allAccounts.find((x) => String(x.linked_contact_id || '').trim() === contactId);
+        const linkedAcc = pickLinkedAccountForContact(allAccounts, contactId);
         const name =
           String(linkedAcc?.linked_contact_name || linkedAcc?.name || '').trim() ||
           `Contact ${contactId.slice(0, 8)}…`;

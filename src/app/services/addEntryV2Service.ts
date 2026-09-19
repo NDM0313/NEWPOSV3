@@ -75,11 +75,47 @@ export interface CreatePureJournalParams {
   description?: string | null;
   createdBy?: string | null;
   attachments?: { url: string; name: string }[] | null;
+  /** Optional CoA snapshot for inactive/retired account guards (local + client). */
+  accountsForGuard?: Array<{
+    id: string;
+    code?: string | null;
+    linked_contact_id?: string | null;
+    isActive?: boolean;
+    is_active?: boolean;
+  }>;
 }
 
 export async function createPureJournalEntry(params: CreatePureJournalParams): Promise<{ journalEntryId: string }> {
-  const { companyId, branchId, entryDate, debitAccountId, creditAccountId, amount, description, createdBy, attachments } = params;
+  const {
+    companyId,
+    branchId,
+    entryDate,
+    amount,
+    description,
+    createdBy,
+    attachments,
+    accountsForGuard,
+  } = params;
+  let { debitAccountId, creditAccountId } = params;
   if (!companyId || !debitAccountId || !creditAccountId || amount <= 0) throw new Error('Invalid pure journal params');
+
+  if (accountsForGuard && accountsForGuard.length > 0) {
+    const { assertPureJournalAccounts } = await import('@/app/lib/journalPartyPosting');
+    let verifiedRemaps: { fromAccountId: string; toAccountId: string }[] = [];
+    try {
+      const { loadVerifiedAccountRemaps } = await import('@/app/services/partyAttributedGlLedgerService');
+      verifiedRemaps = await loadVerifiedAccountRemaps(companyId);
+    } catch {
+      verifiedRemaps = [];
+    }
+    const guarded = assertPureJournalAccounts(accountsForGuard, debitAccountId, creditAccountId, {
+      verifiedRemaps,
+    });
+    if (!guarded.ok) throw new Error(guarded.error);
+    debitAccountId = guarded.debitAccountId!;
+    creditAccountId = guarded.creditAccountId!;
+  }
+
   const branch = await resolveBranchUuidForWrite(companyId, branchId);
   let entryNo: string;
   try {
@@ -132,6 +168,13 @@ export interface UpdatePureJournalParams {
   creditAccountId: string;
   amount: number;
   description?: string | null;
+  accountsForGuard?: Array<{
+    id: string;
+    code?: string | null;
+    linked_contact_id?: string | null;
+    isActive?: boolean;
+    is_active?: boolean;
+  }>;
 }
 
 export async function updatePureJournalEntry(params: UpdatePureJournalParams): Promise<{ ok: boolean; error?: string }> {
@@ -140,13 +183,30 @@ export async function updatePureJournalEntry(params: UpdatePureJournalParams): P
     journalEntryId,
     entryDate,
     createdAt,
-    debitAccountId,
-    creditAccountId,
     amount,
     description,
+    accountsForGuard,
   } = params;
+  let { debitAccountId, creditAccountId } = params;
   if (!companyId || !journalEntryId || !debitAccountId || !creditAccountId || amount <= 0) {
     return { ok: false, error: 'Invalid pure journal update params' };
+  }
+
+  if (accountsForGuard && accountsForGuard.length > 0) {
+    const { assertPureJournalAccounts } = await import('@/app/lib/journalPartyPosting');
+    let verifiedRemaps: { fromAccountId: string; toAccountId: string }[] = [];
+    try {
+      const { loadVerifiedAccountRemaps } = await import('@/app/services/partyAttributedGlLedgerService');
+      verifiedRemaps = await loadVerifiedAccountRemaps(companyId);
+    } catch {
+      verifiedRemaps = [];
+    }
+    const guarded = assertPureJournalAccounts(accountsForGuard, debitAccountId, creditAccountId, {
+      verifiedRemaps,
+    });
+    if (!guarded.ok) return { ok: false, error: guarded.error };
+    debitAccountId = guarded.debitAccountId!;
+    creditAccountId = guarded.creditAccountId!;
   }
 
   const lines: JournalEntryLine[] = [

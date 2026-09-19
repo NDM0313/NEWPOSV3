@@ -64,6 +64,10 @@ import {
 } from '@/app/lib/unifiedLedgerGoldenFixtures';
 import { AccountStatementUnifiedPreviewPanel } from '@/app/components/reports/AccountStatementUnifiedPreviewPanel';
 import {
+  loadPartyAttributedGlLedger,
+  type PartyAttributedGlResult,
+} from '@/app/services/partyAttributedGlLedgerService';
+import {
   resolveAccountStatementPreviewCompareSource,
   buildAccountStatementPreviewCompareRows,
 } from '@/app/lib/resolveAccountStatementPreviewCompareSource';
@@ -418,6 +422,8 @@ export const AccountLedgerReportPage: React.FC<{
     includeAdjustments: true,
   });
   const [entries, setEntries] = useState<AccountLedgerEntry[]>([]);
+  const [attributedGl, setAttributedGl] = useState<PartyAttributedGlResult | null>(null);
+  const [showAttributedOutsideOfficial, setShowAttributedOutsideOfficial] = useState(false);
   const [partyByKey, setPartyByKey] = useState<Record<string, { name: string; contactId: string }>>({});
   /** payment_id → label from payments.payment_account_id (cash / bank / wallet). */
   const [paymentSettlementById, setPaymentSettlementById] = useState<Record<string, string>>({});
@@ -690,6 +696,31 @@ export const AccountLedgerReportPage: React.FC<{
 
         setOfficialGlSummary(nextOfficialGl);
         setEntries(loaded || []);
+
+        const partyForAttr =
+          applied.statementType === 'supplier' && applied.selectedContactId
+            ? applied.selectedContactId
+            : applied.statementType === 'worker' && applied.selectedWorkerId
+              ? applied.selectedWorkerId
+              : null;
+        if (partyForAttr) {
+          try {
+            const attr = await loadPartyAttributedGlLedger({
+              companyId,
+              contactId: partyForAttr,
+              branchId: branchId === 'all' ? null : branchId || null,
+              startDate,
+              endDate,
+            });
+            setAttributedGl(attr);
+          } catch (attrErr) {
+            if (import.meta.env?.DEV) console.warn('[AccountLedgerReportPage] attributed GL', attrErr);
+            setAttributedGl(null);
+          }
+        } else {
+          setAttributedGl(null);
+        }
+
         setLoadError(null);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
@@ -729,7 +760,7 @@ export const AccountLedgerReportPage: React.FC<{
         if (!silent) setLoading(false);
       }
     })();
-  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick, viewMode]);
+  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick, viewMode, branchId]);
 
   useEffect(() => {
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
@@ -1117,8 +1148,33 @@ export const AccountLedgerReportPage: React.FC<{
   }, []);
 
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
+  const entriesWithAttributedExtras = useMemo(() => {
+    if (!showAttributedOutsideOfficial || !attributedGl?.attributedRows?.length) return entries;
+    const seen = new Set(
+      entries
+        .map((e) => e.journal_line_id || `${e.journal_entry_id}:${e.gl_account_code}:${e.debit}:${e.credit}`)
+        .filter(Boolean),
+    );
+    const extras = attributedGl.attributedRows.filter((r) => {
+      const comp = String(r.notes || '').replace('gl_component:', '');
+      // Keep official control streams on the main loader; only append other linked components.
+      if (applied.statementType === 'supplier' && comp === 'ap_2000') return false;
+      if (
+        applied.statementType === 'worker' &&
+        (comp === 'worker_2010' || comp === 'worker_1180')
+      ) {
+        return false;
+      }
+      const key = r.journal_line_id || `${r.journal_entry_id}:${r.gl_account_code}:${r.debit}:${r.credit}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return extras.length ? [...entries, ...extras] : entries;
+  }, [entries, attributedGl, showAttributedOutsideOfficial, applied.statementType]);
+
   const sortedEntries = useMemo(() => {
-    const base = [...entries].filter((e) => {
+    const base = [...entriesWithAttributedExtras].filter((e) => {
       // Always keep synthetic opening rows so summary cards match the running-balance column (filters could drop them before).
       if (isStatementOpeningRow(e)) return true;
 
@@ -1171,7 +1227,7 @@ export const AccountLedgerReportPage: React.FC<{
       return (a.journal_entry_id || '').localeCompare(b.journal_entry_id || '');
     });
   }, [
-    entries,
+    entriesWithAttributedExtras,
     applied,
     contacts,
     partyByKey,
@@ -2020,6 +2076,50 @@ export const AccountLedgerReportPage: React.FC<{
           }
         />
       )}
+
+      {attributedGl &&
+      (applied.statementType === 'supplier' || applied.statementType === 'worker') &&
+      attributedGl.components.length > 0 ? (
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-2">
+          <p className="font-medium text-foreground">Party-attributed GL components</p>
+          <p className="text-xs text-muted-foreground">
+            Official AP control total stays on 2000 only. Worker (2010/1180) and courier (203x) / legacy (210xxx)
+            are listed separately so advances and deposits stay visible without mixing into AP. Each journal line
+            is counted once; multi-party JEs stay split by line account link.
+            {attributedGl.unresolvedLineCount > 0
+              ? ` Unresolved attribution lines in scan: ${attributedGl.unresolvedLineCount}.`
+              : ''}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {attributedGl.components.map((c) => (
+              <span
+                key={c.component}
+                className={`inline-flex rounded-md border px-2 py-0.5 text-xs ${
+                  c.component === 'ap_2000'
+                    ? 'border-primary/40 bg-primary/10 text-foreground'
+                    : 'border-border bg-background text-muted-foreground'
+                }`}
+              >
+                {c.label}: {c.lineCount} lines · net {formatCurrency(c.net)}
+              </span>
+            ))}
+          </div>
+          {attributedGl.components.some((c) => c.component !== 'ap_2000') ? (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={showAttributedOutsideOfficial}
+                onChange={(e) => setShowAttributedOutsideOfficial(e.target.checked)}
+                className="rounded border-gray-600"
+              />
+              Show linked history outside official AP/worker control in the table below (does not change Closing)
+            </label>
+          ) : null}
+          <p className="text-[10px] text-muted-foreground">
+            Operational open purchases / work / shipments are separate from these GL nets — do not force equality.
+          </p>
+        </div>
+      ) : null}
 
       {showUnifiedPreviewTools ? (
         <div className="flex flex-wrap items-center gap-3">
