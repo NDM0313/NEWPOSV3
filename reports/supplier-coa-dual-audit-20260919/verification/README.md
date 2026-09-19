@@ -4,36 +4,37 @@ Runs against a temporary Docker Postgres 15 — **not** production.
 
 ## How to run
 
-```bash
-bash reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.sh
+```powershell
+powershell -File reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.ps1
 ```
 
-Evidence is written to `EVIDENCE.md` in this folder (no credentials, no prod dumps).
+Evidence: `EVIDENCE.md` (no credentials, no prod dumps).
 
-## What is covered (real SQL)
+## Covered (real SQL / real scripts)
 
-- Migration apply; missing backup seed notice (0 rows)
-- Backup-present / identity mismatch / conflicting seed / repeat identical skip
-- INSERT retired without map → reject; with map → remap + **line_id** in events
-- UPDATE non-key cols preserved; `journal_entry_id` reassignment revalidated
-- Wrong-company reject; legacy→non-AP role remap reject
-- GUC/`journal_account_guard_internal` spoof does **not** authorize inactive restore
-- Privileged `repair_restore` ticket path; unauthorized SET ROLE authenticated denied
-- Catalog ACLs + real `SET ROLE authenticated` / `SET ROLE service_role`
-- Resolver after trigger in same transaction
-- Legitimate supplier / worker / courier posting + balance/totals helpers
-- Actual `01_backup` / `02_apply` / `03_rollback` scripts including missing backup, repeat no-op, post-apply edit drift
+- Migration + missing-backup seed notice
+- Seed identity / conflict / repeat skip
+- Remap + line_id events; GUC spoof rejected
+- SET ROLE authenticated / service_role ACL matrix
+- **Direct `_journal_account_guard_resolve_public_core` cross-company fail** (self-auth)
+- Helper ACL inventory (core/internal/repair_internal/assert/tickets)
+- **Atomic failed backup leaves no durable schema**
+- Actual `01_backup` / `02_apply` / `03_rollback`
+- **Backup rerun → BACKUP_EXISTS, preserves run_id + post_apply**
+- Apply / repeat apply / drift / rollback / repeat rollback
+- Supplier / worker / courier posting + balance helpers
 
-## Scope labels
+## Scope
 
-| Scope | Meaning |
+| Scope | Status |
 |---|---|
-| AUTOMATIC | `journal_account_verified_remaps` |
-| HISTORICAL | IBRAHIM 2 lines in `backup_coa_limited_ibrahim_v1` |
+| AUTOMATIC remaps | `journal_account_verified_remaps` |
+| HISTORICAL repair | IBRAHIM 2 lines only |
 | ID LACE | **NOT IMPLEMENTED** |
 
-## Not covered here
+## Not covered / unverified
 
-- Live Supabase JWT HTTP matrix (labeled NOT EXECUTED)
+- Staging migrate apply
+- Live Supabase JWT HTTP matrix
 - UI E2E
-- Production migrate / historical repair apply
+- Production migrate / historical repair

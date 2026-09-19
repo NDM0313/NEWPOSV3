@@ -1,8 +1,9 @@
-﻿# JE account guard — isolated Postgres evidence
+﻿# JE account guard â€” isolated Postgres evidence
 
-- Generated: 2026-09-19T10:20:34Z
+- Generated: 2026-09-19T10:35:02Z
 - Production writes: none
 - Runner: Docker postgres:15 (PowerShell harness)
+- Base commit focus: helper self-auth + non-destructive backup
 
 ## minimal_schema
 - minimal_schema: OK
@@ -40,7 +41,7 @@ NOTICE:  SEED_PATH_CHECKS_PASSED
 - seed_paths: OK
 
 ## acl_set_role
-NOTICE:  PASS: catalog ACLs (resolve auth yes; repair/auth private no; service_role repair yes)
+NOTICE:  PASS: catalog ACLs (resolve+public_core auth yes; internals no; service_role repair yes)
 NOTICE:  PASS: SET ROLE authenticated cross-company resolve forbidden
 NOTICE:  PASS: SET ROLE authenticated unauthorized restore rejected
 NOTICE:  PASS: JWT/GUC spoof as authenticated did not change current_user=authenticated
@@ -48,17 +49,28 @@ NOTICE:  PASS: SET ROLE service_role repair_restore ok
 NOTICE:  ACL_SET_ROLE_CHECKS_PASSED
 - acl_set_role: OK
 
+## helper_auth
+NOTICE:  PASS: helper ACLs — public_core granted; core/internal/repair_internal/assert/tickets not client-executable
+NOTICE:  PASS: same-company resolve + direct public_core
+NOTICE:  PASS: direct public_core cross-company forbidden
+NOTICE:  PASS: resolve cross-company forbidden
+NOTICE:  PASS: unauthorized helper calls changed no state
+NOTICE:  HELPER_AUTH_REGRESSION_PASSED
+- helper_auth: OK
+
+## atomic_backup_fail
+NOTICE:  PASS: atomic fail raised BACKUP_MANIFEST_COUNT
+NOTICE:  PASS: aborted backup left no durable schema
+NOTICE:  ATOMIC_BACKUP_FAIL_PASSED
+- atomic_backup_fail: OK
+
 ## repair_preamble
 NOTICE:  PASS: missing backup apply aborted
 NOTICE:  REPAIR_SCRIPT_PREAMBLE_OK
 - repair_preamble: OK
 
 ## repair_01_backup
-NOTICE:  table "post_apply_lines" does not exist, skipping
-NOTICE:  table "pre_apply_lines" does not exist, skipping
-NOTICE:  table "manifest" does not exist, skipping
-NOTICE:  table "meta" does not exist, skipping
-NOTICE:  BACKUP_OK: durable schema backup_coa_limited_ibrahim_v1 with 2 IBRAHIM lines (ID LACE=NOT_IMPLEMENTED)
+NOTICE:  BACKUP_OK: durable schema backup_coa_limited_ibrahim_v1 run_id=ibrahim_v1_20260919103510 with 2 IBRAHIM lines (ID LACE=NOT_IMPLEMENTED)
 - repair_01_backup: OK
 
 ## repair_02_apply
@@ -69,6 +81,20 @@ NOTICE:  APPLY_OK: moved 2 IBRAHIM lines; legacy_net_before_move_context=118275.
 ## repair_02_apply_repeat
 NOTICE:  ALREADY_APPLIED: IBRAHIM 2 lines already on AP — safe no-op stop
 - repair_02_apply_repeat: OK
+
+## backup_prerun
+NOTICE:  PRE_RERUN_BACKUP: run_id=ibrahim_v1_20260919103510 post_apply=2
+- backup_prerun: OK
+
+## repair_01_backup_rerun
+NOTICE:  BACKUP_EXISTS: schema backup_coa_limited_ibrahim_v1 already has evidence — refuse overwrite (original backup/post_apply preserved). Safe no-op stop.
+- repair_01_backup_rerun: OK
+
+## backup_nondestructive
+NOTICE:  PASS: backup rerun preserved run_id=ibrahim_v1_20260919103510 post_apply=2 created_at=2026-09-19 10:35:10.721459+00
+NOTICE:  PASS: validation/exists path would refuse before destructive mutation
+NOTICE:  BACKUP_NONDESTRUCTIVE_REGRESSION_PASSED
+- backup_nondestructive: OK
 
 ## repair_post
 NOTICE:  PASS: apply moved 2 IBRAHIM lines
@@ -89,7 +115,7 @@ NOTICE:  ALREADY_ROLLED_BACK: safe no-op stop
 - AUTOMATIC remap scope: journal_account_verified_remaps
 - HISTORICAL repair scope: IBRAHIM 2 lines (backup_coa_limited_ibrahim_v1)
 - ID LACE: NOT_IMPLEMENTED
-- JWT/UI E2E: NOT EXECUTED
+- Staging JWT/UI E2E: NOT EXECUTED / UNVERIFIED
 - Production migrate/repair: NOT EXECUTED
   code  | count 
 --------+-------

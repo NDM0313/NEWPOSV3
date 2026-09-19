@@ -26,6 +26,9 @@ BEGIN
   IF NOT acl_resolve_auth THEN
     RAISE EXCEPTION 'FAIL: authenticated must EXECUTE resolve';
   END IF;
+  IF NOT has_function_privilege('authenticated', 'public._journal_account_guard_resolve_public_core(uuid,uuid)', 'execute') THEN
+    RAISE EXCEPTION 'FAIL: authenticated must EXECUTE public_core (self-authorizing helper)';
+  END IF;
   IF acl_resolve_anon THEN
     RAISE EXCEPTION 'FAIL: anon must not EXECUTE resolve';
   END IF;
@@ -35,13 +38,16 @@ BEGIN
   IF acl_core OR acl_internal THEN
     RAISE EXCEPTION 'FAIL: authenticated must not EXECUTE private core/internal';
   END IF;
+  IF has_function_privilege('service_role', 'public._repair_restore_journal_entry_line_account_internal(uuid,uuid,uuid,uuid,numeric,numeric,uuid)', 'execute') THEN
+    RAISE EXCEPTION 'FAIL: service_role must not EXECUTE repair internal directly';
+  END IF;
   IF acl_tickets THEN
     RAISE EXCEPTION 'FAIL: authenticated must not INSERT repair tickets';
   END IF;
   IF NOT has_function_privilege('service_role', 'public.repair_restore_journal_entry_line_account(uuid,uuid,uuid,uuid,numeric,numeric,uuid)', 'execute') THEN
     RAISE EXCEPTION 'FAIL: service_role must EXECUTE repair_restore';
   END IF;
-  RAISE NOTICE 'PASS: catalog ACLs (resolve auth yes; repair/auth private no; service_role repair yes)';
+  RAISE NOTICE 'PASS: catalog ACLs (resolve+public_core auth yes; internals no; service_role repair yes)';
 END $$;
 
 -- SET ROLE authenticated: company scope + forbidden restore + spoof GUC

@@ -38,6 +38,8 @@
 ## Safety
 
 - Missing backup → apply aborts.  
+- **Existing backup → `01_backup` refuses overwrite** (no DROP of meta/manifest/pre/post).  
+- Fresh backup is one transaction; validation failure rolls back with no durable evidence.  
 - Concurrent drift → apply/rollback abort.  
 - Post-apply edit → rollback aborts (no blind move).  
 - Repeat apply/rollback → NOTICE no-op when already in target state.

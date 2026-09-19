@@ -217,7 +217,66 @@ REVOKE ALL ON FUNCTION public._journal_account_guard_resolve_core(uuid, uuid, bo
 REVOKE ALL ON FUNCTION public._journal_account_guard_resolve_core(uuid, uuid, boolean) FROM authenticated;
 REVOKE ALL ON FUNCTION public._journal_account_guard_resolve_core(uuid, uuid, boolean) FROM service_role;
 
--- Narrow DEFINER for public callers: allow_inactive always false (cannot spoof via arg).
+-- Effective role for SET ROLE / login (usable inside SECURITY DEFINER).
+-- Custom GUCs (request.jwt.*, app.*) are NEVER used for privilege.
+CREATE OR REPLACE FUNCTION public._journal_account_guard_effective_role()
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+PARALLEL SAFE
+AS $$
+DECLARE
+  v_role text;
+BEGIN
+  v_role := NULLIF(btrim(current_setting('role', true)), '');
+  IF v_role IS NULL OR lower(v_role) = 'none' THEN
+    RETURN session_user::text;
+  END IF;
+  RETURN v_role;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public._journal_account_guard_effective_role() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._journal_account_guard_effective_role() FROM anon;
+REVOKE ALL ON FUNCTION public._journal_account_guard_effective_role() FROM authenticated;
+REVOKE ALL ON FUNCTION public._journal_account_guard_effective_role() FROM service_role;
+
+CREATE OR REPLACE FUNCTION public._journal_account_guard_assert_resolve_authorized(p_company_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_role text;
+BEGIN
+  v_role := public._journal_account_guard_effective_role();
+
+  IF v_role = 'authenticated' THEN
+    IF public.get_user_company_id() IS DISTINCT FROM p_company_id THEN
+      RAISE EXCEPTION
+        'JOURNAL_ACCOUNT_FORBIDDEN: resolver limited to caller company scope'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN;
+  END IF;
+
+  IF v_role IN ('service_role', 'postgres', 'supabase_admin') THEN
+    RETURN;
+  END IF;
+
+  RAISE EXCEPTION
+    'JOURNAL_ACCOUNT_FORBIDDEN: not authorized to resolve journal posting accounts'
+    USING ERRCODE = 'insufficient_privilege';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public._journal_account_guard_assert_resolve_authorized(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._journal_account_guard_assert_resolve_authorized(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public._journal_account_guard_assert_resolve_authorized(uuid) FROM authenticated;
+REVOKE ALL ON FUNCTION public._journal_account_guard_assert_resolve_authorized(uuid) FROM service_role;
+
+-- Client-executable DEFINER helper: MUST authorize itself (INVOKER wrapper is not enough).
 CREATE OR REPLACE FUNCTION public._journal_account_guard_resolve_public_core(
   p_company_id uuid,
   p_account_id uuid
@@ -228,6 +287,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  PERFORM public._journal_account_guard_assert_resolve_authorized(p_company_id);
   RETURN public._journal_account_guard_resolve_core(p_company_id, p_account_id, false);
 END;
 $$;
@@ -273,7 +333,7 @@ REVOKE ALL ON FUNCTION public._journal_account_guard_resolve_internal(uuid, uuid
 REVOKE ALL ON FUNCTION public._journal_account_guard_resolve_internal(uuid, uuid, uuid) FROM authenticated;
 REVOKE ALL ON FUNCTION public._journal_account_guard_resolve_internal(uuid, uuid, uuid) FROM service_role;
 
--- Public RPC: SECURITY INVOKER so current_user is the real caller (SET ROLE / ACL).
+-- Public RPC: thin INVOKER wrapper; DEFINER helper self-authorizes (direct helper call cannot bypass).
 CREATE OR REPLACE FUNCTION public.resolve_journal_posting_account_id(
   p_company_id uuid,
   p_account_id uuid
@@ -284,28 +344,12 @@ SECURITY INVOKER
 SET search_path = public
 AS $$
 BEGIN
-  -- Ignore any client GUCs — they never authorize.
-  IF current_user = 'authenticated' THEN
-    IF public.get_user_company_id() IS DISTINCT FROM p_company_id THEN
-      RAISE EXCEPTION
-        'JOURNAL_ACCOUNT_FORBIDDEN: resolver limited to caller company scope'
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-  ELSIF current_user IN ('service_role', 'postgres', 'supabase_admin') THEN
-    NULL;
-  ELSE
-    RAISE EXCEPTION
-      'JOURNAL_ACCOUNT_FORBIDDEN: not authorized to resolve journal posting accounts'
-      USING ERRCODE = 'insufficient_privilege';
-  END IF;
-
-  -- Public path never allows inactive (no ticket consumption here).
   RETURN public._journal_account_guard_resolve_public_core(p_company_id, p_account_id);
 END;
 $$;
 
 COMMENT ON FUNCTION public.resolve_journal_posting_account_id(uuid, uuid) IS
-  'Authorized public resolve (INVOKER). Active same-company passes; inactive needs verified remap. GUCs never grant privilege.';
+  'Authorized public resolve (INVOKER). DEFINER helper enforces company/role itself; GUCs never grant privilege.';
 
 -- Privileged exact-line restore (historical repair rollback). INVOKER gate + DEFINER work.
 CREATE OR REPLACE FUNCTION public._repair_restore_journal_entry_line_account_internal(
@@ -401,8 +445,8 @@ $$;
 REVOKE ALL ON FUNCTION public._repair_restore_journal_entry_line_account_internal(uuid, uuid, uuid, uuid, numeric, numeric, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public._repair_restore_journal_entry_line_account_internal(uuid, uuid, uuid, uuid, numeric, numeric, uuid) FROM anon;
 REVOKE ALL ON FUNCTION public._repair_restore_journal_entry_line_account_internal(uuid, uuid, uuid, uuid, numeric, numeric, uuid) FROM authenticated;
--- service_role may call internal only via repair_restore INVOKER gate (same EXECUTE needed).
-GRANT EXECUTE ON FUNCTION public._repair_restore_journal_entry_line_account_internal(uuid, uuid, uuid, uuid, numeric, numeric, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public._repair_restore_journal_entry_line_account_internal(uuid, uuid, uuid, uuid, numeric, numeric, uuid) FROM service_role;
+-- Owner-only internal; public repair entry is SECURITY DEFINER and self-authorizes.
 
 CREATE OR REPLACE FUNCTION public.repair_restore_journal_entry_line_account(
   p_company_id uuid,
@@ -415,12 +459,15 @@ CREATE OR REPLACE FUNCTION public.repair_restore_journal_entry_line_account(
 )
 RETURNS uuid
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_role text;
 BEGIN
-  -- Real caller role (works with SET ROLE). JWT/GUC text alone never grants this.
-  IF current_user NOT IN ('service_role', 'postgres', 'supabase_admin') THEN
+  -- Self-authorize via SET ROLE / session_user. JWT/GUC text never grants privilege.
+  v_role := public._journal_account_guard_effective_role();
+  IF v_role NOT IN ('service_role', 'postgres', 'supabase_admin') THEN
     RAISE EXCEPTION
       'JOURNAL_REPAIR_FORBIDDEN: inactive restore requires privileged repair role (service_role/admin), not a session GUC'
       USING ERRCODE = 'insufficient_privilege';
@@ -439,7 +486,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.repair_restore_journal_entry_line_account(uuid, uuid, uuid, uuid, numeric, numeric, uuid) IS
-  'Privileged exact-line inactive restore for historical repair rollback. INVOKER-authorized; ticket-scoped.';
+  'Privileged exact-line inactive restore. DEFINER self-authorizes; ticket-scoped; GUCs never grant privilege.';
 
 -- Trigger: private internal resolve only. GUCs ignored for privilege.
 CREATE OR REPLACE FUNCTION public.trg_guard_journal_entry_line_account()

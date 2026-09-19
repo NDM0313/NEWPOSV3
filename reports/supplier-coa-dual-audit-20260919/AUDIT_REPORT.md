@@ -72,7 +72,7 @@
 | `partyAttributedGlLedgerService.ts` | Attributed history across linked leaves; AP totals stay 2000-only |
 | Account Statements panel | Component nets + optional outside-official rows |
 | Add Entry / ControlLinkedPartiesSheet | Party assist + guards |
-| `repair-package/` | IBRAHIM 2 lines + optional ID LACE — scripts not executed |
+| `repair-package/` | IBRAHIM 2 lines **IMPLEMENTED** (non-destructive backup); **ID LACE NOT IMPLEMENTED** — scripts not executed on prod |
 
 **IBRAHIM expected (read-only):** legacy net Dr−Cr 118,275; AP before −4,740,529; after remap −4,622,254. Lines JE-0137 / JE-0138.
 
