@@ -26,13 +26,18 @@ Owner could not conveniently post General Journal to a supplier; workarounds use
 
 Migration `20260919140000_journal_posting_account_guard_and_verified_remaps.sql`:
 
-- BEFORE INSERT / UPDATE OF `account_id` on `journal_entry_lines`
-- Missing / wrong-company → actionable exception
-- Inactive → resolve via **verified remap** or exception (linked_contact_id alone insufficient when unlinked)
-- Unchanged `account_id` on UPDATE → allow (historical edits / voids that do not retarget)
-- Does **not** globally reject supplier JEs or non-2000 accounts
+- BEFORE INSERT / UPDATE OF `account_id`, `journal_entry_id` on `journal_entry_lines`
+- Early-return only when **both** `account_id` and `journal_entry_id` unchanged
+- Missing / wrong-company / retired → actionable exception, or verified remap
+- `SET LOCAL app.journal_account_guard_mode = 'allow_inactive_restore'` for repair rollback only
+- Account / JE `company_id` reassignment blocked when lines exist
+- Resolver: REVOKE PUBLIC; authenticated company-scoped; service_role; internal GUC for trigger
+- Seed: backup identity via `contact_id`; conflicting maps **FAIL** (not silent DO NOTHING)
+- Remap events in `journal_account_guard_events`
 
-Client guards in `journalPartyPosting.ts` + `createPureJournalEntry` mirror the same remap list when the table is readable.
+**Production install status (2026-09-19 read-only):** NOT installed. Isolated Docker Postgres verification: PASSED — `reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md`.
+
+Client guards in `journalPartyPosting.ts` + `createPureJournalEntry` mirror remaps when the table is readable.
 
 ## General Entry UX
 
