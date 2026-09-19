@@ -1,43 +1,99 @@
 ﻿# JE account guard — isolated Postgres evidence
 
-- Generated: 2026-09-19T09:00:49Z
+- Generated: 2026-09-19T10:20:34Z
 - Production writes: none
-- Runner: Docker postgres:15
+- Runner: Docker postgres:15 (PowerShell harness)
 
-## 1. Minimal schema
-- applied 00_minimal_schema.sql
+## minimal_schema
+- minimal_schema: OK
 
-## 2. Migration apply
-NOTICE:  policy "journal_account_verified_remaps_select_company" for relation "public.journal_account_verified_remaps" does not exist, skipping
-NOTICE:  policy "journal_account_guard_events_select_company" for relation "public.journal_account_guard_events" does not exist, skipping
-NOTICE:  journal_account_verified_remaps: backup merge_pairs ABSENT â€” seed skipped (0 rows)
-NOTICE:  trigger "trg_guard_journal_entry_line_account" for relation "public.journal_entry_lines" does not exist, skipping
-NOTICE:  trigger "trg_accounts_reject_company_reassign_with_lines" for relation "public.accounts" does not exist, skipping
-NOTICE:  trigger "trg_journal_entries_reject_company_reassign" for relation "public.journal_entries" does not exist, skipping
+NOTICE:  journal_account_verified_remaps: backup merge_pairs ABSENT — seed skipped (0 rows). AUTOMATIC remap scope empty until backup present or manual verified inserts.
 COMMIT
-- migration apply: OK
-
-## 3. Triggers on journal_entry_lines
-- trg_guard_journal_entry_line_account
-
-## 4. Cases
+## cases
 NOTICE:  PASS: retired without remap rejected
-NOTICE:  PASS: insert remapped + event
+NOTICE:  PASS: insert remapped + event with line_id
 NOTICE:  PASS: non-key update preserved account
 NOTICE:  PASS: explicit same active account_id update ok
 NOTICE:  PASS: wrong-company rejected
 NOTICE:  PASS: journal_entry_id reassignment revalidated
 NOTICE:  PASS: conflicting second insert unique-blocked
 NOTICE:  PASS: remap identity mismatch rejected
-NOTICE:  PASS: allow_inactive_restore rollback path
+NOTICE:  PASS: legacy→worker role remap rejected
+NOTICE:  PASS: GUC spoof did not grant inactive restore (account=2c56a1d1-e31d-433f-85af-ce3fd4729312)
+NOTICE:  PASS: privileged repair_restore inactive path
 NOTICE:  PASS: account company reassign blocked
 NOTICE:  PASS: JE company reassign blocked
-NOTICE:  PASS: resolver execute ACLs (authenticated/service_role yes, anon no)
+NOTICE:  PASS: legitimate supplier/worker/courier posting + balance triggers
+NOTICE:  PASS: resolver after trigger in same txn
 NOTICE:  ALL_ISOLATED_CHECKS_PASSED
-- cases: PASSED
+- cases: OK
 
-## 5. Environment notes
-- Production: guard NOT installed (read-only MCP before this run).
-- Staging JWT matrix: UNVERIFIED.
-- Missing backup seed path: NOTICE showed ABSENT — 0 rows (verified in migration apply).
-- Vitest fixtures: separate from this SQL run.
+## seed_paths
+NOTICE:  SEED_STATE: backup_source_rows=0 (missing-backup migrate left automatic seed empty)
+NOTICE:  table "merge_pairs" does not exist, skipping
+NOTICE:  PASS: seed identity mismatch detected (AP link wrong)
+NOTICE:  PASS: conflicting seed would fail reviewably (existing=cccccccc-cccc-cccc-cccc-ccccccccccc1 backup wants=2c56a1d1-e31d-433f-85af-ce3fd4729312)
+NOTICE:  PASS: backup-present seed path restored correct AUTOMATIC map
+NOTICE:  PASS: repeat migration seed identical_skip
+NOTICE:  PASS: backup-present seed re-run eligible=1 inserted=0 identical_skip=1
+NOTICE:  SEED_PATH_CHECKS_PASSED
+- seed_paths: OK
+
+## acl_set_role
+NOTICE:  PASS: catalog ACLs (resolve auth yes; repair/auth private no; service_role repair yes)
+NOTICE:  PASS: SET ROLE authenticated cross-company resolve forbidden
+NOTICE:  PASS: SET ROLE authenticated unauthorized restore rejected
+NOTICE:  PASS: JWT/GUC spoof as authenticated did not change current_user=authenticated
+NOTICE:  PASS: SET ROLE service_role repair_restore ok
+NOTICE:  ACL_SET_ROLE_CHECKS_PASSED
+- acl_set_role: OK
+
+## repair_preamble
+NOTICE:  PASS: missing backup apply aborted
+NOTICE:  REPAIR_SCRIPT_PREAMBLE_OK
+- repair_preamble: OK
+
+## repair_01_backup
+NOTICE:  table "post_apply_lines" does not exist, skipping
+NOTICE:  table "pre_apply_lines" does not exist, skipping
+NOTICE:  table "manifest" does not exist, skipping
+NOTICE:  table "meta" does not exist, skipping
+NOTICE:  BACKUP_OK: durable schema backup_coa_limited_ibrahim_v1 with 2 IBRAHIM lines (ID LACE=NOT_IMPLEMENTED)
+- repair_01_backup: OK
+
+## repair_02_apply
+NOTICE:  table "post_apply_lines" does not exist, skipping
+NOTICE:  APPLY_OK: moved 2 IBRAHIM lines; legacy_net_before_move_context=118275.00 ap_before=0 ap_after=118275.00
+- repair_02_apply: OK
+
+## repair_02_apply_repeat
+NOTICE:  ALREADY_APPLIED: IBRAHIM 2 lines already on AP — safe no-op stop
+- repair_02_apply_repeat: OK
+
+## repair_post
+NOTICE:  PASS: apply moved 2 IBRAHIM lines
+NOTICE:  PASS: repeat apply would be ALREADY_APPLIED no-op
+NOTICE:  PASS: post-apply edit detected — rollback would abort for 677c74de-b677-4a6f-877f-b13e0ac66aaa
+NOTICE:  REPAIR_POST_CHECKS_READY_FOR_ROLLBACK
+- repair_post: OK
+
+## repair_03_rollback
+NOTICE:  ROLLBACK_OK: restored 2 IBRAHIM lines via repair_restore
+- repair_03_rollback: OK
+
+## repair_03_rollback_repeat
+NOTICE:  ALREADY_ROLLED_BACK: safe no-op stop
+- repair_03_rollback_repeat: OK
+
+## Scope notes
+- AUTOMATIC remap scope: journal_account_verified_remaps
+- HISTORICAL repair scope: IBRAHIM 2 lines (backup_coa_limited_ibrahim_v1)
+- ID LACE: NOT_IMPLEMENTED
+- JWT/UI E2E: NOT EXECUTED
+- Production migrate/repair: NOT EXECUTED
+  code  | count 
+--------+-------
+ 210026 |     2
+(1 row)
+
+

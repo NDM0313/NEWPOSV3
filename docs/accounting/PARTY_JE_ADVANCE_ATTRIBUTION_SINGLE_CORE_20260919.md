@@ -29,13 +29,14 @@ Migration `20260919140000_journal_posting_account_guard_and_verified_remaps.sql`
 - BEFORE INSERT / UPDATE OF `account_id`, `journal_entry_id` on `journal_entry_lines`
 - Early-return only when **both** `account_id` and `journal_entry_id` unchanged
 - Missing / wrong-company / retired → actionable exception, or verified remap
-- `SET LOCAL app.journal_account_guard_mode = 'allow_inactive_restore'` for repair rollback only
+- Public `resolve_journal_posting_account_id` / `repair_restore_*` are **SECURITY INVOKER** (real `current_user` / SET ROLE); private DEFINER helpers hold table work
+- Inactive restore only via exact-line `_journal_account_repair_tickets` inserted by privileged repair — **custom GUCs never grant privilege**
+- Remap events store `journal_entry_line_id` on INSERT when id is available
 - Account / JE `company_id` reassignment blocked when lines exist
-- Resolver: REVOKE PUBLIC; authenticated company-scoped; service_role; internal GUC for trigger
-- Seed: backup identity via `contact_id`; conflicting maps **FAIL** (not silent DO NOTHING)
-- Remap events in `journal_account_guard_events`
+- Seed: backup identity via `contact_id`; AP-* role check; conflicting maps **FAIL**
+- **AUTOMATIC scope:** `journal_account_verified_remaps`. **HISTORICAL:** IBRAHIM repair package only. **ID LACE: NOT IMPLEMENTED**
 
-**Production install status (2026-09-19 read-only):** NOT installed. Isolated Docker Postgres verification: PASSED — `reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md`.
+**Production install status:** NOT installed (read-only check). Isolated Docker verification: `reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md`.
 
 Client guards in `journalPartyPosting.ts` + `createPureJournalEntry` mirror remaps when the table is readable.
 
@@ -54,7 +55,7 @@ Client guards in `journalPartyPosting.ts` + `createPureJournalEntry` mirror rema
 
 ## Limited repair (not applied this phase)
 
-See [`reports/supplier-coa-dual-audit-20260919/repair-package/`](../../reports/supplier-coa-dual-audit-20260919/repair-package/) — IBRAHIM 2 lines + optional ID LACE only. DHL / KIRAN / SHAHMIM hold; DHL PK separate.
+See [`reports/supplier-coa-dual-audit-20260919/repair-package/`](../../reports/supplier-coa-dual-audit-20260919/repair-package/) — **IBRAHIM 2 lines IMPLEMENTED**; **ID LACE NOT IMPLEMENTED**. DHL / KIRAN / SHAHMIM hold; DHL PK separate.
 
 ## Out of scope this phase
 

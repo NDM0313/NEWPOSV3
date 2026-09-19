@@ -12,21 +12,28 @@ Evidence is written to `EVIDENCE.md` in this folder (no credentials, no prod dum
 
 ## What is covered (real SQL)
 
-- Migration apply atomicity (single transaction)
-- Missing backup seed (0 rows + notice)
-- Conflicting remap fails reviewably
-- Valid remap inserts; repeat migration seed idempotent for identical maps
-- INSERT retired without map → reject
-- INSERT retired with map → remap + guard event
-- UPDATE account_id same value only (other cols) → no remap
-- UPDATE journal_entry_id with same account → re-validate company
-- Wrong-company account → reject
-- `allow_inactive_restore` GUC for rollback path
-- Account / JE company_id reassignment blocked when lines exist
-- PUBLIC execute revoked on resolver
+- Migration apply; missing backup seed notice (0 rows)
+- Backup-present / identity mismatch / conflicting seed / repeat identical skip
+- INSERT retired without map → reject; with map → remap + **line_id** in events
+- UPDATE non-key cols preserved; `journal_entry_id` reassignment revalidated
+- Wrong-company reject; legacy→non-AP role remap reject
+- GUC/`journal_account_guard_internal` spoof does **not** authorize inactive restore
+- Privileged `repair_restore` ticket path; unauthorized SET ROLE authenticated denied
+- Catalog ACLs + real `SET ROLE authenticated` / `SET ROLE service_role`
+- Resolver after trigger in same transaction
+- Legitimate supplier / worker / courier posting + balance/totals helpers
+- Actual `01_backup` / `02_apply` / `03_rollback` scripts including missing backup, repeat no-op, post-apply edit drift
+
+## Scope labels
+
+| Scope | Meaning |
+|---|---|
+| AUTOMATIC | `journal_account_verified_remaps` |
+| HISTORICAL | IBRAHIM 2 lines in `backup_coa_limited_ibrahim_v1` |
+| ID LACE | **NOT IMPLEMENTED** |
 
 ## Not covered here
 
-- Live Supabase JWT `authenticated` role matrix (labeled UNVERIFIED without staging project)
-- Mobile/import client HTTP paths (same DB trigger covers inserts)
+- Live Supabase JWT HTTP matrix (labeled NOT EXECUTED)
 - UI E2E
+- Production migrate / historical repair apply

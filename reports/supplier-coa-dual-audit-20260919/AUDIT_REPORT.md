@@ -76,6 +76,12 @@
 
 **IBRAHIM expected (read-only):** legacy net Dr−Cr 118,275; AP before −4,740,529; after remap −4,622,254. Lines JE-0137 / JE-0138.
 
+**Scopes (do not conflate):**
+- **AUTOMATIC:** `journal_account_verified_remaps` (new posts to retired IDs).
+- **HISTORICAL repair:** IBRAHIM 2 lines only — `repair-package/` with schema `backup_coa_limited_ibrahim_v1`.
+- **ID LACE:** **NOT IMPLEMENTED** (separate reviewed package required).
+
+
 ## 5. Repair preview (revised — DO NOT APPLY)
 
 See CSV + [`repair-package/`](repair-package/).

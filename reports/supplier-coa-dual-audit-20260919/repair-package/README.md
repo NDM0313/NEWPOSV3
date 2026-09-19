@@ -1,36 +1,43 @@
-# Limited repair package — IBRAHIM residual + ID LACE only
+# Limited repair package — IBRAHIM residual ONLY
 
 **Date:** 2026-09-19  
 **Company:** DIN COLLECTION `e08a04af-22a8-4869-9b4d-da31fce13158`  
-**Status:** READ-ONLY scripts — **do not apply** until owner approves + posting guard migration is live.
+**Durable schema:** `backup_coa_limited_ibrahim_v1`  
+**Status:** Scripts only — **do not apply** until owner approves + guard migration installed.
 
-## Candidates (revised)
+## Scope
 
-| Party | Class | Action |
-|---|---|---|
-| IBRAHIM BNRS `SUP-ZHD-0026` | B | Remap **2** leftover JE lines on retired `210026` → `AP-SUPZHD0026` |
-| ID LACE `SUP-ZHD-0027` | C | Optional full legacy→AP remap after owner OK |
-| DHL / KIRAN / SHAHMIM | R hold | **Excluded** |
-| DHL PK | E | **Excluded** (separate contact) |
+| Party | Status |
+|---|---|
+| IBRAHIM BNRS — 2 JE lines (`JE-0137` / `JE-0138`) | **IMPLEMENTED** (Class B) |
+| ID LACE | **NOT IMPLEMENTED** — needs a separate reviewed package before any script |
+| DHL / KIRAN / SHAHMIM | Hold |
+| DHL PK | Separate / blocked |
 
-## Prerequisites before apply
+## Automatic remap scope vs historical repair
 
-1. Deploy / apply migration `20260919140000_journal_posting_account_guard_and_verified_remaps.sql` on the target DB (staging first). Confirm INSTALL (table + trigger) — do not infer from the repo file alone.
-2. Confirm `journal_account_verified_remaps` contains exact IBRAHIM row `210026` → `AP-SUPZHD0026` with matching `expected_contact_id`. If backup was absent at migrate time, insert that verified row manually after review.
-3. New backup schema (do **not** overwrite `backup_coa_merge_20260916`).
-4. Run `00_readonly_verify.sql` — row counts must match manifest.
+| Scope | What |
+|---|---|
+| **AUTOMATIC** | `journal_account_verified_remaps` seeded from Sept16 `merge_pairs` (inactive legacy → `AP-*`). Protects *new* posts to retired IDs. |
+| **HISTORICAL repair** | This package moves **exactly two** existing IBRAHIM line IDs. Distinct from automatic seed. |
+| **ID LACE** | **NOT IMPLEMENTED** here. |
 
-## Rollback vs guard
+## Prerequisites
 
-`03_rollback.sql` sets `SET LOCAL app.journal_account_guard_mode = 'allow_inactive_restore'` so restoring retired `210026` is **not** silently remapped back to AP. Do not globally disable the trigger.
+1. Guard migration installed (tables + trigger + `repair_restore_journal_entry_line_account`).
+2. Exact IBRAHIM remap row present in `journal_account_verified_remaps`.
+3. Run as privileged DB role / `service_role` (rollback uses repair RPC; GUC alone is not enough and is ignored for privilege).
+4. Schema name is fixed: `backup_coa_limited_ibrahim_v1` (01/02/03 must match).
 
-## Deploy / repair order
+## Order
 
-1. Ship app + migration (guards) — no line remaps yet.  
-2. Staging smoke: retired UUID → remap or reject; General JE party assist; attributed components on Account Statements.  
-3. Owner approves Class B (and optionally C).  
-4. Run `01_backup.sql` → `02_apply.sql` → verify → keep `03_rollback.sql` ready.  
+1. `01_backup.sql` — durable manifest + pre_apply snapshot; aborts if count ≠ 2  
+2. `02_apply.sql` — validates company/JE/status/amounts; already-applied = safe no-op; checks AP balance delta  
+3. `03_rollback.sql` — compares to `post_apply_lines`; aborts on later edits; uses `repair_restore_journal_entry_line_account`
 
-## Rollback
+## Safety
 
-`03_rollback.sql` restores **only** remapped `journal_entry_lines.id` values from the new backup — never a blind Sept16 re-merge.
+- Missing backup → apply aborts.  
+- Concurrent drift → apply/rollback abort.  
+- Post-apply edit → rollback aborts (no blind move).  
+- Repeat apply/rollback → NOTICE no-op when already in target state.
