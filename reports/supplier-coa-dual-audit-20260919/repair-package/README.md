@@ -15,10 +15,14 @@
 
 ## Prerequisites before apply
 
-1. Deploy / apply migration `20260919140000_journal_posting_account_guard_and_verified_remaps.sql` (seeds remaps from `backup_coa_merge_20260916.merge_pairs`).
-2. Confirm `journal_account_verified_remaps` contains `210026` → `AP-SUPZHD0026`.
+1. Deploy / apply migration `20260919140000_journal_posting_account_guard_and_verified_remaps.sql` on the target DB (staging first). Confirm INSTALL (table + trigger) — do not infer from the repo file alone.
+2. Confirm `journal_account_verified_remaps` contains exact IBRAHIM row `210026` → `AP-SUPZHD0026` with matching `expected_contact_id`. If backup was absent at migrate time, insert that verified row manually after review.
 3. New backup schema (do **not** overwrite `backup_coa_merge_20260916`).
 4. Run `00_readonly_verify.sql` — row counts must match manifest.
+
+## Rollback vs guard
+
+`03_rollback.sql` sets `SET LOCAL app.journal_account_guard_mode = 'allow_inactive_restore'` so restoring retired `210026` is **not** silently remapped back to AP. Do not globally disable the trigger.
 
 ## Deploy / repair order
 

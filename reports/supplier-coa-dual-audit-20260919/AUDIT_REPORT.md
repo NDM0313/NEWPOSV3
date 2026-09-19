@@ -94,10 +94,11 @@ Mechanism for B/C only (next authorized phase): new backup schema → line `acco
 ## 6. Focused verification checklist (local)
 
 - [x] Unit/fixtures: active legacy; verified remap for unlinked retired; multi-party line attribution; worker dual requires pick; courier 203x
-- [ ] Staging E2E UI: worker advance→charge→settle — **UNVERIFIED**
-- [ ] Staging E2E: courier deposit→parcel — **UNVERIFIED**
-- [ ] Staging E2E: supplier GE + payment screen — **UNVERIFIED**
-- [ ] Staging: server trigger after migration apply — **UNVERIFIED** (migration not applied to prod)
+- [x] Isolated Docker Postgres: migration apply; trigger bypass cases; ACLs; restore GUC; company reassign blocks — see `verification/EVIDENCE.md`
+- [ ] Staging E2E UI + live Supabase JWT matrix — **UNVERIFIED**
+- [ ] Production migration install — **NOT installed** (read-only MCP 2026-09-19)
+
+**Do not claim IBRAHIM automatic remap on production until** `journal_account_verified_remaps` row for `210026`→`AP-SUPZHD0026` exists after migrate (backup present → seed; else manual verified insert).
 
 ## 7. Roman Urdu decision summary
 
