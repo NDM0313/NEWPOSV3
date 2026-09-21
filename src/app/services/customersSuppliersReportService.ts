@@ -131,7 +131,13 @@ export async function loadCustomersSuppliersReport(
     return { rows: [], error: error.message, source: 'rpc' };
   }
 
-  const rows = ((data as RpcRow[] | null) ?? []).map(mapRpcRow);
+  const rows = ((data as RpcRow[] | null) ?? [])
+    .map(mapRpcRow)
+    // Prospective role model: workers/couriers are not merchandise suppliers/customers.
+    .filter((r) => {
+      const t = String(r.contactType || '').toLowerCase();
+      return t !== 'worker' && !t.includes('worker') && t !== 'courier' && !t.includes('courier');
+    });
   return { rows, error: null, source: 'rpc' };
 }
 

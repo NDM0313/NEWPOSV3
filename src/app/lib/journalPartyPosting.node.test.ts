@@ -104,6 +104,10 @@ describe('Add Entry V2 client journal party guards', () => {
   it('Case G: worker multi-leaf requires explicit pick; courier allowed', () => {
     assert.equal(listPartyJeAccountChoices(accounts, 'c-worker').length, 2);
     assert.equal(resolvePartyLinkedAccountId(accounts, 'c-worker'), null);
+    assert.equal(
+      resolvePartyLinkedAccountId(accounts, 'c-worker', { workerIntent: 'advance' }),
+      'wa',
+    );
     const pure = assertPureJournalAccounts(accounts, 'cash', 'courier');
     assert.equal(pure.ok, true);
   });

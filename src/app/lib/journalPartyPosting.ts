@@ -44,6 +44,7 @@ export function journalPartyRoleHintFromContactType(
 ): JournalPartyRoleHint {
   const t = String(contactType || '').toLowerCase();
   if (t.includes('worker')) return 'worker';
+  if (t.includes('courier')) return 'courier';
   if (t.includes('customer') && !t.includes('supplier')) return 'customer_ar';
   if (t.includes('supplier') || t === 'both' || t === 'money_exchange') return 'supplier_ap';
   return 'generic';
@@ -140,18 +141,44 @@ export function listPartyJeAccountChoices(
  * Prefer canonical AP-/AR- only when it is the sole linked active account,
  * or when preferCanonical and exactly one canonical exists among linked.
  * When multiple valid accounts exist, returns null — UI must require a pick.
+ *
+ * Worker: if both WA and WP exist, never silent-pick unless workerIntent is set.
+ * Courier: prefer single 203x leaf when sole courier component.
  */
 export function resolvePartyLinkedAccountId(
   accounts: JournalAccountLike[],
   contactId: string,
-  opts?: { preferCanonical?: boolean; requireSingle?: boolean },
+  opts?: {
+    preferCanonical?: boolean;
+    requireSingle?: boolean;
+    /** Explicit worker side when WA+WP both linked */
+    workerIntent?: 'advance' | 'payable' | null;
+  },
 ): string | null {
-  const choices = listPartyJeAccountChoices(accounts, contactId);
+  let choices = listPartyJeAccountChoices(accounts, contactId);
+  if (choices.length === 0) return null;
+
+  const hasWa = choices.some((c) => c.component === 'worker_1180');
+  const hasWp = choices.some((c) => c.component === 'worker_2010');
+  if (hasWa && hasWp) {
+    if (opts?.workerIntent === 'advance') {
+      choices = choices.filter((c) => c.component === 'worker_1180');
+    } else if (opts?.workerIntent === 'payable') {
+      choices = choices.filter((c) => c.component === 'worker_2010');
+    } else {
+      return null;
+    }
+  }
+
   if (choices.length === 0) return null;
   if (opts?.requireSingle !== false && choices.length > 1) {
     if (opts?.preferCanonical !== false) {
       const canonical = choices.filter((c) => isCanonicalPartySubledgerCode(c.code));
       if (canonical.length === 1) return canonical[0].accountId;
+    }
+    const courierOnly = choices.filter((c) => c.component === 'courier_2030');
+    if (courierOnly.length === 1 && choices.length === courierOnly.length) {
+      return courierOnly[0].accountId;
     }
     return null;
   }

@@ -75,6 +75,7 @@ describe('journalPartyPosting', () => {
   it('maps contact types to role hints without mutating contacts', () => {
     expect(journalPartyRoleHintFromContactType('supplier')).toBe('supplier_ap');
     expect(journalPartyRoleHintFromContactType('worker')).toBe('worker');
+    expect(journalPartyRoleHintFromContactType('courier')).toBe('courier');
     expect(journalPartyRoleHintFromContactType('customer')).toBe('customer_ar');
   });
 
@@ -85,6 +86,13 @@ describe('journalPartyPosting', () => {
     expect(resolvePartyLinkedAccountId(accounts, 'c-dhl')).toBe('ap-dhl');
     expect(resolvePartyLinkedAccountId(accounts, 'c-worker')).toBeNull();
     expect(listPartyJeAccountChoices(accounts, 'c-worker')).toHaveLength(2);
+    expect(
+      resolvePartyLinkedAccountId(accounts, 'c-worker', { workerIntent: 'advance' }),
+    ).toBe('wa-worker');
+    expect(
+      resolvePartyLinkedAccountId(accounts, 'c-worker', { workerIntent: 'payable' }),
+    ).toBe('wp-worker');
+    expect(resolvePartyLinkedAccountId(accounts, 'c-courier')).toBe('courier-leaf');
   });
 
   it('classifies worker and courier components', () => {
