@@ -1,125 +1,71 @@
-﻿# JE account guard â€” isolated Postgres evidence
+# JE account guard — focused review-blocker evidence
 
-- Generated: 2026-09-19T10:35:02Z
-- Production writes: none
-- Runner: Docker postgres:15 (PowerShell harness)
-- Base commit focus: helper self-auth + non-destructive backup
+- Verified: 2026-09-21
+- Environment: GitHub Actions `ubuntu-latest` + isolated Docker `postgres:15`
+- Verified code SHA: `d246e3805d1989b84dc7d8146a5a02ce0b6277ed`
+- Passing run: https://github.com/NDM0313/NEWPOSV3/actions/runs/35595125995
+- Production writes: **NONE**
+- Production migration/repair: **NOT EXECUTED**
+- Staging/JWT/UI E2E: **NOT EXECUTED / UNVERIFIED**
+- Historical repair scope: **IBRAHIM only — 2 exact lines**
+- ID LACE: **NOT_IMPLEMENTED**
+- Other repair holds: **UNCHANGED**
 
-## minimal_schema
-- minimal_schema: OK
+## Review blocker 1 — privileged helper authorization
 
-NOTICE:  journal_account_verified_remaps: backup merge_pairs ABSENT — seed skipped (0 rows). AUTOMATIC remap scope empty until backup present or manual verified inserts.
-COMMIT
-## cases
-NOTICE:  PASS: retired without remap rejected
-NOTICE:  PASS: insert remapped + event with line_id
-NOTICE:  PASS: non-key update preserved account
-NOTICE:  PASS: explicit same active account_id update ok
-NOTICE:  PASS: wrong-company rejected
-NOTICE:  PASS: journal_entry_id reassignment revalidated
-NOTICE:  PASS: conflicting second insert unique-blocked
-NOTICE:  PASS: remap identity mismatch rejected
-NOTICE:  PASS: legacy→worker role remap rejected
-NOTICE:  PASS: GUC spoof did not grant inactive restore (account=2c56a1d1-e31d-433f-85af-ce3fd4729312)
-NOTICE:  PASS: privileged repair_restore inactive path
-NOTICE:  PASS: account company reassign blocked
-NOTICE:  PASS: JE company reassign blocked
-NOTICE:  PASS: legitimate supplier/worker/courier posting + balance triggers
-NOTICE:  PASS: resolver after trigger in same txn
-NOTICE:  ALL_ISOLATED_CHECKS_PASSED
-- cases: OK
+PASS on real PostgreSQL:
 
-## seed_paths
-NOTICE:  SEED_STATE: backup_source_rows=0 (missing-backup migrate left automatic seed empty)
-NOTICE:  table "merge_pairs" does not exist, skipping
-NOTICE:  PASS: seed identity mismatch detected (AP link wrong)
-NOTICE:  PASS: conflicting seed would fail reviewably (existing=cccccccc-cccc-cccc-cccc-ccccccccccc1 backup wants=2c56a1d1-e31d-433f-85af-ce3fd4729312)
-NOTICE:  PASS: backup-present seed path restored correct AUTOMATIC map
-NOTICE:  PASS: repeat migration seed identical_skip
-NOTICE:  PASS: backup-present seed re-run eligible=1 inserted=0 identical_skip=1
-NOTICE:  SEED_PATH_CHECKS_PASSED
-- seed_paths: OK
+- Effective ACL inspection confirms authenticated can execute the intended public resolver/helper only; private resolve core, internal trigger resolver, repair internal helper, role helper/assert helper, and repair-ticket mutation are not client-executable.
+- `SET ROLE authenticated` same-company public resolution succeeds.
+- Direct authenticated call to `_journal_account_guard_resolve_public_core` for another company is rejected.
+- Public resolver for another company is rejected.
+- Unauthorized calls do not change journal line state.
+- JWT/custom-GUC role spoofing does not elevate privileges.
+- Privileged exact-line repair remains available to `service_role`.
+- Marker: `HELPER_AUTH_REGRESSION_PASSED`
+- Marker: `ACL_SET_ROLE_CHECKS_PASSED`
 
-## acl_set_role
-NOTICE:  PASS: catalog ACLs (resolve+public_core auth yes; internals no; service_role repair yes)
-NOTICE:  PASS: SET ROLE authenticated cross-company resolve forbidden
-NOTICE:  PASS: SET ROLE authenticated unauthorized restore rejected
-NOTICE:  PASS: JWT/GUC spoof as authenticated did not change current_user=authenticated
-NOTICE:  PASS: SET ROLE service_role repair_restore ok
-NOTICE:  ACL_SET_ROLE_CHECKS_PASSED
-- acl_set_role: OK
+Authorization remains based on effective database role + caller company lookup, not a custom authorization GUC.
 
-## helper_auth
-NOTICE:  PASS: helper ACLs — public_core granted; core/internal/repair_internal/assert/tickets not client-executable
-NOTICE:  PASS: same-company resolve + direct public_core
-NOTICE:  PASS: direct public_core cross-company forbidden
-NOTICE:  PASS: resolve cross-company forbidden
-NOTICE:  PASS: unauthorized helper calls changed no state
-NOTICE:  HELPER_AUTH_REGRESSION_PASSED
-- helper_auth: OK
+## Review blocker 2 — immutable/atomic backup package
 
-## atomic_backup_fail
-NOTICE:  PASS: atomic fail raised BACKUP_MANIFEST_COUNT
-NOTICE:  PASS: aborted backup left no durable schema
-NOTICE:  ATOMIC_BACKUP_FAIL_PASSED
-- atomic_backup_fail: OK
+The actual `repair-package/01_backup.sql` is exercised.
 
-## repair_preamble
-NOTICE:  PASS: missing backup apply aborted
-NOTICE:  REPAIR_SCRIPT_PREAMBLE_OK
-- repair_preamble: OK
+PASS:
 
-## repair_01_backup
-NOTICE:  BACKUP_OK: durable schema backup_coa_limited_ibrahim_v1 run_id=ibrahim_v1_20260919103510 with 2 IBRAHIM lines (ID LACE=NOT_IMPLEMENTED)
-- repair_01_backup: OK
+- Fresh package creation is transaction-wrapped and serialized by transaction advisory lock.
+- Exact Ibrahim lines are locked before snapshot.
+- Forced fixture drift makes the actual backup fail with:
+  `BACKUP_MANIFEST_COUNT 1 <> 2`
+- That failed actual backup leaves no durable backup package:
+  `ATOMIC_BACKUP_FAIL_PASSED`
+- Clean actual backup succeeds with two Ibrahim lines:
+  `BACKUP_OK`
+- After actual apply creates post-apply evidence, rerunning the actual backup safely refuses overwrite:
+  `BACKUP_EXISTS ... original backup/post_apply preserved`
+- Fingerprint check confirms the original run id and post-apply evidence remain unchanged:
+  `BACKUP_NONDESTRUCTIVE_REGRESSION_PASSED`
 
-## repair_02_apply
-NOTICE:  table "post_apply_lines" does not exist, skipping
-NOTICE:  APPLY_OK: moved 2 IBRAHIM lines; legacy_net_before_move_context=118275.00 ap_before=0 ap_after=118275.00
-- repair_02_apply: OK
+No backup evidence tables are dropped or overwritten by a rerun.
 
-## repair_02_apply_repeat
-NOTICE:  ALREADY_APPLIED: IBRAHIM 2 lines already on AP — safe no-op stop
-- repair_02_apply_repeat: OK
+## Actual repair-script regression
 
-## backup_prerun
-NOTICE:  PRE_RERUN_BACKUP: run_id=ibrahim_v1_20260919103510 post_apply=2
-- backup_prerun: OK
+The harness executes the repository scripts themselves rather than copied approximations:
 
-## repair_01_backup_rerun
-NOTICE:  BACKUP_EXISTS: schema backup_coa_limited_ibrahim_v1 already has evidence — refuse overwrite (original backup/post_apply preserved). Safe no-op stop.
-- repair_01_backup_rerun: OK
+1. Actual `01_backup.sql` forced validation failure — expected failure, atomic cleanup PASS.
+2. Actual `01_backup.sql` normal backup — PASS.
+3. Actual `02_apply.sql` — `APPLY_OK`, two Ibrahim lines moved.
+4. Actual `02_apply.sql` repeated — `ALREADY_APPLIED`, safe no-op.
+5. Actual `01_backup.sql` repeated after apply — `BACKUP_EXISTS`, original evidence preserved.
+6. Drift injected into one applied line, then actual `03_rollback.sql` — expected `ROLLBACK_DRIFT`; transaction aborts without partial restore or evidence damage.
+7. Fixture restored, actual `03_rollback.sql` — `ROLLBACK_OK`, exactly two lines restored.
+8. Actual `03_rollback.sql` repeated — `ALREADY_ROLLED_BACK`, safe no-op.
 
-## backup_nondestructive
-NOTICE:  PASS: backup rerun preserved run_id=ibrahim_v1_20260919103510 post_apply=2 created_at=2026-09-19 10:35:10.721459+00
-NOTICE:  PASS: validation/exists path would refuse before destructive mutation
-NOTICE:  BACKUP_NONDESTRUCTIVE_REGRESSION_PASSED
-- backup_nondestructive: OK
+Final isolated state confirms the two Ibrahim lines are back on legacy account `210026`.
 
-## repair_post
-NOTICE:  PASS: apply moved 2 IBRAHIM lines
-NOTICE:  PASS: repeat apply would be ALREADY_APPLIED no-op
-NOTICE:  PASS: post-apply edit detected — rollback would abort for 677c74de-b677-4a6f-877f-b13e0ac66aaa
-NOTICE:  REPAIR_POST_CHECKS_READY_FOR_ROLLBACK
-- repair_post: OK
+## Delivery / integration limits
 
-## repair_03_rollback
-NOTICE:  ROLLBACK_OK: restored 2 IBRAHIM lines via repair_restore
-- repair_03_rollback: OK
-
-## repair_03_rollback_repeat
-NOTICE:  ALREADY_ROLLED_BACK: safe no-op stop
-- repair_03_rollback_repeat: OK
-
-## Scope notes
-- AUTOMATIC remap scope: journal_account_verified_remaps
-- HISTORICAL repair scope: IBRAHIM 2 lines (backup_coa_limited_ibrahim_v1)
-- ID LACE: NOT_IMPLEMENTED
-- Staging JWT/UI E2E: NOT EXECUTED / UNVERIFIED
-- Production migrate/repair: NOT EXECUTED
-  code  | count 
---------+-------
- 210026 |     2
-(1 row)
-
-
+- This evidence proves PostgreSQL function ACL/security behavior and repair-package behavior in isolated PostgreSQL 15.
+- It does **not** prove Supabase/PostgREST JWT behavior, staging UI behavior, or production integration.
+- No production migration, production repair, deploy, merge, or production data mutation was performed.
+- ID LACE remains **NOT_IMPLEMENTED**. DHL/KIRAN/SHAHMIM and other held repair scopes remain unchanged.
