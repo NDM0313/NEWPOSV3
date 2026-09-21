@@ -7,7 +7,7 @@ SELECT current_database() AS db, current_database() = 'postgres' AS is_live_post
 \echo '=== Guard objects (expect ABSENT on production) ==='
 SELECT
   to_regprocedure('public.resolve_journal_posting_account_id(uuid,uuid)') IS NOT NULL AS has_resolve,
-  to_regprocedure('public._journal_account_guard_resolve_public_core(uuid,uuid,boolean)') IS NOT NULL AS has_public_core,
+  to_regprocedure('public._journal_account_guard_resolve_public_core(uuid,uuid)') IS NOT NULL AS has_public_core,
   to_regclass('public.journal_account_verified_remaps') IS NOT NULL AS has_remaps,
   to_regclass('public.journal_account_guard_events') IS NOT NULL AS has_events,
   EXISTS (
