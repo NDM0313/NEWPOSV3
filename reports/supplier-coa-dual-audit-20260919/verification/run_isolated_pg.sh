@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Isolated Docker Postgres verification — no production writes.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 NAME="posv3-je-guard-verify-$$"
 PORT=55432
