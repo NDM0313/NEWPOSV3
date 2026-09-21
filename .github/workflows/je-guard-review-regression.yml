@@ -16,7 +16,11 @@ jobs:
       - name: Run isolated PostgreSQL 15 regression
         run: |
           chmod +x reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.sh
-          reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.sh
+          bash -x reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.sh
+      - name: Show evidence
+        if: always()
+        run: |
+          test ! -f reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md || cat reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md
       - name: Publish evidence in job summary
         if: always()
         run: |
