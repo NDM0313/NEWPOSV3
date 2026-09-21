@@ -9,8 +9,9 @@
 | Feature branch | `feat/party-je-guards-attributed-ledger` |
 | Feature SHA (pre-merge) | `75f703047ea933c50efaa7d34b550656239519e3` |
 | Pre-merge `main` | `82ebe4a79c1c8bb341e9400ffafcac046a205246` |
-| Merge commit / final `main` | `f7118c6b930d413415a95cd749f2b1bcbdacb68b` |
-| Deployed SHA | `f7118c6b930d413415a95cd749f2b1bcbdacb68b` (`VITE_BUILD_COMMIT=f7118c6b`) |
+| Merge commit | `f7118c6b930d413415a95cd749f2b1bcbdacb68b` |
+| Final `main` (incl. this evidence doc) | `57d6d475115e3fd89276f78cd7c531aff4846442` |
+| Deployed SHA | `f7118c6b930d413415a95cd749f2b1bcbdacb68b` (`VITE_BUILD_COMMIT=f7118c6b`; docs-only tip not redeployed) |
 | PR | https://github.com/NDM0313/NEWPOSV3/pull/26 |
 | Compare | https://github.com/NDM0313/NEWPOSV3/compare/82ebe4a79c1c8bb341e9400ffafcac046a205246...f7118c6b930d413415a95cd749f2b1bcbdacb68b |
 | Merge commit link | https://github.com/NDM0313/NEWPOSV3/commit/f7118c6b930d413415a95cd749f2b1bcbdacb68b |
