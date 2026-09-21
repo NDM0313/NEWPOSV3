@@ -39,13 +39,33 @@ run_sql() {
   local out="$DIR/_out_${label}.txt"
   echo "## ${label}" >> "$EVIDENCE"
   if "${PSQL[@]}" < "$file" > "$out" 2>&1; then
-    grep -E 'NOTICE:|ERROR:|PASS:|FAIL:|OK|COMMIT|ALL_|_PASSED|ALREADY_|MISSING_|ROLLBACK_|APPLY_|BACKUP_' "$out" >> "$EVIDENCE" || true
+    grep -E 'NOTICE:|ERROR:|PASS:|FAIL:|OK|COMMIT|ALL_|_PASSED|ALREADY_|MISSING_|ROLLBACK_|APPLY_|BACKUP_|DRIFT_' "$out" >> "$EVIDENCE" || true
     echo "- ${label}: OK" >> "$EVIDENCE"
   else
     echo "- ${label}: FAILED" >> "$EVIDENCE"
     cat "$out" >> "$EVIDENCE"
     exit 1
   fi
+}
+
+run_expected_failure() {
+  local label="$1"
+  local file="$2"
+  local expected="$3"
+  local out="$DIR/_out_${label}.txt"
+  echo "## ${label}" >> "$EVIDENCE"
+  if "${PSQL[@]}" < "$file" > "$out" 2>&1; then
+    echo "- ${label}: FAILED (unexpected success; expected ${expected})" >> "$EVIDENCE"
+    cat "$out" >> "$EVIDENCE"
+    exit 1
+  fi
+  if ! grep -q "$expected" "$out"; then
+    echo "- ${label}: FAILED (expected marker ${expected} missing)" >> "$EVIDENCE"
+    cat "$out" >> "$EVIDENCE"
+    exit 1
+  fi
+  grep -E 'NOTICE:|ERROR:|PASS:|FAIL:|ROLLBACK_|BACKUP_|DRIFT_' "$out" >> "$EVIDENCE" || true
+  echo "- ${label}: EXPECTED_FAILURE_OK (${expected})" >> "$EVIDENCE"
 }
 
 echo "## 1. Minimal schema" >> "$EVIDENCE"
@@ -85,11 +105,17 @@ if ! grep -q 'ACL_SET_ROLE_CHECKS_PASSED' "$DIR/_out_acl_set_role.txt"; then
   echo "- acl marker missing" >> "$EVIDENCE"; exit 1
 fi
 
+run_sql "atomic_backup_prepare" "$DIR/10_backup_atomic_fail.sql"
+run_expected_failure "repair_01_backup_forced_validation_fail" "$REPAIR/01_backup.sql" "BACKUP_MANIFEST_COUNT"
+run_sql "atomic_backup_verify_restore" "$DIR/11_backup_atomic_fail_verify_restore.sql"
 run_sql "repair_preamble" "$DIR/05_repair_preamble.sql"
 run_sql "repair_01_backup" "$REPAIR/01_backup.sql"
 run_sql "repair_02_apply" "$REPAIR/02_apply.sql"
 run_sql "repair_02_apply_repeat" "$REPAIR/02_apply.sql"
 run_sql "repair_post" "$DIR/06_repair_post_apply.sql"
+run_sql "rollback_drift_prepare" "$DIR/12_rollback_drift_prepare.sql"
+run_expected_failure "repair_03_rollback_drift" "$REPAIR/03_rollback.sql" "ROLLBACK_DRIFT"
+run_sql "rollback_drift_verify_restore" "$DIR/13_rollback_drift_verify_restore.sql"
 run_sql "repair_03_rollback" "$REPAIR/03_rollback.sql"
 run_sql "repair_03_rollback_repeat" "$REPAIR/03_rollback.sql"
 
