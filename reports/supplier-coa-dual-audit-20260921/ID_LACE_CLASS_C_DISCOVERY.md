@@ -1,7 +1,8 @@
 # ID LACE — Class-C discovery (READ-ONLY)
 
 **Date:** 2026-09-21  
-**Final ID LACE verdict:** `ID_LACE_CLASS_C_NOT_READY`  
+**Final ID LACE verdict:** `ID_LACE_FINAL_NO_REPAIR_REQUIRED`  
+*(supersedes interim `ID_LACE_CLASS_C_NOT_READY` after ambiguous-5 resolution — see [`ID_LACE_AMBIGUOUS_5_RESOLUTION.md`](ID_LACE_AMBIGUOUS_5_RESOLUTION.md))*  
 **Party-JE / Ibrahim closure:** `PARTY_JE_IBRAHIM_FINAL_CLOSED`  
 **Production mutations this phase:** **NONE**
 
@@ -219,14 +220,11 @@ Held fingerprint: `2e2a9c788c0a7e7575ab10b3857b5b7b` (matches merge/deploy evide
 
 ## 13. Final verdict
 
-`ID_LACE_CLASS_C_NOT_READY`
+`ID_LACE_FINAL_NO_REPAIR_REQUIRED`
 
-**Reason:** Zero ELIGIBLE remappable lines. Live CoA already has supplier history on `AP-SUPZHD0027` with empty inactive legacy `210027` and an active verified remap. Class-C “never-merged dual needing FAROOQ-style remap” is **not** an executable production repair candidate under current evidence.
+**Reason:** Zero ELIGIBLE remappable lines on legacy `210027`. The five other-supplier payable rows that mentioned “ID LACE” in narration were resolved as **`LEGIT_OTHER_SUPPLIER`** (multi-supplier bank splits / other-supplier bills) — see [`ID_LACE_AMBIGUOUS_5_RESOLUTION.md`](ID_LACE_AMBIGUOUS_5_RESOLUTION.md). No genuine misattribution; no unresolved ID LACE ownership rows.
 
-This verdict is **permission to consider** only a separate future phase (e.g. optional meta-assert package or narrative cleanup) after explicit owner approval. It is **not** permission to execute production repair.
-
-Optional future owner decisions (out of scope here):
+Optional future owner decisions (out of scope; not account repair):
 
 1. Meta-only assert package documenting “no lines to move” + remap present.
-2. Human review of **AMBIGUOUS** other-supplier narrations (HS LACE / SR BUTTON / GALAXY etc.) — separate parties.
-3. Cosmetic description cleanup (still not account remaps).
+2. `COSMETIC_ONLY` narration cleanup on shared bank-slip wording (never with account moves).
