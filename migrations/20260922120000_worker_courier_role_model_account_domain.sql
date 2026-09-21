@@ -2,12 +2,95 @@
 -- Capability only: does NOT flip production contact types or create leaves for
 -- DHL/KIRAN/SHAHMIM. No historical AP reclass.
 --
--- Adds:
---   _ensure_worker_advance_subaccount  → WA-* under 1180 (linked_contact_id)
---   aligns _ensure_worker_payable_subaccount with worker role gate
---   get_or_create_courier_payable_account linked_contact_id parity
---   get_contact_party_gl_balances WA subtree (WA-* leaves)
---   _resolve_worker_payment_debit_account helper for payment debit routing
+-- Security (2026-09-22 gate):
+--   SECURITY DEFINER entrypoints self-authorize via get_user_company_id() for
+--   authenticated callers (same pattern as journal account guard).
+--   Custom GUCs are NEVER privilege proof.
+--   Explicit REVOKE ALL FROM PUBLIC/anon after every CREATE OR REPLACE.
+--
+-- Functions:
+--   _ensure_worker_advance_subaccount  → WA-* under 1180
+--   _ensure_worker_payable_subaccount  → WP-* under 2010 (worker role gate)
+--   get_or_create_courier_payable_account → 203x + linked_contact_id parity
+--   get_contact_party_gl_balances → WA subtree + company scope for clients
+--   _resolve_worker_payment_debit_account → authorized debit helper
+
+-- ---------------------------------------------------------------------------
+-- 0) Auth helpers (mirror journal account guard: role from session, not GUC)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public._party_role_account_effective_role()
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+PARALLEL SAFE
+AS $$
+DECLARE
+  v_role text;
+BEGIN
+  v_role := NULLIF(btrim(current_setting('role', true)), '');
+  IF v_role IS NULL OR lower(v_role) = 'none' THEN
+    RETURN session_user::text;
+  END IF;
+  RETURN v_role;
+END;
+$$;
+
+COMMENT ON FUNCTION public._party_role_account_effective_role() IS
+  'Session role for party-role account DEFINER gates. Never uses client-writable GUCs for privilege.';
+
+REVOKE ALL ON FUNCTION public._party_role_account_effective_role() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._party_role_account_effective_role() FROM anon;
+REVOKE ALL ON FUNCTION public._party_role_account_effective_role() FROM authenticated;
+REVOKE ALL ON FUNCTION public._party_role_account_effective_role() FROM service_role;
+
+CREATE OR REPLACE FUNCTION public._party_role_account_assert_company_access(p_company_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_role text;
+  v_auth_company uuid;
+BEGIN
+  IF p_company_id IS NULL THEN
+    RAISE EXCEPTION 'PARTY_ROLE_ACCOUNT_COMPANY_REQUIRED'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  v_role := public._party_role_account_effective_role();
+
+  IF v_role = 'authenticated' THEN
+    v_auth_company := public.get_user_company_id();
+    IF v_auth_company IS NULL THEN
+      RAISE EXCEPTION 'PARTY_ROLE_ACCOUNT_AUTH_COMPANY_REQUIRED'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF v_auth_company IS DISTINCT FROM p_company_id THEN
+      RAISE EXCEPTION
+        'PARTY_ROLE_ACCOUNT_FORBIDDEN: limited to caller company scope'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN;
+  END IF;
+
+  IF v_role IN ('service_role', 'postgres', 'supabase_admin') THEN
+    RETURN;
+  END IF;
+
+  RAISE EXCEPTION
+    'PARTY_ROLE_ACCOUNT_FORBIDDEN: not authorized'
+    USING ERRCODE = 'insufficient_privilege';
+END;
+$$;
+
+COMMENT ON FUNCTION public._party_role_account_assert_company_access(uuid) IS
+  'Fail-closed company gate for party-role account DEFINER RPCs. Authenticated must match get_user_company_id().';
+
+REVOKE ALL ON FUNCTION public._party_role_account_assert_company_access(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._party_role_account_assert_company_access(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public._party_role_account_assert_company_access(uuid) FROM authenticated;
+REVOKE ALL ON FUNCTION public._party_role_account_assert_company_access(uuid) FROM service_role;
 
 -- ---------------------------------------------------------------------------
 -- 1) Worker Advance leaf ensure (1180 / WA-*)
@@ -28,6 +111,8 @@ DECLARE
   v_code TEXT;
   v_name TEXT;
 BEGIN
+  PERFORM public._party_role_account_assert_company_access(p_company_id);
+
   SELECT id INTO v_control_id
   FROM accounts
   WHERE company_id = p_company_id
@@ -61,7 +146,8 @@ BEGIN
   LIMIT 1;
 
   IF v_contact.id IS NULL THEN
-    RETURN v_control_id;
+    RAISE EXCEPTION 'WORKER_ADVANCE_CONTACT_NOT_FOUND: %', p_contact_id
+      USING ERRCODE = 'foreign_key_violation';
   END IF;
 
   IF v_contact.company_id IS DISTINCT FROM p_company_id THEN
@@ -71,8 +157,10 @@ BEGIN
   END IF;
 
   IF lower(trim(COALESCE(v_contact.type, ''))) <> 'worker' THEN
-    -- Non-worker: do not create WA leaf; return control for callers that only need a posting id.
-    RETURN v_control_id;
+    -- Fail-loud: do not silently post suppliers onto control 1180 via this ensure.
+    RAISE EXCEPTION 'WORKER_ADVANCE_ROLE_REQUIRED: contact % type=% must be worker',
+      p_contact_id, v_contact.type
+      USING ERRCODE = 'check_violation';
   END IF;
 
   v_slug := public._party_slug_from_contact(v_contact.code, p_contact_id);
@@ -113,13 +201,15 @@ END;
 $$;
 
 COMMENT ON FUNCTION public._ensure_worker_advance_subaccount(UUID, UUID) IS
-  'Idempotent WA-* leaf under 1180 for type=worker contacts; wrong company raises; non-worker returns 1180 control.';
+  'Idempotent WA-* under 1180 for type=worker. Self-authorizes company. Wrong role raises (no control fallback).';
 
+REVOKE ALL ON FUNCTION public._ensure_worker_advance_subaccount(UUID, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._ensure_worker_advance_subaccount(UUID, UUID) FROM anon;
 GRANT EXECUTE ON FUNCTION public._ensure_worker_advance_subaccount(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public._ensure_worker_advance_subaccount(UUID, UUID) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- 2) Align Worker Payable ensure with worker role gate (keep parent 2010 / WP-*)
+-- 2) Worker Payable ensure (2010 / WP-*) — worker role gate + company auth
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._ensure_worker_payable_subaccount(
   p_company_id UUID,
@@ -137,6 +227,8 @@ DECLARE
   v_code TEXT;
   v_name TEXT;
 BEGIN
+  PERFORM public._party_role_account_assert_company_access(p_company_id);
+
   SELECT id INTO v_control_id
   FROM accounts
   WHERE company_id = p_company_id
@@ -170,7 +262,8 @@ BEGIN
   LIMIT 1;
 
   IF v_contact.id IS NULL THEN
-    RETURN v_control_id;
+    RAISE EXCEPTION 'WORKER_PAYABLE_CONTACT_NOT_FOUND: %', p_contact_id
+      USING ERRCODE = 'foreign_key_violation';
   END IF;
 
   IF v_contact.company_id IS DISTINCT FROM p_company_id THEN
@@ -180,7 +273,9 @@ BEGIN
   END IF;
 
   IF lower(trim(COALESCE(v_contact.type, ''))) <> 'worker' THEN
-    RETURN v_control_id;
+    RAISE EXCEPTION 'WORKER_PAYABLE_ROLE_REQUIRED: contact % type=% must be worker',
+      p_contact_id, v_contact.type
+      USING ERRCODE = 'check_violation';
   END IF;
 
   v_slug := public._party_slug_from_contact(v_contact.code, p_contact_id);
@@ -221,10 +316,15 @@ END;
 $$;
 
 COMMENT ON FUNCTION public._ensure_worker_payable_subaccount(UUID, UUID) IS
-  'Idempotent WP-* leaf under 2010 for type=worker contacts; wrong company raises; non-worker returns 2010 control.';
+  'Idempotent WP-* under 2010 for type=worker. Self-authorizes company. Wrong role raises.';
+
+REVOKE ALL ON FUNCTION public._ensure_worker_payable_subaccount(UUID, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._ensure_worker_payable_subaccount(UUID, UUID) FROM anon;
+GRANT EXECUTE ON FUNCTION public._ensure_worker_payable_subaccount(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public._ensure_worker_payable_subaccount(UUID, UUID) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- 3) Courier 203x ensure — linked_contact_id + contact_id parity
+-- 3) Courier 203x — company auth BEFORE any mutation; null contact fail-closed
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_or_create_courier_payable_account(
   p_company_id UUID,
@@ -244,8 +344,27 @@ DECLARE
   v_contact RECORD;
   v_name TEXT;
 BEGIN
-  IF p_company_id IS NULL THEN
-    RETURN NULL;
+  PERFORM public._party_role_account_assert_company_access(p_company_id);
+
+  IF p_contact_id IS NULL THEN
+    RAISE EXCEPTION 'COURIER_ACCOUNT_CONTACT_REQUIRED'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  SELECT id, name, type, company_id INTO v_contact
+  FROM contacts
+  WHERE id = p_contact_id
+  LIMIT 1;
+
+  IF v_contact.id IS NULL THEN
+    RAISE EXCEPTION 'COURIER_ACCOUNT_CONTACT_NOT_FOUND: %', p_contact_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  IF v_contact.company_id IS DISTINCT FROM p_company_id THEN
+    RAISE EXCEPTION 'COURIER_ACCOUNT_WRONG_COMPANY: contact % does not belong to company %',
+      p_contact_id, p_company_id
+      USING ERRCODE = 'check_violation';
   END IF;
 
   SELECT id INTO v_control_id
@@ -265,51 +384,45 @@ BEGIN
     LIMIT 1;
   END IF;
 
-  IF p_contact_id IS NOT NULL THEN
-    SELECT id, name, type, company_id INTO v_contact
-    FROM contacts
-    WHERE id = p_contact_id
-    LIMIT 1;
+  -- Prefer linked_contact_id under 2030; also accept legacy contact_id rows.
+  SELECT a.id INTO v_account_id
+  FROM accounts a
+  WHERE a.company_id = p_company_id
+    AND COALESCE(a.is_active, TRUE)
+    AND (
+      a.linked_contact_id = p_contact_id
+      OR a.contact_id = p_contact_id
+    )
+    AND (
+      a.parent_id = v_control_id
+      OR a.code ~ '^203[0-9]+$'
+    )
+    AND trim(COALESCE(a.code, '')) <> '2030'
+  ORDER BY
+    CASE WHEN a.linked_contact_id = p_contact_id THEN 0 ELSE 1 END,
+    a.code
+  LIMIT 1;
 
-    IF v_contact.id IS NOT NULL AND v_contact.company_id IS DISTINCT FROM p_company_id THEN
-      RAISE EXCEPTION 'COURIER_ACCOUNT_WRONG_COMPANY: contact % does not belong to company %',
-        p_contact_id, p_company_id
-        USING ERRCODE = 'check_violation';
-    END IF;
-
-    -- Prefer linked_contact_id under 2030; also accept legacy contact_id rows.
-    SELECT a.id INTO v_account_id
-    FROM accounts a
-    WHERE a.company_id = p_company_id
-      AND COALESCE(a.is_active, TRUE)
+  IF v_account_id IS NOT NULL THEN
+    UPDATE accounts
+    SET linked_contact_id = COALESCE(linked_contact_id, p_contact_id),
+        contact_id = COALESCE(contact_id, p_contact_id),
+        parent_id = COALESCE(parent_id, v_control_id),
+        updated_at = now()
+    WHERE id = v_account_id
       AND (
-        a.linked_contact_id = p_contact_id
-        OR a.contact_id = p_contact_id
-      )
-      AND (
-        a.parent_id = v_control_id
-        OR a.code ~ '^203[0-9]+$'
-      )
-      AND trim(COALESCE(a.code, '')) <> '2030'
-    ORDER BY
-      CASE WHEN a.linked_contact_id = p_contact_id THEN 0 ELSE 1 END,
-      a.code
-    LIMIT 1;
+        linked_contact_id IS DISTINCT FROM p_contact_id
+        OR contact_id IS DISTINCT FROM p_contact_id
+        OR parent_id IS DISTINCT FROM v_control_id
+      );
+    RETURN v_account_id;
+  END IF;
 
-    IF v_account_id IS NOT NULL THEN
-      UPDATE accounts
-      SET linked_contact_id = COALESCE(linked_contact_id, p_contact_id),
-          contact_id = COALESCE(contact_id, p_contact_id),
-          parent_id = COALESCE(parent_id, v_control_id),
-          updated_at = now()
-      WHERE id = v_account_id
-        AND (
-          linked_contact_id IS DISTINCT FROM p_contact_id
-          OR contact_id IS DISTINCT FROM p_contact_id
-          OR parent_id IS DISTINCT FROM v_control_id
-        );
-      RETURN v_account_id;
-    END IF;
+  -- New leaf only for explicit courier role (no name heuristics).
+  IF lower(trim(COALESCE(v_contact.type, ''))) <> 'courier' THEN
+    RAISE EXCEPTION 'COURIER_ACCOUNT_ROLE_REQUIRED: contact % type=% must be courier',
+      p_contact_id, v_contact.type
+      USING ERRCODE = 'check_violation';
   END IF;
 
   SELECT COALESCE(
@@ -364,7 +477,7 @@ BEGIN
         CASE WHEN a.linked_contact_id = p_contact_id THEN 0 ELSE 1 END,
         a.code
       LIMIT 1;
-      IF v_account_id IS NOT NULL AND p_contact_id IS NOT NULL THEN
+      IF v_account_id IS NOT NULL THEN
         UPDATE accounts
         SET linked_contact_id = COALESCE(linked_contact_id, p_contact_id),
             contact_id = COALESCE(contact_id, p_contact_id),
@@ -379,13 +492,15 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_or_create_courier_payable_account(UUID, UUID, TEXT) IS
-  'Returns courier 203x payable leaf under 2030; sets both contact_id and linked_contact_id; idempotent per contact.';
+  'Courier 203x under 2030 with contact_id+linked_contact_id. Self-authorizes; null contact rejected; create requires type=courier.';
 
+REVOKE ALL ON FUNCTION public.get_or_create_courier_payable_account(UUID, UUID, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_or_create_courier_payable_account(UUID, UUID, TEXT) FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_or_create_courier_payable_account(UUID, UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_or_create_courier_payable_account(UUID, UUID, TEXT) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- 4) Worker payment debit resolver (WA leaf vs WP leaf)
+-- 4) Worker payment debit resolver — self-authorizes (not an ACL bypass)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._resolve_worker_payment_debit_account(
   p_company_id UUID,
@@ -399,6 +514,8 @@ AS $$
 DECLARE
   v_id UUID;
 BEGIN
+  PERFORM public._party_role_account_assert_company_access(p_company_id);
+
   IF p_pay_to_payable THEN
     v_id := public._ensure_worker_payable_subaccount(p_company_id, p_worker_contact_id);
   ELSE
@@ -409,13 +526,15 @@ END;
 $$;
 
 COMMENT ON FUNCTION public._resolve_worker_payment_debit_account(UUID, UUID, BOOLEAN) IS
-  'Prospective helper: unpaid bill → WP leaf (or 2010); else WA leaf (or 1180). Does not post.';
+  'Authorized helper: unpaid bill → WP leaf; else WA leaf. Self-authorizes company.';
 
+REVOKE ALL ON FUNCTION public._resolve_worker_payment_debit_account(UUID, UUID, BOOLEAN) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public._resolve_worker_payment_debit_account(UUID, UUID, BOOLEAN) FROM anon;
 GRANT EXECUTE ON FUNCTION public._resolve_worker_payment_debit_account(UUID, UUID, BOOLEAN) TO authenticated;
 GRANT EXECUTE ON FUNCTION public._resolve_worker_payment_debit_account(UUID, UUID, BOOLEAN) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- 5) Party GL: WA subtree so WA-* leaves attribute like WP-*
+-- 5) Party GL: WA subtree + company scope for authenticated direct calls
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_contact_party_gl_balances(
   p_company_id UUID,
@@ -434,6 +553,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  PERFORM public._party_role_account_assert_company_access(p_company_id);
+
   RETURN QUERY
   WITH ar_control AS (
     SELECT a.id AS ar_id
@@ -622,6 +743,47 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID, DATE) IS
-  'GL per-contact balances; WA uses 1180 subtree (WA-* leaves + control); optional p_as_of_date.';
+  'GL per-contact balances; WA uses 1180 subtree; authenticated limited to get_user_company_id().';
+
+REVOKE ALL ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID, DATE) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID, DATE) FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID, DATE) TO service_role;
+
+-- Compatibility overloads without as-of (if present in older callers)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'get_contact_party_gl_balances'
+      AND pg_get_function_identity_arguments(p.oid) = 'uuid, uuid'
+  ) THEN
+    EXECUTE $f$
+      CREATE OR REPLACE FUNCTION public.get_contact_party_gl_balances(
+        p_company_id UUID,
+        p_branch_id UUID DEFAULT NULL
+      )
+      RETURNS TABLE (
+        contact_id UUID,
+        gl_ar_receivable NUMERIC,
+        gl_ap_payable NUMERIC,
+        gl_worker_payable NUMERIC
+      )
+      LANGUAGE sql
+      STABLE
+      SECURITY DEFINER
+      SET search_path = public
+      AS $body$
+        SELECT * FROM public.get_contact_party_gl_balances(p_company_id, p_branch_id, NULL::date);
+      $body$;
+    $f$;
+    EXECUTE 'REVOKE ALL ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID) FROM PUBLIC';
+    EXECUTE 'REVOKE ALL ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID) FROM anon';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID) TO authenticated';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_contact_party_gl_balances(UUID, UUID) TO service_role';
+  END IF;
+END $$;
 
 NOTIFY pgrst, 'reload schema';

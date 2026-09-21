@@ -41,3 +41,16 @@ Compare to `reports/worker-courier-accounting-model-20260921/ERP_SUPPORT_MATRIX.
 2. Create leaves **after** type flip (migration alone does not create DHL/KIRAN/SHAHMIM leaves).  
 3. Staging smoke of worker + courier flows.  
 4. Optional: wire payment RPC helper into `record_payment_with_accounting`.
+
+## Security / Postgres gate (2026-09-22)
+
+| Item | Status |
+|------|--------|
+| DEFINER company auth (`get_user_company_id` match) | **SUPPORTED** |
+| PUBLIC/anon EXECUTE on privileged ensures | **DENIED** |
+| Cross-company mutation isolation | **PROVEN** (isolated PG) |
+| Isolated Postgres regression | **`ROLE_MODEL_POSTGRES_REGRESSION_PASS`** |
+| Feature-branch GHA workflow | **ADDED** |
+| Production migrate/deploy | **NO** |
+
+Prior `ENGINEERING_READY` without executed PG/ACL was provisional. See `…/20260922/SECURITY_AND_POSTGRES_GATE.md`.

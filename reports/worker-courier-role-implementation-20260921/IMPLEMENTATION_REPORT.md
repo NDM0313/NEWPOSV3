@@ -1,6 +1,6 @@
 # Implementation report — worker/courier prospective role model
 
-**Date:** 2026-09-21  
+**Date:** 2026-09-21 (implementation) / **2026-09-22 (security + Postgres gate)**  
 **Branch:** `feat/worker-courier-role-model-implementation`  
 **Strategy:** `STRATEGY_A_PROSPECTIVE_FIRST`  
 **Dual-account cleanup:** `SUPPLIER_DUAL_ACCOUNT_CLEANUP_FINAL_CLOSED` (not reopened)
@@ -13,6 +13,7 @@
 | Audit | `172ca1bf03ae27ea24cdb0287be9f4b03a5f4196` |
 | Merge / new main | `c253d4c17e77f3353650a2bd6eee760516e6e95d` |
 | Mark | `ROLE_MODEL_AUDIT_EVIDENCE_MERGED` |
+| Provisional impl HEAD | `7f07317037b3b42ade4e4c8d303a536ac8fab20f` |
 
 ## What shipped (engineering capability)
 
@@ -33,6 +34,22 @@
 
 6. **Docs / evidence** — cutover runbook (non-executed), matrix AFTER, postgres script.
 
+## Security harden (2026-09-22) — closes provisional READY
+
+Prior verdict `PROSPECTIVE_ROLE_MODEL_ENGINEERING_READY` was **provisional** and must be read as  
+`PROVISIONAL_NOT_READY_FOR_STAGING_CUTOVER` until this gate.
+
+Added:
+
+- `_party_role_account_assert_company_access` / effective-role helpers  
+- Self-authorize on all DEFINER entrypoints before mutation  
+- Explicit `REVOKE PUBLIC/anon` + intended `GRANT` after every `CREATE OR REPLACE`  
+- Fail-loud wrong-role (no silent 1180/2010 fallback for leaf ensure)  
+- Null-contact courier rejected for clients  
+- Isolated Docker PG15 regression + feature-branch GHA workflow  
+
+Evidence: `reports/worker-courier-role-implementation-20260922/SECURITY_AND_POSTGRES_GATE.md`
+
 ## Explicitly NOT done
 
 | Guard | Status |
@@ -47,25 +64,25 @@
 | Graphify stash | NOT touched |
 | Ibrahim / ID LACE repairs | NOT touched |
 
-## Client tests (this session)
+## Client tests
 
 | Suite | Result |
 |-------|--------|
-| `journalPartyPosting.node.test.ts` | PASS (5) |
-| `partyRoleAccountRouting.node.test.ts` | PASS (4) |
-| Vitest-only files (`preferCanonical…`, etc.) | `PRE_EXISTING_OUT_OF_SCOPE` (missing vitest package under `tsx --test`) |
-| Isolated Postgres | NOT_EXECUTED (Docker daemon unavailable) |
+| `journalPartyPosting.node.test.ts` | PASS (5) via `tsx --test` |
+| `partyRoleAccountRouting.node.test.ts` | PASS (4) via `tsx --test` |
+| Combined | **9/9 PASS** |
+
+## PostgreSQL gate
+
+| Item | Result |
+|------|--------|
+| Isolated Docker postgres:15 | **EXECUTED** |
+| Marker | **`ROLE_MODEL_POSTGRES_REGRESSION_PASS`** |
+| Evidence | `…/20260922/verification/EVIDENCE.md` |
+| CI workflow | `.github/workflows/worker-courier-role-model-regression.yml` |
 
 ## Engineering verdict
 
-**`PROSPECTIVE_ROLE_MODEL_ENGINEERING_READY`**
+See security gate doc + return block after commit:
 
-Meaning: schema/functions/client paths/tests are ready for a **separate** staging apply + owner cutover decision.  
-Does **not** mean production contacts may be flipped automatically.
-
-## Remaining blockers before production cutover
-
-1. Owner T0 + type flips for DHL local / KIRAN / SHAHMIM.  
-2. Staging migration apply + `postgres_regression.sql` PASS.  
-3. Optional: wire `_resolve_worker_payment_debit_account` into `record_payment_with_accounting` (TS paths already leaf-aware).  
-4. Docker unavailable on implementer host — isolated PG not executed this session.
+- Staging-ready only if: company auth proven, ACL safe, cross-company fail, real PG PASS, client PASS, no production mutation.
