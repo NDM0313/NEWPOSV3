@@ -1,0 +1,53 @@
+# Temporary loopback GoTrue + PostgREST for JE guard staging (TEMPLATE ONLY).
+# Secrets/keys are generated on the VPS under /root/je-guard-stage/ — never commit them.
+# Bind 127.0.0.1 only. Separate compose project: je-guard-stage.
+#
+# Usage (on VPS): prefer bootstrap-http-stack.sh which writes real compose + keys.
+
+services:
+  staging-auth:
+    image: supabase/gotrue:v2.151.0
+    container_name: je-guard-staging-auth
+    restart: "no"
+    ports:
+      - "127.0.0.1:18081:9999"
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://127.0.0.1:18081
+      GOTRUE_DB_DRIVER: postgres
+      # MUST point at clone DB name ledger_stage_20260919_prodcheck — never postgres
+      GOTRUE_DB_DATABASE_URL: "${STAGING_AUTH_DB_URI}"
+      GOTRUE_SITE_URL: http://127.0.0.1:18081
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: "${STAGING_JWT_SECRET}"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+    networks:
+      - supabase_default
+
+  staging-rest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: je-guard-staging-rest
+    restart: "no"
+    ports:
+      - "127.0.0.1:18080:3000"
+    environment:
+      PGRST_DB_URI: "${STAGING_REST_DB_URI}"
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: "${STAGING_JWT_SECRET}"
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_APP_SETTINGS_JWT_SECRET: "${STAGING_JWT_SECRET}"
+    networks:
+      - supabase_default
+
+networks:
+  supabase_default:
+    external: true
+    name: supabase_default

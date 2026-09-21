@@ -77,6 +77,7 @@ import {
   createCourierPaymentEntry,
 } from '@/app/services/addEntryV2Service';
 import { toast } from 'sonner';
+import { mapJournalAccountGuardError } from '@/app/lib/mapJournalAccountGuardError';
 import {
   uploadJournalEntryAttachments,
   uploadUnifiedStylePaymentAttachments,
@@ -91,6 +92,13 @@ import {
   extractPureJournalFormFromLines,
   journalEntryDateTimeFromRow,
 } from '@/app/lib/pureJournalFormFromEntry';
+import {
+  assertPureJournalAccounts,
+  listPartyJeAccountChoices,
+  resolvePartyLinkedAccountId,
+  type PartyJeAccountChoice,
+} from '@/app/lib/journalPartyPosting';
+import { loadVerifiedAccountRemaps } from '@/app/services/partyAttributedGlLedgerService';
 import { paymentEventTimestampFromPicker } from '@/app/utils/transactionEventDateTime';
 import { handleAttachmentPaste } from '@/app/utils/pasteAttachmentFiles';
 import { ocrDateTimeLocal } from '@/app/lib/ocr/receiptOcrTypes';
@@ -176,7 +184,11 @@ export function AddEntryV2({
     setStep('entry-form');
   }, [initialEntryType, editJournalEntryId]);
 
-  const [accounts, setAccounts] = useState<{ id: string; name: string; code?: string }[]>([]);
+  const [accounts, setAccounts] = useState<
+    { id: string; name: string; code?: string; linked_contact_id?: string | null; isActive?: boolean }[]
+  >([]);
+  /** Contacts for General Entry party assist (suppliers + customers; workers/couriers via linked accounts). */
+  const [jePartyContacts, setJePartyContacts] = useState<{ id: string; name: string; type: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [workers, setWorkers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
@@ -210,6 +222,13 @@ export function AddEntryV2({
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bank' | 'Mobile Wallet'>('Cash');
   const [debitAccountId, setDebitAccountId] = useState('');
   const [creditAccountId, setCreditAccountId] = useState('');
+  /** General Entry: optional party assist (fills one leg with linked party account). */
+  const [jeAssistContactId, setJeAssistContactId] = useState('');
+  const [jeAssistSide, setJeAssistSide] = useState<'debit' | 'credit'>('debit');
+  const [jeAssistAccountId, setJeAssistAccountId] = useState('');
+  const [verifiedRemaps, setVerifiedRemaps] = useState<
+    { fromAccountId: string; toAccountId: string }[]
+  >([]);
   const [supplierContactId, setSupplierContactId] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [customerId, setCustomerId] = useState('');
@@ -303,7 +322,13 @@ export function AddEntryV2({
       setCourierSummaryOk(Array.isArray(courierBalanceRows));
 
       const accList = (acc || [])
-        .map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }))
+        .map((a: any) => ({
+          id: a.id,
+          name: a.name || '',
+          code: a.code,
+          linked_contact_id: a.linked_contact_id ?? null,
+          isActive: a.is_active !== false && a.isActive !== false,
+        }))
         .sort((a: { code?: string | null; name: string }, b: { code?: string | null; name: string }) => {
           const ca = String(a.code ?? '').trim();
           const cb = String(b.code ?? '').trim();
@@ -318,6 +343,12 @@ export function AddEntryV2({
         if (a?.id) coaBalanceById.set(a.id, Number((a as { balance?: number }).balance) || 0);
       }
       setAccounts(accList);
+      try {
+        const remaps = await loadVerifiedAccountRemaps(companyId);
+        setVerifiedRemaps(remaps);
+      } catch {
+        setVerifiedRemaps([]);
+      }
       const payList = (payAcc || []).map((a: any) => ({ id: a.id, name: a.name || '', code: a.code }));
       setPaymentAccountsList(payList);
 
@@ -328,6 +359,27 @@ export function AddEntryV2({
       }
 
       const contacts = allContacts || [];
+      setJePartyContacts(
+        contacts
+          .filter((c: any) => {
+            const t = String(c.type || '').toLowerCase();
+            return (
+              t === 'supplier' ||
+              t === 'customer' ||
+              t === 'both' ||
+              t.includes('worker') ||
+              t === 'money_exchange'
+            );
+          })
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name || c.id,
+            type: String(c.type || 'contact'),
+          }))
+          .sort((a: { name: string }, b: { name: string }) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+          ),
+      );
       setSuppliers(
         contacts
           .filter((c: any) => c.type === 'supplier' || c.type === 'both')
@@ -774,16 +826,44 @@ export function AddEntryV2({
             toast.error('Select both accounts and enter amount');
             return;
           }
+          const guarded = assertPureJournalAccounts(
+            accounts.map((a) => ({
+              id: a.id,
+              code: a.code,
+              linked_contact_id: a.linked_contact_id ?? null,
+              isActive: a.isActive !== false,
+            })),
+            debitAccountId,
+            creditAccountId,
+            { verifiedRemaps },
+          );
+          if (!guarded.ok) {
+            toast.error(guarded.error);
+            return;
+          }
+          const useDebit = guarded.debitAccountId!;
+          const useCredit = guarded.creditAccountId!;
+          if (useDebit !== debitAccountId || useCredit !== creditAccountId) {
+            setDebitAccountId(useDebit);
+            setCreditAccountId(useCredit);
+            toast.message('Retired account remapped to the party’s active linked account');
+          }
           if (isEditMode && editJournalEntryId) {
             const res = await updatePureJournalEntry({
               companyId,
               journalEntryId: editJournalEntryId,
               entryDate,
               createdAt: paymentEventTimestampFromPicker(entryDateTime),
-              debitAccountId,
-              creditAccountId,
+              debitAccountId: useDebit,
+              creditAccountId: useCredit,
               amount,
               description: description || undefined,
+              accountsForGuard: accounts.map((a) => ({
+                id: a.id,
+                code: a.code,
+                linked_contact_id: a.linked_contact_id ?? null,
+                isActive: a.isActive !== false,
+              })),
             });
             if (!res.ok) {
               toast.error(res.error || 'Could not update entry');
@@ -796,12 +876,18 @@ export function AddEntryV2({
             companyId,
             branchId: branch,
             entryDate,
-            debitAccountId,
-            creditAccountId,
+            debitAccountId: useDebit,
+            creditAccountId: useCredit,
             amount,
             description: description || undefined,
             createdBy: uid,
             attachments: uploadedAttachments,
+            accountsForGuard: accounts.map((a) => ({
+              id: a.id,
+              code: a.code,
+              linked_contact_id: a.linked_contact_id ?? null,
+              isActive: a.isActive !== false,
+            })),
           });
           toast.success('General entry saved');
           break;
@@ -961,7 +1047,7 @@ export function AddEntryV2({
       });
       return;
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save');
+      toast.error(mapJournalAccountGuardError(e) || 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -1508,6 +1594,104 @@ export function AddEntryV2({
 
                         {entryType === 'pure_journal' && (
                           <div className={cardInnerClass}>
+                            <div className="mb-4 rounded-lg border border-border bg-muted/30 px-3 py-3 space-y-2">
+                              <Label className={labelClass}>Party assist (optional)</Label>
+                              <p className="text-[10px] text-muted-foreground leading-snug">
+                                Choose a party, then the exact GL leaf (AP / AR / worker advance / worker payable /
+                                courier / legacy). When more than one account is valid, you must pick — nothing is
+                                chosen silently. Attribution is the account’s linked contact, not the description.
+                              </p>
+                              <div className="relative">
+                                <select
+                                  value={jeAssistContactId}
+                                  onChange={(e) => {
+                                    setJeAssistContactId(e.target.value);
+                                    setJeAssistAccountId('');
+                                  }}
+                                  className={`${inputClass} appearance-none pr-10`}
+                                >
+                                  <option value="">Select party…</option>
+                                  {jePartyContacts.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name} ({c.type})
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
+                              </div>
+                              {jeAssistContactId ? (
+                                <div className="relative">
+                                  <select
+                                    value={jeAssistAccountId}
+                                    onChange={(e) => setJeAssistAccountId(e.target.value)}
+                                    className={`${inputClass} appearance-none pr-10`}
+                                  >
+                                    <option value="">
+                                      {listPartyJeAccountChoices(accounts, jeAssistContactId).length > 1
+                                        ? 'Select account (required — multiple valid)…'
+                                        : 'Select account…'}
+                                    </option>
+                                    {listPartyJeAccountChoices(accounts, jeAssistContactId).map((c: PartyJeAccountChoice) => (
+                                      <option key={c.accountId} value={c.accountId}>
+                                        {c.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={18} />
+                                </div>
+                              ) : null}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  value={jeAssistSide}
+                                  onChange={(e) => setJeAssistSide(e.target.value as 'debit' | 'credit')}
+                                  className={`${inputClass} appearance-none pr-10 max-w-[10rem]`}
+                                >
+                                  <option value="debit">Debit leg</option>
+                                  <option value="credit">Credit leg</option>
+                                </select>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={!jeAssistContactId}
+                                  onClick={() => {
+                                    const choices = listPartyJeAccountChoices(accounts, jeAssistContactId);
+                                    if (choices.length === 0) {
+                                      toast.error(
+                                        'No active linked GL account for this party. Link an AP/AR/worker/courier leaf on CoA, or pick accounts manually.',
+                                      );
+                                      return;
+                                    }
+                                    let accountId = jeAssistAccountId;
+                                    if (!accountId) {
+                                      if (choices.length === 1) {
+                                        accountId = choices[0].accountId;
+                                      } else {
+                                        const auto = resolvePartyLinkedAccountId(accounts, jeAssistContactId, {
+                                          preferCanonical: true,
+                                        });
+                                        if (!auto) {
+                                          toast.error(
+                                            'This party has multiple valid accounts. Select the exact leaf (advance vs payable, AP vs legacy, etc.).',
+                                          );
+                                          return;
+                                        }
+                                        accountId = auto;
+                                      }
+                                    }
+                                    if (jeAssistSide === 'debit') setDebitAccountId(accountId);
+                                    else setCreditAccountId(accountId);
+                                    setJeAssistAccountId(accountId);
+                                    const acc = accounts.find((a) => a.id === accountId);
+                                    toast.success(
+                                      `Filled ${jeAssistSide} with ${acc?.code || accountId.slice(0, 8)}`,
+                                    );
+                                  }}
+                                >
+                                  Apply to {jeAssistSide}
+                                </Button>
+                              </div>
+                            </div>
                             <AccountPickerFieldLabel className={labelClass} base="Debit account" drCr="Dr" inOut="IN" />
                             <div className="mb-4">
                               <SearchableAccountSelect
@@ -1515,6 +1699,7 @@ export function AddEntryV2({
                                 value={debitAccountId}
                                 onChange={setDebitAccountId}
                                 placeholder="Select debit account"
+                                preferCanonicalPartySubledgers={false}
                                 formatOptionLabel={(a) =>
                                   formatAccountSelectOptionLabel(a, {
                                     postingSide: 'debit',
@@ -1532,6 +1717,7 @@ export function AddEntryV2({
                                 value={creditAccountId}
                                 onChange={setCreditAccountId}
                                 placeholder="Select credit account"
+                                preferCanonicalPartySubledgers={false}
                                 formatOptionLabel={(a) =>
                                   formatAccountSelectOptionLabel(a, {
                                     postingSide: 'credit',
@@ -1559,6 +1745,12 @@ export function AddEntryV2({
                                       {formatCurrency(glBalanceByAccountId.get(creditAccountId) ?? 0)}
                                     </span>
                                   </div>
+                                )}
+                                {(accounts.find((a) => a.id === debitAccountId)?.linked_contact_id ||
+                                  accounts.find((a) => a.id === creditAccountId)?.linked_contact_id) && (
+                                  <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/60">
+                                    Party attribution uses each account’s linked contact (not name matching).
+                                  </p>
                                 )}
                               </div>
                             )}
