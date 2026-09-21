@@ -105,6 +105,11 @@ if ! grep -q 'ACL_SET_ROLE_CHECKS_PASSED' "$DIR/_out_acl_set_role.txt"; then
   echo "- acl marker missing" >> "$EVIDENCE"; exit 1
 fi
 
+run_sql "helper_auth" "$DIR/07_helper_auth_regression.sql"
+if ! grep -q 'HELPER_AUTH_REGRESSION_PASSED' "$DIR/_out_helper_auth.txt"; then
+  echo "- helper auth marker missing" >> "$EVIDENCE"; exit 1
+fi
+
 run_sql "atomic_backup_prepare" "$DIR/10_backup_atomic_fail.sql"
 run_expected_failure "repair_01_backup_forced_validation_fail" "$REPAIR/01_backup.sql" "BACKUP_MANIFEST_COUNT"
 run_sql "atomic_backup_verify_restore" "$DIR/11_backup_atomic_fail_verify_restore.sql"
@@ -113,6 +118,9 @@ run_sql "repair_01_backup" "$REPAIR/01_backup.sql"
 run_sql "repair_02_apply" "$REPAIR/02_apply.sql"
 run_sql "repair_02_apply_repeat" "$REPAIR/02_apply.sql"
 run_sql "repair_post" "$DIR/06_repair_post_apply.sql"
+run_sql "backup_prerun" "$DIR/08_backup_prerun_snapshot.sql"
+run_sql "repair_01_backup_rerun" "$REPAIR/01_backup.sql"
+run_sql "backup_nondestructive" "$DIR/09_backup_nondestructive.sql"
 run_sql "rollback_drift_prepare" "$DIR/12_rollback_drift_prepare.sql"
 run_expected_failure "repair_03_rollback_drift" "$REPAIR/03_rollback.sql" "ROLLBACK_DRIFT"
 run_sql "rollback_drift_verify_restore" "$DIR/13_rollback_drift_verify_restore.sql"
