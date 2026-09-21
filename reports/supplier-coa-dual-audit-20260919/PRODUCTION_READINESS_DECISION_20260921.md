@@ -3,7 +3,7 @@
 **Generated:** 2026-09-21 (UTC)  
 **Branch:** `feat/party-je-guards-attributed-ledger`  
 **Starting SHA (owner-confirmed):** `a01e1f47f6d283ed56a647d5002b8bc99b81adef`  
-**Final SHA (this phase):** _filled at commit time_  
+**Final SHA (this phase):** `b2b2fc7ed25eee010f03c2a60d75c44961060e0a`  
 **This phase production mutations:** **NONE** (no DDL/DML/migrate/repair/deploy on live `postgres`)
 
 ## Readiness label
@@ -165,7 +165,7 @@ This phase still performed **zero** production mutations.
 
 ---
 
-## Links (fill after push)
+## Links
 
-- Commit: `https://github.com/NDM0313/NEWPOSV3/commit/<FINAL_SHA>`
-- Compare from start: `https://github.com/NDM0313/NEWPOSV3/compare/a01e1f47f6d283ed56a647d5002b8bc99b81adef...<FINAL_SHA>`
+- Commit: https://github.com/NDM0313/NEWPOSV3/commit/b2b2fc7ed25eee010f03c2a60d75c44961060e0a
+- Compare from start: https://github.com/NDM0313/NEWPOSV3/compare/a01e1f47f6d283ed56a647d5002b8bc99b81adef...b2b2fc7ed25eee010f03c2a60d75c44961060e0a
