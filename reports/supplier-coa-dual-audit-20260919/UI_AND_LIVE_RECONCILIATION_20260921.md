@@ -2,7 +2,7 @@
 
 **Branch:** `feat/party-je-guards-attributed-ledger`  
 **Starting tip:** `fca86eb885e8801f23a811ecfef56e0cb6d73b8b`  
-**Final tip:** _filled at commit_  
+**Final tip:** 511e40832796397709d276552205ef83d8dbf7e2  
 
 ## Final verdict
 
