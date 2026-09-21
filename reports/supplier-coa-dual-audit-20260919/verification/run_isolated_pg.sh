@@ -27,11 +27,11 @@ docker run -d --name "$NAME" -e POSTGRES_PASSWORD=test -e POSTGRES_USER=postgres
 
 echo "Waiting for Postgres..."
 for i in $(seq 1 40); do
-  if docker exec "$NAME" pg_isready -U postgres -d je_guard >/dev/null 2>&1; then break; fi
+  if docker exec "$NAME" pg_isready -h 127.0.0.1 -U postgres -d je_guard >/dev/null 2>&1; then break; fi
   sleep 0.5
 done
 
-PSQL=(docker exec -i "$NAME" psql -U postgres -d je_guard -v ON_ERROR_STOP=1)
+PSQL=(docker exec -i "$NAME" psql -h 127.0.0.1 -U postgres -d je_guard -v ON_ERROR_STOP=1)
 
 run_sql() {
   local label="$1"
