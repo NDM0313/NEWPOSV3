@@ -1,62 +1,60 @@
-# SHAHMIM NAZ — READ-ONLY audit
+# SHAHMIM NAZ — read-only dual-account / role audit
 
-**Party final status:** `LEGIT_SPECIAL_ACCOUNTING_MODEL`  
-**Company:** `e08a04af-22a8-4869-9b4d-da31fce13158`
+**Company:** DIN COLLECTION `e08a04af-22a8-4869-9b4d-da31fce13158`  
+**As-of:** 2026-09-21 (production RO)  
+**Final status:** `LEGIT_SPECIAL_ACCOUNTING_MODEL`  
+**Dual-CoA eligible remaps:** **0**
 
-## Identity (live)
+## Identity
 
 | Field | Value |
 |-------|--------|
 | Contact ID | `f902a1f8-cc8a-4508-8c47-beb1850da1ed` |
-| Code / name | `SUP-ZHD-0046` / **SHAHMIM NAZ** |
-| ERP type | `supplier` (active) |
-| Business meaning | Worker/artisan-style advances + closing bills; **0** merchandise purchases |
+| Code | `SUP-ZHD-0046` |
+| Name | `SHAHMIM NAZ` |
+| Type | `supplier` (active) |
+| Purchases | **0** |
+| WA/WP leaves | **none** |
 
 ## Accounts
 
-| Code | ID | Parent | Active | Linked | Lines | Net Dr−Cr |
-|------|-----|--------|--------|--------|------:|----------:|
-| `AP-SUPZHD0046` | `4d6a9b2f-e471-42ae-8063-c8b2d261967a` | 2000 | yes | SHAHMIM | **86** | **5,000,000** |
-| `210046` | `9d105e58-7654-49e5-861d-02d023d0c1c4` | 2090 | **no** | none | **0** | 0 |
-| Verified remap | `210046` → `AP-SUPZHD0046` | | | SHAHMIM | | |
-| WA/WP leaves | **none** | | | | | |
+| Role | Code | Account ID | Parent | Active | Open lines | Net Dr |
+|------|------|------------|--------|--------|------------|--------|
+| Canonical AP leaf | `AP-SUPZHD0046` | `4d6a9b2f-e471-42ae-8063-c8b2d261967a` | `2000` | yes | **86** | **5,000,000** |
+| Legacy | `210046` | `9d105e58-7654-49e5-861d-02d023d0c1c4` | `2090` | **no** | **0** | 0 |
 
-## Operational docs
+## Canonical line mix (non-void)
 
-| Doc | Count |
-|-----|------:|
-| Purchases | **0** |
-| Payments | **1** (`PAY-6719` 2026-09-06 amount 300,000 on AP) |
-| Activity window | 2023-10-01 → 2026-09-06 |
-
-## Reference-type mix on AP leaf
-
-| reference_type | lines | sum Dr | sum Cr |
-|----------------|------:|-------:|-------:|
+| reference_type | lines | Dr | Cr |
+|----------------|------:|---:|---:|
 | opening_balance_contact_ap | 81 | 18,586,500 | 344,000 |
-| transfer | 2 | 0 | 14,092,500 |
 | journal | 2 | 550,000 | 0 |
+| transfer | 2 | 0 | 14,092,500 |
 | payment | 1 | 300,000 | 0 |
 
-## Sample reconstruction
+## Classification (dual CoA)
 
-**JE-4692 (transfer CLOSING 2025):** Dr `110076` 7,036,500 / Cr `AP-SUPZHD0046` 7,036,500 — closing bill vs shop AR.
+| Class | Count |
+|-------|------:|
+| CANONICAL_ALREADY_CORRECT | 86 |
+| ELIGIBLE_ACCOUNT_REMAP_CANDIDATE | **0** |
+| UNRESOLVED | 0 |
 
-## Line buckets
+## Economic meaning
 
-| Bucket | Result |
-|--------|--------|
-| A Canonical AP | 86 · `CANONICAL_ALREADY_CORRECT` |
-| B Legacy | 0 |
-| D Off-leaf | Bank counterparty · `LEGIT_NON_AP_OPERATIONAL` |
-| Eligible remap | **0** |
-| Unresolved | **0** |
-| Simulated GL | **0.00** |
+Same worker-style pattern as KIRAN: advances/OB to NASEEM NAZ stan accounts; transfer settlements; **zero** merchandise purchases. Prior preview: `reports/party-role-consolidation-20260920/SHAHMIM_WORKER_REPAIR_PREVIEW.md` (not executed).
 
-## Current posting
+## Current vs historical
 
-`PAY-6719` and recent journals use **`AP-SUPZHD0046`**. Same cosmetic legacy-code narration pattern as KIRAN/DHL.
+| Lens | Finding |
+|------|---------|
+| HISTORICAL dual CoA | Absent (legacy empty) |
+| CURRENT posting path | PAY-6719 (2026-09-06) still on AP leaf — role path issue |
 
-## HOLD rationale
+## Simulation
 
-Same as KIRAN: **worker special model** on supplier AP leaf; dual legacy→AP remap not required (legacy empty). Future 1180/2010 role package = separate approval track.
+Empty dual allowlist → `TOTAL_GL_EFFECT = 0`.
+
+## Repair design
+
+No dual-CoA package in this phase. Future worker package must be SHAHMIM-only with exact-line allowlist if owner ever approves role consolidation.

@@ -1,63 +1,62 @@
-# KIRAN MUKESH — READ-ONLY audit
+# KIRAN MUKESH — read-only dual-account / role audit
 
-**Party final status:** `LEGIT_SPECIAL_ACCOUNTING_MODEL`  
-**Company:** `e08a04af-22a8-4869-9b4d-da31fce13158`
+**Company:** DIN COLLECTION `e08a04af-22a8-4869-9b4d-da31fce13158`  
+**As-of:** 2026-09-21 (production RO)  
+**Final status:** `LEGIT_SPECIAL_ACCOUNTING_MODEL`  
+**Dual-CoA eligible remaps:** **0**
 
-## Identity (live)
+## Identity
 
 | Field | Value |
 |-------|--------|
 | Contact ID | `797ca8bb-5491-4827-8d6e-c7971d20a022` |
-| Code / name | `SUP-ZHD-0036` / **KIRAN MUKESH** |
-| ERP type | `supplier` (active) |
-| Business meaning | Artisan/worker-style advances + closing bills; **0** merchandise purchases |
+| Code | `SUP-ZHD-0036` |
+| Name | `KIRAN MUKESH` |
+| Type | `supplier` (active) |
+| Purchases | **0** |
+| WA/WP leaves | **none** |
 
 ## Accounts
 
-| Code | ID | Parent | Active | Linked | Lines | Net Dr−Cr |
-|------|-----|--------|--------|--------|------:|----------:|
-| `AP-SUPZHD0036` | `2c79df0c-12cb-4e6b-924c-e904ae774c11` | 2000 | yes | KIRAN | **68** | **2,250,000** |
-| `210036` | `5a51df64-60bb-4018-8c0d-9a02a7d551b7` | 2090 | **no** | none | **0** | 0 |
-| Verified remap | `210036` → `AP-SUPZHD0036` | | | KIRAN | | |
-| WA `1180` / WP `2010` leaves for contact | **none** | controls exist empty | | | | |
+| Role | Code | Account ID | Parent | Active | Open lines | Net Dr |
+|------|------|------------|--------|--------|------------|--------|
+| Canonical AP leaf | `AP-SUPZHD0036` | `2c79df0c-12cb-4e6b-924c-e904ae774c11` | `2000` | yes | **68** | **2,250,000** |
+| Legacy | `210036` | `5a51df64-60bb-4018-8c0d-9a02a7d551b7` | `2090` | **no** | **0** | 0 |
 
-## Operational docs
+## Canonical line mix (non-void)
 
-| Doc | Count |
-|-----|------:|
-| Purchases | **0** |
-| Payments | **1** (`PAY-6720` 2026-09-07 amount 300,000 on AP) |
-| Activity window | 2023-10-11 → 2026-09-07 |
-
-## Reference-type mix on AP leaf
-
-| reference_type | lines | sum Dr | sum Cr |
-|----------------|------:|-------:|-------:|
+| reference_type | lines | Dr | Cr |
+|----------------|------:|---:|---:|
 | opening_balance_contact_ap | 55 | 11,726,000 | 0 |
 | transfer | 10 | 0 | 10,376,000 |
 | journal | 2 | 600,000 | 0 |
 | payment | 1 | 300,000 | 0 |
 
-## Sample reconstruction
+## Classification (dual CoA)
 
-**JE-4697 (transfer CLOSING):** Dr `110076` 6,750,000 / Cr `AP-SUPZHD0036` 6,750,000 — shop AR vs KIRAN payable closing bill. Worker-payable economics filed under supplier AP.
+| Class | Count |
+|-------|------:|
+| CANONICAL_ALREADY_CORRECT | 68 |
+| ELIGIBLE_ACCOUNT_REMAP_CANDIDATE | **0** |
+| UNRESOLVED | 0 |
 
-## Line buckets
+Narration often cites `210036` while lines sit on `AP-SUPZHD0036` → **COSMETIC_ONLY** vs dual CoA.
 
-| Bucket | Result |
-|--------|--------|
-| A Canonical AP | 68 · `CANONICAL_ALREADY_CORRECT` (as current leaf) |
-| B Legacy | 0 |
-| D Off-leaf mentions | Bank/AR counterparty · `LEGIT_NON_AP_OPERATIONAL` |
-| E Other-party | 0 |
-| Eligible remap | **0** |
-| Unresolved | **0** |
-| Simulated GL | **0.00** (no-op) |
+## Economic meaning
 
-## Current posting
+Debits predominate as advances/OB; credits as transfer settlements to beneficiary accounts (e.g. SHIMERA IMRAN). Matches **worker advance / work-payable** economics, not merchandise supplier AP. Prior preview: `reports/party-role-consolidation-20260920/KIRAN_WORKER_REPAIR_PREVIEW.md` (not executed).
 
-Recent payment and journals post to **`AP-SUPZHD0036`**. Narration may still cite `(210036)` → `COSMETIC_ONLY`.
+## Current vs historical
 
-## HOLD rationale
+| Lens | Finding |
+|------|---------|
+| HISTORICAL dual CoA | Absent (legacy empty) |
+| CURRENT posting path | PAY-6720 (2026-09-07) still on AP leaf — role path issue |
 
-Not an open dual-account remap. Contact remains held from merchandise AP auto-repair because economics match **worker advance (1180) / work payable (2010)** models. Any future WA/WP package needs separate owner approval and line-class review — **not** drafted here.
+## Simulation
+
+Empty dual allowlist → `TOTAL_GL_EFFECT = 0`.
+
+## Repair design
+
+No dual-CoA package. Any future worker-leaf design requires separate owner approval and WA/WP allowlists — not part of this phase.
