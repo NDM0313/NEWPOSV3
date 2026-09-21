@@ -156,7 +156,7 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
-  IF lower(trim(COALESCE(v_contact.type, ''))) <> 'worker' THEN
+  IF lower(trim(COALESCE(v_contact.type::text, ''))) <> 'worker' THEN
     -- Fail-loud: do not silently post suppliers onto control 1180 via this ensure.
     RAISE EXCEPTION 'WORKER_ADVANCE_ROLE_REQUIRED: contact % type=% must be worker',
       p_contact_id, v_contact.type
@@ -272,7 +272,7 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
-  IF lower(trim(COALESCE(v_contact.type, ''))) <> 'worker' THEN
+  IF lower(trim(COALESCE(v_contact.type::text, ''))) <> 'worker' THEN
     RAISE EXCEPTION 'WORKER_PAYABLE_ROLE_REQUIRED: contact % type=% must be worker',
       p_contact_id, v_contact.type
       USING ERRCODE = 'check_violation';
@@ -419,7 +419,7 @@ BEGIN
   END IF;
 
   -- New leaf only for explicit courier role (no name heuristics).
-  IF lower(trim(COALESCE(v_contact.type, ''))) <> 'courier' THEN
+  IF lower(trim(COALESCE(v_contact.type::text, ''))) <> 'courier' THEN
     RAISE EXCEPTION 'COURIER_ACCOUNT_ROLE_REQUIRED: contact % type=% must be courier',
       p_contact_id, v_contact.type
       USING ERRCODE = 'check_violation';

@@ -1,6 +1,6 @@
 # Worker/courier role-model — isolated Postgres evidence
 
-- Generated: 2026-09-21T19:45:03Z
+- Generated: 2026-09-21T20:09:48Z
 - Production writes: none
 - Runner: Docker postgres:15
 - Migration: migrations/20260922120000_worker_courier_role_model_account_domain.sql
@@ -26,15 +26,15 @@ NOTICE:  ACL _resolve_worker_payment_debit_account(p_company_id uuid, p_worker_c
 NOTICE:  ACL get_contact_party_gl_balances(p_company_id uuid, p_branch_id uuid, p_as_of_date date): prosecdef=t owner=postgres anon=f auth=t svc=t public=f proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
 NOTICE:  ACL get_or_create_courier_payable_account(p_company_id uuid, p_contact_id uuid, p_contact_name text): prosecdef=t owner=postgres anon=f auth=t svc=t public=f proacl={postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
 NOTICE:  PASS: ACL_MATRIX
-NOTICE:  PASS: WA ensure+idempotent id=45221687-9874-469d-b0d1-84d5fbd1ceaf
-NOTICE:  PASS: WP ensure+idempotent id=65667569-7e88-4e2d-86d2-79d7bbc974cb
-NOTICE:  PASS: courier ensure+idempotent id=1cf225e5-b7b4-4a8e-a7b3-f819ce2bef67
-NOTICE:  PASS: DHL PK distinct resolve id=5cfc0710-c562-4044-be0c-7ba14e0f44ec
+NOTICE:  PASS: WA ensure+idempotent id=c6032f4f-2eb0-4c0d-b8d1-b7fb47900a0b
+NOTICE:  PASS: WP ensure+idempotent id=1f4b386d-0133-473a-9d80-a6865d4b7178
+NOTICE:  PASS: courier ensure+idempotent id=8a376511-715b-45e7-8e96-2ae6dd812d27
+NOTICE:  PASS: DHL PK distinct resolve id=c1fd66a8-3726-46e6-a0ea-dd2ffb439ad0
 NOTICE:  PASS: supplier WA fail-loud
 NOTICE:  PASS: supplier WP fail-loud
 NOTICE:  PASS: null-contact courier blocked
 NOTICE:  PASS: supplier courier role gate
-NOTICE:  PASS: ordinary supplier AP leaf id=387bbd6a-1d28-4224-a3e4-1ce26d844945
+NOTICE:  PASS: ordinary supplier AP leaf id=18cd9160-256f-444b-bd82-4081a3001b4d
 NOTICE:  PASS: worker payment resolver
 NOTICE:  PASS: concurrency/unique-path WA stable
 NOTICE:  PASS: authenticated same-company WA/WP/courier/resolver/GL
