@@ -77,6 +77,7 @@ import {
   createCourierPaymentEntry,
 } from '@/app/services/addEntryV2Service';
 import { toast } from 'sonner';
+import { mapJournalAccountGuardError } from '@/app/lib/mapJournalAccountGuardError';
 import {
   uploadJournalEntryAttachments,
   uploadUnifiedStylePaymentAttachments,
@@ -1046,7 +1047,7 @@ export function AddEntryV2({
       });
       return;
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save');
+      toast.error(mapJournalAccountGuardError(e) || 'Failed to save');
     } finally {
       setSaving(false);
     }
