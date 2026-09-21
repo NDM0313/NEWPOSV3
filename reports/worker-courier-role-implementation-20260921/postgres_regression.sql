@@ -511,4 +511,177 @@ BEGIN
   RAISE NOTICE 'ROLE_MODEL_POSTGRES_REGRESSION_PASS';
 END $$;
 
+-- =============================================================================
+-- H) Payment RPC ACL + company authorization (record_payment_with_accounting)
+-- =============================================================================
+DO $$
+DECLARE
+  r record;
+  v_fail int := 0;
+BEGIN
+  RAISE NOTICE '=== PAYMENT RPC ACL MATRIX ===';
+  FOR r IN
+    SELECT pg_get_function_identity_arguments(p.oid) AS args,
+           p.prosecdef,
+           has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+           has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_exec,
+           has_function_privilege('service_role', p.oid, 'EXECUTE') AS svc_exec,
+           has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
+           COALESCE(p.proacl::text, '') AS proacl
+    FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND p.proname = 'record_payment_with_accounting'
+    ORDER BY 1
+  LOOP
+    RAISE NOTICE 'ACL record_payment_with_accounting(%): prosecdef=% anon=% auth=% svc=% public=% proacl=%',
+      r.args, r.prosecdef, r.anon_exec, r.auth_exec, r.svc_exec, r.public_exec, r.proacl;
+    IF NOT r.prosecdef THEN v_fail := v_fail + 1; END IF;
+    IF r.anon_exec OR r.public_exec THEN v_fail := v_fail + 1; END IF;
+    IF NOT r.auth_exec OR NOT r.svc_exec THEN v_fail := v_fail + 1; END IF;
+  END LOOP;
+  IF v_fail > 0 THEN
+    RAISE EXCEPTION 'PAYMENT_RPC_ACL_FAILED count=%', v_fail;
+  END IF;
+  IF (SELECT count(*) FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='record_payment_with_accounting') < 1 THEN
+    RAISE EXCEPTION 'PAYMENT_RPC missing';
+  END IF;
+  RAISE NOTICE 'PASS: PAYMENT_RPC_ACL_PASS';
+END $$;
+
+-- Cross-company + same-company worker payment + anon + supplier
+SET ROLE authenticated;
+SELECT set_config('app.test_user_company_id', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', false);
+
+DO $$
+DECLARE
+  v_co_a UUID := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  v_co_b UUID := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  v_worker_a UUID := '11111111-1111-1111-1111-111111111111';
+  v_worker_b UUID := '22222222-2222-2222-2222-222222222222';
+  v_supplier_a UUID := '33333333-3333-3333-3333-333333333333';
+  v_cash UUID;
+  v_wa UUID;
+  v_pay_before BIGINT;
+  v_je_before BIGINT;
+  v_line_before BIGINT;
+  v_pay_after BIGINT;
+  v_je_after BIGINT;
+  v_line_after BIGINT;
+  v_json json;
+  v_je UUID;
+  v_debit_acct UUID;
+BEGIN
+  SELECT id INTO v_cash FROM accounts WHERE company_id = v_co_a AND code = '1010';
+  SELECT id INTO v_wa FROM accounts WHERE company_id = v_co_a AND linked_contact_id = v_worker_a AND code LIKE 'WA-%';
+
+  SELECT count(*) INTO v_pay_before FROM payments WHERE company_id = v_co_b;
+  SELECT count(*) INTO v_je_before FROM journal_entries WHERE company_id = v_co_b;
+  SELECT count(*) INTO v_line_before FROM journal_entry_lines jel
+    JOIN journal_entries je ON je.id = jel.journal_entry_id WHERE je.company_id = v_co_b;
+
+  BEGIN
+    PERFORM public.record_payment_with_accounting(
+      v_co_b, NULL, 'paid'::payment_type, 'worker_payment', v_worker_b,
+      50, 'cash'::payment_method_enum, CURRENT_DATE, v_cash,
+      NULL, 'cross-company attack', NULL, NULL
+    );
+    RAISE EXCEPTION 'FAIL: cross-company payment should raise';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS: cross-company payment blocked sqlstate=% msg=%', SQLSTATE, SQLERRM;
+  END;
+
+  SELECT count(*) INTO v_pay_after FROM payments WHERE company_id = v_co_b;
+  SELECT count(*) INTO v_je_after FROM journal_entries WHERE company_id = v_co_b;
+  SELECT count(*) INTO v_line_after FROM journal_entry_lines jel
+    JOIN journal_entries je ON je.id = jel.journal_entry_id WHERE je.company_id = v_co_b;
+  IF v_pay_after <> v_pay_before OR v_je_after <> v_je_before OR v_line_after <> v_line_before THEN
+    RAISE EXCEPTION 'CROSS_COMPANY_PAYMENT_MUTATION pay %->% je %->% lines %->%',
+      v_pay_before, v_pay_after, v_je_before, v_je_after, v_line_before, v_line_after;
+  END IF;
+  RAISE NOTICE 'PASS: cross-company payment no mutation';
+
+  -- Same-company worker advance payment → WA leaf
+  v_json := public.record_payment_with_accounting(
+    v_co_a, NULL, 'paid'::payment_type, 'worker_payment', v_worker_a,
+    25, 'cash'::payment_method_enum, CURRENT_DATE, v_cash,
+    NULL, 'iso same-company worker', NULL, NULL
+  );
+  IF COALESCE((v_json->>'success')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'same-company worker payment failed: %', v_json;
+  END IF;
+  v_je := (v_json->>'journal_entry_id')::uuid;
+  SELECT jel.account_id INTO v_debit_acct
+  FROM journal_entry_lines jel
+  WHERE jel.journal_entry_id = v_je AND jel.debit > 0
+  LIMIT 1;
+  IF v_debit_acct IS DISTINCT FROM v_wa THEN
+    RAISE EXCEPTION 'worker payment debit expected WA % got %', v_wa, v_debit_acct;
+  END IF;
+  RAISE NOTICE 'PASS: same-company worker payment → WA leaf';
+
+  -- Ordinary supplier payment (manual_payment) → AP leaf
+  v_json := public.record_payment_with_accounting(
+    v_co_a, NULL, 'paid'::payment_type, 'manual_payment', v_supplier_a,
+    15, 'cash'::payment_method_enum, CURRENT_DATE, v_cash,
+    NULL, 'iso supplier', NULL, NULL
+  );
+  IF COALESCE((v_json->>'success')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'supplier payment failed: %', v_json;
+  END IF;
+  RAISE NOTICE 'PASS: ordinary supplier payment via RPC';
+END $$;
+
+RESET ROLE;
+SELECT set_config('app.test_user_company_id', '', false);
+
+-- Anon cannot execute payment RPC
+SET ROLE anon;
+DO $$
+DECLARE
+  v_co_a UUID := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  v_worker_a UUID := '11111111-1111-1111-1111-111111111111';
+BEGIN
+  BEGIN
+    PERFORM public.record_payment_with_accounting(
+      v_co_a, NULL, 'paid'::payment_type, 'worker_payment', v_worker_a,
+      1, 'cash'::payment_method_enum, CURRENT_DATE, NULL,
+      NULL, 'anon', NULL, NULL
+    );
+    RAISE EXCEPTION 'FAIL: anon payment should be denied';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS: anon payment execute denied';
+  WHEN OTHERS THEN
+    IF SQLSTATE IN ('42501', '42000') OR SQLERRM ILIKE '%permission denied%' THEN
+      RAISE NOTICE 'PASS: anon payment execute denied sqlstate=%', SQLSTATE;
+    ELSE
+      RAISE;
+    END IF;
+  END;
+END $$;
+RESET ROLE;
+
+-- service_role path
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_co_a UUID := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  v_worker_a UUID := '11111111-1111-1111-1111-111111111111';
+  v_cash UUID;
+  v_json json;
+BEGIN
+  SELECT id INTO v_cash FROM accounts WHERE company_id = v_co_a AND code = '1010';
+  v_json := public.record_payment_with_accounting(
+    v_co_a, NULL, 'paid'::payment_type, 'worker_payment', v_worker_a,
+    5, 'cash'::payment_method_enum, CURRENT_DATE, v_cash,
+    NULL, 'svc role', NULL, NULL
+  );
+  IF COALESCE((v_json->>'success')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'service_role payment failed: %', v_json;
+  END IF;
+  RAISE NOTICE 'PASS: service_role payment path';
+END $$;
+RESET ROLE;
+
+DO $$ BEGIN RAISE NOTICE 'ROLE_MODEL_PAYMENT_RPC_SECURITY_PASS'; END $$;
+SELECT 'ROLE_MODEL_PAYMENT_RPC_SECURITY_PASS' AS payment_rpc_security;
 SELECT 'ROLE_MODEL_POSTGRES_REGRESSION_PASS' AS result;

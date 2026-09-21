@@ -4,6 +4,8 @@ on:
     branches: [feat/worker-courier-role-model-implementation]
     paths:
       - 'migrations/20260922120000_worker_courier_role_model_account_domain.sql'
+      - 'migrations/20260922130000_record_payment_worker_role_leaf_debit.sql'
+      - 'migrations/20260922140000_record_payment_company_auth_and_acl.sql'
       - 'reports/worker-courier-role-implementation-20260921/postgres_regression.sql'
       - 'reports/worker-courier-role-implementation-20260922/**'
       - '.github/workflows/worker-courier-role-model-regression.yml'
