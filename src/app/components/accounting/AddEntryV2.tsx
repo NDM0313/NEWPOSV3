@@ -368,6 +368,7 @@ export function AddEntryV2({
               t === 'customer' ||
               t === 'both' ||
               t.includes('worker') ||
+              t.includes('courier') ||
               t === 'money_exchange'
             );
           })

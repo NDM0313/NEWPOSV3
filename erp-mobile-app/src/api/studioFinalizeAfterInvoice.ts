@@ -27,11 +27,22 @@ async function accountIdByCode(companyId: string, code: string): Promise<string 
   return (data as { id: string }).id;
 }
 
-/** Mirror web `resolveWorkerPayablePostingAccountId`: 2010 control or worker child under 2010. */
+/** Mirror web `resolveWorkerPayablePostingAccountId`: ensure WP-* under 2010 when possible. */
 async function resolveWorkerPayableAccountId(
   companyId: string,
   workerContactId: string | null | undefined
 ): Promise<string | null> {
+  if (workerContactId) {
+    try {
+      const { data, error } = await supabase.rpc('_ensure_worker_payable_subaccount', {
+        p_company_id: companyId,
+        p_contact_id: workerContactId,
+      });
+      if (!error && data) return String(data);
+    } catch {
+      /* fall through */
+    }
+  }
   const controlId = await accountIdByCode(companyId, '2010');
   if (!controlId) return null;
   if (!workerContactId) return controlId;
