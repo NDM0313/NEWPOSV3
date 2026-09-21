@@ -27,7 +27,7 @@ docker run -d --name "$NAME" -e POSTGRES_PASSWORD=test -e POSTGRES_USER=postgres
 
 echo "Waiting for Postgres..."
 for i in $(seq 1 40); do
-  if docker exec "$NAME" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+  if docker exec "$NAME" pg_isready -U postgres -d je_guard >/dev/null 2>&1; then break; fi
   sleep 0.5
 done
 
