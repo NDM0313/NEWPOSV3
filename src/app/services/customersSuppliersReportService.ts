@@ -6,6 +6,11 @@
 import { supabase } from '@/lib/supabase';
 import type { ExportData } from '@/app/utils/exportUtils';
 import type { BalanceStatus, ContactTypeFilter } from '@/app/lib/customersSuppliersReportLogic';
+import {
+  isSupplierBusinessContactType,
+  loadSupplierBusinessGlBalancesMap,
+  mapSupplierBusinessNetToDueAdvance,
+} from '@/app/lib/supplierBusinessGl';
 
 export type CustomersSuppliersContactType = 'customer' | 'supplier' | 'both' | 'worker';
 
@@ -138,6 +143,28 @@ export async function loadCustomersSuppliersReport(
       const t = String(r.contactType || '').toLowerCase();
       return t !== 'worker' && !t.includes('worker') && t !== 'courier' && !t.includes('courier');
     });
+
+  // Overlay supplier Due/Advance (GL) from the same Business attribution as Supplier Statement.
+  try {
+    const bizMap = await loadSupplierBusinessGlBalancesMap({
+      companyId: params.companyId,
+      branchId: safeBranchUuid(params.branchId),
+      endDate: params.endDate,
+    });
+    for (const row of rows) {
+      if (!isSupplierBusinessContactType(row.contactType)) continue;
+      const slice = bizMap.get(row.contactId);
+      if (!slice) continue;
+      const mapped = mapSupplierBusinessNetToDueAdvance(slice.businessNet);
+      row.due = mapped.due;
+      row.advanceGl = mapped.advanceGl;
+    }
+  } catch (e) {
+    if (import.meta.env?.DEV) {
+      console.warn('[customersSuppliersReportService] business GL overlay failed', e);
+    }
+  }
+
   return { rows, error: null, source: 'rpc' };
 }
 

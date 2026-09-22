@@ -70,13 +70,11 @@ import { LedgerDocumentComparisonPanel } from './LedgerDocumentComparisonPanel';
 import { LedgerV2UnifiedPreviewPanel } from './LedgerV2UnifiedPreviewPanel';
 import { LedgerRowLoadingOverlay } from './LedgerRowLoadingOverlay';
 import {
-  ARIF_PILOT_CONTACT_NAME,
-  isArifSupplierBusinessPilot,
-  loadArifBusinessHistory,
-  mapArifBusinessHistoryToV2Rows,
-  type ArifBusinessHistoryResult,
-  type ArifPilotViewMode,
-} from '@/app/lib/arifSupplierBusinessStatementPilot';
+  loadSupplierBusinessHistory,
+  mapSupplierBusinessHistoryToV2Rows,
+  type SupplierBusinessHistoryResult,
+  type SupplierStatementViewMode,
+} from '@/app/lib/supplierBusinessGl';
 import type {
   LedgerDocumentComparisonResult,
   LedgerEntityOption,
@@ -151,9 +149,10 @@ export function LedgerStatementCenterV2Page({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LedgerStatementV2Result | null>(null);
   const [pdfOrientation, setPdfOrientation] = useState<PdfPreviewOrientation>('portrait');
-  /** ARIF pilot only — Standard Account Statements path (default Business History). */
-  const [arifPilotView, setArifPilotView] = useState<ArifPilotViewMode>('business_history');
-  const [arifBusinessHistory, setArifBusinessHistory] = useState<ArifBusinessHistoryResult | null>(null);
+  /** Supplier Business History (default) vs Official AP — all suppliers. */
+  const [supplierViewMode, setSupplierViewMode] = useState<SupplierStatementViewMode>('business_history');
+  const [supplierBusinessHistory, setSupplierBusinessHistory] =
+    useState<SupplierBusinessHistoryResult | null>(null);
 
   const [rowActionBusy, setRowActionBusy] = useState(false);
 
@@ -440,23 +439,23 @@ export function LedgerStatementCenterV2Page({
       hasStatementDataRef.current = true;
       setDocComparison(null);
 
-      // ARIF pilot: load Business History with opening-safe attributed read (Standard V2 path).
-      if (statementType === 'supplier' && isArifSupplierBusinessPilot(companyId, entityId)) {
+      // Supplier Business History: opening-safe attributed read (Standard V2 path).
+      if (statementType === 'supplier' && companyId && entityId) {
         try {
-          const bh = await loadArifBusinessHistory({
+          const bh = await loadSupplierBusinessHistory({
             companyId,
             contactId: entityId,
             branchId: null,
             startDate: fromDate,
             endDate: toDate,
           });
-          setArifBusinessHistory(bh);
+          setSupplierBusinessHistory(bh);
         } catch (bhErr) {
-          if (import.meta.env?.DEV) console.warn('[LedgerV2] ARIF business history', bhErr);
-          setArifBusinessHistory(null);
+          if (import.meta.env?.DEV) console.warn('[LedgerV2] supplier business history', bhErr);
+          setSupplierBusinessHistory(null);
         }
       } else {
-        setArifBusinessHistory(null);
+        setSupplierBusinessHistory(null);
       }
 
       if (showDocComparison && showDiagnosticTools) {
@@ -494,7 +493,7 @@ export function LedgerStatementCenterV2Page({
         toast.error('Failed to load statement');
       }
       setResult(null);
-      setArifBusinessHistory(null);
+      setSupplierBusinessHistory(null);
       hasStatementDataRef.current = false;
     } finally {
       if (!silent) setLoading(false);
@@ -502,10 +501,10 @@ export function LedgerStatementCenterV2Page({
   }, [companyId, entityId, entityLabel, statementType, fromDate, toDate, showDocComparison, showDiagnosticTools]);
 
   useEffect(() => {
-    if (isArifSupplierBusinessPilot(companyId, entityId)) {
-      setArifPilotView('business_history');
+    if (statementType === 'supplier') {
+      setSupplierViewMode('business_history');
     }
-  }, [companyId, entityId]);
+  }, [companyId, entityId, statementType]);
 
   const handleEntityChange = useCallback((id: string) => {
     setEntityId(id);
@@ -639,23 +638,26 @@ export function LedgerStatementCenterV2Page({
     [beginRowAction, endRowAction, reportExport, entityLabel, entityId, formatCurrency, formatDate],
   );
 
-  const isArifPilotActive =
-    statementType === 'supplier' && isArifSupplierBusinessPilot(companyId, entityId);
-  const useArifBusinessHistory =
-    isArifPilotActive && arifPilotView === 'business_history' && Boolean(arifBusinessHistory);
+  const isSupplierBusinessActive = statementType === 'supplier' && Boolean(entityId);
+  const useSupplierBusinessHistory =
+    isSupplierBusinessActive &&
+    supplierViewMode === 'business_history' &&
+    Boolean(supplierBusinessHistory);
 
-  const arifV2Rows = useMemo(() => {
-    if (!arifBusinessHistory?.statementRows?.length) return [] as LedgerStatementV2Row[];
-    return mapArifBusinessHistoryToV2Rows(arifBusinessHistory.statementRows) as LedgerStatementV2Row[];
-  }, [arifBusinessHistory]);
+  const supplierV2Rows = useMemo(() => {
+    if (!supplierBusinessHistory?.statementRows?.length) return [] as LedgerStatementV2Row[];
+    return mapSupplierBusinessHistoryToV2Rows(
+      supplierBusinessHistory.statementRows,
+    ) as LedgerStatementV2Row[];
+  }, [supplierBusinessHistory]);
 
-  const allRows = useArifBusinessHistory ? arifV2Rows : (result?.rows ?? []);
+  const allRows = useSupplierBusinessHistory ? supplierV2Rows : (result?.rows ?? []);
   const openingAll = useMemo(() => {
-    if (useArifBusinessHistory && arifBusinessHistory) {
-      return arifBusinessHistory.totals.opening;
+    if (useSupplierBusinessHistory && supplierBusinessHistory) {
+      return supplierBusinessHistory.totals.opening;
     }
     return deriveLedgerV2Opening(allRows);
-  }, [allRows, useArifBusinessHistory, arifBusinessHistory]);
+  }, [allRows, useSupplierBusinessHistory, supplierBusinessHistory]);
   const rows = useMemo(
     () => applyLedgerV2DisplayFilters(allRows, transactionType, search),
     [allRows, transactionType, search],
@@ -669,7 +671,7 @@ export function LedgerStatementCenterV2Page({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [entityId, statementType, transactionType, search, fromDate, toDate, pageSize, arifPilotView]);
+  }, [entityId, statementType, transactionType, search, fromDate, toDate, pageSize, supplierViewMode]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(1);
@@ -677,7 +679,7 @@ export function LedgerStatementCenterV2Page({
 
   /** Party type + only opening / no period rows → imported generic JEs often live on Account COA. */
   const showPartyImportGapHint = useMemo(() => {
-    if (useArifBusinessHistory) return false;
+    if (useSupplierBusinessHistory) return false;
     if (loading || !entityId) return false;
     if (statementType !== 'customer' && statementType !== 'supplier') return false;
     const periodRows = rows.filter((r) => {
@@ -691,11 +693,11 @@ export function LedgerStatementCenterV2Page({
       return !isOpening;
     });
     return periodRows.length === 0;
-  }, [loading, entityId, statementType, rows, useArifBusinessHistory]);
+  }, [loading, entityId, statementType, rows, useSupplierBusinessHistory]);
 
   const summary = useMemo(() => {
-    if (useArifBusinessHistory && arifBusinessHistory) {
-      const t = arifBusinessHistory.totals;
+    if (useSupplierBusinessHistory && supplierBusinessHistory) {
+      const t = supplierBusinessHistory.totals;
       return {
         openingBalance: t.opening,
         closingBalance: t.closing,
@@ -704,12 +706,19 @@ export function LedgerStatementCenterV2Page({
       };
     }
     return allRows.length ? summarizeLedgerV2Rows(rows, openingAll, statementType) : null;
-  }, [rows, openingAll, statementType, allRows.length, useArifBusinessHistory, arifBusinessHistory]);
+  }, [
+    rows,
+    openingAll,
+    statementType,
+    allRows.length,
+    useSupplierBusinessHistory,
+    supplierBusinessHistory,
+  ]);
 
   const dateRangeLabel = periodLabel?.trim() || getDateRangeLabel();
   const periodDisplayLabel = formatLedgerPeriodLabel(fromDate, toDate, formatDate);
-  const reportPdfTitle = useArifBusinessHistory
-    ? `${ARIF_PILOT_CONTACT_NAME} — Business History`
+  const reportPdfTitle = useSupplierBusinessHistory
+    ? `${entityLabel || 'Supplier'} — Business History`
     : LEDGER_PDF_TITLES[statementType];
   const generatedAt = new Date().toLocaleString('en-GB');
   const ledgerPrint = reportExport.ledgerPrintOptions;
@@ -970,51 +979,52 @@ export function LedgerStatementCenterV2Page({
         onApplyPartyDiscount={() => setDiscountModalOpen(true)}
       />
 
-      {isArifPilotActive ? (
+      {isSupplierBusinessActive ? (
         <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-medium text-foreground">
-              {ARIF_PILOT_CONTACT_NAME} —{' '}
-              {arifPilotView === 'business_history' ? 'Business History' : 'Official AP'}
+              {entityLabel || 'Supplier'} —{' '}
+              {supplierViewMode === 'business_history' ? 'Business History' : 'Official AP'}
             </p>
             <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
               <button
                 type="button"
                 className={
-                  arifPilotView === 'business_history'
+                  supplierViewMode === 'business_history'
                     ? 'px-3 py-1.5 bg-primary/20 text-foreground font-medium'
                     : 'px-3 py-1.5 bg-background text-muted-foreground hover:bg-muted/60'
                 }
-                onClick={() => setArifPilotView('business_history')}
+                onClick={() => setSupplierViewMode('business_history')}
               >
                 Business History
               </button>
               <button
                 type="button"
                 className={
-                  arifPilotView === 'official_ap'
+                  supplierViewMode === 'official_ap'
                     ? 'px-3 py-1.5 border-l border-border bg-primary/20 text-foreground font-medium'
                     : 'px-3 py-1.5 border-l border-border bg-background text-muted-foreground hover:bg-muted/60'
                 }
-                onClick={() => setArifPilotView('official_ap')}
+                onClick={() => setSupplierViewMode('official_ap')}
               >
                 Official AP
               </button>
             </div>
           </div>
-          {arifPilotView === 'business_history' && arifBusinessHistory ? (
+          {supplierViewMode === 'business_history' && supplierBusinessHistory ? (
             <p className="text-xs text-muted-foreground">
-              Attributed linked-leaf history (pilot). Opening{' '}
-              {arifBusinessHistory.totals.opening.toLocaleString()} · period Dr{' '}
-              {arifBusinessHistory.totals.periodDebit.toLocaleString()} / Cr{' '}
-              {arifBusinessHistory.totals.periodCredit.toLocaleString()} · closing{' '}
-              {arifBusinessHistory.totals.closing.toLocaleString()} · {arifBusinessHistory.periodRows.length}{' '}
-              period line(s). Official AP tab uses the unchanged 2000-subtree supplier loader.
+              Attributed supplier GL (AP-2000 + linked legacy leaves). Opening{' '}
+              {supplierBusinessHistory.totals.opening.toLocaleString()} · period Dr{' '}
+              {supplierBusinessHistory.totals.periodDebit.toLocaleString()} / Cr{' '}
+              {supplierBusinessHistory.totals.periodCredit.toLocaleString()} · closing{' '}
+              {supplierBusinessHistory.totals.closing.toLocaleString()} ·{' '}
+              {supplierBusinessHistory.periodRows.length} period line(s). Official AP tab uses the
+              unchanged 2000-subtree supplier loader.
             </p>
-          ) : arifPilotView === 'official_ap' ? (
+          ) : supplierViewMode === 'official_ap' ? (
             <p className="text-xs text-muted-foreground">
-              Official AP remains the existing supplier AP (code 2000) statement — empty until an AP-SUP leaf
-              exists for ARIF.
+              Official AP remains the existing supplier AP (code 2000) statement — empty until an AP-SUP
+              leaf exists for this contact.
             </p>
           ) : null}
         </div>
@@ -1133,7 +1143,7 @@ export function LedgerStatementCenterV2Page({
               loading={loading}
               rowActionsDisabled={rowActionBusy}
               visibleColumns={visibleColumns}
-              showSourceAccount={useArifBusinessHistory}
+              showSourceAccount={useSupplierBusinessHistory}
               onOpenRow={handleOpenRowDetail}
               onWhatsAppRow={handleWhatsAppRow}
               onPreviewAttachments={handlePreviewAttachments}
