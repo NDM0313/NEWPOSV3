@@ -13,7 +13,8 @@
 | Code fix | `bd8d73af44ba19da3dad76235fdedf36ce6eda45` |
 | Merge commit | `14214abc6c5fd4ddb1322eb652f4d7e9f4293646` |
 | Version bump | `ec39c4d19d09dfe5aee3f773f05ded1b4ec2e44d` |
-| Final main | `ec39c4d19d09dfe5aee3f773f05ded1b4ec2e44d` |
+| Evidence docs | `0e597128b010bf12db45fe810116552a9075687b` |
+| Final main | `0e597128b010bf12db45fe810116552a9075687b` |
 
 Merge: normal `--no-ff`. Branch was cleanly ahead of main (0 behind / 4 ahead; merge-base = old main). No conflicts. No force push.
 
