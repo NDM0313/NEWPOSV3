@@ -62,6 +62,8 @@ export interface LedgerStatementV2Row {
   glEntry?: AccountLedgerEntry;
   /** Original operational row when loaded from party operational ledger. */
   operationalTx?: Transaction;
+  /** ARIF Business History pilot: CoA leaf code that carried the line (e.g. 210017). */
+  sourceAccountCode?: string;
 }
 
 export interface LedgerStatementV2Summary {

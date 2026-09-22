@@ -11,6 +11,8 @@ interface LedgerTableProps {
   rowActionsDisabled?: boolean;
   /** When a key is false, that data column is hidden. Att. / Actions always shown. */
   visibleColumns?: Record<string, boolean>;
+  /** ARIF Business History pilot: show CoA leaf code column. */
+  showSourceAccount?: boolean;
   onOpenRow: (row: LedgerStatementV2Row) => void;
   onWhatsAppRow: (row: LedgerStatementV2Row) => void;
   onPreviewAttachments: (row: LedgerStatementV2Row) => void;
@@ -22,6 +24,7 @@ export function LedgerTable({
   loading,
   rowActionsDisabled,
   visibleColumns,
+  showSourceAccount = false,
   onOpenRow,
   onWhatsAppRow,
   onPreviewAttachments,
@@ -55,6 +58,14 @@ export function LedgerTable({
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground bg-muted/40">
               {show('date') ? <th className="px-3 py-3 font-medium">Date</th> : null}
               {show('reference') ? <th className="px-3 py-3 font-medium">Reference</th> : null}
+              {showSourceAccount ? (
+                <th
+                  className="px-3 py-3 font-medium"
+                  title="CoA leaf that carried this journal line (e.g. legacy 210017)."
+                >
+                  Source Account
+                </th>
+              ) : null}
               {show('type') ? <th className="px-3 py-3 font-medium">Type</th> : null}
               {show('description') ? (
                 <th className="px-3 py-3 font-medium min-w-[160px]">Description</th>
@@ -85,6 +96,11 @@ export function LedgerTable({
                   {show('reference') ? (
                     <td className="px-3 py-2.5">
                       <LedgerReferenceCell row={row} onOpen={onOpenRow} disabled={rowActionsDisabled} />
+                    </td>
+                  ) : null}
+                  {showSourceAccount ? (
+                    <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {row.sourceAccountCode || '—'}
                     </td>
                   ) : null}
                   {show('type') ? (

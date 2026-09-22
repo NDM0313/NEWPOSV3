@@ -193,3 +193,51 @@ export async function loadArifBusinessHistory(params: {
     statementRows,
   };
 }
+
+/** Map ARIF Business History statement rows into Ledger Statement V2 table rows. */
+export function mapArifBusinessHistoryToV2Rows(
+  statementRows: AccountLedgerEntry[],
+): Array<{
+  id: string;
+  date: string;
+  referenceNo: string;
+  transactionType: string;
+  description: string;
+  branch: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+  paymentMethod: string;
+  createdBy: string;
+  hasAttachments: boolean;
+  sourceKind: 'opening' | 'journal';
+  journalEntryId?: string;
+  paymentId?: string;
+  glEntry: AccountLedgerEntry;
+  sourceAccountCode: string;
+}> {
+  return statementRows.map((e, i) => {
+    const isOpening =
+      String(e.document_type || '').toLowerCase().includes('opening') ||
+      String(e.description || '').toLowerCase().includes('opening balance');
+    return {
+      id: String(e.journal_line_id || e.journal_entry_id || `arif-bh-${i}`),
+      date: e.date,
+      referenceNo: e.reference_number || '—',
+      transactionType: e.document_type || (isOpening ? 'Opening Balance' : 'Journal'),
+      description: e.description || '—',
+      branch: e.branch_name || e.branch_id || '—',
+      debit: Number(e.debit || 0),
+      credit: Number(e.credit || 0),
+      runningBalance: Number(e.running_balance || 0),
+      paymentMethod: '—',
+      createdBy: '—',
+      hasAttachments: false,
+      sourceKind: isOpening ? ('opening' as const) : ('journal' as const),
+      journalEntryId: isOpening ? undefined : e.journal_entry_id,
+      paymentId: e.payment_id,
+      glEntry: e,
+      sourceAccountCode: String(e.gl_account_code || ''),
+    };
+  });
+}
