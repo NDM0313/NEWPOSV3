@@ -69,6 +69,12 @@ import { AttachmentPreviewDialog } from './AttachmentPreviewDialog';
 import { LedgerDocumentComparisonPanel } from './LedgerDocumentComparisonPanel';
 import { LedgerV2UnifiedPreviewPanel } from './LedgerV2UnifiedPreviewPanel';
 import { LedgerRowLoadingOverlay } from './LedgerRowLoadingOverlay';
+import {
+  loadSupplierBusinessHistory,
+  mapSupplierBusinessHistoryToV2Rows,
+  type SupplierBusinessHistoryResult,
+  type SupplierStatementViewMode,
+} from '@/app/lib/supplierBusinessGl';
 import type {
   LedgerDocumentComparisonResult,
   LedgerEntityOption,
@@ -143,6 +149,10 @@ export function LedgerStatementCenterV2Page({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LedgerStatementV2Result | null>(null);
   const [pdfOrientation, setPdfOrientation] = useState<PdfPreviewOrientation>('portrait');
+  /** Supplier Business History (default) vs Official AP — all suppliers. */
+  const [supplierViewMode, setSupplierViewMode] = useState<SupplierStatementViewMode>('business_history');
+  const [supplierBusinessHistory, setSupplierBusinessHistory] =
+    useState<SupplierBusinessHistoryResult | null>(null);
 
   const [rowActionBusy, setRowActionBusy] = useState(false);
 
@@ -428,6 +438,26 @@ export function LedgerStatementCenterV2Page({
       setResult(data);
       hasStatementDataRef.current = true;
       setDocComparison(null);
+
+      // Supplier Business History: opening-safe attributed read (Standard V2 path).
+      if (statementType === 'supplier' && companyId && entityId) {
+        try {
+          const bh = await loadSupplierBusinessHistory({
+            companyId,
+            contactId: entityId,
+            branchId: null,
+            startDate: fromDate,
+            endDate: toDate,
+          });
+          setSupplierBusinessHistory(bh);
+        } catch (bhErr) {
+          if (import.meta.env?.DEV) console.warn('[LedgerV2] supplier business history', bhErr);
+          setSupplierBusinessHistory(null);
+        }
+      } else {
+        setSupplierBusinessHistory(null);
+      }
+
       if (showDocComparison && showDiagnosticTools) {
         setDocComparisonLoading(true);
         compareGlWithDocumentsV2(
@@ -463,11 +493,18 @@ export function LedgerStatementCenterV2Page({
         toast.error('Failed to load statement');
       }
       setResult(null);
+      setSupplierBusinessHistory(null);
       hasStatementDataRef.current = false;
     } finally {
       if (!silent) setLoading(false);
     }
   }, [companyId, entityId, entityLabel, statementType, fromDate, toDate, showDocComparison, showDiagnosticTools]);
+
+  useEffect(() => {
+    if (statementType === 'supplier') {
+      setSupplierViewMode('business_history');
+    }
+  }, [companyId, entityId, statementType]);
 
   const handleEntityChange = useCallback((id: string) => {
     setEntityId(id);
@@ -601,8 +638,26 @@ export function LedgerStatementCenterV2Page({
     [beginRowAction, endRowAction, reportExport, entityLabel, entityId, formatCurrency, formatDate],
   );
 
-  const allRows = result?.rows ?? [];
-  const openingAll = useMemo(() => deriveLedgerV2Opening(allRows), [allRows]);
+  const isSupplierBusinessActive = statementType === 'supplier' && Boolean(entityId);
+  const useSupplierBusinessHistory =
+    isSupplierBusinessActive &&
+    supplierViewMode === 'business_history' &&
+    Boolean(supplierBusinessHistory);
+
+  const supplierV2Rows = useMemo(() => {
+    if (!supplierBusinessHistory?.statementRows?.length) return [] as LedgerStatementV2Row[];
+    return mapSupplierBusinessHistoryToV2Rows(
+      supplierBusinessHistory.statementRows,
+    ) as LedgerStatementV2Row[];
+  }, [supplierBusinessHistory]);
+
+  const allRows = useSupplierBusinessHistory ? supplierV2Rows : (result?.rows ?? []);
+  const openingAll = useMemo(() => {
+    if (useSupplierBusinessHistory && supplierBusinessHistory) {
+      return supplierBusinessHistory.totals.opening;
+    }
+    return deriveLedgerV2Opening(allRows);
+  }, [allRows, useSupplierBusinessHistory, supplierBusinessHistory]);
   const rows = useMemo(
     () => applyLedgerV2DisplayFilters(allRows, transactionType, search),
     [allRows, transactionType, search],
@@ -616,7 +671,7 @@ export function LedgerStatementCenterV2Page({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [entityId, statementType, transactionType, search, fromDate, toDate, pageSize]);
+  }, [entityId, statementType, transactionType, search, fromDate, toDate, pageSize, supplierViewMode]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(1);
@@ -624,6 +679,7 @@ export function LedgerStatementCenterV2Page({
 
   /** Party type + only opening / no period rows → imported generic JEs often live on Account COA. */
   const showPartyImportGapHint = useMemo(() => {
+    if (useSupplierBusinessHistory) return false;
     if (loading || !entityId) return false;
     if (statementType !== 'customer' && statementType !== 'supplier') return false;
     const periodRows = rows.filter((r) => {
@@ -637,16 +693,33 @@ export function LedgerStatementCenterV2Page({
       return !isOpening;
     });
     return periodRows.length === 0;
-  }, [loading, entityId, statementType, rows]);
+  }, [loading, entityId, statementType, rows, useSupplierBusinessHistory]);
 
-  const summary = useMemo(
-    () => (allRows.length ? summarizeLedgerV2Rows(rows, openingAll, statementType) : null),
-    [rows, openingAll, statementType, allRows.length],
-  );
+  const summary = useMemo(() => {
+    if (useSupplierBusinessHistory && supplierBusinessHistory) {
+      const t = supplierBusinessHistory.totals;
+      return {
+        openingBalance: t.opening,
+        closingBalance: t.closing,
+        totalDebit: t.periodDebit,
+        totalCredit: t.periodCredit,
+      };
+    }
+    return allRows.length ? summarizeLedgerV2Rows(rows, openingAll, statementType) : null;
+  }, [
+    rows,
+    openingAll,
+    statementType,
+    allRows.length,
+    useSupplierBusinessHistory,
+    supplierBusinessHistory,
+  ]);
 
   const dateRangeLabel = periodLabel?.trim() || getDateRangeLabel();
   const periodDisplayLabel = formatLedgerPeriodLabel(fromDate, toDate, formatDate);
-  const reportPdfTitle = LEDGER_PDF_TITLES[statementType];
+  const reportPdfTitle = useSupplierBusinessHistory
+    ? `${entityLabel || 'Supplier'} — Business History`
+    : LEDGER_PDF_TITLES[statementType];
   const generatedAt = new Date().toLocaleString('en-GB');
   const ledgerPrint = reportExport.ledgerPrintOptions;
   const printOpening = summary?.openingBalance ?? openingAll;
@@ -906,6 +979,57 @@ export function LedgerStatementCenterV2Page({
         onApplyPartyDiscount={() => setDiscountModalOpen(true)}
       />
 
+      {isSupplierBusinessActive ? (
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium text-foreground">
+              {entityLabel || 'Supplier'} —{' '}
+              {supplierViewMode === 'business_history' ? 'Business History' : 'Official AP'}
+            </p>
+            <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+              <button
+                type="button"
+                className={
+                  supplierViewMode === 'business_history'
+                    ? 'px-3 py-1.5 bg-primary/20 text-foreground font-medium'
+                    : 'px-3 py-1.5 bg-background text-muted-foreground hover:bg-muted/60'
+                }
+                onClick={() => setSupplierViewMode('business_history')}
+              >
+                Business History
+              </button>
+              <button
+                type="button"
+                className={
+                  supplierViewMode === 'official_ap'
+                    ? 'px-3 py-1.5 border-l border-border bg-primary/20 text-foreground font-medium'
+                    : 'px-3 py-1.5 border-l border-border bg-background text-muted-foreground hover:bg-muted/60'
+                }
+                onClick={() => setSupplierViewMode('official_ap')}
+              >
+                Official AP
+              </button>
+            </div>
+          </div>
+          {supplierViewMode === 'business_history' && supplierBusinessHistory ? (
+            <p className="text-xs text-muted-foreground">
+              Attributed supplier GL (AP-2000 + linked legacy leaves). Opening{' '}
+              {supplierBusinessHistory.totals.opening.toLocaleString()} · period Dr{' '}
+              {supplierBusinessHistory.totals.periodDebit.toLocaleString()} / Cr{' '}
+              {supplierBusinessHistory.totals.periodCredit.toLocaleString()} · closing{' '}
+              {supplierBusinessHistory.totals.closing.toLocaleString()} ·{' '}
+              {supplierBusinessHistory.periodRows.length} period line(s). Official AP tab uses the
+              unchanged 2000-subtree supplier loader.
+            </p>
+          ) : supplierViewMode === 'official_ap' ? (
+            <p className="text-xs text-muted-foreground">
+              Official AP remains the existing supplier AP (code 2000) statement — empty until an AP-SUP
+              leaf exists for this contact.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {companyId && entityId && (statementType === 'customer' || statementType === 'supplier') ? (
         <PartyLedgerDiscountModal
           open={discountModalOpen}
@@ -1019,6 +1143,7 @@ export function LedgerStatementCenterV2Page({
               loading={loading}
               rowActionsDisabled={rowActionBusy}
               visibleColumns={visibleColumns}
+              showSourceAccount={useSupplierBusinessHistory}
               onOpenRow={handleOpenRowDetail}
               onWhatsAppRow={handleWhatsAppRow}
               onPreviewAttachments={handlePreviewAttachments}
