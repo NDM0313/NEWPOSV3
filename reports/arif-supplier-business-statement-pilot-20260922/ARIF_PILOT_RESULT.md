@@ -3,8 +3,9 @@
 **Verdict: `ARIF_SUPPLIER_BUSINESS_STATEMENT_PILOT_READY_FOR_OWNER_REVIEW`**
 
 **Date:** 2026-09-22  
-**Branch:** `feat/arif-supplier-business-statement-pilot`  
-**Company:** DIN COLLECTION `e08a04af-22a8-4869-9b4d-da31fce13158`
+**Branch:** `feat/arif-supplier-business-statement-pilot` @ `62d76a52`  
+**Company:** DIN COLLECTION `e08a04af-22a8-4869-9b4d-da31fce13158`  
+**Deploy:** Frontend hard-rebuild on VPS from this branch (`erp-frontend` healthy; `/` + `/health` HTTP 200). No migrations.
 
 ## Scope
 
