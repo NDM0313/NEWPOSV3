@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-23  
 **Branch:** `fix/mobile-supplier-list-detail-parity`  
+**Branch tip:** `bd8d73af44ba19da3dad76235fdedf36ce6eda45`  
 **Base main:** `d84430b4d9d81262ba3549eb4ee405fd9cd708e9`  
 **Verdict:** `MOBILE_SUPPLIER_LIST_DETAIL_PARITY_READY_FOR_OWNER_REVIEW`
 
