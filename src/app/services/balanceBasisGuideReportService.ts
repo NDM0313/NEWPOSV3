@@ -13,6 +13,7 @@ import {
   type BalanceBasisGuideRow,
   type BalanceBasisGuideTotals,
 } from '@/app/lib/balanceBasisGuideLogic';
+import { isSupplierBusinessContactType } from '@/app/lib/supplierBusinessGl';
 import { safeBranchForFilter } from '@/app/services/arApReconciliationCenterService';
 
 export type BalanceBasisGuideReportResult = {
@@ -71,9 +72,16 @@ export async function loadBalanceBasisGuideReport(
     error,
   });
 
-  const [contactsRes, partyMap, docRpc, snapRpc, glSnap, accountsRes] = await Promise.all([
+  const [contactsRes, partyMap, businessGlMap, docRpc, snapRpc, glSnap, accountsRes] = await Promise.all([
     supabase.from('contacts').select('id, name, code, type').eq('company_id', companyId).order('name'),
     contactService.getContactPartyGlBalancesMap(companyId, branchId, asOfDate),
+    import('@/app/lib/supplierBusinessGl').then(({ loadSupplierBusinessGlBalancesMap }) =>
+      loadSupplierBusinessGlBalancesMap({
+        companyId,
+        branchId,
+        endDate: asOfDate,
+      }),
+    ),
     supabase.rpc('get_contact_balances_summary', {
       p_company_id: companyId,
       p_branch_id: branchId,
@@ -117,17 +125,23 @@ export async function loadBalanceBasisGuideReport(
 
   const rows: BalanceBasisGuideRow[] = (contactsRes.data || []).map((c) => {
     const id = String((c as { id: string }).id);
+    const contactType = String((c as { type?: string }).type || '');
     const party = partyMap?.get(id);
     const doc = docMap.get(id);
+    const businessSlice = businessGlMap?.get(id);
+    const businessGlNet = isSupplierBusinessContactType(contactType)
+      ? (businessSlice?.businessNet ?? 0)
+      : null;
     return buildBalanceBasisGuideRow({
       contactId: id,
       contactName: String((c as { name?: string }).name || id),
       contactCode: (c as { code?: string | null }).code ?? null,
-      contactType: String((c as { type?: string }).type || ''),
+      contactType,
       subledgerAccountHint: subledgerByContact.get(id) ?? null,
       glArSigned: party?.glArReceivable ?? 0,
       glApSigned: party?.glApPayable ?? 0,
       glWorkerSigned: party?.glWorkerPayable ?? 0,
+      businessGlNet,
       documentDueReceivable: doc?.receivables ?? 0,
       documentDuePayable: doc?.payables ?? 0,
     });
@@ -180,12 +194,12 @@ export function balanceBasisGuideToCsv(rows: BalanceBasisGuideRow[]): string {
     'Type',
     'Sub-ledger Account',
     'AR Signed GL',
-    'AP Signed GL',
+    'Official AP (2000)',
     'Worker Signed GL',
-    'Operational Receivable',
-    'Operational Payable',
+    'Business GL',
+    'Official AP Payable',
+    'Official AP Credit / Prepaid',
     'Hidden Credit AR',
-    'Hidden Credit AP',
     'Document Due Receivable',
     'Document Due Payable',
   ];
@@ -198,10 +212,10 @@ export function balanceBasisGuideToCsv(rows: BalanceBasisGuideRow[]): string {
       r.glArSigned.toFixed(2),
       r.glApSigned.toFixed(2),
       r.glWorkerSigned.toFixed(2),
-      r.operationalReceivable.toFixed(2),
+      r.businessGlNet != null ? r.businessGlNet.toFixed(2) : '',
       r.operationalPayable.toFixed(2),
-      r.hiddenCreditAr.toFixed(2),
       r.hiddenCreditAp.toFixed(2),
+      r.hiddenCreditAr.toFixed(2),
       r.documentDueReceivable.toFixed(2),
       r.documentDuePayable.toFixed(2),
     ].join(',')
