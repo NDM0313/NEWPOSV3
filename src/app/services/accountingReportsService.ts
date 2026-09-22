@@ -61,6 +61,10 @@ export interface TrialBalanceRow {
   balance: number; // debit positive, credit negative for display
   /** Indented child row under AR/AP control (expanded mode). */
   presentationIndent?: number;
+  /** Canonical TB: number of underlying GL accounts rolled into this row */
+  source_account_count?: number;
+  /** Canonical TB: account ids for multi-account ledger drill */
+  source_account_ids?: string[];
 }
 
 export interface TrialBalanceResult {

@@ -14,6 +14,8 @@ export function mapUnifiedAccountToTrialBalanceRow(acc: UnifiedTrialBalanceAccou
     debit: acc.totalDebit,
     credit: acc.totalCredit,
     balance: acc.netBalance,
+    source_account_count: acc.sourceAccountCount,
+    source_account_ids: acc.sourceAccountIds,
   };
 }
 

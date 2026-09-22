@@ -2436,7 +2436,7 @@ export const accountingService = {
 
   // Get account ledger entries
   async getAccountLedger(
-    accountId: string,
+    accountId: string | string[],
     companyId: string,
     startDate?: string,
     endDate?: string,
@@ -2444,8 +2444,14 @@ export const accountingService = {
     searchTerm?: string
   ): Promise<AccountLedgerEntry[]> {
     try {
-      // Get all journal entry lines for this account, scoped to this company via inner join
-      // Sort by Date ASC, then ID ASC (as per requirements)
+      const accountIds = (Array.isArray(accountId) ? accountId : [accountId])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean);
+      if (accountIds.length === 0) return [];
+      const accountIdSet = new Set(accountIds);
+
+      // Get all journal entry lines for this account (or union of accounts for canonical TB drill),
+      // scoped to this company via inner join. Sort by Date ASC, then ID ASC (as per requirements).
       let query = supabase
         .from('journal_entry_lines')
         .select(`
@@ -2469,7 +2475,7 @@ export const accountingService = {
             branch:branches(id, name, code)
           )
         `)
-        .eq('account_id', accountId)
+        .in('account_id', accountIds)
         .eq('journal_entries.company_id', companyId)
         .order('created_at', { ascending: true });
 
@@ -2726,10 +2732,9 @@ export const accountingService = {
           const { data, error } = await supabase
             .from('journal_entry_lines')
             .select('journal_entry_id, account_id, account:accounts(name)')
-            .in('journal_entry_id', chunk)
-            .neq('account_id', accountId);
+            .in('journal_entry_id', chunk);
           if (error) throw error;
-          return data || [];
+          return (data || []).filter((ol: any) => !accountIdSet.has(String(ol.account_id || '')));
         });
         for (const ol of otherLines) {
           const name = (ol as any).account?.name ?? 'Unknown';

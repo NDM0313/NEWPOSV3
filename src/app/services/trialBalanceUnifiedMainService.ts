@@ -23,6 +23,7 @@ export async function loadTrialBalanceUnifiedMain(params: {
   endDate: string;
   branchId?: string;
   basis?: UnifiedLedgerBasis;
+  presentation?: 'canonical' | 'raw';
 }): Promise<TrialBalanceUnifiedMainResult> {
   if (await isUnifiedLedgerKillSwitchActive(params.companyId)) {
     throw new Error('Unified main loader blocked — kill switch active.');
@@ -41,6 +42,7 @@ export async function loadTrialBalanceUnifiedMain(params: {
     asOfDate: rpcScope.asOfDate,
     basis,
     shadowForce: false,
+    presentation: params.presentation ?? 'canonical',
   });
 
   return {

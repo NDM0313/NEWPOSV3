@@ -112,6 +112,8 @@ export const TrialBalancePage: React.FC<{
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mainLoaderSource, setMainLoaderSource] = useState<'legacy' | 'unified'>('legacy');
   const [mainUnifiedAccounts, setMainUnifiedAccounts] = useState<UnifiedTrialBalanceAccount[]>([]);
+  /** Default Canonical/Rolled-up; Raw GL reproduces exact account_id grouping. */
+  const [tbPresentation, setTbPresentation] = useState<'canonical' | 'raw'>('canonical');
 
   const previewCompareSource = useMemo(
     () => resolveTrialBalancePreviewCompareSource(mainLoaderSource),
@@ -145,6 +147,7 @@ export const TrialBalancePage: React.FC<{
           endDate,
           branchId,
           basis: previewBasis,
+          presentation: tbPresentation,
         });
         setMainUnifiedAccounts(unified.accounts);
         setData({
@@ -163,7 +166,7 @@ export const TrialBalancePage: React.FC<{
         setLoading(false);
       }
     })();
-  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey, previewBasis, reportReloadEpoch]);
+  }, [companyId, startDate, endDate, branchId, arApMode, fetchRetryKey, previewBasis, reportReloadEpoch, tbPresentation]);
 
   useEffect(() => {
     if (!journalSearchEnabled || !searchTerm.trim() || !companyId) {
@@ -545,6 +548,18 @@ export const TrialBalancePage: React.FC<{
       <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-sm text-muted-foreground flex items-center gap-2">
+            Presentation
+            <select
+              value={tbPresentation}
+              onChange={(e) => setTbPresentation(e.target.value as 'canonical' | 'raw')}
+              className="bg-muted border border-border rounded px-2 py-1.5 text-sm text-foreground"
+              title="Canonical rolls SAFE legacy supplier accounts into AP-SUP. Raw GL matches exact journal account_id."
+            >
+              <option value="canonical">Canonical (rolled-up)</option>
+              <option value="raw">Raw GL</option>
+            </select>
+          </label>
+          <label className="text-sm text-muted-foreground flex items-center gap-2">
             AR / AP view
             <select
               value={arApMode}
@@ -679,14 +694,22 @@ export const TrialBalancePage: React.FC<{
                   <td className="p-3 text-foreground">
                     <span
                       style={{ paddingLeft: (row.presentationIndent || 0) * 16 }}
-                      className="inline-block"
+                      className="inline-flex items-center gap-2"
                       title={
                         (row.presentationIndent || 0) > 0
                           ? 'Party GL sub-ledger — should match Ledger Statement closing after AR tie-out'
                           : undefined
                       }
                     >
-                      {row.account_name}
+                      <span className="inline-block">{row.account_name}</span>
+                      {tbPresentation === 'canonical' && (row.source_account_count || 0) > 1 ? (
+                        <span
+                          className="inline-flex items-center rounded bg-sky-500/15 text-sky-300 text-[10px] font-medium px-1.5 py-0.5"
+                          title={`${row.source_account_count} source GL accounts rolled into this row`}
+                        >
+                          {row.source_account_count} sources
+                        </span>
+                      ) : null}
                     </span>
                   </td>
                   <td className="p-3 text-muted-foreground">{row.account_type}</td>
@@ -738,10 +761,20 @@ export const TrialBalancePage: React.FC<{
           isOpen={!!ledgerRow}
           onClose={() => setLedgerRow(null)}
           accountId={ledgerRow.account_id}
+          accountIds={
+            tbPresentation === 'canonical' &&
+            Array.isArray(ledgerRow.source_account_ids) &&
+            ledgerRow.source_account_ids.length > 1
+              ? ledgerRow.source_account_ids
+              : undefined
+          }
           accountName={ledgerRow.account_name}
           accountCode={ledgerRow.account_code}
           accountType={ledgerRow.account_type}
           initialDateRange={{ from: startDate, to: endDate }}
+          showSourceAccountColumn={
+            tbPresentation === 'canonical' && (ledgerRow.source_account_count || 0) > 1
+          }
         />
       )}
     </div>
