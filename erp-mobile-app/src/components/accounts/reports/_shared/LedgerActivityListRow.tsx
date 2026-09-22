@@ -47,6 +47,7 @@ export function LedgerActivityListRow({
         <p className="text-[11px] text-[#9CA3AF] truncate">
           {formatDate(l.date)}
           {time ? ` · ${time}` : ''} · {refLabel}
+          {l.glAccountCode ? ` · ${l.glAccountCode}` : ''}
         </p>
       </div>
       <div className="text-right shrink-0">

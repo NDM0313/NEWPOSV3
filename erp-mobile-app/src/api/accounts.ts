@@ -26,6 +26,10 @@ import {
 } from './contactBalancesRpc';
 import { normalizeCompanyId } from './contactBalancesUtils';
 import {
+  loadSupplierBusinessGlBalancesMap,
+  supplierBusinessListBalance,
+} from './supplierBusinessGl';
+import {
   applyManualSupplierPaymentAllocations,
   sortSuppliersByPayable,
 } from '../lib/supplierPaymentAllocation';
@@ -986,9 +990,10 @@ export async function getAllSuppliersWithPayable(
   );
   if (!active.length) return { data: [], error: null };
 
-  const [partyGl, opSummary] = await Promise.all([
+  const [partyGl, opSummary, bizMap] = await Promise.all([
     fetchContactPartyGlBalancesMap(company, branchId),
     fetchOperationalContactBalancesSummary(company, branchId),
+    loadSupplierBusinessGlBalancesMap({ companyId: company, branchId, endDate: null }),
   ]);
   const glOk = partyGl.error == null;
 
@@ -1002,7 +1007,7 @@ export async function getAllSuppliersWithPayable(
       opening_balance?: number | null;
     }) => {
       const opening = Number(row.opening_balance ?? 0);
-      const totalPayable = resolveContactListBalance({
+      let totalPayable = resolveContactListBalance({
         opening,
         contactType: row.type || 'supplier',
         listRole: 'supplier',
@@ -1010,6 +1015,11 @@ export async function getAllSuppliersWithPayable(
         glSlice: partyGlSliceFromMap(partyGl.map, row.id),
         opRow: balanceRowFromMap(opSummary.map, row.id),
       });
+      const slice = bizMap.get(row.id) ?? bizMap.get(String(row.id).trim());
+      if (slice) {
+        // Overall supplier Business GL payable (clamped for this payable-list API).
+        totalPayable = Math.max(0, supplierBusinessListBalance(slice));
+      }
       return {
         id: row.id,
         name: row.name || '',

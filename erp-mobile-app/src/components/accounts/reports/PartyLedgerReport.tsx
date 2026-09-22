@@ -7,6 +7,12 @@ import {
   getCustomerArGlLedgerLinesForContact,
   isPartyGlLedgerEmptySuccess,
 } from '../../../api/partyGlLedger';
+import {
+  loadSupplierBusinessGlBalancesMap,
+  loadSupplierBusinessHistory,
+  supplierBusinessListBalance,
+  type SupplierStatementViewMode,
+} from '../../../api/supplierBusinessGl';
 import { getContacts, getContactWhatsAppPhone, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable } from '../../../api/accounts';
 import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
@@ -96,6 +102,8 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
   /** Display order only — balances stay chronological. Default newest-first. */
   const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
   const [ledgerSourceHint, setLedgerSourceHint] = useState<string | null>(null);
+  /** Supplier detail only — default Business History (web parity). */
+  const [supplierViewMode, setSupplierViewMode] = useState<SupplierStatementViewMode>('business_history');
   const preview = usePdfPreview(companyId);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
@@ -151,12 +159,31 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           );
         } else {
           const role = kind as ContactRole;
-          const [{ data, error }, partyGl, opSummary] = await Promise.all([
+          const listLoads: Promise<unknown>[] = [
             getContacts(companyId, role, branchId ?? null),
             fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
             fetchOperationalContactBalancesSummary(companyId, branchId ?? null),
-          ]);
+          ];
+          if (kind === 'supplier') {
+            listLoads.push(
+              loadSupplierBusinessGlBalancesMap({
+                companyId,
+                branchId: branchId ?? null,
+                endDate: null,
+              }),
+            );
+          }
+          const results = await Promise.all(listLoads);
           if (cancelled) return;
+          const { data, error } = results[0] as Awaited<ReturnType<typeof getContacts>>;
+          const partyGl = results[1] as Awaited<ReturnType<typeof fetchContactPartyGlBalancesMap>>;
+          const opSummary = results[2] as Awaited<
+            ReturnType<typeof fetchOperationalContactBalancesSummary>
+          >;
+          const bizMap =
+            kind === 'supplier'
+              ? (results[3] as Awaited<ReturnType<typeof loadSupplierBusinessGlBalancesMap>>)
+              : null;
           if (error) {
             setParties([]);
             setListError(error);
@@ -165,7 +192,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           const glOk = partyGl.error == null;
           setParties(
             (data || []).map((c) => {
-              const balance = resolveContactListBalance({
+              let balance = resolveContactListBalance({
                 opening: Number(c.balance || 0),
                 contactType: role,
                 listRole: role,
@@ -173,6 +200,13 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
                 glSlice: partyGlSliceFromMap(partyGl.map, c.id),
                 opRow: balanceRowFromMap(opSummary.map, c.id),
               });
+              if (kind === 'supplier' && bizMap) {
+                const slice = bizMap.get(c.id) ?? bizMap.get(String(c.id).trim());
+                if (slice) {
+                  // Signed Business GL (Cr−Dr) — primary supplier list balance (web parity).
+                  balance = supplierBusinessListBalance(slice);
+                }
+              }
               return {
                 id: c.id,
                 name: c.name,
@@ -244,25 +278,54 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           setLines(sortLedgerLinesAndRebuildRunningBalance(glRes.lines, glRes.openingBalance));
           setDetailError(glRes.error ?? opRes.error);
           setLedgerSourceHint(glRes.lines.length > 0 ? 'GL journal (2010 / 1180)' : null);
+        } else if (kind === 'supplier') {
+          const start = range.from || '2016-01-01';
+          const end = range.to || new Date().toISOString().slice(0, 10);
+          if (supplierViewMode === 'business_history') {
+            const biz = await loadSupplierBusinessHistory({
+              companyId,
+              contactId: selected.id,
+              contactType: 'supplier',
+              branchId: branchId ?? null,
+              startDate: start,
+              endDate: end,
+            });
+            if (cancelled) return;
+            if (!biz) {
+              setOpening(0);
+              setLines([]);
+              setDetailError('Supplier Business History unavailable for this contact role.');
+              setLedgerSourceHint(null);
+              return;
+            }
+            setOpening(biz.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(biz.lines, biz.openingBalance));
+            setDetailError(null);
+            setLedgerSourceHint(
+              `Business History (AP + legacy) · closing ${biz.totals.closing.toLocaleString('en-PK')} · ${biz.periodRows.length} line(s)`,
+            );
+          } else {
+            const rpcRes = await getSupplierApGlLedgerLinesForContact(
+              companyId,
+              selected.id,
+              branchId ?? null,
+              range.from || undefined,
+              range.to || undefined,
+            );
+            if (cancelled) return;
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setDetailError(rpcRes.error);
+            setLedgerSourceHint('Official AP (control 2000 / AP-SUP only)');
+          }
         } else {
-          const rpcLoad =
-            kind === 'supplier'
-              ? getSupplierApGlLedgerLinesForContact(
-                  companyId,
-                  selected.id,
-                  branchId ?? null,
-                  range.from || undefined,
-                  range.to || undefined,
-                )
-              : getCustomerArGlLedgerLinesForContact(
-                  companyId,
-                  selected.id,
-                  branchId ?? null,
-                  range.from || undefined,
-                  range.to || undefined,
-                );
-
-          const rpcRes = await rpcLoad;
+          const rpcRes = await getCustomerArGlLedgerLinesForContact(
+            companyId,
+            selected.id,
+            branchId ?? null,
+            range.from || undefined,
+            range.to || undefined,
+          );
           if (cancelled) return;
 
           const needFallback = !!rpcRes.error || isPartyGlLedgerEmptySuccess(rpcRes);
@@ -270,6 +333,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             setOpening(rpcRes.openingBalance);
             setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
             setDetailError(null);
+            setLedgerSourceHint(null);
           } else {
             const subId = await getContactSubAccountId(companyId, selected.id);
             if (cancelled) return;
@@ -321,7 +385,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     return () => {
       cancelled = true;
     };
-  }, [companyId, selected, kind, range.from, range.to, branchId, ledgerRefreshNonce]);
+  }, [companyId, selected, kind, range.from, range.to, branchId, ledgerRefreshNonce, supplierViewMode]);
 
   useEffect(() => {
     if (!selected) return;
@@ -460,7 +524,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     branchId && branchId !== 'all' && branchId !== 'default'
       ? `${selected.meta || cfg.title} · GL: this branch + company-wide`
       : selected.meta || cfg.title,
-    kind === 'worker' && ledgerSourceHint ? ledgerSourceHint : null,
+    (kind === 'worker' || kind === 'supplier') && ledgerSourceHint ? ledgerSourceHint : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -471,6 +535,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         onBack={() => {
           setSelected(null);
           setLedgerSourceHint(null);
+          setSupplierViewMode('business_history');
         }}
         title={selected.name}
         subtitle={detailPartySubtitle}
@@ -491,6 +556,32 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           branchId={branchId}
           pinPresets={['all']}
         />
+        {kind === 'supplier' ? (
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSupplierViewMode('business_history')}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium ${
+                supplierViewMode === 'business_history'
+                  ? 'bg-[#F59E0B] text-black'
+                  : 'bg-white/10 text-white/80'
+              }`}
+            >
+              Business History
+            </button>
+            <button
+              type="button"
+              onClick={() => setSupplierViewMode('official_ap')}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium ${
+                supplierViewMode === 'official_ap'
+                  ? 'bg-[#F59E0B] text-black'
+                  : 'bg-white/10 text-white/80'
+              }`}
+            >
+              Official AP
+            </button>
+          </div>
+        ) : null}
         <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80">
           <span>Date order</span>
           <button
