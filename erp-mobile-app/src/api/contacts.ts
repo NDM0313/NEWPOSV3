@@ -10,6 +10,11 @@ import {
   partyGlSliceFromMap,
   resolveContactListBalance,
 } from './contactBalancesRpc';
+import {
+  isSupplierBusinessContactType,
+  loadSupplierBusinessGlBalancesMap,
+  supplierBusinessListBalance,
+} from './supplierBusinessGl';
 
 export type ContactRole = 'customer' | 'supplier' | 'worker';
 export type BackendContactType = 'customer' | 'supplier' | 'both' | 'worker';
@@ -148,9 +153,12 @@ export async function getContacts(
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
-  const [partyGl, opSummary] = await Promise.all([
+  const [partyGl, opSummary, bizMap] = await Promise.all([
     fetchContactPartyGlBalancesMap(company, branchId),
     fetchOperationalContactBalancesSummary(company, branchId),
+    type === 'supplier' || type === undefined
+      ? loadSupplierBusinessGlBalancesMap({ companyId: company, branchId, endDate: null })
+      : Promise.resolve(null as Awaited<ReturnType<typeof loadSupplierBusinessGlBalancesMap>> | null),
   ]);
   const glOk = partyGl.error == null;
   if (glOk && partyGl.map.size === 0 && (data || []).length > 0) {
@@ -173,7 +181,7 @@ export async function getContacts(
     created_from?: string | null;
   }) => {
     const opening = Number(row.opening_balance ?? 0);
-    const balance = resolveContactListBalance({
+    let balance = resolveContactListBalance({
       opening,
       contactType: row.type || 'customer',
       listRole,
@@ -181,6 +189,10 @@ export async function getContacts(
       glSlice: partyGlSliceFromMap(partyGl.map, row.id),
       opRow: balanceRowFromMap(opSummary.map, row.id),
     });
+    if (bizMap && isSupplierBusinessContactType(row.type)) {
+      const slice = bizMap.get(row.id) ?? bizMap.get(String(row.id).trim());
+      if (slice) balance = supplierBusinessListBalance(slice);
+    }
     return {
       id: row.id,
       name: row.name,
