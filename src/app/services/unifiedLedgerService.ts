@@ -371,6 +371,8 @@ export type UnifiedTrialBalanceParams = {
   asOfDate?: string | null;
   basis: UnifiedLedgerBasis;
   shadowForce?: boolean;
+  /** canonical (default) rolls account_reporting_aliases; raw = exact account_id grouping */
+  presentation?: 'canonical' | 'raw';
 };
 
 export type UnifiedTrialBalanceAccount = {
@@ -381,6 +383,9 @@ export type UnifiedTrialBalanceAccount = {
   totalDebit: number;
   totalCredit: number;
   netBalance: number;
+  linkedContactId?: string | null;
+  sourceAccountCount?: number;
+  sourceAccountIds?: string[];
 };
 
 export type UnifiedTrialBalanceResult = {
@@ -417,6 +422,7 @@ export async function getUnifiedTrialBalance(
     p_branch_id: params.branchId ?? null,
     p_as_of_date: params.asOfDate ?? null,
     p_basis: params.basis,
+    p_presentation: params.presentation ?? 'canonical',
   });
 
   const duration = performance.now() - t0;
@@ -446,14 +452,18 @@ export async function getUnifiedTrialBalance(
     total_credit?: number;
     difference?: number;
     account_count?: number;
+    presentation?: string;
     accounts?: Array<{
       account_id?: string;
       account_code?: string | null;
       account_name?: string | null;
       account_type?: string | null;
+      linked_contact_id?: string | null;
       total_debit?: number;
       total_credit?: number;
       net_balance?: number;
+      source_account_count?: number;
+      source_account_ids?: string[] | null;
     }>;
   };
 
@@ -462,9 +472,14 @@ export async function getUnifiedTrialBalance(
     accountCode: a.account_code ?? null,
     accountName: a.account_name ?? null,
     accountType: a.account_type ?? null,
+    linkedContactId: a.linked_contact_id ?? null,
     totalDebit: round2(Number(a.total_debit) || 0),
     totalCredit: round2(Number(a.total_credit) || 0),
     netBalance: round2(Number(a.net_balance) || 0),
+    sourceAccountCount: Number(a.source_account_count) || 1,
+    sourceAccountIds: Array.isArray(a.source_account_ids)
+      ? a.source_account_ids.map((id) => String(id))
+      : [String(a.account_id || '')].filter(Boolean),
   }));
 
   return {

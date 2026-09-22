@@ -21,11 +21,15 @@ interface AccountLedgerViewProps {
   isOpen: boolean;
   onClose: () => void;
   accountId: string;
+  /** When set (canonical TB drill), union JE lines across these account ids */
+  accountIds?: string[];
   accountName: string;
   accountCode?: string;
   accountType?: string;
   /** When opening from Trial Balance drill-down, pass report period so the ledger opens with that range */
   initialDateRange?: { from: string; to: string };
+  /** Show Source account code column (canonical multi-account drill) */
+  showSourceAccountColumn?: boolean;
 }
 
 /** Source badge colours */
@@ -47,10 +51,12 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
   isOpen,
   onClose,
   accountId,
+  accountIds,
   accountName,
   accountCode,
   accountType,
   initialDateRange,
+  showSourceAccountColumn = false,
 }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
@@ -63,6 +69,11 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
   }));
   const [searchTerm, setSearchTerm] = useState('');
 
+  const effectiveAccountIds = useMemo(() => {
+    if (accountIds && accountIds.length > 0) return accountIds;
+    return accountId ? [accountId] : [];
+  }, [accountId, accountIds]);
+
   useEffect(() => {
     if (isOpen && initialDateRange?.from && initialDateRange?.to) {
       setDateRange({ from: new Date(initialDateRange.from), to: new Date(initialDateRange.to) });
@@ -70,18 +81,23 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
   }, [isOpen, initialDateRange?.from, initialDateRange?.to]);
 
   useEffect(() => {
-    if (isOpen && accountId && companyId) {
+    if (isOpen && effectiveAccountIds.length > 0 && companyId) {
       loadLedger();
     }
-  }, [isOpen, accountId, companyId, dateRange]);
+  }, [isOpen, effectiveAccountIds.join(','), companyId, dateRange]);
 
   const loadLedger = async () => {
-    if (!accountId || !companyId) return;
+    if (!effectiveAccountIds.length || !companyId) return;
     setLoading(true);
     try {
       const startDate = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
       const endDate = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
-      const entries = await accountingService.getAccountLedger(accountId, companyId, startDate, endDate);
+      const entries = await accountingService.getAccountLedger(
+        effectiveAccountIds.length === 1 ? effectiveAccountIds[0] : effectiveAccountIds,
+        companyId,
+        startDate,
+        endDate
+      );
       setLedgerEntries(entries);
     } catch (error: any) {
       console.error('[ACCOUNT LEDGER] Error loading ledger:', error);
@@ -98,7 +114,8 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
         e.description.toLowerCase().includes(q) ||
         e.reference_number.toLowerCase().includes(q) ||
         (e.counter_account || '').toLowerCase().includes(q) ||
-        (e.source_module || '').toLowerCase().includes(q)
+        (e.source_module || '').toLowerCase().includes(q) ||
+        (e.gl_account_code || '').toLowerCase().includes(q)
     );
   }, [ledgerEntries, searchTerm]);
 
@@ -177,6 +194,11 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                   {accountType && (
                     <Badge className="bg-blue-600/80 text-foreground text-xs px-2">{accountType}</Badge>
                   )}
+                  {showSourceAccountColumn && effectiveAccountIds.length > 1 ? (
+                    <Badge className="bg-sky-600/80 text-foreground text-xs px-2">
+                      {effectiveAccountIds.length} source accounts
+                    </Badge>
+                  ) : null}
                 </div>
               </div>
               <Button
@@ -265,6 +287,9 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                   <th className="px-4 py-2.5 text-left whitespace-nowrap w-[110px]">Date</th>
                   <th className="px-4 py-2.5 text-left whitespace-nowrap w-[130px]">Reference No</th>
                   <th className="px-4 py-2.5 text-left min-w-[180px]">Description</th>
+                  {showSourceAccountColumn ? (
+                    <th className="px-4 py-2.5 text-left whitespace-nowrap w-[110px]">Source account</th>
+                  ) : null}
                   <th className="px-4 py-2.5 text-left min-w-[140px]">Counter Account</th>
                   <th className="px-4 py-2.5 text-right whitespace-nowrap w-[120px]">Debit</th>
                   <th className="px-4 py-2.5 text-right whitespace-nowrap w-[120px]">Credit</th>
@@ -276,7 +301,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
               <tbody>
                 {/* Opening balance pseudo-row */}
                 <tr className="bg-muted/40 border-b border-border">
-                  <td className="px-4 py-2 text-xs text-muted-foreground" colSpan={6}>Opening Balance</td>
+                  <td className="px-4 py-2 text-xs text-muted-foreground" colSpan={showSourceAccountColumn ? 7 : 6}>Opening Balance</td>
                   <td className={cn('px-4 py-2 text-right text-xs font-semibold tabular-nums', openingBalance >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400')}>
                     {formatCurrency(openingBalance)}
                   </td>
@@ -321,6 +346,12 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                         <span className="ml-1.5 text-[10px] text-muted-foreground">· {entry.branch_name}</span>
                       )}
                     </td>
+
+                    {showSourceAccountColumn ? (
+                      <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground whitespace-nowrap">
+                        {entry.gl_account_code || '—'}
+                      </td>
+                    ) : null}
 
                     {/* Counter Account */}
                     <td className="px-4 py-2.5 text-muted-foreground text-xs">
