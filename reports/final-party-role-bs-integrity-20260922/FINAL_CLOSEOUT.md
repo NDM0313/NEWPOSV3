@@ -12,7 +12,10 @@
 | Item | SHA / note |
 |------|------------|
 | Rollup baseline commit | `b0b8a4a7` |
-| Closeout product commit | e1c6adf8b6ece07886ee79e2e290ffc1e815a2ae |
+| Closeout product commit | `e1c6adf8` |
+| Feature tip | `e322966b` |
+| Merge / final main SHA | `94487beb` |
+| Deployed frontend | `CACHEBUST=1790075158` (healthy) |
 | Graphify | **NO** (non-blocking; not touched) |
 | Fake balancing JEs | **0** |
 | Historical lines rewritten | **1** (exact DHL PK PAY-6723 attribution only) |
