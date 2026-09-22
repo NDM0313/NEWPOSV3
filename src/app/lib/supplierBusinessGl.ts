@@ -333,19 +333,43 @@ export async function loadSupplierBusinessGlBalancesMap(params: {
 
   if (accountIds.size === 0) return out;
 
-  const { data: lines, error } = await supabase
-    .from('journal_entry_lines')
-    .select(
-      `
-      id, account_id, debit, credit,
-      account:accounts(id, code, linked_contact_id, parent_id),
-      journal_entry:journal_entries(id, entry_date, is_void, company_id, branch_id)
-    `,
-    )
-    .in('account_id', [...accountIds]);
-
-  if (error) {
-    console.error('[supplierBusinessGl] batch lines:', error.message);
+  // Chunk `.in(account_id)` and page each chunk — a single PostgREST call hits URI
+  // length and/or the default 1000-row cap (DIN COLLECTION alone has 5k+ party lines),
+  // which previously returned empty → all Business GL zeros on Balance Basis Guide.
+  const { fetchInBatches } = await import('@/app/lib/chunkInQuery');
+  const LINE_PAGE = 1000;
+  let lines: unknown[] = [];
+  try {
+    lines = await fetchInBatches(
+      [...accountIds],
+      async (chunk) => {
+        const page: unknown[] = [];
+        for (let from = 0; ; from += LINE_PAGE) {
+          const { data, error } = await supabase
+            .from('journal_entry_lines')
+            .select(
+              `
+              id, account_id, debit, credit,
+              account:accounts(id, code, linked_contact_id, parent_id),
+              journal_entry:journal_entries(id, entry_date, is_void, company_id, branch_id)
+            `,
+            )
+            .in('account_id', chunk)
+            .range(from, from + LINE_PAGE - 1);
+          if (error) throw error;
+          const rows = data || [];
+          page.push(...rows);
+          if (rows.length < LINE_PAGE) break;
+        }
+        return page;
+      },
+      { chunkSize: 25, concurrency: 3 },
+    );
+  } catch (e) {
+    console.error(
+      '[supplierBusinessGl] batch lines:',
+      e instanceof Error ? e.message : String(e),
+    );
     return out;
   }
 
