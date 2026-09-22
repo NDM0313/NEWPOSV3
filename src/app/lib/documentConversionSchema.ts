@@ -1,4 +1,9 @@
 import { supabase } from '@/lib/supabase';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+  safeSessionStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
 
 const STORAGE_KEY = 'erp_doc_conv_schema_v2';
 
@@ -15,7 +20,7 @@ export function clearDocumentConversionSchemaCache(): void {
   resolvedCache = null;
   loadingPromise = null;
   try {
-    if (typeof window !== 'undefined') sessionStorage.removeItem(STORAGE_KEY);
+    if (typeof window !== 'undefined') safeSessionStorageRemoveItem(STORAGE_KEY);
   } catch {
     /* ignore */
   }
@@ -42,7 +47,7 @@ export async function getDocumentConversionSchemaFlags(): Promise<DocumentConver
 
   if (typeof window !== 'undefined') {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
+      const raw = safeSessionStorageGetItem(STORAGE_KEY);
       if (raw) {
         const p = JSON.parse(raw) as DocumentConversionSchemaFlags;
         if (typeof p.salesConvertedColumn === 'boolean' && typeof p.purchasesConvertedColumn === 'boolean') {
@@ -61,7 +66,7 @@ export async function getDocumentConversionSchemaFlags(): Promise<DocumentConver
         resolvedCache = f;
         loadingPromise = null;
         try {
-          if (typeof window !== 'undefined') sessionStorage.setItem(STORAGE_KEY, JSON.stringify(f));
+          if (typeof window !== 'undefined') safeSessionStorageSetItem(STORAGE_KEY, JSON.stringify(f));
         } catch {
           /* ignore */
         }

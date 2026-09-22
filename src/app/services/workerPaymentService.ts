@@ -1,5 +1,5 @@
 /**
- * Canonical worker payment: `record_payment_with_accounting` (WPY-*, GL mirrors voucher)
+ * Canonical worker payment: `record_payment_with_accounting` (unified PAY-*, GL mirrors voucher)
  * then worker_ledger + stage settlement (Pay Now) — same spine as mobile.
  */
 
@@ -23,6 +23,7 @@ export interface CreateWorkerPaymentParams {
   stageId?: string | null;
   stageAmount?: number | null;
   notes?: string | null;
+  paymentDate?: string;
 }
 
 export interface CreateWorkerPaymentResult {
@@ -46,6 +47,7 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
     stageId,
     stageAmount,
     notes,
+    paymentDate: paymentDateParam,
   } = params;
 
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) {
@@ -53,7 +55,7 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
   }
 
   const validBranchId = branchId && branchId !== 'all' ? branchId : null;
-  const paymentDate = new Date().toISOString().split('T')[0];
+  const paymentDate = paymentDateParam || new Date().toISOString().split('T')[0];
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;
 

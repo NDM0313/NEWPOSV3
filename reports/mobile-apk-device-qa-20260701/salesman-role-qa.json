@@ -1,0 +1,7 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "salesman-role-qa",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "status": "SALESMAN_QA_PENDING_DEVICE",
+  "reason": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE"
+}

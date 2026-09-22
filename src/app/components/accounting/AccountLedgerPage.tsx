@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { resolveLedgerTransactionOpenRef } from '@/app/lib/ledgerTransactionOpenRef';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
@@ -29,6 +30,7 @@ import {
   presentationKindForLine,
 } from '@/app/lib/accountFlowPresentation';
 import { presentationLabel } from '@/app/lib/journalLinePresentation';
+import { subscribeAccountingReportReload } from '@/app/hooks/useAccountingReportReload';
 
 interface AccountLedgerPageProps {
   accountId: string;
@@ -56,6 +58,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReference, setSelectedReference] = useState<string | null>(null);
+  const [selectedJournalEntryId, setSelectedJournalEntryId] = useState<string | null>(null);
   const [ledgerDetailAutoEdit, setLedgerDetailAutoEdit] = useState(false);
   const [openingBalance, setOpeningBalance] = useState<number>(0);
   /** Audit = all rows equal weight; Effective = dim PF-14 helper rows (running balance unchanged). */
@@ -174,34 +177,57 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   };
 
   const printRef = useRef<HTMLDivElement>(null);
+  const ledgerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const openLedgerTransactionDetail = (referenceNumber: string, autoLaunchUnifiedEdit?: boolean) => {
+  // Reload ledger when entries change or header refresh fires (debounced).
+  useEffect(() => {
+    const scheduleRefresh = () => {
+      if (ledgerRefreshTimerRef.current) clearTimeout(ledgerRefreshTimerRef.current);
+      ledgerRefreshTimerRef.current = setTimeout(() => {
+        ledgerRefreshTimerRef.current = null;
+        void loadLedger();
+      }, 400);
+    };
+    const unsub = subscribeAccountingReportReload(scheduleRefresh, {
+      companyId,
+      branchId: selectedBranchId || null,
+      debounceMs: 200,
+    });
+    return () => {
+      if (ledgerRefreshTimerRef.current) clearTimeout(ledgerRefreshTimerRef.current);
+      unsub();
+    };
+  }, [accountId, companyId, selectedBranchId, dateRange, searchTerm]);
+
+  const openLedgerTransactionDetail = (entry: AccountLedgerEntry, autoLaunchUnifiedEdit?: boolean) => {
+    const resolved = resolveLedgerTransactionOpenRef(entry);
     setLedgerDetailAutoEdit(!!autoLaunchUnifiedEdit);
-    setSelectedReference(referenceNumber);
+    setSelectedReference(resolved.referenceNumber);
+    setSelectedJournalEntryId(resolved.journalEntryId || null);
   };
 
   return (
-    <div ref={printRef} className="fixed inset-0 z-50 bg-[#0B0F17] text-white flex flex-col">
+    <div ref={printRef} className="fixed inset-0 z-50 bg-background text-foreground flex flex-col">
       {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
+      <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft size={20} className="mr-2" />
             Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-white">Account Ledger</h1>
+            <h1 className="text-2xl font-bold text-foreground">Account Ledger</h1>
             <div className="flex items-center gap-3 mt-1">
-              {accountCode && <span className="text-sm font-mono text-gray-400">{accountCode}</span>}
+              {accountCode && <span className="text-sm font-mono text-muted-foreground">{accountCode}</span>}
               <span className="text-lg font-semibold text-gray-200">{accountName}</span>
               {accountType && (
                 <Badge className="bg-blue-600 text-white text-xs">
@@ -209,7 +235,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                 </Badge>
               )}
               {selectedBranch && (
-                <div className="flex items-center gap-1 text-sm text-gray-400">
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
                   <Building2 size={14} />
                   <span>{selectedBranch.code ? `${selectedBranch.code} | ${selectedBranch.name}` : selectedBranch.name}</span>
                 </div>
@@ -221,21 +247,21 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
           variant="ghost"
           size="sm"
           onClick={onClose}
-          className="text-gray-400 hover:text-white"
+          className="text-muted-foreground hover:text-foreground"
         >
           <X size={20} />
         </Button>
       </div>
 
       {/* Opening/Closing Balance */}
-      <div className="bg-gray-950 border-b border-gray-800 px-6 py-4 flex-shrink-0">
+      <div className="bg-input-background border-b border-border px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div>
-              <p className="text-xs text-gray-400 uppercase">Opening Balance</p>
+              <p className="text-xs text-muted-foreground uppercase">Opening Balance</p>
               <p className={cn(
                 "text-lg font-semibold mt-1",
-                openingBalance >= 0 ? "text-green-400" : "text-red-400"
+                openingBalance >= 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
               )}>
                 Rs {openingBalance.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
@@ -244,10 +270,10 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-400 uppercase">Closing Balance</p>
+              <p className="text-xs text-muted-foreground uppercase">Closing Balance</p>
               <p className={cn(
                 "text-lg font-semibold mt-1",
-                totals.closingBalance >= 0 ? "text-green-400" : "text-red-400"
+                totals.closingBalance >= 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
               )}>
                 Rs {totals.closingBalance.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
@@ -257,8 +283,8 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-400 uppercase">Date Range</p>
-            <p className="text-sm text-gray-300 mt-1">
+            <p className="text-xs text-muted-foreground uppercase">Date Range</p>
+            <p className="text-sm text-muted-foreground mt-1">
               {dateRange.from && dateRange.to
                 ? `${format(dateRange.from, 'dd MMM yyyy')} - ${format(dateRange.to, 'dd MMM yyyy')}`
                 : dateRange.from
@@ -270,22 +296,22 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
       </div>
 
       {/* Toolbar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="bg-card border-b border-border px-6 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-4 flex-1">
           {/* Global Search - WIDE and PROMINENT */}
           <div className="relative flex-1 max-w-2xl">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={18} />
             <Input
               placeholder="Search by reference (JE-0047), description, customer, invoice, amount..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-11 pr-4 py-2.5 bg-gray-800 border-gray-700 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="pl-11 pr-4 py-2.5 bg-muted border-border text-foreground text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           
           {/* Compact Branch Filter */}
           <div className="flex items-center gap-2 min-w-[180px]">
-            <Building2 size={16} className="text-gray-400" />
+            <Building2 size={16} className="text-muted-foreground" />
             <select
               value={selectedBranchId || 'all'}
               onChange={(e) => {
@@ -296,7 +322,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   loadLedger();
                 }
               }}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 flex-1"
+              className="bg-muted border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-blue-500 flex-1"
             >
               <option value="all">All Branches</option>
               {branches.map(branch => (
@@ -309,21 +335,20 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
           
           {/* Compact Date Range */}
           <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-gray-400" />
+            <Calendar size={16} className="text-muted-foreground" />
             <CalendarDateRangePicker
-              dateRange={dateRange}
-              onDateRangeChange={(range) => {
+              value={dateRange}
+              onChange={(range) => {
                 setDateRange(range);
-                // Auto-reload on date change
                 if (accountId && companyId) {
                   setTimeout(() => loadLedger(), 100);
                 }
               }}
             />
           </div>
-          <div className="flex items-center gap-2 border-l border-gray-800 pl-4">
+          <div className="flex items-center gap-2 border-l border-border pl-4">
             <Switch id="ledger-audit-mode" checked={ledgerViewAudit} onCheckedChange={setLedgerViewAudit} />
-            <Label htmlFor="ledger-audit-mode" className="text-xs text-gray-400 cursor-pointer whitespace-nowrap">
+            <Label htmlFor="ledger-audit-mode" className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
               Audit (full weight)
             </Label>
           </div>
@@ -345,7 +370,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
             variant="outline"
             size="sm"
             onClick={handlePrint}
-            className="border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="border-border text-muted-foreground hover:bg-muted"
           >
             <Printer size={14} className="mr-2" />
             Print
@@ -354,7 +379,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
             variant="outline"
             size="sm"
             onClick={handleExportPDF}
-            className="border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="border-border text-muted-foreground hover:bg-muted"
           >
             <Download size={14} className="mr-2" />
             PDF
@@ -363,7 +388,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
             variant="outline"
             size="sm"
             onClick={handleExportExcel}
-            className="border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="border-border text-muted-foreground hover:bg-muted"
           >
             <FileSpreadsheet size={14} className="mr-2" />
             Excel
@@ -372,24 +397,24 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
       </div>
 
       {/* Ledger Table */}
-      <div className="flex-1 overflow-auto bg-gray-950">
+      <div className="flex-1 overflow-auto bg-input-background">
         {!companyId ? (
-          <div className="text-center py-12 text-gray-400">
+          <div className="text-center py-12 text-muted-foreground">
             <p className="font-medium">Loading company…</p>
-            <p className="text-sm text-gray-500 mt-1">Ledger will load when company context is ready.</p>
+            <p className="text-sm text-muted-foreground mt-1">Ledger will load when company context is ready.</p>
           </div>
         ) : loading ? (
-          <div className="text-center py-12 text-gray-400">Loading…</div>
+          <div className="text-center py-12 text-muted-foreground">Loading…</div>
         ) : filteredEntries.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
+          <div className="text-center py-12 text-muted-foreground">
             <p className="font-medium">No ledger entries</p>
-            <p className="text-sm text-gray-500 mt-1">Transactions for this account will appear here.</p>
+            <p className="text-sm text-muted-foreground mt-1">Transactions for this account will appear here.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-900 sticky top-0 border-b border-gray-800">
-                <tr className="text-xs font-semibold text-gray-400 uppercase">
+              <thead className="bg-card sticky top-0 border-b border-border">
+                <tr className="text-xs font-semibold text-muted-foreground uppercase">
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-left">Reference</th>
                   <th className="px-4 py-3 text-left min-w-[7rem]">Presentation</th>
@@ -407,28 +432,28 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
               </thead>
               <tbody>
                 {/* Opening Balance Row */}
-                <tr className="bg-blue-500/10 border-b border-gray-800 font-semibold">
-                  <td className="px-4 py-3 text-gray-300">-</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-white">Opening Balance</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-right text-gray-500">-</td>
-                  <td className="px-4 py-3 text-right text-gray-500">-</td>
+                <tr className="bg-blue-500/10 border-b border-border font-semibold">
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-foreground">Opening Balance</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">-</td>
                   <td className={cn(
                     "px-4 py-3 text-right font-bold",
-                    openingBalance >= 0 ? "text-green-400" : "text-red-400"
+                    openingBalance >= 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
                   )}>
                     Rs {openingBalance.toLocaleString('en-US', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
-                  <td className="px-4 py-3 text-gray-500">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
+                  <td className="px-4 py-3 text-muted-foreground">-</td>
                 </tr>
 
                 {filteredEntries.map((entry, index) => {
@@ -447,16 +472,16 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                     <tr
                       key={`${entry.journal_entry_id}-${index}`}
                       className={cn(
-                        'border-b border-gray-800 hover:bg-gray-800/50 transition-colors',
+                        'border-b border-border hover:bg-muted/50 transition-colors',
                         entry.ledger_kind === 'reversal' && 'bg-amber-500/5 border-amber-900/40',
                         dimPf14 && 'opacity-55'
                       )}
                     >
-                      <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                      <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
-                          <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                          <DateTimeDisplay date={entry.date} dateOnly className="text-muted-foreground" />
                           {entry.created_at ? (
-                            <span className="text-[10px] text-gray-600">
+                            <span className="text-[10px] text-muted-foreground">
                               Posted {format(new Date(entry.created_at), 'dd MMM yyyy HH:mm')}
                             </span>
                           ) : null}
@@ -465,15 +490,13 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       <td className="px-4 py-3">
                         <button
                           type="button"
-                          onClick={() =>
-                            openLedgerTransactionDetail(entry.entry_no || entry.reference_number, false)
-                          }
+                          onClick={() => openLedgerTransactionDetail(entry, false)}
                           className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium font-mono"
                         >
                           {entry.reference_number}
                         </button>
                         {entry.economic_event_id ? (
-                          <div className="text-[10px] text-gray-600 font-sans mt-0.5" title="economic_event_id">
+                          <div className="text-[10px] text-muted-foreground font-sans mt-0.5" title="economic_event_id">
                             EE: {String(entry.economic_event_id).slice(0, 8)}…
                           </div>
                         ) : null}
@@ -488,27 +511,27 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                           {presentationLabel(pres)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-300 max-w-[14rem] leading-snug">
-                        <span className="text-gray-500">From </span>
+                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[14rem] leading-snug">
+                        <span className="text-muted-foreground">From </span>
                         <span className="text-gray-200">{flow.from}</span>
-                        <span className="text-gray-600 mx-1">→</span>
+                        <span className="text-muted-foreground mx-1">→</span>
                         <span className="text-sky-300/90">{flow.to}</span>
                       </td>
-                      <td className="px-4 py-3 text-[11px] text-gray-400 max-w-[12rem] leading-snug" title={meaning}>
+                      <td className="px-4 py-3 text-[11px] text-muted-foreground max-w-[12rem] leading-snug" title={meaning}>
                         {meaning}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge className="bg-gray-700 text-gray-300 text-xs">
+                        <Badge className="bg-muted text-muted-foreground text-xs">
                           {entry.source_module || 'Accounting'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-300">{entry.description}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{entry.description}</td>
                       <td className="px-4 py-3 text-sm text-blue-400/90">
                         {entry.counter_account || '-'}
                       </td>
                       <td className={cn(
                         "px-4 py-3 text-sm text-right tabular-nums",
-                        entry.debit > 0 ? "text-green-400 font-semibold" : "text-gray-500"
+                        entry.debit > 0 ? "text-[var(--erp-money-positive)] font-semibold" : "text-muted-foreground"
                       )}>
                         {entry.debit > 0 ? (
                           <span>Rs {entry.debit.toLocaleString('en-US', {
@@ -521,7 +544,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       </td>
                       <td className={cn(
                         "px-4 py-3 text-sm text-right tabular-nums",
-                        entry.credit > 0 ? "text-red-400 font-semibold" : "text-gray-500"
+                        entry.credit > 0 ? "text-red-400 font-semibold" : "text-muted-foreground"
                       )}>
                         {entry.credit > 0 ? (
                           <span>Rs {entry.credit.toLocaleString('en-US', {
@@ -534,14 +557,14 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       </td>
                       <td className={cn(
                         "px-4 py-3 text-sm font-semibold text-right tabular-nums",
-                        entry.running_balance >= 0 ? "text-green-400" : "text-red-400"
+                        entry.running_balance >= 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
                       )}>
                         Rs {entry.running_balance.toLocaleString('en-US', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
                         {entry.branch_name || (branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : '-')}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -550,7 +573,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                           variant="ghost"
                           size="sm"
                           className="h-8 text-sky-400 hover:text-sky-300"
-                          onClick={() => openLedgerTransactionDetail(entry.journal_entry_id, true)}
+                          onClick={() => openLedgerTransactionDetail(entry, true)}
                         >
                           <Edit size={14} className="mr-1" />
                           {entry.payment_id ? 'Edit payment' : 'Edit'}
@@ -561,11 +584,11 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                 })}
 
                 {/* Closing Balance Row */}
-                <tr className="bg-gray-900 font-bold border-t-2 border-blue-500/30">
-                  <td colSpan={8} className="px-4 py-3 text-right text-white uppercase text-sm">
+                <tr className="bg-card font-bold border-t-2 border-blue-500/30">
+                  <td colSpan={8} className="px-4 py-3 text-right text-foreground uppercase text-sm">
                     Closing Balance:
                   </td>
-                  <td className="px-4 py-3 text-right text-green-400 text-lg">
+                  <td className="px-4 py-3 text-right text-[var(--erp-money-positive)] text-lg">
                     Rs {totals.totalDebit.toLocaleString('en-US', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
@@ -579,7 +602,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   </td>
                   <td className={cn(
                     "px-4 py-3 text-right text-2xl",
-                    totals.closingBalance >= 0 ? "text-green-400" : "text-red-400"
+                    totals.closingBalance >= 0 ? "text-[var(--erp-money-positive)]" : "text-red-400"
                   )}>
                     Rs {Math.abs(totals.closingBalance).toLocaleString('en-US', {
                       minimumFractionDigits: 2,
@@ -601,11 +624,14 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
           isOpen={!!selectedReference}
           onClose={() => {
             setSelectedReference(null);
+            setSelectedJournalEntryId(null);
             setLedgerDetailAutoEdit(false);
           }}
           referenceNumber={selectedReference}
+          journalEntryIdHint={selectedJournalEntryId ?? undefined}
           autoLaunchUnifiedEdit={ledgerDetailAutoEdit}
           onAutoLaunchUnifiedEditConsumed={() => setLedgerDetailAutoEdit(false)}
+          editOrigin="account_ledger"
         />
       )}
     </div>

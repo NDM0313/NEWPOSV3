@@ -49,15 +49,15 @@ export const AddPaymentModal = ({
       open={isOpen}
       onOpenChange={(open) => !open && onClose()}
     >
-      <DialogContent className="sm:max-w-[450px] bg-gray-900 text-white border-gray-800 p-0 gap-0 overflow-hidden shadow-2xl">
+      <DialogContent className="sm:max-w-[450px] bg-card text-foreground border-border p-0 gap-0 overflow-hidden shadow-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>Record Payment for {purchaseOrderId}</DialogTitle>
         </DialogHeader>
         {/* Header */}
-        <div className="p-5 border-b border-gray-800 bg-gray-950">
-          <div className="text-lg font-bold text-white flex flex-col gap-1">
+        <div className="p-5 border-b border-border bg-input-background">
+          <div className="text-lg font-bold text-foreground flex flex-col gap-1">
             <span>Record Payment</span>
-            <span className="text-sm font-normal text-gray-400">
+            <span className="text-sm font-normal text-muted-foreground">
               For {purchaseOrderId} •{" "}
               <span className="text-blue-400">
                 {supplierName}
@@ -86,20 +86,20 @@ export const AddPaymentModal = ({
           <div className="space-y-4">
             {/* Paying Amount */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">
                 Paying Amount
               </Label>
               <div className="relative">
                 <DollarSign
                   size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 />
                 <Input
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
                   type="number"
-                  className="bg-gray-800 border-gray-700 text-white pl-9 text-lg font-bold placeholder:text-gray-600 focus:border-green-500 focus:ring-green-500/20"
+                  className="bg-muted border-border text-foreground pl-9 text-lg font-bold placeholder:text-muted-foreground focus:border-green-500 focus:ring-green-500/20"
                   autoFocus
                 />
               </div>
@@ -107,19 +107,19 @@ export const AddPaymentModal = ({
 
             {/* Payment Account */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">
                 Payment Account
               </Label>
               <Select
                 value={account}
                 onValueChange={setAccount}
               >
-                <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
+                <SelectTrigger className="bg-muted border-border text-foreground h-11">
                   <div className="flex items-center gap-2">
                     {account === "cash" ? (
                       <Wallet
                         size={16}
-                        className="text-green-400"
+                        className="text-[var(--erp-money-positive)]"
                       />
                     ) : (
                       <CreditCard
@@ -130,7 +130,7 @@ export const AddPaymentModal = ({
                     <SelectValue />
                   </div>
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                <SelectContent className="bg-muted border-border text-foreground">
                   <SelectItem value="cash">
                     Cash in Hand
                   </SelectItem>
@@ -146,19 +146,19 @@ export const AddPaymentModal = ({
 
             {/* Note / Transaction ID */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">
                 Transaction ID / Note
               </Label>
               <div className="relative">
                 <Receipt
                   size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 />
                 <Input
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="e.g. TRX-998877 or 'Paid via Rider'"
-                  className="bg-gray-800 border-gray-700 text-white pl-9"
+                  className="bg-muted border-border text-foreground pl-9"
                 />
               </div>
             </div>
@@ -166,15 +166,15 @@ export const AddPaymentModal = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-800 bg-gray-950 flex justify-end gap-3">
+        <div className="p-5 border-t border-border bg-input-background flex justify-end gap-3">
           <Button
             variant="ghost"
             onClick={onClose}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             Cancel
           </Button>
-          <Button className="bg-green-600 hover:bg-green-500 text-white font-bold shadow-lg shadow-green-600/20 px-6">
+          <Button className="bg-green-600 hover:bg-green-500 text-foreground font-bold shadow-lg shadow-green-600/20 px-6">
             <DollarSign size={16} className="mr-2" />
             Confirm Payment
           </Button>

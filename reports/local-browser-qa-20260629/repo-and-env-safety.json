@@ -1,0 +1,22 @@
+{
+  "generated": "2026-06-29",
+  "branch": "main",
+  "head": "22b7089e",
+  "originMain": "22b7089e",
+  "tests": {
+    "unifiedLedger": { "pass": 298, "fail": 0 },
+    "unit": { "pass": 122, "fail": 0 },
+    "build": "PASS"
+  },
+  "environment": {
+    "classification": "PRODUCTION_LIVE",
+    "viteSupabaseUrlBaked": "https://supabase.dincouture.pk",
+    "resolvedDevRestUrl": "http://localhost:5173/supabase",
+    "realtimeUrl": "wss://supabase.dincouture.pk/realtime/v1",
+    "anonKeyPresent": true,
+    "anonKeyIss": "supabase",
+    "anonKeyRole": "anon",
+    "migrationsOnDevStart": "skipped_no_database_url"
+  },
+  "postingSafety": "BLOCKED_PRODUCTION_MUTATION_NOT_APPROVED"
+}

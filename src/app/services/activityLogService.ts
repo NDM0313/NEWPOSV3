@@ -303,6 +303,12 @@ export const activityLogService = {
       case 'payment_deleted':
         return `${userName} deleted payment of Rs ${log.amount?.toLocaleString()} on ${timestamp}`;
 
+      case 'attachment_added':
+        return log.description || `${userName} added attachment(s) to sale ${log.entity_reference || log.entity_id}`;
+
+      case 'attachment_removed':
+        return log.description || `${userName} removed attachment(s) from sale ${log.entity_reference || log.entity_id}`;
+
       case 'sale_component_edited':
         if (log.description) return log.description;
         return `${log.field || 'Sale'} changed from Rs ${Number(log.old_value ?? 0).toLocaleString()} to Rs ${Number(log.new_value ?? 0).toLocaleString()}`;

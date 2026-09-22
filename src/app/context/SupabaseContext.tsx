@@ -12,6 +12,13 @@ import {
   getBridgeSession,
   type UserProfileRow,
 } from '@/app/lib/supabaseSessionBridge';
+import { hasCompanyWideBranchAccess, isPlatformOperatorAppRole } from '@/app/config/functionalRoles';
+import {
+  clearPlatformActiveCompany,
+  getPlatformActiveCompany,
+  setPlatformActiveCompany,
+} from '@/app/services/platformCompanyService';
+import { dispatchGlobalRefresh } from '@/app/lib/dataInvalidationBus';
 
 /** True when Supabase returned 502/503/504 and retries are exhausted; show "Service temporarily unavailable" and offer retry. */
 const CONNECTION_ERROR_MAX_RETRIES = 2;
@@ -87,9 +94,27 @@ interface SupabaseContextType {
   retryConnection: () => void;
   /** Re-fetch public.users profile after business create/link (no page reload). */
   refreshUserProfile: () => void;
+  /** Optimistic header/profile display after self-service save. */
+  refreshErpProfileDisplay: (partial: { full_name?: string; phone?: string | null }) => void;
+  /** ERP public.users.id (may differ from auth.users.id). */
+  erpUserId: string | null;
+  erpFullName: string | null;
+  erpPhone: string | null;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   companyId: string | null;
+  /** Home company from users.company_id (unchanged by platform switch). */
+  homeCompanyId: string | null;
+  /** Display name of the active platform company session (platform ops only). */
+  activeCompanyName: string | null;
+  /**
+   * Platform ops (developer/super_admin) with no platform_company_session —
+   * show CompanySelectionPage before the main app shell.
+   */
+  needsCompanySelection: boolean;
+  selectPlatformCompany: (companyId: string, companyName?: string) => Promise<{ error: string | null }>;
+  /** Open company picker (keep session until a new company is chosen). */
+  switchPlatformCompany: () => void;
   userRole: string | null;
   branchId: string | null;
   defaultBranchId: string | null;
@@ -115,6 +140,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [homeCompanyId, setHomeCompanyId] = useState<string | null>(null);
+  const [activeCompanyName, setActiveCompanyName] = useState<string | null>(null);
+  const [needsCompanySelection, setNeedsCompanySelection] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [defaultBranchId, setDefaultBranchId] = useState<string | null>(null);
@@ -122,6 +150,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [branchCount, setBranchCount] = useState<number>(0);
   const [requiresBranchSelection, setRequiresBranchSelection] = useState<boolean>(false);
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
+  const [erpUserId, setErpUserId] = useState<string | null>(null);
+  const [erpFullName, setErpFullName] = useState<string | null>(null);
+  const [erpPhone, setErpPhone] = useState<string | null>(null);
   const [profileLoadComplete, setProfileLoadComplete] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<boolean>(false);
   const [storageBlocked, setStorageBlocked] = useState<boolean>(false);
@@ -164,6 +195,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   /** Production: ignore logout (session=null) for this many ms after sign-in – GoTrue can emit SIGNED_OUT on SecurityError. */
   /** Log storage/security retry only once per userId to avoid 15–20 console messages. */
   const storageErrorLoggedRef = useRef<Set<string>>(new Set());
+  /** User clicked Sign Out — skip onAuthStateChange getSession() recovery that would re-login. */
+  const userInitiatedSignOutRef = useRef(false);
+  /** Platform boot finished (session present or selection required) — avoid refetch spam when companyId is null. */
+  const platformBootResolvedRef = useRef(false);
 
   const requestUserProfileLoad = (userId: string) => {
     const now = Date.now();
@@ -268,6 +303,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // PRODUCTION: Never clear session in the listener. GoTrue emits session=null/SIGNED_OUT on SecurityError
       // and breaks production login. Only our signOut() (user clicked Sign Out) should clear state.
       if (!newUser) {
+        if (userInitiatedSignOutRef.current) {
+          userInitiatedSignOutRef.current = false;
+          setLoading(false);
+          return;
+        }
         try {
           const { data: { session: current } } = await supabase.auth.getSession();
           if (current?.user) {
@@ -310,36 +350,93 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => subscription.unsubscribe();
   }, []);
 
+  const applyErpProfileFields = useCallback((data: UserProfileRow) => {
+    setErpUserId(data.id);
+    setErpFullName(data.full_name?.trim() || null);
+    setErpPhone(data.phone?.trim() || null);
+  }, []);
+
+  const clearErpProfileFields = useCallback(() => {
+    setErpUserId(null);
+    setErpFullName(null);
+    setErpPhone(null);
+  }, []);
+
+  const refreshErpProfileDisplay = useCallback((partial: { full_name?: string; phone?: string | null }) => {
+    if (partial.full_name !== undefined) {
+      setErpFullName(partial.full_name.trim() || null);
+    }
+    if (partial.phone !== undefined) {
+      setErpPhone(partial.phone?.trim() || null);
+    }
+  }, []);
+
   const applyProfileFromRow = async (data: UserProfileRow, userId: string) => {
     if (data.is_active === false) {
       await supabase.auth.signOut();
       setCompanyId(null);
+      setHomeCompanyId(null);
+      setActiveCompanyName(null);
+      setNeedsCompanySelection(false);
+      platformBootResolvedRef.current = false;
       setUserRole(null);
       setBranchId(null);
       setDefaultBranchId(null);
+      clearErpProfileFields();
       setProfileLoadComplete(true);
       return;
     }
-    setCompanyId(data.company_id);
+    const homeId = data.company_id ?? null;
+    setHomeCompanyId(homeId);
     setUserRole(data.role);
+    applyErpProfileFields(data);
     setProfileLoadComplete(true);
     setConnectionError(false);
     setStorageBlocked(false);
     fetchedRef.current.add(userId);
     lastFetchedUserIdRef.current = userId;
     const erpUserId = data.id;
-    if (data.company_id) {
-      const canCreateAccounts = ['admin', 'manager', 'accountant'].includes(String(data.role || '').toLowerCase());
+
+    let effectiveCompanyId = homeId;
+    let companyLabel: string | null = null;
+
+    if (isPlatformOperatorAppRole(data.role)) {
+      const session = await getPlatformActiveCompany();
+      const activeId = session.data?.activeCompanyId ?? null;
+      if (!activeId) {
+        setCompanyId(null);
+        setActiveCompanyName(null);
+        setNeedsCompanySelection(true);
+        platformBootResolvedRef.current = true;
+        setBranchId(null);
+        setDefaultBranchId(null);
+        setAccessibleBranchIds([]);
+        return;
+      }
+      effectiveCompanyId = activeId;
+      companyLabel = session.data?.companyName ?? null;
+      setNeedsCompanySelection(false);
+      platformBootResolvedRef.current = true;
+    } else {
+      setNeedsCompanySelection(false);
+      platformBootResolvedRef.current = true;
+    }
+
+    setCompanyId(effectiveCompanyId);
+    setActiveCompanyName(companyLabel);
+    if (effectiveCompanyId) {
+      const canCreateAccounts = ['admin', 'manager', 'accountant'].includes(String(data.role || '').toLowerCase())
+        || isPlatformOperatorAppRole(data.role);
       if (canCreateAccounts) {
         import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
-          defaultAccountsService.ensureDefaultAccounts(data.company_id!).catch((error: any) => {
+          defaultAccountsService.ensureDefaultAccounts(effectiveCompanyId!).catch((error: any) => {
             console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
           });
         });
       }
       loadUserBranch(
         { erpUserId, authUserId: data.auth_user_id ?? null },
-        data.company_id,
+        effectiveCompanyId,
         data.role
       );
     }
@@ -358,6 +455,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUserRole(null);
       setBranchId(null);
       setDefaultBranchId(null);
+      clearErpProfileFields();
       setProfileLoadComplete(true);
       setConnectionError(false);
       setStorageBlocked(false);
@@ -377,8 +475,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
     
-    // If we already fetched this user and have data, skip (unless forced refresh needed)
-    if (fetchedRef.current.has(userId) && companyId) {
+    // If we already fetched this user and have data, skip (unless forced refresh needed).
+    // Platform ops awaiting selection have companyId=null but boot is resolved.
+    if (fetchedRef.current.has(userId) && (companyId || platformBootResolvedRef.current)) {
       if (process.env.NODE_ENV === 'development') {
         console.log('[FETCH USER DATA] Already fetched, using cached data:', { userId, companyId });
       }
@@ -401,7 +500,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const { data, error } = await supabase
         .from('users')
-        .select('id, auth_user_id, company_id, role, is_active')
+        .select('id, auth_user_id, company_id, role, is_active, full_name, phone')
         .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
         .limit(1)
         .maybeSingle();
@@ -428,6 +527,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setUserRole(null);
           setBranchId(null);
           setDefaultBranchId(null);
+          clearErpProfileFields();
           setProfileLoadComplete(true);
           return;
         }
@@ -490,9 +590,14 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           console.warn('[FETCH USER DATA] User not found in public.users. User must create a business first.');
         }
         setCompanyId(null);
+        setHomeCompanyId(null);
+        setActiveCompanyName(null);
+        setNeedsCompanySelection(false);
+        platformBootResolvedRef.current = false;
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        clearErpProfileFields();
         setProfileLoadComplete(true);
         return;
       }
@@ -503,37 +608,20 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         await supabase.auth.signOut();
         setCompanyId(null);
+        setHomeCompanyId(null);
+        setActiveCompanyName(null);
+        setNeedsCompanySelection(false);
+        platformBootResolvedRef.current = false;
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        clearErpProfileFields();
         setProfileLoadComplete(true);
         return;
       }
 
       if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
-      setCompanyId(data.company_id);
-      setUserRole(data.role);
-      setProfileLoadComplete(true);
-      fetchedRef.current.add(userId);
-      lastFetchedUserIdRef.current = userId;
-
-      const erpUserId = data.id;
-      if (data.company_id) {
-        // Only admin/manager/accountant can INSERT into accounts (RLS); skip ensureDefaultAccounts for other roles to avoid 403
-        const canCreateAccounts = ['admin', 'manager', 'accountant'].includes(String(data.role || '').toLowerCase());
-        if (canCreateAccounts) {
-          import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
-            defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
-              console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
-            });
-          });
-        }
-        loadUserBranch(
-          { erpUserId, authUserId: (data as { auth_user_id?: string }).auth_user_id ?? null },
-          data.company_id,
-          data.role
-        );
-      }
+      await applyProfileFromRow(data as UserProfileRow, userId);
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);
       // SecurityError / request denied: retry like server errors; NEVER sign out
@@ -577,11 +665,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const authId = typeof userIds === 'string' ? null : userIds.authUserId;
     const lookupId = authId ?? erpId;
     try {
-      const isAdmin = userRole === 'admin' || userRole === 'Admin';
-      if (isAdmin) {
-        setDefaultBranchId('all');
-        setBranchId('all');
-        setRequiresBranchSelection(false);
+      if (hasCompanyWideBranchAccess(userRole)) {
         const { data: companyBranches } = await supabase
           .from('branches')
           .select('id')
@@ -590,11 +674,21 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const ids = (companyBranches || []).map((b: { id: string }) => b.id);
         setAccessibleBranchIds(ids);
         setBranchCount(ids.length);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches', { count: ids.length });
+        if (ids.length === 1) {
+          setDefaultBranchId(ids[0]);
+          setBranchId(ids[0]);
+          setRequiresBranchSelection(false);
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Privileged single branch:', ids[0]);
+          return;
+        }
+        setDefaultBranchId('all');
+        setBranchId('all');
+        setRequiresBranchSelection(false);
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Privileged: All Branches', { count: ids.length });
         return;
       }
 
-      // Non-admin: use get_effective_user_branch (single-branch => auto that branch; multi => user_branches or null)
+      // Non-admin: use get_effective_user_branch (single-branch => auto that branch; multi-access => All Branches)
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_effective_user_branch', { p_user_id: lookupId });
       const payload = rpcData as {
         effective_branch_id?: string | null;
@@ -612,9 +706,17 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setAccessibleBranchIds(accessible);
         setRequiresBranchSelection(Boolean(payload.requires_branch_selection));
         const effectiveId = payload.effective_branch_id ?? null;
-        setDefaultBranchId(effectiveId);
-        setBranchId(effectiveId);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] get_effective_user_branch', { count, effectiveId, requiresBranchSelection: payload.requires_branch_selection });
+        if (accessible.length > 1) {
+          setDefaultBranchId('all');
+          setBranchId('all');
+        } else if (accessible.length === 1) {
+          setDefaultBranchId(accessible[0]);
+          setBranchId(accessible[0]);
+        } else {
+          setDefaultBranchId(effectiveId);
+          setBranchId(effectiveId);
+        }
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] get_effective_user_branch', { count, accessible: accessible.length, effectiveId, requiresBranchSelection: payload.requires_branch_selection });
         return;
       }
 
@@ -634,11 +736,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setAccessibleBranchIds(ids);
         setBranchCount(ids.length);
         setRequiresBranchSelection(false);
-        const defaultRow = userBranches.find((ub: any) => ub.is_default === true) || userBranches[0];
-        const defaultId = defaultRow?.branch_id ?? ids[0];
-        setDefaultBranchId(defaultId);
-        setBranchId(defaultId);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback)', { count: ids.length, defaultId });
+        if (ids.length > 1) {
+          setDefaultBranchId('all');
+          setBranchId('all');
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback) All Branches', { count: ids.length });
+        } else {
+          const defaultId = ids[0];
+          setDefaultBranchId(defaultId);
+          setBranchId(defaultId);
+          if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback)', { count: ids.length, defaultId });
+        }
         return;
       }
 
@@ -788,9 +895,64 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchUserData(uid, false, 0);
   };
 
+  const selectPlatformCompany = useCallback(
+    async (nextCompanyId: string, companyName?: string): Promise<{ error: string | null }> => {
+      const { error } = await setPlatformActiveCompany(nextCompanyId);
+      if (error) return { error };
+      branchService.clearBranchCache();
+      permissionEngine.clear();
+      setCompanyId(nextCompanyId);
+      setActiveCompanyName(companyName?.trim() || null);
+      setNeedsCompanySelection(false);
+      platformBootResolvedRef.current = true;
+      setBranchId(null);
+      setDefaultBranchId(null);
+      setAccessibleBranchIds([]);
+      const erpId = erpUserId;
+      const authId = user?.id ?? null;
+      if (erpId && nextCompanyId) {
+        await loadUserBranch(
+          { erpUserId: erpId, authUserId: authId },
+          nextCompanyId,
+          userRole
+        );
+        const canCreateAccounts =
+          ['admin', 'manager', 'accountant'].includes(String(userRole || '').toLowerCase()) ||
+          isPlatformOperatorAppRole(userRole);
+        if (canCreateAccounts) {
+          import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
+            defaultAccountsService.ensureDefaultAccounts(nextCompanyId).catch(() => {});
+          });
+        }
+      }
+      dispatchGlobalRefresh({ companyId: nextCompanyId, reason: 'user-refresh' });
+      return { error: null };
+    },
+    [erpUserId, user?.id, userRole],
+  );
+
+  const switchPlatformCompany = useCallback(() => {
+    if (!isPlatformOperatorAppRole(userRole)) return;
+    setNeedsCompanySelection(true);
+    setCompanyId(null);
+    setActiveCompanyName(null);
+    setBranchId(null);
+    setDefaultBranchId(null);
+    setAccessibleBranchIds([]);
+    branchService.clearBranchCache();
+  }, [userRole]);
+
   // Sign out
   const signOut = async () => {
-    await supabase.auth.signOut();
+    userInitiatedSignOutRef.current = true;
+    try {
+      if (isPlatformOperatorAppRole(userRole)) {
+        await clearPlatformActiveCompany();
+      }
+    } catch {
+      /* best-effort */
+    }
+    await supabase.auth.signOut({ scope: 'local' });
     setConnectionError(false);
     setStorageBlocked(false);
     setAuthConfigError(null);
@@ -801,10 +963,15 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUser(null);
     setSession(null);
     setCompanyId(null);
+    setHomeCompanyId(null);
+    setActiveCompanyName(null);
+    setNeedsCompanySelection(false);
+    platformBootResolvedRef.current = false;
     setUserRole(null);
     setBranchId(null);
     setDefaultBranchId(null);
     setAccessibleBranchIds([]);
+    clearErpProfileFields();
     fetchingRef.current.clear();
     fetchedRef.current.clear();
     lastFetchedUserIdRef.current = null;
@@ -812,10 +979,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setEnablePackingState(false);
   };
 
-  // Load enable_packing when company is set; ensure explicit inventory_settings row (negative stock default false)
+  // enable_packing: SettingsContext inventorySettings owns the flag; keep ensure* bootstrap only.
   useEffect(() => {
     if (companyId) {
-      loadEnablePacking(companyId);
       settingsService.ensureDefaultInventorySettings(companyId).catch(() => {
         /* RLS or missing settings table — getAllowNegativeStock still defaults to false */
       });
@@ -835,9 +1001,18 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     authConfigError,
     retryConnection,
     refreshUserProfile,
+    refreshErpProfileDisplay,
+    erpUserId,
+    erpFullName,
+    erpPhone,
     signIn,
     signOut,
     companyId,
+    homeCompanyId,
+    activeCompanyName,
+    needsCompanySelection,
+    selectPlatformCompany,
+    switchPlatformCompany,
     userRole,
     branchId,
     defaultBranchId,
@@ -851,9 +1026,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshEnablePacking,
     supabaseClient: supabase,
   }), [
-    user, session, loading, profileLoadComplete, connectionError, storageBlocked, authConfigError, companyId, userRole, branchId, defaultBranchId,
+    user, session, loading, profileLoadComplete, connectionError, storageBlocked, authConfigError, companyId, homeCompanyId, activeCompanyName, needsCompanySelection, userRole, branchId, defaultBranchId,
+    erpUserId, erpFullName, erpPhone,
     accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
-    signIn, signOut, retryConnection, refreshUserProfile, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
+    signIn, signOut, retryConnection, refreshUserProfile, refreshErpProfileDisplay, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
+    selectPlatformCompany, switchPlatformCompany,
   ]);
 
   return (
@@ -874,9 +1051,18 @@ const defaultSupabaseContext: SupabaseContextType = {
   authConfigError: null,
   retryConnection: () => {},
   refreshUserProfile: () => {},
+  refreshErpProfileDisplay: () => {},
+  erpUserId: null,
+  erpFullName: null,
+  erpPhone: null,
   signIn: async () => {},
   signOut: async () => {},
   companyId: null,
+  homeCompanyId: null,
+  activeCompanyName: null,
+  needsCompanySelection: false,
+  selectPlatformCompany: async () => ({ error: null }),
+  switchPlatformCompany: () => {},
   userRole: null,
   branchId: null,
   defaultBranchId: null,

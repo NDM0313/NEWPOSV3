@@ -1,0 +1,17 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "final-monitoring",
+  "generated_at": "2026-07-01T09:21:45.789Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "report_path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T09-11-20-211Z.json",
+  "overall": "PASS",
+  "companies": {
+    "din-china": true,
+    "din-bridal": true,
+    "din-couture": true
+  },
+  "admin_compare": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "status": "PASS"
+}

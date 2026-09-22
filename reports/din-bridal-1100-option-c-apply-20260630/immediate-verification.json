@@ -1,0 +1,18 @@
+{
+  "verifiedAtUtc": "2026-06-30T15:07:30.000Z",
+  "control1100": { "before": -136500, "after": 0, "expected": 0, "pass": true },
+  "arCus0056": { "before": 113750, "after": 35000, "creditMovement": 78750, "pass": true },
+  "arCus0012": { "before": 72750, "after": 15000, "creditMovement": 57750, "pass": true },
+  "correctionJes": {
+    "JV-000209": { "totalDebit": 78750, "totalCredit": 78750, "balanced": true },
+    "JV-000210": { "totalDebit": 57750, "totalCredit": 57750, "balanced": true }
+  },
+  "scope": {
+    "dinBridalOnly": true,
+    "otherCompaniesUntouched": true,
+    "paymentsSalesInventoryUntouched": true,
+    "migrationsRun": false,
+    "featureFlagsChanged": false
+  },
+  "overall": "PASS"
+}

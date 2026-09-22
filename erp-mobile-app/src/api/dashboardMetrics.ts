@@ -2,8 +2,9 @@
  * Executive dashboard — same RPC as web `getDashboardMetrics`.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { safeRpcBranchId } from './contactBalancesRpc';
+import { safeRpcBranchId, fetchContactBalancesSummary } from './contactBalancesRpc';
 import { getFinancialDashboardMetrics, type FinancialDashboardMetrics } from './financialDashboard';
+import { mergePeriodMetrics, queryExecutivePeriodMetrics } from './dashboardPeriodMetrics';
 
 export type { FinancialDashboardMetrics };
 
@@ -73,20 +74,73 @@ function emptyPayload(): DashboardMetricsPayload {
   };
 }
 
+async function enrichLiquidityMetrics(
+  companyId: string,
+  branchId: string | null | undefined,
+  metrics: FinancialDashboardMetrics
+): Promise<FinancialDashboardMetrics> {
+  let next = { ...metrics };
+  const needsGl =
+    (Number(next.cash_balance) || 0) === 0 &&
+    (Number(next.bank_balance) || 0) === 0 &&
+    (Number(next.receivables) || 0) === 0 &&
+    (Number(next.payables) || 0) === 0;
+
+  if (needsGl) {
+    const { data: fin, error: finErr } = await getFinancialDashboardMetrics(companyId, branchId);
+    if (fin && !finErr) {
+      next = {
+        ...next,
+        cash_balance: Number(fin.cash_balance) || next.cash_balance,
+        bank_balance: Number(fin.bank_balance) || next.bank_balance,
+        receivables: Number(fin.receivables) || next.receivables,
+        payables: Number(fin.payables) || next.payables,
+        ar_ap_basis: fin.ar_ap_basis ?? next.ar_ap_basis,
+        ar_ap_scope: fin.ar_ap_scope ?? next.ar_ap_scope,
+      };
+    }
+  }
+
+  if ((Number(next.receivables) || 0) === 0 || (Number(next.payables) || 0) === 0) {
+    const { map, error: balErr } = await fetchContactBalancesSummary(companyId, branchId);
+    if (!balErr && map.size > 0) {
+      let rec = 0;
+      let pay = 0;
+      for (const v of map.values()) {
+        rec += v.receivables;
+        pay += v.payables;
+      }
+      if ((Number(next.receivables) || 0) === 0 && rec > 0) next.receivables = rec;
+      if ((Number(next.payables) || 0) === 0 && pay > 0) next.payables = pay;
+      next.ar_ap_basis = next.ar_ap_basis ?? 'get_contact_balances_summary';
+    }
+  }
+
+  return next;
+}
+
 async function getDashboardMetricsFallback(
   companyId: string,
   branchId?: string | null,
+  startDate?: string | null,
+  endDate?: string | null,
 ): Promise<{ data: DashboardMetricsPayload | null; error: string | null }> {
   const { data: metrics, error: finErr } = await getFinancialDashboardMetrics(companyId, branchId);
   if (finErr || !metrics) {
     return { data: null, error: finErr ?? 'Financial metrics unavailable.' };
   }
+  let merged = metrics;
+  if (startDate && endDate) {
+    const direct = await queryExecutivePeriodMetrics(companyId, branchId, startDate, endDate);
+    merged = mergePeriodMetrics(merged, direct);
+  }
+  merged = await enrichLiquidityMetrics(companyId, branchId, merged);
   return {
     data: {
-      metrics,
+      metrics: merged,
       sales_by_category: [],
       low_stock_items: [],
-      error: metrics.error,
+      error: merged.error,
     },
     error: null,
   };
@@ -115,9 +169,17 @@ export async function getDashboardMetrics(
     if (!raw) throw new Error('No data');
 
     const metricsRaw = raw.metrics as Record<string, unknown> | undefined;
+    let metrics = metricsRaw ? parseFinancialMetrics(metricsRaw) : emptyPayload().metrics;
+
+    if (startDate && endDate) {
+      const direct = await queryExecutivePeriodMetrics(companyId, branchId, startDate, endDate);
+      metrics = mergePeriodMetrics(metrics, direct);
+    }
+    metrics = await enrichLiquidityMetrics(companyId, branchId, metrics);
+
     return {
       data: {
-        metrics: metricsRaw ? parseFinancialMetrics(metricsRaw) : emptyPayload().metrics,
+        metrics,
         sales_by_category: Array.isArray(raw.sales_by_category)
           ? (raw.sales_by_category as Array<{ categoryName: string; total: number }>)
           : [],
@@ -132,6 +194,6 @@ export async function getDashboardMetrics(
     if (import.meta.env?.DEV) {
       console.warn('[DASHBOARD] get_dashboard_metrics RPC failed, using fallback:', e);
     }
-    return getDashboardMetricsFallback(companyId, branchId);
+    return getDashboardMetricsFallback(companyId, branchId, startDate, endDate);
   }
 }

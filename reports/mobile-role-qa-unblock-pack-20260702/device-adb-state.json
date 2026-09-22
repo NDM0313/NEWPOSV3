@@ -1,0 +1,9 @@
+{
+  "run": "MOBILE_DEVICE_ADB_STATE",
+  "run_local_datetime": "2026-07-02T19:32:18+05:00",
+  "status": "DEVICE_NOT_CONNECTED",
+  "adb_devices_output": "List of devices attached (empty)",
+  "device_model": null,
+  "android_version": null,
+  "package_verified": false
+}

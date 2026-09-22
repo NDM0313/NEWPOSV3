@@ -8,7 +8,11 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
 import { supabase } from '@/lib/supabase';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { logPaymentCreated } from '@/app/services/auditLogService';
-import { recordPaymentWithAccounting } from '@/app/services/recordPaymentWithAccountingRpc';
+import {
+  recordPaymentWithAccounting,
+  resolveBranchIdForPaymentRpc,
+} from '@/app/services/recordPaymentWithAccountingRpc';
+import { applyManualSupplierPaymentAllocations } from '@/app/services/paymentAllocationService';
 
 export type SupplierPaymentReferenceType = 'purchase' | 'on_account';
 
@@ -141,4 +145,110 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     );
   }
   return { paymentId, journalEntryId, referenceNumber };
+}
+
+export interface CreateManualSupplierPaymentParams {
+  companyId: string;
+  branchId: string | null;
+  supplierContactId: string;
+  amount: number;
+  paymentMethod: string;
+  paymentAccountId: string;
+  paymentDate?: string;
+  notes?: string | null;
+  attachments?: { url: string; name: string }[] | null;
+}
+
+/**
+ * Add Entry / manual Dr AP Cr cash: RPC allocates PAY- from unified PAYMENT sequence; posts GL via RPC.
+ */
+export async function createManualSupplierPayment(
+  params: CreateManualSupplierPaymentParams
+): Promise<CreateSupplierPaymentResult> {
+  const {
+    companyId,
+    branchId,
+    supplierContactId,
+    amount,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    notes,
+    attachments,
+  } = params;
+
+  if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) {
+    throw new Error('companyId, supplierContactId, amount, and paymentAccountId are required');
+  }
+
+  const branchResolved = await resolveBranchIdForPaymentRpc(companyId, branchId);
+  const paymentDateValue = paymentDate || localNowDateString();
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  const authUserId = authUser?.id ?? null;
+
+  const rpcResult = await recordPaymentWithAccounting({
+    companyId,
+    branchId: branchResolved,
+    paymentType: 'paid',
+    referenceType: 'manual_payment',
+    referenceId: supplierContactId,
+    amount,
+    paymentMethod,
+    paymentDate: paymentDateValue,
+    paymentAccountId,
+    notes: buildPaymentNote(notes),
+    bankTraceId: null,
+    createdBy: authUserId,
+  });
+
+  const paymentId = rpcResult.paymentId;
+  const patch: Record<string, unknown> = {
+    reference_type: 'manual_payment',
+    reference_id: null,
+    contact_id: supplierContactId,
+    received_by: authUserId,
+  };
+  if (attachments && attachments.length > 0) {
+    patch.attachments = attachments;
+  }
+
+  let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  if (upd.error?.code === 'PGRST204' && String(upd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = patch;
+    upd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  } else if (upd.error) {
+    console.warn('[supplierPaymentService] manual payment patch after RPC:', upd.error.message);
+  }
+
+  logPaymentCreated(companyId, paymentId, {
+    reference_type: 'manual_payment',
+    amount,
+    contact_id: supplierContactId,
+  });
+
+  await applyManualSupplierPaymentAllocations({
+    companyId,
+    branchId: branchResolved,
+    paymentId,
+    supplierId: supplierContactId,
+    amount,
+    paymentDate: paymentDateValue,
+    referenceNumber: rpcResult.referenceNumber,
+    createdBy: authUserId,
+    explicitAllocations: null,
+  });
+
+  dispatchContactBalancesRefresh(companyId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paymentAdded'));
+    window.dispatchEvent(
+      new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } })
+    );
+  }
+
+  return {
+    paymentId,
+    journalEntryId: rpcResult.journalEntryId,
+    referenceNumber: rpcResult.referenceNumber,
+  };
 }

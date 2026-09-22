@@ -1,0 +1,9 @@
+status,journal_entry_id,company_name,company_id,entry_date,reference_type,reference_id,void_reason,line_count,sum_debit,sum_credit,difference_dr_minus_cr,cause_class
+active,f1bda1df-2dc9-474a-9447-08d569863ae9,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-09-21,sale,ce0da79b-4d69-4c17-abbf-d538a83bc23c,,5,78000.00,85995.00,-7995.00,ACTUAL_UNBALANCED_JE
+active,bdebfa9a-66a0-482c-8699-4a46fab752da,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-08-22,sale,f26f67a3-2a62-4e5e-88d2-3f868149ad9e,,4,10000.00,15625.00,-5625.00,ACTUAL_UNBALANCED_JE
+void,f5757490-0470-4f9e-b7c5-623f0bfa398c,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-07-18,sale,f2b95928-66e8-4daf-aa5a-aeba62fdfe8e,rebuild_sale_document_accounting,7,90650.00,110650.00,-20000.00,ACTUAL_UNBALANCED_JE
+void,b3acd30e-d87a-48d0-9051-b4de3e245679,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-06-16,sale,8c4b85f9-ec83-4c49-b7ee-6fa7f664ba25,rebuild_sale_document_accounting,7,42000.00,47000.00,-5000.00,ACTUAL_UNBALANCED_JE
+void,ec281abf-e4e1-40ee-bafe-8f4d4f300a63,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-06-03,sale,def10103-c113-4434-852b-2ddd6d01fed1,rebuild_sale_document_accounting,5,59100.00,58100.00,1000.00,ACTUAL_UNBALANCED_JE
+void,e0712d12-3248-415c-84e1-d8f295aefcda,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-06-03,sale,def10103-c113-4434-852b-2ddd6d01fed1,rebuild_sale_document_accounting,5,59100.00,58100.00,1000.00,ACTUAL_UNBALANCED_JE
+void,ef161c9d-fc5d-45f6-b157-055468d49f4c,DIN BRIDAL,597a5292-14c8-4cd8-96bd-c61b5a0d8c92,2026-06-07,sale,9b112876-c2f6-476a-b6a2-3117a9ee7db7,rebuild_sale_document_accounting,5,28500.00,27800.00,700.00,ACTUAL_UNBALANCED_JE
+void,55b744a8-80fb-476f-8203-862bc7a499b9,DIN CHINA,30bd8592-3384-4f34-899a-f3907e336485,2026-07-06,purchase_reversal,ebd5ac5d-b6eb-4d9e-a01e-c516a8fe25dc,operator_mistaken_purchase_cancel_orphan_reversal_PUR-0004,1,190.00,0.00,190.00,ACTUAL_UNBALANCED_JE

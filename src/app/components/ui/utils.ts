@@ -125,8 +125,8 @@ export function formatBoxesPieces(value: number | null | undefined): string {
 }
 
 /**
- * Format numeric values for display — max 2 decimal places system-wide.
- * Use for stock, quantities, amounts, meters, etc. to avoid floating-point noise (e.g. 265.2999999999997).
+ * Format numeric values for display — max 2 decimal places.
+ * For stock and quantities, prefer {@link formatQty} from `@/app/utils/quantity` (always 2 decimals).
  */
 export function formatDecimal(value: number | null | undefined, maxFractionDigits: number = 2): string {
   const n = Number(value);

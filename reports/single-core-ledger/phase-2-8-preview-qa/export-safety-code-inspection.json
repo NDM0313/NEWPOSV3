@@ -1,0 +1,50 @@
+{
+  "verificationMethod": "static_code_inspection",
+  "principle": "Official export/print paths must read legacy on-screen data only; preview state is compare-panel only",
+  "screens": [
+    {
+      "screen": "Ledger V2",
+      "file": "src/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page.tsx",
+      "exportPath": "buildExportData() uses rows + summary from legacy load",
+      "previewStateUsedInExport": false,
+      "result": "PASS"
+    },
+    {
+      "screen": "Account Statement",
+      "file": "src/app/components/reports/AccountLedgerReportPage.tsx",
+      "exportPath": "handleExportPDF / Excel via toExport() from applied legacy state",
+      "previewStateUsedInExport": false,
+      "result": "PASS"
+    },
+    {
+      "screen": "Trial Balance",
+      "file": "src/app/components/reports/TrialBalancePage.tsx",
+      "exportPath": "exportResult derived from data (legacy getTrialBalance), not previewResult",
+      "previewStateUsedInExport": false,
+      "result": "PASS"
+    },
+    {
+      "screen": "Roznamcha",
+      "file": "src/app/components/reports/RoznamchaReport.tsx",
+      "exportPath": "exportToExcel / PDF from legacy roznamcha rows",
+      "previewStateUsedInExport": false,
+      "result": "PASS"
+    },
+    {
+      "screen": "Party Ledger",
+      "file": "src/app/components/accounting/EffectivePartyLedgerPage.tsx",
+      "exportPath": "No official export; preview JSON only in compare panel",
+      "previewStateUsedInExport": false,
+      "result": "PASS"
+    },
+    {
+      "screen": "Admin Compare Center",
+      "file": "src/app/features/admin/unified-ledger-tieout/",
+      "exportPath": "Client JSON export only (non-official)",
+      "result": "PASS"
+    }
+  ],
+  "grepPreviewInExportHandlers": "No matches for previewResult/unifiedPreviewEnabled in export handlers",
+  "liveExportHashCheck": "WAIVED — optional toggle ON/OFF export spot-check on DIN CHINA",
+  "overall": "PASS"
+}

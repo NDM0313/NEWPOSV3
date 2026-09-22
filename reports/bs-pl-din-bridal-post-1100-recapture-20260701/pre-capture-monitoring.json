@@ -1,0 +1,10 @@
+{
+  "artifact": "2026-07-01T07-21-04-649Z",
+  "overall": "PASS",
+  "dinChina": "PASS",
+  "dinBridal": "PASS",
+  "dinCouture": "PASS",
+  "adminCompare9of9": true,
+  "migrationsRun": false,
+  "glMutations": false
+}

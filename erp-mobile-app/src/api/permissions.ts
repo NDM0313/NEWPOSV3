@@ -62,10 +62,16 @@ export async function getRolePermissionsByEngineRole(
   return (data ?? []) as RolePermissionRow[];
 }
 
-/** Admin/owner may pick any company branch (and "All Branches"). Others: user_branches only. */
+/** Admin/owner/platform operator may pick any company branch (and "All Branches"). Others: user_branches only. */
 export function canPickAllCompanyBranches(role: string | undefined): boolean {
-  const r = (role || '').toLowerCase();
-  return r === 'admin' || r === 'owner';
+  const r = (role || '').toLowerCase().trim().replace(/_/g, ' ');
+  return (
+    r === 'admin' ||
+    r === 'owner' ||
+    r === 'developer' ||
+    r === 'super admin' ||
+    r === 'superadmin'
+  );
 }
 
 export interface UserAccessibleBranchesResult {

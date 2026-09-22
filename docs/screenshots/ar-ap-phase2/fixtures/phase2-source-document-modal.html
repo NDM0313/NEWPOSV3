@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phase 2 — Source document modal (SL-0005)</title>
+  <link rel="stylesheet" href="_shared.css" />
+</head>
+<body>
+  <div class="backdrop">
+    <div class="dialog" role="dialog" aria-label="Source document read-only">
+      <h2>Source document (read-only)</h2>
+      <p class="sub">No data changes — trace and risk assessment only.</p>
+      <div class="badges">
+        <span class="badge badge-slate">Non-final / not postable</span>
+        <span class="badge badge-emerald">low risk</span>
+      </div>
+      <dl class="panel">
+        <div class="row"><dt>Document</dt><dd>SL-0005</dd></div>
+        <div class="row"><dt>Type</dt><dd>sale</dd></div>
+        <div class="row"><dt>Contact</dt><dd>Patras</dd></div>
+        <div class="row"><dt>Status</dt><dd>order</dd></div>
+        <div class="row"><dt>Total</dt><dd>Rs 96,000</dd></div>
+        <div class="row"><dt>Paid</dt><dd>Rs 25,000</dd></div>
+        <div class="row"><dt>Due (queue amt)</dt><dd>Rs 96,000</dd></div>
+        <div class="row"><dt>Branch</dt><dd>Stitch and Style</dd></div>
+        <div class="row"><dt>Date</dt><dd>2026-06-01</dd></div>
+      </dl>
+      <p class="section-title">GL posting status</p>
+      <p class="section-body">No active sale/purchase document JE.</p>
+      <p class="section-title">Why in queue</p>
+      <p class="section-body">No non-void document journal linked to this source.</p>
+      <p class="section-title">Suggested next action</p>
+      <p class="section-body">Finalize the sale before GL revenue/AR posting. No posting required while status is order/draft/quotation.</p>
+      <div class="footer">
+        <button type="button" class="btn btn-outline">Close</button>
+        <button type="button" class="btn btn-primary">Open posting dry-run…</button>
+      </div>
+    </div>
+  </div>
+  <div class="caption">AR/AP Reconciliation Center — Source document modal · SL-0005 (order, non-final)</div>
+</body>
+</html>

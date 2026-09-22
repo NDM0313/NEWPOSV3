@@ -1,7 +1,6 @@
 /**
  * Unified document engine: Sales Invoice.
  * Reads layout/fields from company printing_settings (Settings → Printing).
- * Same rendering as A4/Thermal templates but template options come from one source.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,6 +12,7 @@ import { ThermalInvoiceTemplate } from '@/app/components/shared/invoice/ThermalI
 import { getContactWhatsAppPhone } from '@/app/lib/phoneWhatsApp';
 import { DocumentShareActions } from '@/app/components/shared/DocumentShareActions';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useThermalPrint } from '@/app/hooks/useThermalPrint';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
 import type { ResolvedInvoiceTemplate } from './types';
@@ -39,21 +39,16 @@ function toInvoiceTemplate(
 }
 
 export interface UnifiedSalesInvoiceViewProps {
-  /** When provided, document is loaded via RPC (sale invoice). */
   saleId?: string | null;
-  /** When provided, use this document instead of loading by saleId (e.g. bulk invoice). */
   document?: InvoiceDocument | null;
   companyId: string | null;
   templateType: InvoiceTemplateType;
   onClose?: () => void;
   showPrintAction?: boolean;
+  /** Override saved paper size when set. */
   thermalPaperSize?: '58mm' | '80mm';
 }
 
-/**
- * Sales Invoice view using unified document engine.
- * Template (show SKU, discount, tax, etc.) comes from printing_settings, not invoice_templates.
- */
 export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = ({
   saleId = null,
   document: documentProp,
@@ -61,9 +56,10 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
   templateType,
   onClose,
   showPrintAction = true,
-  thermalPaperSize = '80mm',
+  thermalPaperSize: thermalPaperSizeProp,
 }) => {
   const { formatCurrency } = useFormatCurrency();
+  const { printThermal } = useThermalPrint();
   const [document, setDocument] = useState<InvoiceDocument | null>(documentProp ?? null);
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
@@ -108,11 +104,18 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
   }, [loadDocument, documentProp]);
 
   const printContentRef = useRef<HTMLDivElement | null>(null);
-  const { resolvedInvoice, showLogo, loading: settingsLoading, error: settingsError } =
+  const { resolvedInvoice, merged, showLogo, loading: settingsLoading, error: settingsError } =
     useUnifiedDocumentSettings(companyId, 'sales_invoice');
 
+  const effectivePaperSize =
+    thermalPaperSizeProp ?? merged?.thermal.paperSize ?? '58mm';
+
   const handlePrint = () => {
-    window.print();
+    if (templateType === 'Thermal') {
+      printThermal(effectivePaperSize);
+    } else {
+      window.print();
+    }
   };
 
   const loading = docLoading || settingsLoading;
@@ -144,6 +147,7 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
   }
 
   const docType = document?.meta?.type === 'quotation' ? 'quotation' : document?.meta?.type === 'proforma' ? 'proforma' : 'sales_invoice';
+  const isThermal = templateType === 'Thermal';
   const actionChildren = showPrintAction ? (
     <DocumentShareActions
       contentRef={printContentRef}
@@ -158,7 +162,8 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
             }) || null
           : null
       }
-      format={templateType === 'Thermal' ? 'thermal' : 'a4'}
+      format={isThermal ? 'thermal' : 'a4'}
+      thermalPaperSize={isThermal ? effectivePaperSize : undefined}
       onPrint={handlePrint}
       onClose={onClose}
       showPrint
@@ -166,12 +171,13 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
     />
   ) : undefined;
 
-  return templateType === 'Thermal' ? (
+  return isThermal ? (
     <ThermalInvoiceTemplate
       document={document}
       template={template}
       formatCurrency={formatCurrency}
-      paperSize={thermalPaperSize}
+      paperSize={effectivePaperSize}
+      thermal={merged?.thermal}
       onPrint={handlePrint}
       onClose={onClose}
       actionChildren={actionChildren}

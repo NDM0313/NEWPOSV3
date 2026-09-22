@@ -89,6 +89,12 @@ export function useAccountsHierarchyModel(
   /** Operational COA: hide linked-party sub-rows; use control row + linked-parties drawer instead. */
   hideOperationalPartySubledgerRows?: boolean
 ): { hierarchyRows: AccountsHierarchyRowModel[]; parentIdsWithChildren: Set<string> } {
+  // Inactive legacy leaves (e.g. merged 210xxx) stay out of the default CoA list.
+  const chartAccounts = useMemo(
+    () => accounts.filter((a) => a.isActive !== false),
+    [accounts],
+  );
+
   const matchesOperationalAccountView = useCallback((acc: { type?: string; accountType?: string; code?: string; is_group?: boolean }) => {
     const code = String(acc.code || '').trim();
     if (isOperationalExtendedCoaCode(code)) {
@@ -120,11 +126,11 @@ export function useAccountsHierarchyModel(
     );
   }, []);
 
-  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+  const accountsById = useMemo(() => new Map(chartAccounts.map((a) => [a.id, a])), [chartAccounts]);
 
   const linkedPartyCountByControlId = useMemo(() => {
     const byContact = new Map<string, Set<string>>();
-    for (const a of accounts) {
+    for (const a of chartAccounts) {
       if (!isPartySubledgerLeaf(a, accountsById)) continue;
       const ctrlId = nearestPartyControlAncestorId(a, accountsById);
       const cid = String((a as { linked_contact_id?: string | null }).linked_contact_id || '').trim();
@@ -135,10 +141,10 @@ export function useAccountsHierarchyModel(
     const m = new Map<string, number>();
     byContact.forEach((set, id) => m.set(id, set.size));
     return m;
-  }, [accounts, accountsById]);
+  }, [chartAccounts, accountsById]);
 
   const balanceRollupById = useMemo(() => {
-    const all = accounts;
+    const all = chartAccounts;
     const memo = new Map<string, number>();
     const go = (id: string): number => {
       if (memo.has(id)) return memo.get(id)!;
@@ -151,10 +157,10 @@ export function useAccountsHierarchyModel(
     };
     all.forEach((a) => go(a.id));
     return memo;
-  }, [accounts]);
+  }, [chartAccounts]);
 
   const accountsTableRows = useMemo(() => {
-    const all = accounts;
+    const all = chartAccounts;
     const opBase = all.filter(matchesOperationalAccountView);
     const opIds = new Set(opBase.map((a) => a.id));
     const withAncestors = new Set(opIds);
@@ -242,7 +248,7 @@ export function useAccountsHierarchyModel(
     if (!hideLeaves) return out;
     return out.filter((a) => !isPartySubledgerLeaf(a, accountsById));
   }, [
-    accounts,
+    chartAccounts,
     accountsViewMode,
     showSubAccounts,
     accountsById,
@@ -261,11 +267,11 @@ export function useAccountsHierarchyModel(
   /** Any account id that is a parent of at least one row in the full list (for roll-up balances when children are hidden). */
   const parentIdsWithAnyDescendant = useMemo(() => {
     const s = new Set<string>();
-    for (const a of accounts) {
+    for (const a of chartAccounts) {
       if (a.parent_id) s.add(a.parent_id);
     }
     return s;
-  }, [accounts]);
+  }, [chartAccounts]);
 
   const tableRowIdSet = useMemo(() => new Set(accountsTableRows.map((a) => a.id)), [accountsTableRows]);
 

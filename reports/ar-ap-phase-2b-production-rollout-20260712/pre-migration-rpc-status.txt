@@ -1,0 +1,18 @@
+AR/AP Phase 2b — Pre-migration RPC status (production read-only)
+Generated: 2026-07-12T02:35:00+05:00
+
+## get_unified_contact_party_gl_balances
+Exists on production: NO
+pg_proc count: 0
+
+## get_contact_party_gl_balances (legacy fallback)
+Exists on production: YES (in use by Contacts page and AR/AP center fallback)
+
+## VPS application runtime
+git HEAD: 8bbb01f043c9b7e1f0aa941b76674f8ed92f2ce7
+Phase 2b runtime commit (75c12cd7): NOT YET DEPLOYED to VPS at baseline capture
+
+## Expected UI behavior before migration + before frontend deploy
+- Unified banner: inactive (RPC missing → legacy fallback)
+- Admin parity chip: SKIP / not applicable until unified path active
+- Kill switch: forces legacy fallback (unchanged)

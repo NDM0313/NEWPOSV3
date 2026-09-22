@@ -50,7 +50,7 @@ function accountRowVisual(account: {
   if (t.includes('asset') || n.includes('asset'))
     return { Icon: Briefcase, boxClass: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/25' };
 
-  return { Icon: Building2, boxClass: 'bg-gray-700/80 text-gray-300 ring-1 ring-gray-600/50' };
+  return { Icon: Building2, boxClass: 'bg-muted/80 text-muted-foreground ring-1 ring-gray-600/50' };
 }
 
 export type AccountsHierarchyListProps = {
@@ -85,10 +85,10 @@ export function AccountsHierarchyList({
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden">
+    <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
       <div
         className={cn(
-          'hidden sm:grid gap-3 px-4 py-2.5 border-b border-gray-800 bg-gray-900/80 text-[10px] font-semibold uppercase tracking-wider text-gray-500',
+          'hidden sm:grid gap-3 px-4 py-2.5 border-b border-border bg-card text-[10px] font-semibold uppercase tracking-wider text-muted-foreground',
           accountsViewMode === 'professional'
             ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,64px)_minmax(0,88px)_minmax(0,72px)_minmax(0,200px)]'
             : 'sm:grid-cols-[minmax(0,1fr)_minmax(0,88px)_minmax(0,72px)_minmax(0,200px)]'
@@ -101,7 +101,7 @@ export function AccountsHierarchyList({
         <span className="text-right pr-11">Balance · GL</span>
       </div>
 
-      <div className="divide-y divide-gray-800/90">
+      <div className="divide-y divide-border/90">
         {rows.map((row) => {
           const {
             account,
@@ -139,13 +139,13 @@ export function AccountsHierarchyList({
           return (
             <div key={account.id}>
               {sectionHeader ? (
-                <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-950/60 border-b border-gray-800/80">
+                <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-input-background/60 border-b border-border/80">
                   {sectionHeader}
                 </div>
               ) : null}
               <div
                 className={cn(
-                  'group px-3 py-3 sm:px-4 hover:bg-gray-800/25 transition-colors',
+                  'group px-3 py-3 sm:px-4 hover:bg-muted/25 transition-colors',
                   'flex flex-col gap-3 sm:grid sm:items-center sm:gap-3',
                   accountsViewMode === 'professional'
                     ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,64px)_minmax(0,88px)_minmax(0,72px)_minmax(0,200px)]'
@@ -161,7 +161,7 @@ export function AccountsHierarchyList({
                     <button
                       type="button"
                       title={isCollapsed ? 'Expand sub-accounts' : 'Collapse sub-accounts'}
-                      className="rounded p-0.5 text-gray-400 hover:bg-gray-800 hover:text-white shrink-0"
+                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
                       onClick={onToggleCollapse}
                     >
                       {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -185,14 +185,14 @@ export function AccountsHierarchyList({
                     className="flex flex-wrap items-center gap-2"
                     title={coaRowDetailTooltip || undefined}
                   >
-                    <span className="font-semibold text-white text-sm sm:text-[15px] leading-tight">{coaPrimaryLabel}</span>
+                    <span className="font-semibold text-foreground text-sm sm:text-[15px] leading-tight">{coaPrimaryLabel}</span>
                     {coaPartyRoleLabel ? (
                       <Badge className="border-violet-500/35 bg-violet-500/15 text-[10px] uppercase tracking-wide text-violet-200">
                         {coaPartyRoleLabel}
                       </Badge>
                     ) : null}
                     {accountsViewMode !== 'professional' && account.code && !coaSuppressProminentAccountCode ? (
-                      <Badge variant="outline" className="border-gray-600 bg-gray-800/80 text-[10px] font-mono text-gray-300 px-1.5 py-0">
+                      <Badge variant="outline" className="border-gray-600 bg-muted/80 text-[10px] font-mono text-muted-foreground px-1.5 py-0">
                         {account.code}
                       </Badge>
                     ) : null}
@@ -226,39 +226,39 @@ export function AccountsHierarchyList({
                     {renderRowInlineExtra?.(row)}
                   </div>
                   {coaDetailLine ? (
-                    <p className="mt-0.5 text-[11px] text-gray-400 leading-snug">{coaDetailLine}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">{coaDetailLine}</p>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-gray-500 leading-snug sm:hidden">{subtitleParts.filter((p) => p !== coaDetailLine).join(' · ')}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug sm:hidden">{subtitleParts.filter((p) => p !== coaDetailLine).join(' · ')}</p>
                 </div>
               </div>
 
               {accountsViewMode === 'professional' ? (
                 <div
-                  className="text-[11px] font-mono text-gray-400 sm:border-l border-gray-800/80 sm:pl-3 tabular-nums"
+                  className="text-[11px] font-mono text-muted-foreground sm:border-l border-border/80 sm:pl-3 tabular-nums"
                   title={coaSuppressProminentAccountCode ? coaRowDetailTooltip || undefined : undefined}
                 >
                   {coaSuppressProminentAccountCode ? '—' : account.code || '—'}
                 </div>
               ) : null}
 
-              <div className="flex flex-col justify-center text-xs text-gray-400 sm:border-l border-gray-800/80 sm:pl-3">
-                <Badge className="w-fit border-gray-700 bg-gray-800/90 text-gray-300 text-[10px] max-w-full truncate">
+              <div className="flex flex-col justify-center text-xs text-muted-foreground sm:border-l border-border/80 sm:pl-3">
+                <Badge className="w-fit border-border bg-muted/90 text-muted-foreground text-[10px] max-w-full truncate">
                   {coaSuppressProminentAccountCode ? operationalTypeSubtitle : account.type || account.accountType || '—'}
                 </Badge>
                 {accountsViewMode === 'professional' ? (
-                  <span className="mt-1 text-[10px] text-gray-500 hidden sm:inline">{account.branch ? 'Branch' : 'Global'}</span>
+                  <span className="mt-1 text-[10px] text-muted-foreground hidden sm:inline">{account.branch ? 'Branch' : 'Global'}</span>
                 ) : null}
               </div>
 
-              <div className="flex flex-col justify-center sm:border-l border-gray-800/80 sm:pl-3">
+              <div className="flex flex-col justify-center sm:border-l border-border/80 sm:pl-3">
                 {account.isActive ? (
-                  <Badge className="w-fit border-green-500/30 bg-green-500/10 text-[10px] text-green-400">Active</Badge>
+                  <Badge className="w-fit border-green-500/30 bg-green-500/10 text-[10px] text-[var(--erp-money-positive)]">Active</Badge>
                 ) : (
-                  <Badge className="w-fit border-gray-500/30 bg-gray-500/10 text-[10px] text-gray-400">Inactive</Badge>
+                  <Badge className="w-fit border-gray-500/30 bg-gray-500/10 text-[10px] text-muted-foreground">Inactive</Badge>
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-3 sm:border-l border-gray-800/80 sm:pl-3">
+              <div className="flex items-center justify-between gap-3 sm:border-l border-border/80 sm:pl-3">
                 <div className="text-right flex-1 sm:flex-none min-w-0">
                   <div
                     className={cn(
@@ -270,7 +270,7 @@ export function AccountsHierarchyList({
                   </div>
                   {(hasChildRows || hasDescendantsInFullChart) && (
                     <span
-                      className="mt-0.5 block text-[9px] font-normal text-gray-500"
+                      className="mt-0.5 block text-[9px] font-normal text-muted-foreground"
                       title="Roll-up uses this account’s posted balance plus all descendant accounts in the chart (same total whether sub-rows are shown or hidden). Leaf rows show their own GL only."
                     >
                       {account.balance !== displayBalance
@@ -285,7 +285,7 @@ export function AccountsHierarchyList({
                         <span className="text-emerald-400/90">{trend.toFixed(1)}%</span>
                       </>
                     ) : (
-                      <span className="text-gray-600">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </div>
                 </div>

@@ -87,18 +87,18 @@ type TraceMode = Parameters<typeof runTraceSearch>[2];
 function SevBadge({ s }: { s: DiagnosticsSeverity }) {
   if (s === 'error')
     return (
-      <Badge className="bg-red-700 text-white border-0 text-[10px] uppercase tracking-wide">Error</Badge>
+      <Badge className="bg-red-700 text-foreground border-0 text-[10px] uppercase tracking-wide">Error</Badge>
     );
   if (s === 'warning')
     return (
-      <Badge className="bg-amber-700 text-white border-0 text-[10px] uppercase tracking-wide">Warning</Badge>
+      <Badge className="bg-amber-700 text-foreground border-0 text-[10px] uppercase tracking-wide">Warning</Badge>
     );
   if (s === 'info')
     return (
-      <Badge className="bg-slate-600 text-white border-0 text-[10px] uppercase tracking-wide">Info</Badge>
+      <Badge className="bg-slate-600 text-foreground border-0 text-[10px] uppercase tracking-wide">Info</Badge>
     );
   return (
-    <Badge className="bg-emerald-800 text-white border-0 text-[10px] uppercase tracking-wide">Clean</Badge>
+    <Badge className="bg-emerald-800 text-foreground border-0 text-[10px] uppercase tracking-wide">Clean</Badge>
   );
 }
 
@@ -533,8 +533,8 @@ export default function DeveloperIntegrityLabPage() {
             <CardTitle className="flex items-center gap-2 text-red-300">
               <ShieldAlert className="h-5 w-5" /> Developer Integrity Lab — access denied
             </CardTitle>
-            <CardDescription className="text-gray-400">
-              Restricted to users with the <strong className="text-gray-300">developer</strong> role, or builds with{' '}
+            <CardDescription className="text-muted-foreground">
+              Restricted to users with the <strong className="text-muted-foreground">developer</strong> role, or builds with{' '}
               <code className="text-xs">VITE_ACCOUNTING_DIAGNOSTICS=1</code>.
             </CardDescription>
           </CardHeader>
@@ -545,7 +545,7 @@ export default function DeveloperIntegrityLabPage() {
 
   if (!companyId) {
     return (
-      <div className="p-8 text-gray-400 flex gap-2 items-center">
+      <div className="p-8 text-muted-foreground flex gap-2 items-center">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading…
       </div>
     );
@@ -558,8 +558,8 @@ export default function DeveloperIntegrityLabPage() {
     <div className="p-4 md:p-6 max-w-[1600px] mx-auto space-y-6 text-gray-100 pb-24">
       <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Developer Integrity Lab</h1>
-          <p className="text-sm text-gray-400 mt-1 max-w-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Developer Integrity Lab</h1>
+          <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
             Forensic accounting trace, rule validation, and anomaly detection. Journal is GL source of truth — this
             module does not modify TB math. Diagnostic and guided review only.
           </p>
@@ -584,15 +584,15 @@ export default function DeveloperIntegrityLabPage() {
       </div>
 
       {/* Filters */}
-      <Card className="border-gray-800 bg-gray-900/40">
+      <Card className="border-border bg-card/40">
         <CardHeader className="py-3">
-          <CardTitle className="text-sm font-medium text-gray-300">Filters</CardTitle>
+          <CardTitle className="text-sm font-medium text-muted-foreground">Filters</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-sm">
           <div>
-            <Label className="text-xs text-gray-500">Branch</Label>
+            <Label className="text-xs text-muted-foreground">Branch</Label>
             <Select value={filterBranch} onValueChange={setFilterBranch}>
-              <SelectTrigger className="bg-gray-950 border-gray-700 h-9 mt-1">
+              <SelectTrigger className="bg-input-background border-border h-9 mt-1">
                 <SelectValue placeholder="All" />
               </SelectTrigger>
               <SelectContent>
@@ -606,26 +606,26 @@ export default function DeveloperIntegrityLabPage() {
             </Select>
           </div>
           <div>
-            <Label className="text-xs text-gray-500">From</Label>
-            <Input type="date" className="bg-gray-950 border-gray-700 h-9 mt-1" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <Label className="text-xs text-muted-foreground">From</Label>
+            <Input type="date" className="bg-input-background border-border h-9 mt-1" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </div>
           <div>
-            <Label className="text-xs text-gray-500">To</Label>
-            <Input type="date" className="bg-gray-950 border-gray-700 h-9 mt-1" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <Label className="text-xs text-muted-foreground">To</Label>
+            <Input type="date" className="bg-input-background border-border h-9 mt-1" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
           <div>
-            <Label className="text-xs text-gray-500">reference_type</Label>
+            <Label className="text-xs text-muted-foreground">reference_type</Label>
             <Input
-              className="bg-gray-950 border-gray-700 h-9 mt-1 font-mono text-xs"
+              className="bg-input-background border-border h-9 mt-1 font-mono text-xs"
               placeholder="e.g. sale"
               value={filterRefType}
               onChange={(e) => setFilterRefType(e.target.value)}
             />
           </div>
           <div>
-            <Label className="text-xs text-gray-500">Severity (feed)</Label>
+            <Label className="text-xs text-muted-foreground">Severity (feed)</Label>
             <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-              <SelectTrigger className="bg-gray-950 border-gray-700 h-9 mt-1">
+              <SelectTrigger className="bg-input-background border-border h-9 mt-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -638,9 +638,9 @@ export default function DeveloperIntegrityLabPage() {
             </Select>
           </div>
           <div>
-            <Label className="text-xs text-gray-500">Module</Label>
+            <Label className="text-xs text-muted-foreground">Module</Label>
             <Select value={filterModule} onValueChange={setFilterModule}>
-              <SelectTrigger className="bg-gray-950 border-gray-700 h-9 mt-1">
+              <SelectTrigger className="bg-input-background border-border h-9 mt-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -653,9 +653,9 @@ export default function DeveloperIntegrityLabPage() {
             </Select>
           </div>
           <div className="col-span-2 md:col-span-4 lg:col-span-2">
-            <Label className="text-xs text-gray-500">Display ref (feed filter)</Label>
+            <Label className="text-xs text-muted-foreground">Display ref (feed filter)</Label>
             <Input
-              className="bg-gray-950 border-gray-700 h-9 mt-1 font-mono text-xs"
+              className="bg-input-background border-border h-9 mt-1 font-mono text-xs"
               placeholder="SL-…, PUR-…, PAY-…, JE…"
               value={filterDisplayRef}
               onChange={(e) => setFilterDisplayRef(e.target.value)}
@@ -688,16 +688,16 @@ export default function DeveloperIntegrityLabPage() {
               setActiveTab(c.tab);
               if (c.sev) setFilterSeverity(c.sev);
             }}
-            className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-left hover:bg-gray-800/80 transition-colors"
+            className="rounded-lg border border-border bg-muted/60 p-3 text-left hover:bg-muted/80 transition-colors"
           >
-            <div className="text-[10px] uppercase tracking-wider text-gray-500">{c.label}</div>
-            <div className="text-xl font-semibold text-white mt-1">{c.v}</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{c.label}</div>
+            <div className="text-xl font-semibold text-foreground mt-1">{c.v}</div>
           </button>
         ))}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto gap-1 p-1">
+        <TabsList className="bg-card border border-border flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="trace">A · Trace</TabsTrigger>
           <TabsTrigger value="anomalies">B · Anomaly feed</TabsTrigger>
           <TabsTrigger value="health">C · Account health</TabsTrigger>
@@ -716,7 +716,7 @@ export default function DeveloperIntegrityLabPage() {
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg">Trace transaction</CardTitle>
               <CardDescription>End-to-end source → expectation → posted GL → variance.</CardDescription>
@@ -724,7 +724,7 @@ export default function DeveloperIntegrityLabPage() {
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2 items-end">
                 <Select value={traceMode} onValueChange={(v) => setTraceMode(v as TraceMode)}>
-                  <SelectTrigger className="w-[200px] bg-gray-950 border-gray-700">
+                  <SelectTrigger className="w-[200px] bg-input-background border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -739,7 +739,7 @@ export default function DeveloperIntegrityLabPage() {
                   </SelectContent>
                 </Select>
                 <Input
-                  className="max-w-md bg-gray-950 border-gray-700"
+                  className="max-w-md bg-input-background border-border"
                   placeholder="SL-…, PUR-…, PRD-…, PAY-…, JE…, UUID, type:uuid"
                   value={traceQ}
                   onChange={(e) => setTraceQ(e.target.value)}
@@ -752,33 +752,33 @@ export default function DeveloperIntegrityLabPage() {
               </div>
 
               {trace && (
-                <div className="space-y-4 border-t border-gray-800 pt-4">
+                <div className="space-y-4 border-t border-border pt-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <SevBadge s={trace.overall} />
-                    <span className="text-sm text-gray-400">{trace.sourceDocNarrative}</span>
+                    <span className="text-sm text-muted-foreground">{trace.sourceDocNarrative}</span>
                   </div>
 
                   {trace.traceGuidance && (
                     <div className="rounded-lg border border-violet-900/50 bg-violet-950/20 p-4 space-y-3 text-sm">
                       <div className="text-xs font-semibold text-violet-300 uppercase tracking-wide">Trace resolution</div>
                       <div>
-                        <span className="text-gray-500">Source: </span>
+                        <span className="text-muted-foreground">Source: </span>
                         <span className={trace.traceGuidance.sourceResolved ? 'text-emerald-400' : 'text-amber-400'}>
                           {trace.traceGuidance.sourceResolved ? 'Found' : 'Not found'}
                         </span>
-                        <span className="text-gray-300 ml-2">{trace.traceGuidance.sourceSummary}</span>
+                        <span className="text-muted-foreground ml-2">{trace.traceGuidance.sourceSummary}</span>
                       </div>
                       <div>
-                        <div className="text-gray-500 text-xs mb-1">Expected posting (policy)</div>
-                        <ul className="list-disc pl-5 text-gray-300 space-y-0.5">
+                        <div className="text-muted-foreground text-xs mb-1">Expected posting (policy)</div>
+                        <ul className="list-disc pl-5 text-muted-foreground space-y-0.5">
                           {trace.traceGuidance.expectedPostingSummary.map((line, i) => (
                             <li key={i}>{line}</li>
                           ))}
                         </ul>
                       </div>
                       <div>
-                        <div className="text-gray-500 text-xs mb-1">Actual GL (this trace)</div>
-                        <ul className="list-disc pl-5 text-gray-300 space-y-0.5">
+                        <div className="text-muted-foreground text-xs mb-1">Actual GL (this trace)</div>
+                        <ul className="list-disc pl-5 text-muted-foreground space-y-0.5">
                           {trace.traceGuidance.actualPostingSummary.map((line, i) => (
                             <li key={i} className="font-mono text-[11px]">
                               {line}
@@ -787,8 +787,8 @@ export default function DeveloperIntegrityLabPage() {
                         </ul>
                       </div>
                       <div>
-                        <div className="text-gray-500 text-xs mb-1">Next actions</div>
-                        <ol className="list-decimal pl-5 text-gray-300 space-y-1">
+                        <div className="text-muted-foreground text-xs mb-1">Next actions</div>
+                        <ol className="list-decimal pl-5 text-muted-foreground space-y-1">
                           {trace.traceGuidance.nextSteps.map((line, i) => (
                             <li key={i}>{line}</li>
                           ))}
@@ -802,18 +802,18 @@ export default function DeveloperIntegrityLabPage() {
                     <h4 className="text-xs font-semibold text-violet-300 uppercase tracking-wide mb-2">A1 · Source summary</h4>
                     <div className="flex flex-wrap gap-2">
                       {trace.entities.map((e) => (
-                        <Badge key={`${e.kind}-${e.id}`} variant="secondary" className="bg-gray-800">
+                        <Badge key={`${e.kind}-${e.id}`} variant="secondary" className="bg-muted">
                           {e.kind}: {e.label} {e.status ? `· ${e.status}` : ''}
                         </Badge>
                       ))}
-                      {!trace.entities.length && <span className="text-sm text-gray-500">No source entity resolved.</span>}
+                      {!trace.entities.length && <span className="text-sm text-muted-foreground">No source entity resolved.</span>}
                     </div>
                   </div>
 
                   {/* A2 Expectation narrative */}
                   <div>
                     <h4 className="text-xs font-semibold text-violet-300 uppercase tracking-wide mb-2">A2 · Accounting expectation</h4>
-                    <ul className="text-sm text-gray-300 list-disc pl-5 space-y-1">
+                    <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1">
                       <li>Draft sale / draft purchase → <strong>no GL</strong> expected.</li>
                       <li>Final sale / posted purchase → canonical document JE expected.</li>
                       <li>Pre-bill worker payment → Dr <strong>1180</strong> / Cr bank.</li>
@@ -845,13 +845,13 @@ export default function DeveloperIntegrityLabPage() {
                       })}
                     </div>
                     {selectedJe && selectedTraceUi ? (
-                      <div className="mb-3 rounded-lg border border-gray-800 bg-gray-950/40 p-3">
-                        <div className="text-[10px] uppercase text-gray-500 mb-1">Resolved document (this JE)</div>
+                      <div className="mb-3 rounded-lg border border-border bg-input-background/40 p-3">
+                        <div className="text-[10px] uppercase text-muted-foreground mb-1">Resolved document (this JE)</div>
                         <AccountingRefDisplayCell ui={selectedTraceUi} />
                       </div>
                     ) : null}
                     {selectedJe && (
-                      <pre className="text-xs bg-black/40 p-3 rounded-lg overflow-x-auto text-gray-300">
+                      <pre className="text-xs bg-black/40 p-3 rounded-lg overflow-x-auto text-muted-foreground">
                         {JSON.stringify(
                           {
                             entry_no: selectedJe.entry_no,
@@ -880,11 +880,11 @@ export default function DeveloperIntegrityLabPage() {
                       <h4 className="text-xs font-semibold text-violet-300 uppercase tracking-wide mb-2">A4 · Expected vs actual</h4>
                       <div className="grid md:grid-cols-2 gap-3 text-sm">
                         <div>
-                          <div className="text-gray-500 text-xs mb-1">Expected</div>
+                          <div className="text-muted-foreground text-xs mb-1">Expected</div>
                           <pre className="text-xs bg-black/30 p-2 rounded">{JSON.stringify(traceForJe.expected, null, 2)}</pre>
                         </div>
                         <div>
-                          <div className="text-gray-500 text-xs mb-1">Actual</div>
+                          <div className="text-muted-foreground text-xs mb-1">Actual</div>
                           <pre className="text-xs bg-black/30 p-2 rounded">{JSON.stringify(traceForJe.actual, null, 2)}</pre>
                         </div>
                       </div>
@@ -897,14 +897,14 @@ export default function DeveloperIntegrityLabPage() {
                   {/* A5 Impact */}
                   <div>
                     <h4 className="text-xs font-semibold text-violet-300 uppercase tracking-wide mb-2">A5 · Impact</h4>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       Affects Trial Balance / COA balances for accounts touched; AR/AP tie-out via 1100/2000/1195; worker
                       position via 1180/2010. Use Reconciliation Center for operational vs GL cleanup.
                     </p>
                   </div>
 
                   {/* A6 Banner */}
-                  <div className="rounded-lg border border-gray-700 p-3 flex items-center gap-2">
+                  <div className="rounded-lg border border-border p-3 flex items-center gap-2">
                     {trace.overall === 'error' && <XCircle className="h-5 w-5 text-red-400" />}
                     {trace.overall === 'warning' && <AlertTriangle className="h-5 w-5 text-amber-400" />}
                     {trace.overall === 'clean' && <CheckCircle2 className="h-5 w-5 text-emerald-400" />}
@@ -930,9 +930,9 @@ export default function DeveloperIntegrityLabPage() {
                       <h4 className="text-xs font-semibold text-amber-200/90 mb-2">Rule hits</h4>
                       <ul className="space-y-2">
                         {trace.ruleHits.map((h, i) => (
-                          <li key={`${h.ruleId}-${i}`} className="text-sm border border-gray-800 rounded p-2 bg-gray-950/50">
+                          <li key={`${h.ruleId}-${i}`} className="text-sm border border-border rounded p-2 bg-muted/40">
                             <SevBadge s={h.severity} /> <span className="font-mono text-xs text-violet-300">{h.ruleId}</span> {h.title}
-                            <div className="text-gray-500 text-xs mt-1">{h.detail}</div>
+                            <div className="text-muted-foreground text-xs mt-1">{h.detail}</div>
                           </li>
                         ))}
                       </ul>
@@ -945,9 +945,9 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="anomalies">
-          <ScrollArea className="h-[min(68vh,620px)] rounded-lg border border-gray-800">
+          <ScrollArea className="h-[min(68vh,620px)] rounded-lg border border-border">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-900 z-10 text-gray-400">
+              <thead className="sticky top-0 bg-card z-10 text-muted-foreground">
                 <tr>
                   <th className="text-left p-2">Severity</th>
                   <th className="text-left p-2">Date</th>
@@ -959,16 +959,16 @@ export default function DeveloperIntegrityLabPage() {
               </thead>
               <tbody>
                 {filteredAnomalies.map((r) => (
-                  <tr key={r.journalId} className="border-t border-gray-800/90 hover:bg-gray-900/40">
+                  <tr key={r.journalId} className="border-t border-border/90 hover:bg-card/40">
                     <td className="p-2">
                       <SevBadge s={r.severity} />
                     </td>
-                    <td className="p-2 text-gray-400">{r.entryDate || '—'}</td>
+                    <td className="p-2 text-muted-foreground">{r.entryDate || '—'}</td>
                     <td className="p-2 align-top">
                       <AccountingRefDisplayCell ui={r.uiRef} />
                     </td>
                     <td className="p-2 text-violet-300 font-mono">{r.ruleIds[0] || '—'}</td>
-                    <td className="p-2 text-gray-500 max-w-[220px] truncate" title={r.severityReason}>
+                    <td className="p-2 text-muted-foreground max-w-[220px] truncate" title={r.severityReason}>
                       {r.severityReason}
                     </td>
                     <td className="p-2">
@@ -990,18 +990,18 @@ export default function DeveloperIntegrityLabPage() {
           </Button>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
             {health.map((h) => (
-              <Card key={h.code} className="border-gray-800 bg-gray-900/30">
+              <Card key={h.code} className="border-border bg-muted/30">
                 <CardHeader className="py-3">
                   <CardTitle className="text-sm">
                     {h.code} — {h.name}
                   </CardTitle>
                   <CardDescription className="space-y-1">
                     <div>
-                      <span className="text-gray-500">Journal balance (TB / GL):</span>{' '}
+                      <span className="text-muted-foreground">Journal balance (TB / GL):</span>{' '}
                       <span className="text-emerald-300 font-mono">{h.journalBalance?.toFixed(2) ?? '—'}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Stored COA cache:</span>{' '}
+                      <span className="text-muted-foreground">Stored COA cache:</span>{' '}
                       <span className="text-gray-200 font-mono">{h.storedBalance?.toFixed(2) ?? '—'}</span>
                     </div>
                     {h.balanceVariance !== undefined && Math.abs(h.balanceVariance) > 0.01 && (
@@ -1020,7 +1020,7 @@ export default function DeveloperIntegrityLabPage() {
                     <button
                       key={a.journalId}
                       type="button"
-                      className="w-full text-left p-2 rounded border border-gray-800 hover:bg-gray-800/40"
+                      className="w-full text-left p-2 rounded border border-border hover:bg-muted/40"
                       onClick={() => {
                         openDrawerForJe(a.journalId);
                         setActiveTab('anomalies');
@@ -1028,7 +1028,7 @@ export default function DeveloperIntegrityLabPage() {
                     >
                       <div className="text-gray-200 text-xs font-medium truncate">{a.displayRef || a.entryNo || a.journalId.slice(0, 8)}</div>
                       {a.technicalRef ? (
-                        <div className="text-[10px] text-gray-500 font-mono truncate">{a.technicalRef}</div>
+                        <div className="text-[10px] text-muted-foreground font-mono truncate">{a.technicalRef}</div>
                       ) : null}
                       <SevBadge s={a.severity} />
                     </button>
@@ -1040,7 +1040,7 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="rules" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/30">
+          <Card className="border-border bg-muted/30">
             <CardHeader>
               <CardTitle className="text-base">Rule violation counts (current scan)</CardTitle>
               <CardDescription>
@@ -1051,12 +1051,12 @@ export default function DeveloperIntegrityLabPage() {
               {INTEGRITY_RULE_REGISTRY.map((rule) => (
                 <div
                   key={rule.id}
-                  className="flex justify-between items-center border border-gray-800 rounded-lg p-3 bg-gray-950/40"
+                  className="flex justify-between items-center border border-border rounded-lg p-3 bg-input-background/40"
                 >
                   <div>
                     <div className="font-mono text-violet-300 text-xs">{rule.id}</div>
                     <div>{rule.title}</div>
-                    <div className="text-xs text-gray-500">{rule.module || '—'}</div>
+                    <div className="text-xs text-muted-foreground">{rule.module || '—'}</div>
                   </div>
                   <Badge variant="outline" className="text-lg font-mono border-gray-600">
                     {ruleCounts.get(rule.id) ?? 0}
@@ -1065,16 +1065,16 @@ export default function DeveloperIntegrityLabPage() {
               ))}
             </CardContent>
           </Card>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted-foreground">
             Missing postings (final sale / posted purchase without JE): RPC{' '}
-            <code className="text-gray-400">rpc_integrity_count_*_missing_je</code> — see migration 20260332.
+            <code className="text-muted-foreground">rpc_integrity_count_*_missing_je</code> — see migration 20260332.
           </div>
         </TabsContent>
 
         <TabsContent value="journal" className="space-y-3">
           <div className="flex flex-wrap gap-2 items-center">
             <Select value={explorerVoid} onValueChange={(v) => setExplorerVoid(v as 'all' | 'yes' | 'no')}>
-              <SelectTrigger className="w-[140px] bg-gray-950 border-gray-700 h-9">
+              <SelectTrigger className="w-[140px] bg-input-background border-border h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1083,7 +1083,7 @@ export default function DeveloperIntegrityLabPage() {
                 <SelectItem value="yes">Void: yes</SelectItem>
               </SelectContent>
             </Select>
-            <label className="flex items-center gap-2 text-xs text-gray-400">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={explorerSuspicious} onChange={(e) => setExplorerSuspicious(e.target.checked)} />
               Suspicious only
             </label>
@@ -1091,9 +1091,9 @@ export default function DeveloperIntegrityLabPage() {
               {explorerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load'}
             </Button>
           </div>
-          <ScrollArea className="h-[min(60vh,560px)] border border-gray-800 rounded-lg">
+          <ScrollArea className="h-[min(60vh,560px)] border border-border rounded-lg">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-900 text-gray-400">
+              <thead className="sticky top-0 bg-card text-muted-foreground">
                 <tr>
                   <th className="text-left p-2 min-w-[200px]">Document</th>
                   <th className="text-left p-2">Date</th>
@@ -1103,7 +1103,7 @@ export default function DeveloperIntegrityLabPage() {
               </thead>
               <tbody>
                 {explorerRows.map((r) => (
-                  <tr key={r.je.id} className="border-t border-gray-800 hover:bg-gray-900/40">
+                  <tr key={r.je.id} className="border-t border-border hover:bg-card/40">
                     <td className="p-2 align-top">
                       <AccountingRefDisplayCell ui={r.uiRef} />
                     </td>
@@ -1159,7 +1159,7 @@ export default function DeveloperIntegrityLabPage() {
                 </Button>
               </div>
               {postingRepairJson ? (
-                <pre className="text-[10px] text-gray-400 max-h-40 overflow-auto rounded border border-gray-800 bg-black/40 p-2">
+                <pre className="text-[10px] text-muted-foreground max-h-40 overflow-auto rounded border border-border bg-black/40 p-2">
                   {postingRepairJson}
                 </pre>
               ) : null}
@@ -1169,11 +1169,11 @@ export default function DeveloperIntegrityLabPage() {
             <Button size="sm" variant="secondary" onClick={pushErrorsToQueue}>
               <ClipboardList className="h-4 w-4 mr-1" /> Push actionable items to queue
             </Button>
-            <label className="flex items-center gap-2 text-xs text-gray-400">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} />
               Hide resolved / ignored_by_rule
             </label>
-            <label className="flex items-center gap-2 text-xs text-gray-400">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={hideReviewed} onChange={(e) => setHideReviewed(e.target.checked)} />
               Hide reviewed
             </label>
@@ -1181,9 +1181,9 @@ export default function DeveloperIntegrityLabPage() {
               Refresh queue
             </Button>
           </div>
-          <ScrollArea className="h-[min(55vh,520px)] border border-gray-800 rounded-lg">
+          <ScrollArea className="h-[min(55vh,520px)] border border-border rounded-lg">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-900 text-gray-400">
+              <thead className="sticky top-0 bg-card text-muted-foreground">
                 <tr>
                   <th className="text-left p-2">Priority</th>
                   <th className="text-left p-2 min-w-[200px]">Document</th>
@@ -1195,7 +1195,7 @@ export default function DeveloperIntegrityLabPage() {
               </thead>
               <tbody>
                 {fixIssues.map((iss) => (
-                  <tr key={iss.id} className="border-t border-gray-800">
+                  <tr key={iss.id} className="border-t border-border">
                     <td className="p-2">{iss.priority}</td>
                     <td className="p-2 align-top">
                       <AccountingRefDisplayCell ui={fixUiByIssueId.get(iss.id)} />
@@ -1250,7 +1250,7 @@ export default function DeveloperIntegrityLabPage() {
                 ))}
               </tbody>
             </table>
-            {fixIssues.length === 0 && <p className="p-6 text-center text-gray-500 text-sm">No queue rows (or table not migrated).</p>}
+            {fixIssues.length === 0 && <p className="p-6 text-center text-muted-foreground text-sm">No queue rows (or table not migrated).</p>}
           </ScrollArea>
         </TabsContent>
 
@@ -1259,7 +1259,7 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="coa-audit" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <BookMarked className="h-5 w-5 text-violet-400" />
@@ -1268,8 +1268,8 @@ export default function DeveloperIntegrityLabPage() {
               <CardDescription>
                 Read-only checks: hierarchy rules, unexpected root accounts, orphan parent references, and parent/child
                 statement-section alignment. GL truth is unchanged (journal SOT). Run after migration{' '}
-                <code className="text-gray-500 text-[10px]">20260347_account_is_group_coa_headers</code> for{' '}
-                <code className="text-gray-500 text-[10px]">is_group</code> on header rows.
+                <code className="text-muted-foreground text-[10px]">20260347_account_is_group_coa_headers</code> for{' '}
+                <code className="text-muted-foreground text-[10px]">is_group</code> on header rows.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1303,23 +1303,23 @@ export default function DeveloperIntegrityLabPage() {
               </div>
 
               {coaAuditResult ? (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-3">
+                <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-3">
                   <div className="flex flex-wrap items-center gap-3 text-sm">
-                    <span className="text-gray-400">
-                      Scanned <strong className="text-white">{coaAuditResult.scannedAccounts}</strong> accounts
+                    <span className="text-muted-foreground">
+                      Scanned <strong className="text-foreground">{coaAuditResult.scannedAccounts}</strong> accounts
                     </span>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-gray-400">
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-muted-foreground">
                       Issues <strong className={coaAuditResult.issueCount > 0 ? 'text-amber-400' : 'text-emerald-400'}>{coaAuditResult.issueCount}</strong>
                     </span>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-gray-400">
-                      Hierarchy rules <strong className="text-white">{coaAuditResult.hierarchyIssueCount}</strong>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-muted-foreground">
+                      Hierarchy rules <strong className="text-foreground">{coaAuditResult.hierarchyIssueCount}</strong>
                     </span>
                   </div>
-                  <ScrollArea className="h-[min(420px,50vh)] rounded-md border border-gray-800">
+                  <ScrollArea className="h-[min(420px,50vh)] rounded-md border border-border">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase tracking-wide">
+                      <thead className="sticky top-0 bg-card text-muted-foreground uppercase tracking-wide">
                         <tr>
                           <th className="text-left p-2 font-medium">Sev</th>
                           <th className="text-left p-2 font-medium">Category</th>
@@ -1331,7 +1331,7 @@ export default function DeveloperIntegrityLabPage() {
                       </thead>
                       <tbody>
                         {coaAuditResult.issues.map((iss, i) => (
-                          <tr key={`${iss.code}-${iss.accountId ?? i}`} className="border-t border-gray-800/80 text-gray-300">
+                          <tr key={`${iss.code}-${iss.accountId ?? i}`} className="border-t border-border/80 text-muted-foreground">
                             <td className="p-2 align-top">
                               {iss.severity === 'error' ? (
                                 <Badge className="bg-red-900/80 text-red-200 border-0 text-[10px]">err</Badge>
@@ -1340,30 +1340,30 @@ export default function DeveloperIntegrityLabPage() {
                               )}
                             </td>
                             <td className="p-2 align-top font-mono text-[10px] text-violet-300">{iss.category}</td>
-                            <td className="p-2 align-top font-mono text-gray-400">{iss.accountCode || '—'}</td>
+                            <td className="p-2 align-top font-mono text-muted-foreground">{iss.accountCode || '—'}</td>
                             <td className="p-2 align-top max-w-[140px] truncate" title={iss.accountName}>
                               {iss.accountName || '—'}
                             </td>
                             <td className="p-2 align-top font-mono text-[10px] text-slate-400">{iss.code}</td>
-                            <td className="p-2 align-top text-gray-400">{iss.message}</td>
+                            <td className="p-2 align-top text-muted-foreground">{iss.message}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     {coaAuditResult.issues.length === 0 && (
-                      <p className="p-6 text-center text-gray-500 text-sm">No issues reported for this company.</p>
+                      <p className="p-6 text-center text-muted-foreground text-sm">No issues reported for this company.</p>
                     )}
                   </ScrollArea>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">Run the audit to load results for the current company.</p>
+                <p className="text-sm text-muted-foreground">Run the audit to load results for the current company.</p>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="ob-sync" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Scale className="h-5 w-5 text-emerald-400" />
@@ -1397,51 +1397,51 @@ export default function DeveloperIntegrityLabPage() {
               </Button>
 
               {obSyncResult && (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-2">
+                <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-2">
                   <div className="flex flex-wrap items-center gap-3 text-sm">
-                    <span className="text-gray-400">
-                      Contacts: <strong className="text-white">{obSyncResult.totalContacts}</strong>
+                    <span className="text-muted-foreground">
+                      Contacts: <strong className="text-foreground">{obSyncResult.totalContacts}</strong>
                     </span>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-gray-400">
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-muted-foreground">
                       GL synced: <strong className="text-emerald-400">{obSyncResult.synced}</strong>
                     </span>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-gray-400">
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-muted-foreground">
                       Sub-ledgers: <strong className="text-blue-400">{obSyncResult.subledgersCreated}</strong>
                     </span>
-                    <span className="text-gray-600">·</span>
+                    <span className="text-muted-foreground">·</span>
                     {(obSyncResult.inventoryJEsPosted ?? 0) > 0 ? (
-                      <span className="text-gray-400">
+                      <span className="text-muted-foreground">
                         Inventory JEs posted: <strong className="text-emerald-400">{obSyncResult.inventoryJEsPosted}</strong>
                         {(obSyncResult.inventoryTotalValue ?? 0) > 0 && (
-                          <span className="text-gray-500"> (Rs.{obSyncResult.inventoryTotalValue?.toLocaleString()})</span>
+                          <span className="text-muted-foreground"> (Rs.{obSyncResult.inventoryTotalValue?.toLocaleString()})</span>
                         )}
                       </span>
                     ) : (obSyncResult.inventoryJEsKept ?? 0) > 0 ? (
-                      <span className="text-gray-400">
+                      <span className="text-muted-foreground">
                         Inventory JEs kept: <strong className="text-blue-400">{obSyncResult.inventoryJEsKept}</strong>
                         {(obSyncResult.inventoryTotalValue ?? 0) > 0 && (
-                          <span className="text-gray-500"> (Rs.{obSyncResult.inventoryTotalValue?.toLocaleString()})</span>
+                          <span className="text-muted-foreground"> (Rs.{obSyncResult.inventoryTotalValue?.toLocaleString()})</span>
                         )}
                       </span>
                     ) : (
-                      <span className="text-gray-400">
+                      <span className="text-muted-foreground">
                         Inventory: <strong className="text-amber-400">{obSyncResult.inventoryMovementsSynced ?? 0}</strong>
                       </span>
                     )}
                     {(obSyncResult.inventoryZeroCostSkipped ?? 0) > 0 && (
                       <>
-                        <span className="text-gray-600">·</span>
-                        <span className="text-gray-400">
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground">
                           Zero-cost skipped: <strong className="text-yellow-500">{obSyncResult.inventoryZeroCostSkipped}</strong>
                         </span>
                       </>
                     )}
                     {obSyncResult.errors.length > 0 && (
                       <>
-                        <span className="text-gray-600">·</span>
-                        <span className="text-gray-400">
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground">
                           Errors: <strong className="text-red-400">{obSyncResult.errors.length}</strong>
                         </span>
                       </>
@@ -1462,7 +1462,7 @@ export default function DeveloperIntegrityLabPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40 mt-4">
+          <Card className="border-border bg-card/40 mt-4">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">Data Repair — Stock Dedup + Shipping AR</CardTitle>
               <CardDescription>
@@ -1590,9 +1590,9 @@ export default function DeveloperIntegrityLabPage() {
                 Run Data Repair
               </Button>
               {dataRepairResult && (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-3 text-xs font-mono space-y-0.5">
+                <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs font-mono space-y-0.5">
                   {dataRepairResult.map((line, i) => (
-                    <p key={i} className={line.startsWith('===') ? 'text-blue-400 font-bold' : line.startsWith('ERROR') ? 'text-red-400' : 'text-gray-300'}>{line}</p>
+                    <p key={i} className={line.startsWith('===') ? 'text-blue-400 font-bold' : line.startsWith('ERROR') ? 'text-red-400' : 'text-muted-foreground'}>{line}</p>
                   ))}
                 </div>
               )}
@@ -1601,7 +1601,7 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="gl-audit" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Scale className="h-5 w-5 text-blue-400" />
@@ -1675,9 +1675,9 @@ export default function DeveloperIntegrityLabPage() {
                 </Button>
               </div>
               {glAuditData && (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
+                <div className="rounded-lg border border-border bg-muted/40 overflow-auto max-h-[60vh]">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                    <thead className="sticky top-0 bg-card text-muted-foreground uppercase">
                       <tr>
                         <th className="text-left p-2">Code</th>
                         <th className="text-left p-2">Account</th>
@@ -1688,11 +1688,11 @@ export default function DeveloperIntegrityLabPage() {
                     </thead>
                     <tbody>
                       {glAuditData.map((r, i) => (
-                        <tr key={r.code + i} className={`border-t border-gray-800/50 ${Math.abs(r.mismatch) > 0.01 ? 'bg-red-950/30' : ''}`}>
-                          <td className="p-2 font-mono text-gray-400">{r.code}</td>
-                          <td className="p-2 text-gray-300">{r.name}</td>
-                          <td className="p-2 text-right text-white">{r.gl_balance.toLocaleString()}</td>
-                          <td className="p-2 text-right text-gray-400">{r.stored_balance.toLocaleString()}</td>
+                        <tr key={r.code + i} className={`border-t border-border ${Math.abs(r.mismatch) > 0.01 ? 'bg-red-950/30' : ''}`}>
+                          <td className="p-2 font-mono text-muted-foreground">{r.code}</td>
+                          <td className="p-2 text-muted-foreground">{r.name}</td>
+                          <td className="p-2 text-right text-foreground">{r.gl_balance.toLocaleString()}</td>
+                          <td className="p-2 text-right text-muted-foreground">{r.stored_balance.toLocaleString()}</td>
                           <td className={`p-2 text-right font-bold ${Math.abs(r.mismatch) > 0.01 ? 'text-red-400' : 'text-emerald-400'}`}>
                             {Math.abs(r.mismatch) > 0.01 ? r.mismatch.toLocaleString() : '0'}
                           </td>
@@ -1700,7 +1700,7 @@ export default function DeveloperIntegrityLabPage() {
                       ))}
                     </tbody>
                   </table>
-                  <div className="p-2 text-xs text-gray-500 border-t border-gray-800">
+                  <div className="p-2 text-xs text-muted-foreground border-t border-border">
                     {glAuditData.filter(r => Math.abs(r.mismatch) > 0.01).length} mismatches of {glAuditData.length} accounts
                   </div>
                 </div>
@@ -1711,7 +1711,7 @@ export default function DeveloperIntegrityLabPage() {
 
         <TabsContent value="inv-detail" className="space-y-4">
           {/* Stock Integrity Analyzer */}
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5 text-red-400" />
@@ -1753,14 +1753,14 @@ export default function DeveloperIntegrityLabPage() {
                     <div key={i} className="rounded-lg border border-red-800/50 bg-red-950/20 p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
-                          <span className="text-white font-medium text-sm">{issue.productName}</span>
-                          <span className="text-gray-500 text-xs ml-2">({issue.sku})</span>
+                          <span className="text-foreground font-medium text-sm">{issue.productName}</span>
+                          <span className="text-muted-foreground text-xs ml-2">({issue.sku})</span>
                           <SevBadge s={issue.severity} />
                         </div>
                         {issue.fixable && (
                           <Button
                             size="sm"
-                            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs"
+                            className="bg-emerald-700 hover:bg-emerald-600 text-foreground text-xs"
                             disabled={stockFixingId === issue.fixData?.movementId}
                             onClick={async () => {
                               setStockFixingId(issue.fixData?.movementId as string);
@@ -1777,8 +1777,8 @@ export default function DeveloperIntegrityLabPage() {
                           </Button>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400">{issue.description}</p>
-                      <div className="text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">{issue.description}</p>
+                      <div className="text-xs text-muted-foreground">
                         Expected: {issue.expectedStock} | Actual: {issue.actualStock} | Diff: {issue.difference}
                       </div>
                     </div>
@@ -1791,22 +1791,22 @@ export default function DeveloperIntegrityLabPage() {
               {/* Movement Traces (expandable per product) */}
               {stockTraces && stockTraces.length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-300 mt-4">Movement Traces ({stockTraces.length} products)</div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[50vh]">
+                  <div className="text-sm font-medium text-muted-foreground mt-4">Movement Traces ({stockTraces.length} products)</div>
+                  <div className="rounded-lg border border-border bg-muted/40 overflow-auto max-h-[50vh]">
                     {stockTraces.map(t => (
-                      <div key={t.productId} className="border-b border-gray-800/50">
+                      <div key={t.productId} className="border-b border-border">
                         <button
                           type="button"
-                          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-800/30 transition-colors"
+                          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/30 transition-colors"
                           onClick={() => setExpandedStockProduct(prev => prev === t.productId ? null : t.productId)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-white text-xs font-medium truncate">{t.productName}</span>
-                            <span className="text-gray-500 text-[10px] font-mono">{t.sku}</span>
+                            <span className="text-foreground text-xs font-medium truncate">{t.productName}</span>
+                            <span className="text-muted-foreground text-[10px] font-mono">{t.sku}</span>
                           </div>
                           <div className="flex items-center gap-3 text-[10px] shrink-0">
                             <span className="text-blue-400">Stock: {t.finalStock}</span>
-                            <span className="text-green-400">Buy: {t.purchaseTotal}</span>
+                            <span className="text-[var(--erp-money-positive)]">Buy: {t.purchaseTotal}</span>
                             <span className="text-red-400">Sell: {t.saleTotal}</span>
                             {t.returnTotal > 0 && <span className="text-amber-400">Ret: {t.returnTotal}</span>}
                             {t.cancelTotal > 0 && <span className="text-purple-400">Cancel: {t.cancelTotal}</span>}
@@ -1815,7 +1815,7 @@ export default function DeveloperIntegrityLabPage() {
                         {expandedStockProduct === t.productId && (
                           <div className="px-3 pb-2">
                             <table className="w-full text-[10px]">
-                              <thead className="text-gray-500 uppercase">
+                              <thead className="text-muted-foreground uppercase">
                                 <tr>
                                   <th className="text-left p-1">Date</th>
                                   <th className="text-left p-1">Type</th>
@@ -1826,16 +1826,16 @@ export default function DeveloperIntegrityLabPage() {
                               </thead>
                               <tbody>
                                 {t.movements.map(m => (
-                                  <tr key={m.id} className="border-t border-gray-800/30">
-                                    <td className="p-1 text-gray-500">{m.createdAt?.slice(0, 10)}</td>
+                                  <tr key={m.id} className="border-t border-border/30">
+                                    <td className="p-1 text-muted-foreground">{m.createdAt?.slice(0, 10)}</td>
                                     <td className="p-1">
-                                      <Badge className={`text-[9px] ${m.type.includes('cancel') || m.type.includes('CANCEL') ? 'bg-purple-500/20 text-purple-400' : m.type === 'sale' ? 'bg-red-500/20 text-red-400' : m.type === 'purchase' || m.type === 'opening_stock' ? 'bg-green-500/20 text-green-400' : m.type.includes('return') ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                                      <Badge className={`text-[9px] ${m.type.includes('cancel') || m.type.includes('CANCEL') ? 'bg-purple-500/20 text-purple-400' : m.type === 'sale' ? 'bg-red-500/20 text-red-400' : m.type === 'purchase' || m.type === 'opening_stock' ? 'bg-green-500/20 text-[var(--erp-money-positive)]' : m.type.includes('return') ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-muted-foreground'}`}>
                                         {m.type}
                                       </Badge>
                                     </td>
-                                    <td className={`p-1 text-right font-mono ${m.quantity < 0 ? 'text-red-400' : 'text-green-400'}`}>{m.quantity > 0 ? '+' : ''}{m.quantity}</td>
-                                    <td className="p-1 text-right font-mono text-white">{m.runningTotal}</td>
-                                    <td className="p-1 text-gray-500 truncate max-w-[200px]">{m.notes}</td>
+                                    <td className={`p-1 text-right font-mono ${m.quantity < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]'}`}>{m.quantity > 0 ? '+' : ''}{m.quantity}</td>
+                                    <td className="p-1 text-right font-mono text-foreground">{m.runningTotal}</td>
+                                    <td className="p-1 text-muted-foreground truncate max-w-[200px]">{m.notes}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -1851,7 +1851,7 @@ export default function DeveloperIntegrityLabPage() {
           </Card>
 
           {/* Original Inventory Detail Table */}
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ClipboardList className="h-5 w-5 text-amber-400" />
@@ -1934,9 +1934,9 @@ export default function DeveloperIntegrityLabPage() {
                 Load Inventory Detail
               </Button>
               {invDetailData && (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
+                <div className="rounded-lg border border-border bg-muted/40 overflow-auto max-h-[60vh]">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                    <thead className="sticky top-0 bg-card text-muted-foreground uppercase">
                       <tr>
                         <th className="text-left p-2">Product</th>
                         <th className="text-left p-2">Variation</th>
@@ -1950,27 +1950,27 @@ export default function DeveloperIntegrityLabPage() {
                     </thead>
                     <tbody>
                       {invDetailData.map((r, i) => (
-                        <tr key={r.sku + r.var_sku + i} className="border-t border-gray-800/50">
-                          <td className="p-2 text-white font-medium">{r.product}</td>
-                          <td className="p-2 text-gray-400">{r.variation}</td>
-                          <td className="p-2 font-mono text-gray-500">{r.var_sku}</td>
-                          <td className={`p-2 text-right ${r.qty < 0 ? 'text-red-400' : r.qty > 0 ? 'text-white' : 'text-gray-600'}`}>{r.qty}</td>
+                        <tr key={r.sku + r.var_sku + i} className="border-t border-border">
+                          <td className="p-2 text-foreground font-medium">{r.product}</td>
+                          <td className="p-2 text-muted-foreground">{r.variation}</td>
+                          <td className="p-2 font-mono text-muted-foreground">{r.var_sku}</td>
+                          <td className={`p-2 text-right ${r.qty < 0 ? 'text-red-400' : r.qty > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{r.qty}</td>
                           <td className="p-2 text-right text-amber-300">{r.cost > 0 ? `Rs. ${r.cost.toLocaleString()}` : '—'}</td>
                           <td className="p-2 text-right text-blue-300">{r.sale_price > 0 ? `Rs. ${r.sale_price.toLocaleString()}` : '—'}</td>
-                          <td className="p-2 text-right text-white font-medium">{r.stock_value > 0 ? `Rs. ${r.stock_value.toLocaleString()}` : r.stock_value < 0 ? `(Rs. ${Math.abs(r.stock_value).toLocaleString()})` : '—'}</td>
-                          <td className={`p-2 text-right font-bold ${r.margin > 30 ? 'text-emerald-400' : r.margin > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
+                          <td className="p-2 text-right text-foreground font-medium">{r.stock_value > 0 ? `Rs. ${r.stock_value.toLocaleString()}` : r.stock_value < 0 ? `(Rs. ${Math.abs(r.stock_value).toLocaleString()})` : '—'}</td>
+                          <td className={`p-2 text-right font-bold ${r.margin > 30 ? 'text-emerald-400' : r.margin > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
                             {r.margin > 0 ? `${r.margin}%` : '—'}
                           </td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-gray-900 border-t border-gray-700">
+                    <tfoot className="bg-card border-t border-border">
                       <tr>
-                        <td className="p-2 text-white font-bold" colSpan={3}>Total</td>
-                        <td className="p-2 text-right text-white font-bold">{invDetailData.reduce((s, r) => s + r.qty, 0).toLocaleString()}</td>
+                        <td className="p-2 text-foreground font-bold" colSpan={3}>Total</td>
+                        <td className="p-2 text-right text-foreground font-bold">{invDetailData.reduce((s, r) => s + r.qty, 0).toLocaleString()}</td>
                         <td className="p-2"></td>
                         <td className="p-2"></td>
-                        <td className="p-2 text-right text-white font-bold">Rs. {invDetailData.reduce((s, r) => s + r.stock_value, 0).toLocaleString()}</td>
+                        <td className="p-2 text-right text-foreground font-bold">Rs. {invDetailData.reduce((s, r) => s + r.stock_value, 0).toLocaleString()}</td>
                         <td className="p-2"></td>
                       </tr>
                     </tfoot>
@@ -1982,7 +1982,7 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="contact-recon" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Scale className="h-5 w-5 text-purple-400" />
@@ -2158,17 +2158,17 @@ export default function DeveloperIntegrityLabPage() {
                     <div key={i} className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
-                          <span className="text-white font-medium text-sm">{issue.contactName}</span>
-                          <span className="text-gray-500 text-xs ml-2">({issue.contactType})</span>
-                          <Badge className="ml-2 bg-gray-700 text-gray-300 text-[10px]">{issue.subLedgerCode}</Badge>
-                          <Badge className={`ml-1 text-[10px] ${issue.issueType === 'purchase_return_not_in_due' ? 'bg-purple-700' : issue.issueType === 'orphan_shipping' ? 'bg-amber-700' : 'bg-gray-700'} text-white`}>
+                          <span className="text-foreground font-medium text-sm">{issue.contactName}</span>
+                          <span className="text-muted-foreground text-xs ml-2">({issue.contactType})</span>
+                          <Badge className="ml-2 bg-muted text-muted-foreground text-[10px]">{issue.subLedgerCode}</Badge>
+                          <Badge className={`ml-1 text-[10px] ${issue.issueType === 'purchase_return_not_in_due' ? 'bg-purple-700' : issue.issueType === 'orphan_shipping' ? 'bg-amber-700' : 'bg-muted'} text-foreground`}>
                             {issue.issueType.replace(/_/g, ' ')}
                           </Badge>
                         </div>
                         {issue.fixable && (
                           <Button
                             size="sm"
-                            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs"
+                            className="bg-emerald-700 hover:bg-emerald-600 text-foreground text-xs"
                             disabled={contactFixingId === issue.contactId}
                             onClick={async () => {
                               if (!companyId) return;
@@ -2186,8 +2186,8 @@ export default function DeveloperIntegrityLabPage() {
                           </Button>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400">{issue.description}</p>
-                      <div className="flex gap-4 text-[10px] text-gray-500">
+                      <p className="text-xs text-muted-foreground">{issue.description}</p>
+                      <div className="flex gap-4 text-[10px] text-muted-foreground">
                         <span>GL: {issue.glBalance.toLocaleString()}</span>
                         <span>Operational: {issue.operationalBalance.toLocaleString()}</span>
                         <span className="text-red-400 font-bold">Diff: {issue.difference.toLocaleString()}</span>
@@ -2200,9 +2200,9 @@ export default function DeveloperIntegrityLabPage() {
                 <div className="text-sm text-emerald-400 flex items-center gap-1 mb-4"><CheckCircle2 className="h-4 w-4" /> All contact balances verified — no fixable issues found.</div>
               )}
               {contactReconData && (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
+                <div className="rounded-lg border border-border bg-muted/40 overflow-auto max-h-[60vh]">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                    <thead className="sticky top-0 bg-card text-muted-foreground uppercase">
                       <tr>
                         <th className="text-left p-2">Contact</th>
                         <th className="text-left p-2">Code</th>
@@ -2219,14 +2219,14 @@ export default function DeveloperIntegrityLabPage() {
                     </thead>
                     <tbody>
                       {contactReconData.map((r, i) => (
-                        <tr key={r.code + i} className={`border-t border-gray-800/50 ${Math.abs(r.diff) > 0.01 ? 'bg-red-950/30' : ''}`}>
-                          <td className="p-2 text-white font-medium">{r.name}</td>
-                          <td className="p-2 font-mono text-gray-500">{r.code}</td>
-                          <td className="p-2 text-gray-400">{r.type}</td>
+                        <tr key={r.code + i} className={`border-t border-border ${Math.abs(r.diff) > 0.01 ? 'bg-red-950/30' : ''}`}>
+                          <td className="p-2 text-foreground font-medium">{r.name}</td>
+                          <td className="p-2 font-mono text-muted-foreground">{r.code}</td>
+                          <td className="p-2 text-muted-foreground">{r.type}</td>
                           <td className="p-2 font-mono text-blue-400">{r.sub_account}</td>
-                          <td className="p-2 text-right text-gray-400">{r.opening > 0 ? r.opening.toLocaleString() : '—'}</td>
-                          <td className="p-2 text-right text-gray-400">{r.sales_due > 0 ? r.sales_due.toLocaleString() : '—'}</td>
-                          <td className="p-2 text-right text-white">{r.operational.toLocaleString()}</td>
+                          <td className="p-2 text-right text-muted-foreground">{r.opening > 0 ? r.opening.toLocaleString() : '—'}</td>
+                          <td className="p-2 text-right text-muted-foreground">{r.sales_due > 0 ? r.sales_due.toLocaleString() : '—'}</td>
+                          <td className="p-2 text-right text-foreground">{r.operational.toLocaleString()}</td>
                           <td className="p-2 text-right text-amber-300">{r.gl_balance.toLocaleString()}</td>
                           <td className={`p-2 text-right font-bold ${Math.abs(r.diff) > 0.01 ? 'text-red-400' : 'text-emerald-400'}`}>
                             {Math.abs(r.diff) > 0.01 ? r.diff.toLocaleString() : '0'}
@@ -2250,7 +2250,7 @@ export default function DeveloperIntegrityLabPage() {
                       ))}
                     </tbody>
                   </table>
-                  <div className="p-2 text-xs text-gray-500 border-t border-gray-800">
+                  <div className="p-2 text-xs text-muted-foreground border-t border-border">
                     {contactReconData.filter(r => Math.abs(r.diff) > 0.01).length} mismatches of {contactReconData.length} contacts
                   </div>
                 </div>
@@ -2261,7 +2261,7 @@ export default function DeveloperIntegrityLabPage() {
 
         {/* ───── M · Void Legacy Adjustment JEs ───── */}
         <TabsContent value="void-legacy" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Trash2 className="h-5 w-5 text-red-400" />
@@ -2315,9 +2315,9 @@ export default function DeveloperIntegrityLabPage() {
                 </Button>
               </div>
               {legacyAdjPreview.length > 0 && (
-                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[40vh]">
+                <div className="rounded-lg border border-border bg-muted/40 overflow-auto max-h-[40vh]">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                    <thead className="sticky top-0 bg-card text-muted-foreground uppercase">
                       <tr>
                         <th className="text-left p-2">Entry #</th>
                         <th className="text-left p-2">Type</th>
@@ -2327,23 +2327,23 @@ export default function DeveloperIntegrityLabPage() {
                     </thead>
                     <tbody>
                       {legacyAdjPreview.map((je: any, i: number) => (
-                        <tr key={je.id || i} className="border-t border-gray-800/50">
+                        <tr key={je.id || i} className="border-t border-border">
                           <td className="p-2 font-mono text-amber-300">{je.entry_no || '—'}</td>
-                          <td className="p-2"><Badge className="bg-red-800 text-white text-[10px]">{je.reference_type}</Badge></td>
-                          <td className="p-2 text-gray-400 max-w-[300px] truncate">{je.description || '—'}</td>
-                          <td className="p-2 text-gray-500">{je.created_at ? new Date(je.created_at).toLocaleDateString('en-PK') : '—'}</td>
+                          <td className="p-2"><Badge className="bg-red-800 text-foreground text-[10px]">{je.reference_type}</Badge></td>
+                          <td className="p-2 text-muted-foreground max-w-[300px] truncate">{je.description || '—'}</td>
+                          <td className="p-2 text-muted-foreground">{je.created_at ? new Date(je.created_at).toLocaleDateString('en-PK') : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {legacyAdjCount > 50 && <div className="p-2 text-xs text-gray-500 border-t border-gray-800">Showing 50 of {legacyAdjCount}</div>}
+                  {legacyAdjCount > 50 && <div className="p-2 text-xs text-muted-foreground border-t border-border">Showing 50 of {legacyAdjCount}</div>}
                 </div>
               )}
             </CardContent>
           </Card>
 
           {/* Rebuild Purchase Document JE */}
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <RefreshCw className="h-5 w-5 text-blue-400" />
@@ -2361,7 +2361,7 @@ export default function DeveloperIntegrityLabPage() {
                   placeholder="Purchase UUID (e.g. 610f72e1-fd52-...)"
                   value={rebuildPurId}
                   onChange={e => setRebuildPurId(e.target.value.trim())}
-                  className="flex-1 bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder:text-gray-600"
+                  className="flex-1 bg-input-background border border-border rounded px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                 />
                 <Button
                   onClick={async () => {
@@ -2391,7 +2391,7 @@ export default function DeveloperIntegrityLabPage() {
 
         {/* N · Studio Sale Repair — detect & fix missing JEs for finalized studio sales */}
         <TabsContent value="studio-repair" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Wrench className="h-5 w-5 text-pink-400" />
@@ -2461,10 +2461,10 @@ export default function DeveloperIntegrityLabPage() {
 
               {studioRepairData && studioRepairData.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-gray-400">{studioRepairData.length} issue(s) found</p>
+                  <p className="text-xs text-muted-foreground">{studioRepairData.length} issue(s) found</p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                      <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                         <tr>
                           <th className="px-3 py-2 text-left">Invoice</th>
                           <th className="px-3 py-2 text-left">Customer</th>
@@ -2474,13 +2474,13 @@ export default function DeveloperIntegrityLabPage() {
                           <th className="px-3 py-2">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-800/50">
+                      <tbody className="divide-y divide-border">
                         {studioRepairData.map((row: any) => (
-                          <tr key={row.id} className="hover:bg-gray-800/20">
+                          <tr key={row.id} className="hover:bg-accent/20">
                             <td className="px-3 py-2 text-blue-400 font-mono">{row.invoice_no || row.order_no || row.id?.slice(0, 8)}</td>
-                            <td className="px-3 py-2 text-gray-300">{row.customer_name}</td>
-                            <td className="px-3 py-2 text-gray-400">{row.status}</td>
-                            <td className="px-3 py-2 text-right text-gray-300">{Number(row.total || 0).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{row.customer_name}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{row.status}</td>
+                            <td className="px-3 py-2 text-right text-muted-foreground">{Number(row.total || 0).toLocaleString()}</td>
                             <td className="px-3 py-2">
                               {row.issues.map((iss: string, i: number) => (
                                 <p key={i} className="text-amber-400 text-[10px]">{iss}</p>
@@ -2490,7 +2490,7 @@ export default function DeveloperIntegrityLabPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 text-xs border-green-700 text-green-400"
+                                className="h-7 text-xs border-green-700 text-[var(--erp-money-positive)]"
                                 disabled={studioFixingId === row.id}
                                 onClick={async () => {
                                   setStudioFixingId(row.id);
@@ -2542,7 +2542,7 @@ export default function DeveloperIntegrityLabPage() {
 
         {/* O · Worker Ledger Repair — detect missing worker_ledger_entries for completed stages */}
         <TabsContent value="worker-repair" className="space-y-4">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Wrench className="h-5 w-5 text-cyan-400" />
@@ -2611,10 +2611,10 @@ export default function DeveloperIntegrityLabPage() {
 
               {workerRepairData && workerRepairData.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-gray-400">{workerRepairData.length} missing entries</p>
+                  <p className="text-xs text-muted-foreground">{workerRepairData.length} missing entries</p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                      <thead className="bg-input-background/80 text-muted-foreground border-b border-border">
                         <tr>
                           <th className="px-3 py-2 text-left">Production</th>
                           <th className="px-3 py-2 text-left">Stage</th>
@@ -2623,18 +2623,18 @@ export default function DeveloperIntegrityLabPage() {
                           <th className="px-3 py-2">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-800/50">
+                      <tbody className="divide-y divide-border">
                         {workerRepairData.map((row: any) => (
-                          <tr key={row.stageId} className="hover:bg-gray-800/20">
+                          <tr key={row.stageId} className="hover:bg-accent/20">
                             <td className="px-3 py-2 text-blue-400 font-mono">{row.productionNo}</td>
-                            <td className="px-3 py-2 text-gray-300 capitalize">{row.stageType}</td>
-                            <td className="px-3 py-2 text-gray-300">{row.workerName}</td>
-                            <td className="px-3 py-2 text-right text-gray-300">{Number(row.cost).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-muted-foreground capitalize">{row.stageType}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{row.workerName}</td>
+                            <td className="px-3 py-2 text-right text-muted-foreground">{Number(row.cost).toLocaleString()}</td>
                             <td className="px-3 py-2 text-center">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 text-xs border-green-700 text-green-400"
+                                className="h-7 text-xs border-green-700 text-[var(--erp-money-positive)]"
                                 disabled={workerFixingId === row.stageId}
                                 onClick={async () => {
                                   setWorkerFixingId(row.stageId);
@@ -2670,14 +2670,14 @@ export default function DeveloperIntegrityLabPage() {
       </Tabs>
 
       <Sheet open={!!drawerJe} onOpenChange={(o) => !o && setDrawerJe(null)}>
-        <SheetContent className="bg-gray-950 border-gray-800 w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="bg-input-background border-border w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle className="text-white">Journal detail</SheetTitle>
+            <SheetTitle className="text-foreground">Journal detail</SheetTitle>
             <SheetDescription>Evidence + rules; GL edits only via standard accounting flows.</SheetDescription>
           </SheetHeader>
           {drawerJe && (
             <div className="mt-4 space-y-3 text-sm">
-              <pre className="text-xs bg-black/40 p-2 rounded overflow-x-auto text-gray-300">
+              <pre className="text-xs bg-black/40 p-2 rounded overflow-x-auto text-muted-foreground">
                 {JSON.stringify(
                   {
                     id: drawerJe.id,
@@ -2691,7 +2691,7 @@ export default function DeveloperIntegrityLabPage() {
                 )}
               </pre>
               <div>
-                <div className="text-xs text-gray-500 mb-1">Rules (rollup)</div>
+                <div className="text-xs text-muted-foreground mb-1">Rules (rollup)</div>
                 <div className="flex flex-wrap gap-1">
                   {drawerRules.map((c) => (
                     <Badge key={c} variant="outline" className="font-mono text-[10px]">
@@ -2702,14 +2702,14 @@ export default function DeveloperIntegrityLabPage() {
               </div>
               {drawerSeverityReason ? (
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">Why this severity</div>
-                  <p className="text-xs text-gray-300 whitespace-pre-wrap">{drawerSeverityReason}</p>
+                  <div className="text-xs text-muted-foreground mb-1">Why this severity</div>
+                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{drawerSeverityReason}</p>
                 </div>
               ) : null}
               {drawerHits.length > 0 ? (
                 <div>
-                  <div className="text-xs text-gray-500 mb-1">All hits (incl. ignored_for_lab_rollup)</div>
-                  <ul className="text-xs space-y-1 text-gray-400 max-h-40 overflow-y-auto">
+                  <div className="text-xs text-muted-foreground mb-1">All hits (incl. ignored_for_lab_rollup)</div>
+                  <ul className="text-xs space-y-1 text-muted-foreground max-h-40 overflow-y-auto">
                     {drawerHits.map((h, i) => (
                       <li key={`${h.ruleId}-${i}`}>
                         <span className="font-mono text-violet-400">{h.ruleId}</span> [{h.severity}]

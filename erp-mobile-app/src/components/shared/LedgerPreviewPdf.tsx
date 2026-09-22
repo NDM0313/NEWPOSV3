@@ -7,6 +7,7 @@ export interface LedgerPreviewRow {
   date: string;
   reference: string;
   description: string;
+  descriptionSubline?: string;
   debit: number;
   credit: number;
   balance: number;
@@ -97,7 +98,14 @@ export function LedgerPreviewPdf({
                 <td style={{ width: 90 }}>{r.reference}</td>
                 <td>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    {r.description}
+                    <span>
+                      {r.description}
+                      {r.descriptionSubline ? (
+                        <span style={{ display: 'block', fontSize: 9, color: '#6b7280', marginTop: 2 }}>
+                          {r.descriptionSubline}
+                        </span>
+                      ) : null}
+                    </span>
                     {r.hasAttachment ? (
                       <span
                         title="Has attachment(s)"

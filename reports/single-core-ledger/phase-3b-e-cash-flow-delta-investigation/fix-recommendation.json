@@ -1,0 +1,47 @@
+{
+  "run": "PHASE_3B_E_FIX_RECOMMENDATION",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "recommendedOption": "D",
+  "secondaryOption": "E",
+  "combinedRecommendation": "D + E first, then separate fix phase if finance approves",
+  "options": {
+    "A": {
+      "label": "Keep legacy Cash Flow official; preview diagnostic only",
+      "safest": true,
+      "deployNeeded": false
+    },
+    "B": {
+      "label": "Adjust preview to match legacy exactly",
+      "filesLikely": [
+        "cashFlowUnifiedPreviewMapper.ts",
+        "CashFlowUnifiedPreviewPanel.tsx export payload"
+      ],
+      "testsNeeded": ["cashFlowUnifiedPreviewMapper.test.ts", "browser golden re-capture"],
+      "deployNeeded": true,
+      "rollback": "Revert preview mapper + redeploy frontend only"
+    },
+    "C": {
+      "label": "Adjust legacy Cash Flow to unified basis later",
+      "blocked": true,
+      "reason": "Loader swap not approved; finance golden required"
+    },
+    "D": {
+      "label": "Add deeper JSON export / row-diff tooling first",
+      "filesLikely": [
+        "CashFlowUnifiedPreviewPanel.tsx",
+        "scripts/single-core-ledger/phase-3b-e/extract-cash-flow-row-delta.mjs"
+      ],
+      "deployNeeded": "optional for richer export UI"
+    },
+    "E": {
+      "label": "Finance approval required before any rule change",
+      "status": "REQUIRED"
+    }
+  },
+  "safestNextAction": "Finance reviews finance-rule-confirmation-pack.md; operator continues monitoring; no loader swap",
+  "stopConditions": [
+    "Do not change legacy Cash Flow behavior without operator + finance approval",
+    "Do not adopt preview totals as official",
+    "Do not enable Cash Flow loader flags"
+  ]
+}

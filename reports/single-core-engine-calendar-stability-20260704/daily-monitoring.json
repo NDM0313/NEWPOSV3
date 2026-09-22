@@ -1,0 +1,19 @@
+{
+  "classification": "CALENDAR_STABILITY_DAY_PASS",
+  "runLocalDateTime": "2026-07-04T01:10:01+05:00",
+  "stabilityWindowCalendarDay": 4,
+  "calendarDaysElapsedSince20260701": 3,
+  "initialGuardError": "spawnSync powershell.exe ENOENT",
+  "monitoringArtifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-03T20-00-55-685Z.json",
+  "loaderGuard": "PASS",
+  "roznamchaReached": true,
+  "dinChina": "PASS",
+  "adminCompare": "9/9_PASS",
+  "dinBridal": "PASS",
+  "dinCouture": "PASS",
+  "overall": "PASS",
+  "migrationsRun": false,
+  "glMutations": false,
+  "featureFlagsUnchanged": true,
+  "productionMutation": false
+}

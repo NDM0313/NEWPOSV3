@@ -53,7 +53,12 @@ if (key.split('.')[2] === DEMO_SIG) {
   failed = true;
 }
 if (env.VITE_TARGET !== 'capacitor') {
-  console.warn('[verify-mobile-build-env] WARN: set VITE_TARGET=capacitor for native barcode + printer plugins.');
+  console.error(
+    '[verify-mobile-build-env] VITE_TARGET must be capacitor for native barcode/camera (got:',
+    env.VITE_TARGET || '(empty)',
+    '). Set in erp-mobile-app/.env.production or run prepare-release-env.mjs',
+  );
+  failed = true;
 }
 
 if (failed) process.exit(1);

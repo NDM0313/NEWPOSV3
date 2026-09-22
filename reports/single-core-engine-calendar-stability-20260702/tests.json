@@ -1,0 +1,6 @@
+{
+  "run": "CALENDAR_STABILITY_DAY2_TESTS",
+  "run_local_datetime": "2026-07-02T18:06:31+05:00",
+  "unified_ledger": { "pass": 328, "fail": 0, "result": "PASS" },
+  "unit": { "pass": 124, "fail": 0, "result": "PASS" }
+}

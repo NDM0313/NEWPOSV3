@@ -3,8 +3,11 @@ import { ArrowLeft, Loader2, User, Banknote, Building2, Wallet } from 'lucide-re
 import * as studioApi from '../../api/studio';
 import { getPaymentAccounts } from '../../api/accounts';
 import type { AccountRow } from '../../api/accounts';
+import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 import { todayDateInputValue } from '../../lib/studioWorkflowDates';
+import { DateInputField } from '../shared/DateTimePicker';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -42,6 +45,8 @@ export function StudioUpdateStatusView({
   const [payAccounts, setPayAccounts] = useState<AccountRow[]>([]);
   const [payAccountsLoading, setPayAccountsLoading] = useState(false);
   const [payAccountsError, setPayAccountsError] = useState<string | null>(null);
+  const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
+  const [preferredPayAccountId, setPreferredPayAccountId] = useState<string | null>(null);
   const [workflowDate, setWorkflowDate] = useState(todayDateInputValue);
   const [workflowNotes, setWorkflowNotes] = useState('');
   const isPending = selectedStage.status === 'pending';
@@ -118,24 +123,55 @@ export function StudioUpdateStatusView({
   const accountsForPayMethod = useMemo(() => {
     if (!payNowMethod) return [];
     const types = STUDIO_METHOD_TO_TYPE[payNowMethod].map((t) => t.toLowerCase());
-    return payAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
-  }, [payAccounts, payNowMethod]);
+    const filtered = payAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+    if (!preferredPayAccountId) return filtered;
+    return [
+      ...filtered.filter((a) => a.id === preferredPayAccountId),
+      ...filtered.filter((a) => a.id !== preferredPayAccountId),
+    ];
+  }, [payAccounts, payNowMethod, preferredPayAccountId]);
 
   useEffect(() => {
     if (!payNowPickerOpen) return;
     let cancelled = false;
     setPayAccountsLoading(true);
     setPayAccountsError(null);
-    getPaymentAccounts(companyId).then(({ data, error }) => {
+    void (async () => {
+      const [{ data, error }, defaultsRes] = await Promise.all([
+        getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+      ]);
       if (cancelled) return;
       setPayAccountsLoading(false);
       if (error) setPayAccountsError(error);
       else setPayAccounts(data || []);
-    });
+      setDefaultAccounts(defaultsRes.data);
+    })();
     return () => {
       cancelled = true;
     };
   }, [payNowPickerOpen, companyId]);
+
+  useEffect(() => {
+    if (!payNowMethod || payAccounts.length === 0) {
+      setPreferredPayAccountId(null);
+      return;
+    }
+    const types = STUDIO_METHOD_TO_TYPE[payNowMethod].map((t) => t.toLowerCase());
+    const filtered = payAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+    const picks = filtered.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance ?? 0,
+      code: a.code ?? '',
+      isDefaultCash: a.isDefaultCash,
+      isDefaultBank: a.isDefaultBank,
+    }));
+    setPreferredPayAccountId(
+      resolveDefaultPaymentAccountId(payNowMethod, picks, defaultAccounts, null),
+    );
+  }, [payNowMethod, payAccounts, defaultAccounts]);
 
   const handleConfirmPaymentLater = async () => {
     const cost = parseFloat(finalCost) || 0;
@@ -321,16 +357,13 @@ export function StudioUpdateStatusView({
                 </div>
               )}
             </div>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Expected Return Date</label>
-              <input
-                type="date"
-                value={expectedDate}
-                onChange={(e) => setExpectedDate(e.target.value)}
-                min={todayDateInputValue()}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <DateInputField
+              label="Expected Return Date"
+              value={expectedDate}
+              onChange={setExpectedDate}
+              min={todayDateInputValue()}
+              required
+            />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Expected Cost (Rs)</label>
               <input
@@ -357,15 +390,7 @@ export function StudioUpdateStatusView({
         {isAssigned && (
           <div className="space-y-4">
             <p className="text-sm text-[#9CA3AF]">Mark that the item has been sent to the worker.</p>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Send date</label>
-              <input
-                type="date"
-                value={workflowDate}
-                onChange={(e) => setWorkflowDate(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <DateInputField label="Send date" value={workflowDate} onChange={setWorkflowDate} required />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
               <textarea
@@ -390,15 +415,7 @@ export function StudioUpdateStatusView({
         {isSentToWorker && (
           <div className="space-y-4">
             <p className="text-sm text-[#9CA3AF]">Mark that work has been received back from the worker.</p>
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Receive date</label>
-              <input
-                type="date"
-                value={workflowDate}
-                onChange={(e) => setWorkflowDate(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <DateInputField label="Receive date" value={workflowDate} onChange={setWorkflowDate} required />
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
               <textarea
@@ -525,9 +542,18 @@ export function StudioUpdateStatusView({
                         type="button"
                         onClick={() => handleConfirmPaymentPayNow(a.id)}
                         disabled={loading}
-                        className="w-full text-left rounded-lg border border-[#374151] bg-[#111827] px-4 py-3 hover:border-[#8B5CF6] disabled:opacity-50"
+                        className={`w-full text-left rounded-lg border px-4 py-3 disabled:opacity-50 ${
+                          a.id === preferredPayAccountId
+                            ? 'border-[#10B981] bg-[#064E3B]/40 hover:border-[#34D399]'
+                            : 'border-[#374151] bg-[#111827] hover:border-[#8B5CF6]'
+                        }`}
                       >
-                        <p className="text-white font-medium">{a.name}</p>
+                        <p className="text-white font-medium">
+                          {a.name}
+                          {a.id === preferredPayAccountId ? (
+                            <span className="ml-2 text-[10px] uppercase tracking-wide text-[#6EE7B7]">Default</span>
+                          ) : null}
+                        </p>
                         <p className="text-xs text-[#9CA3AF]">
                           {a.code} · Rs. {(a.balance ?? 0).toLocaleString()}
                         </p>

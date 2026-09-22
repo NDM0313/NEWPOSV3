@@ -20,6 +20,7 @@ import {
   X,
   Trash2,
   Barcode,
+  ChevronRight,
 } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
@@ -40,13 +41,16 @@ import {
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
-import { getCurrentLocalTimestamp } from '../../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateTimeString } from '../../utils/localDate';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
+import { PurchaseAddAttachmentsSheet } from './PurchaseAddAttachmentsSheet';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
@@ -77,6 +81,15 @@ import {
 import { rowInListBranchScope } from '../../lib/listBranchScope';
 import { usePermissions } from '../../context/PermissionContext';
 import { invalidatePurchasesListCache } from '../../lib/listCache';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
+
+function toEditDateTimeLocal(value: string): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed || trimmed === '—') return localNowDateTimeString();
+  if (trimmed.includes('T')) return trimmed.slice(0, 16);
+  const date = trimmed.slice(0, 10);
+  return `${date}T${localNowDateTimeString().slice(11, 16)}`;
+}
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -116,8 +129,10 @@ export function PurchaseModule({
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [createBranchId, setCreateBranchId] = useState<string | null>(null);
   const [addPaymentOrder, setAddPaymentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [attachmentOrder, setAttachmentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [menuOrder, setMenuOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<purchasesApi.PurchasePaymentRow[]>([]);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
   const [markAsFinalError, setMarkAsFinalError] = useState<string | null>(null);
@@ -307,6 +322,36 @@ export function PurchaseModule({
     setAttachmentPreviewList(list);
     setAttachmentPreviewStart(startIndex);
   };
+
+  const patchLocalPurchaseAttachments = useCallback(
+    (purchaseId: string, attachments: { url: string; name: string }[]) => {
+      setOrders((prev) =>
+        prev.map((o) => (o.id === purchaseId ? { ...o, attachments } : o)),
+      );
+      setSelectedOrder((prev) =>
+        prev?.id === purchaseId ? { ...prev, attachments } : prev,
+      );
+    },
+    [],
+  );
+
+  const openAttachmentSheet = (order: purchasesApi.PurchaseListItem) => {
+    if (!navigator.onLine) {
+      setActionError('Attachments require an internet connection.');
+      return;
+    }
+    setMenuOrder(null);
+    setAttachmentOrder(order);
+  };
+
+  const handleAttachmentSaved = (purchaseId: string, merged: { url: string; name: string }[]) => {
+    patchLocalPurchaseAttachments(purchaseId, merged);
+    void loadOrders({ silent: true });
+  };
+
+  useEffect(() => {
+    if (attachmentOrder) setMenuOrder(null);
+  }, [attachmentOrder]);
 
   useEffect(() => {
     if (selectedOrder) {
@@ -568,7 +613,7 @@ export function PurchaseModule({
     const { data: det, error: detErr } = await purchasesApi.getPurchaseById(companyId, order.id);
     setEditLinesLoading(false);
     if (detErr || !det) {
-      setEditDate(String(order.date || '').slice(0, 10));
+      setEditDate(toEditDateTimeLocal(String(order.date || '')));
       setEditSupplierName(order.vendor || '');
       setEditSupplierId(null);
       setEditDiscount(String(order.discount ?? 0));
@@ -587,7 +632,11 @@ export function PurchaseModule({
       setEditSupplierId((r.supplier_id as string) || null);
       return;
     }
-    setEditDate(det.orderDate && det.orderDate !== '—' ? det.orderDate.slice(0, 10) : String(order.date || '').slice(0, 10));
+      setEditDate(
+        toEditDateTimeLocal(
+          det.orderDate && det.orderDate !== '—' ? det.orderDate : String(order.date || ''),
+        ),
+      );
     setEditSupplierName(det.vendor);
     setEditSupplierId(det.supplierId ?? null);
     setEditDiscount(String(det.discount));
@@ -661,11 +710,9 @@ export function PurchaseModule({
 
   const filteredPurchaseCatalog = useMemo(() => {
     if (!editOrder) return [];
-    const q = productSearch.trim().toLowerCase();
+    const q = productSearch.trim();
     if (!q) return productCatalog.slice(0, 35);
-    return productCatalog
-      .filter((p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
-      .slice(0, 45);
+    return filterAndRankProducts(productCatalog, q, productMatchesSearch).slice(0, 45);
   }, [editOrder, productSearch, productCatalog]);
 
   const closePurchaseEditModal = () => {
@@ -784,7 +831,7 @@ export function PurchaseModule({
           due_amount: due,
           updated_at: getCurrentLocalTimestamp(),
         };
-        if (editDate) updates.po_date = editDate;
+        if (editDate) updates.po_date = editDate.slice(0, 10);
         const { error } = await supabase.from('purchases').update(updates).eq('id', editOrder.id);
         if (error) setActionError(error.message);
         else {
@@ -841,7 +888,7 @@ export function PurchaseModule({
         notes: editNotes || null,
         supplierName: editSupplierName || null,
         contactNumber: null,
-        poDate: editDate || null,
+        poDate: editDate ? editDate.slice(0, 10) : null,
       });
       if (rpcRes.error) {
         setActionError(rpcRes.error);
@@ -973,6 +1020,13 @@ export function PurchaseModule({
         </button>
         <button onClick={() => handlePrint(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
           <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
+        </button>
+        <button
+          onClick={() => openAttachmentSheet(order)}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]"
+        >
+          <Paperclip className="w-5 h-5 text-[#3B82F6]" />
+          {normalizeAttachments(order.attachments).length > 0 ? 'Update attachments' : 'Add attachments'}
         </button>
         {canPrintPurchaseLabels(order.status, order.itemCount) && (
           <button
@@ -1127,22 +1181,40 @@ export function PurchaseModule({
               <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
               <div className="space-y-2">
                 {paymentHistory.map((p) => (
-                  <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
-                    <div className="min-w-0 flex-1">
+                  <div
+                    key={p.id}
+                    className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => p.id && setViewPaymentId(p.id)}
+                      className="min-w-0 flex-1 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 py-0.5 transition-colors"
+                    >
                       <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
                       <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
                       {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
-                    </div>
-                    {p.attachments && p.attachments.length > 0 && (
+                      <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / cancel</p>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {p.attachments && p.attachments.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => openAttachmentPreview(p.attachments!, 0)}
+                          className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151]"
+                          aria-label="View attachments"
+                        >
+                          <Paperclip className="w-5 h-5" />
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => openAttachmentPreview(p.attachments!, 0)}
-                        className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
-                        aria-label="View attachments"
+                        onClick={() => p.id && setViewPaymentId(p.id)}
+                        className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151]"
+                        aria-label="View payment"
                       >
-                        <Paperclip className="w-5 h-5" />
+                        <ChevronRight className="w-5 h-5" />
                       </button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1157,6 +1229,25 @@ export function PurchaseModule({
               onClose={() => {
                 setAttachmentPreviewList(null);
                 setAttachmentPreviewStart(0);
+              }}
+            />
+          )}
+
+          {viewPaymentId && companyId && (
+            <TransactionDetailSheet
+              paymentId={viewPaymentId}
+              companyId={companyId}
+              branchId={selectedOrder?.branchId ?? branchId}
+              onClose={() => setViewPaymentId(null)}
+              onCancelled={() => {
+                setViewPaymentId(null);
+                if (selectedOrder?.id) {
+                  void loadPaymentHistory(selectedOrder.id);
+                  void purchasesApi.getPurchaseById(companyId, selectedOrder.id).then(({ data }) => {
+                    if (data) setSelectedOrder(data);
+                  });
+                  void loadOrders();
+                }
               }}
             />
           )}
@@ -1422,6 +1513,18 @@ export function PurchaseModule({
         />
       )}
 
+      {attachmentOrder && companyId && (
+        <PurchaseAddAttachmentsSheet
+          open={!!attachmentOrder}
+          companyId={companyId}
+          purchaseId={attachmentOrder.id}
+          existingRaw={attachmentOrder.attachments}
+          documentLabel={attachmentOrder.poNo}
+          onClose={() => setAttachmentOrder(null)}
+          onSaved={(merged) => handleAttachmentSaved(attachmentOrder.id, merged)}
+        />
+      )}
+
       <DocumentBranchGateModal
         {...branchGateModalProps}
         accentClass="text-[#10B981] hover:border-[#10B981]"
@@ -1533,11 +1636,17 @@ export function PurchaseModule({
                 />
                 {editSuppliersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading suppliers…</p>}
               </div>
-              <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Order Date</label>
-                <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
-              </div>
+              <DateTimeInputField
+                label="Order Date"
+                value={
+                  editDate.includes('T')
+                    ? editDate
+                    : editDate
+                      ? `${editDate}T${localNowDateTimeString().slice(11, 16)}`
+                      : localNowDateTimeString()
+                }
+                onChange={setEditDate}
+              />
 
               {(showDiscountField || Number(editOrder.discount ?? 0) > 0) && (
                 <div>

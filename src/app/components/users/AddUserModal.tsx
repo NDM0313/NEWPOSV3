@@ -22,6 +22,7 @@ import { accountService, Account } from '../../services/accountService';
 import { toast } from 'sonner';
 import {
   FUNCTIONAL_ROLE_OPTIONS,
+  isPlatformOperatorAppRole,
   normalizeAppRole,
   type AssignableAppRole,
 } from '@/app/config/functionalRoles';
@@ -82,7 +83,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           role:
             normalizeAppRole(editingUser.role) === 'owner'
               ? 'owner'
-              : (normalizeAppRole(editingUser.role) as AssignableAppRole),
+              : isPlatformOperatorAppRole(editingUser.role)
+                ? 'admin'
+                : (normalizeAppRole(editingUser.role) as AssignableAppRole),
           basic_salary: 0,
           commission_rate: 0,
           rental_commission_rate: Number((editingUser as any).rental_commission_percent) || 0,
@@ -226,12 +229,21 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         }
       }
 
+      const roleForSave =
+        editingUser &&
+        isPlatformOperatorAppRole(editingUser.role) &&
+        formData.role === 'admin'
+          ? editingUser.role
+          : formData.role === 'owner'
+            ? 'owner'
+            : normalizeAppRole(formData.role);
+
       const userData: Partial<UserType> = {
         company_id: companyId,
         full_name: formData.full_name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone || undefined,
-        role: formData.role === 'owner' ? 'owner' : normalizeAppRole(formData.role),
+        role: roleForSave,
         is_active: formData.is_active,
         can_be_assigned_as_salesman:
           formData.role === 'salesman' || formData.can_be_assigned_as_salesman,
@@ -375,12 +387,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-[650px] bg-gray-900 border-gray-800 text-white max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[650px] bg-card border-border text-white max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
             {editingUser ? 'Edit User' : 'Add New User'}
           </DialogTitle>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             {editingUser 
               ? 'Update user account details and permissions'
               : 'Create a new user account and assign roles'
@@ -389,7 +401,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         </DialogHeader>
 
         {/* Tabs: General | Branch Access | Account Access */}
-        <div className="flex gap-1 border-b border-gray-800 pb-2">
+        <div className="flex gap-1 border-b border-border pb-2">
           {(['general', 'branches', 'accounts'] as const).map((tab) => (
             <button
               key={tab}
@@ -397,8 +409,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               onClick={() => setActiveTab(tab)}
               className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${
                 activeTab === tab
-                  ? 'bg-gray-800 text-white border-b-2 border-blue-500 -mb-0.5'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                  ? 'bg-muted text-white border-b-2 border-blue-500 -mb-0.5'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
             >
               {tab === 'general' && <><UserIcon size={14} className="inline mr-1" /> General</>}
@@ -413,7 +425,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           <>
           {/* Step 1: Basic Information */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+            <div className="flex items-center gap-2 pb-2 border-b border-border">
               <UserIcon size={18} className="text-blue-400" />
               <h3 className="text-sm font-semibold text-gray-200">Basic Information</h3>
             </div>
@@ -426,7 +438,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 value={formData.full_name}
                 onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                 placeholder="John Doe"
-                className="bg-gray-950 border-gray-700 text-white focus:border-blue-500"
+                className="bg-input-background border-border text-white focus:border-blue-500"
                 required
               />
             </div>
@@ -440,12 +452,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="john@example.com"
-                className="bg-gray-950 border-gray-700 text-white focus:border-blue-500"
+                className="bg-input-background border-border text-white focus:border-blue-500"
                 required
                 disabled={!!editingUser}
               />
               {editingUser && (
-                <p className="text-xs text-gray-500">Email cannot be changed after creation</p>
+                <p className="text-xs text-muted-foreground">Email cannot be changed after creation</p>
               )}
             </div>
 
@@ -457,13 +469,13 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 placeholder="+92 300 1234567"
-                className="bg-gray-950 border-gray-700 text-white focus:border-blue-500"
+                className="bg-input-background border-border text-white focus:border-blue-500"
               />
             </div>
 
             {/* Login credentials (new users only) */}
             {!editingUser && (
-              <div className="space-y-3 pt-2 border-t border-gray-800">
+              <div className="space-y-3 pt-2 border-t border-border">
                 <Label className="text-gray-200">Login Setup</Label>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -472,9 +484,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       name="passwordOption"
                       checked={formData.passwordOption === 'temp'}
                       onChange={() => setFormData({ ...formData, passwordOption: 'temp' })}
-                      className="w-4 h-4 bg-gray-950 border-gray-700"
+                      className="w-4 h-4 bg-input-background border-border"
                     />
-                    <span className="text-sm text-gray-300">Set temporary password</span>
+                    <span className="text-sm text-muted-foreground">Set temporary password</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -482,9 +494,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       name="passwordOption"
                       checked={formData.passwordOption === 'invite'}
                       onChange={() => setFormData({ ...formData, passwordOption: 'invite' })}
-                      className="w-4 h-4 bg-gray-950 border-gray-700"
+                      className="w-4 h-4 bg-input-background border-border"
                     />
-                    <span className="text-sm text-gray-300">Send invite email</span>
+                    <span className="text-sm text-muted-foreground">Send invite email</span>
                   </label>
                 </div>
                 {formData.passwordOption === 'temp' && (
@@ -493,7 +505,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     placeholder="Temporary password (min 6 chars)"
                     value={formData.temporary_password}
                     onChange={(e) => setFormData({ ...formData, temporary_password: e.target.value })}
-                    className="bg-gray-950 border-gray-700 text-white focus:border-blue-500"
+                    className="bg-input-background border-border text-white focus:border-blue-500"
                   />
                 )}
               </div>
@@ -502,7 +514,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
           {/* Step 2: Role & Permissions */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+            <div className="flex items-center gap-2 pb-2 border-b border-border">
               <UserIcon size={18} className="text-purple-400" />
               <h3 className="text-sm font-semibold text-gray-200">Role & Permissions</h3>
             </div>
@@ -525,10 +537,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     }))
                   }
                 >
-                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white focus:border-blue-500">
+                  <SelectTrigger className="bg-input-background border-border text-white focus:border-blue-500">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                  <SelectContent className="bg-card border-border text-white">
                     {FUNCTIONAL_ROLE_OPTIONS.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
@@ -537,22 +549,22 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                   </SelectContent>
                 </Select>
               )}
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Permissions come from Settings → Access → Roles &amp; Permissions matrix.
               </p>
             </div>
 
             {/* Salary & Commission - ONLY for non-owners */}
             {formData.role !== 'owner' && (
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-lg">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-input-background border border-border rounded-lg">
                 <div className="space-y-2">
                   <Label htmlFor="basic_salary" className="text-gray-200">Basic Salary</Label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                    <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="basic_salary"
                       type="number"
-                      className="pl-9 bg-gray-900 border-gray-700 text-white"
+                      className="pl-9 bg-card border-border text-white"
                       value={formData.basic_salary}
                       onChange={(e) => setFormData({ ...formData, basic_salary: Number(e.target.value) })}
                     />
@@ -561,12 +573,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <div className="space-y-2">
                   <Label htmlFor="commission_rate" className="text-gray-200">Sale Commission (%)</Label>
                   <div className="relative">
-                    <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                    <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="commission_rate"
                       type="number"
                       step="0.1"
-                      className="pl-9 bg-gray-900 border-gray-700 text-white"
+                      className="pl-9 bg-card border-border text-white"
                       value={formData.commission_rate}
                       onChange={(e) => setFormData({ ...formData, commission_rate: Number(e.target.value) })}
                     />
@@ -575,12 +587,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <div className="space-y-2">
                   <Label htmlFor="rental_commission_rate" className="text-gray-200">Rental Commission (%)</Label>
                   <div className="relative">
-                    <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                    <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="rental_commission_rate"
                       type="number"
                       step="0.1"
-                      className="pl-9 bg-gray-900 border-gray-700 text-white"
+                      className="pl-9 bg-card border-border text-white"
                       value={formData.rental_commission_rate ?? ''}
                       onChange={(e) => setFormData({ ...formData, rental_commission_rate: Number(e.target.value) || 0 })}
                       placeholder="e.g. 5"
@@ -591,10 +603,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             )}
 
             {/* Active Status */}
-            <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-input-background border border-border rounded-lg">
               <div>
                 <Label htmlFor="is_active" className="text-gray-200">Active Status</Label>
-                <p className="text-xs text-gray-400">User can login and access system</p>
+                <p className="text-xs text-muted-foreground">User can login and access system</p>
               </div>
               <Switch
                 id="is_active"
@@ -605,18 +617,18 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
             {/* Auth & Password (edit mode only) */}
             {editingUser && (
-              <div className="space-y-3 p-4 bg-gray-950 border border-gray-800 rounded-lg">
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+              <div className="space-y-3 p-4 bg-input-background border border-border rounded-lg">
+                <div className="flex items-center gap-2 pb-2 border-b border-border">
                   <Shield size={18} className="text-amber-400" />
                   <h3 className="text-sm font-semibold text-gray-200">Auth & Login</h3>
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm">
-                  <span className="flex items-center gap-2 text-gray-400">
+                  <span className="flex items-center gap-2 text-muted-foreground">
                     <Shield size={14} />
                     {editingUser.auth_user_id ? 'Linked' : 'Not linked'}
                   </span>
                   {editingUser.last_login_at && (
-                    <span className="flex items-center gap-2 text-gray-400">
+                    <span className="flex items-center gap-2 text-muted-foreground">
                       <Clock size={14} />
                       Last login: {new Date(editingUser.last_login_at).toLocaleString()}
                     </span>
@@ -628,7 +640,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-9 gap-2 border-gray-700 text-gray-300 hover:bg-gray-800"
+                      className="h-9 gap-2 border-border text-muted-foreground hover:bg-muted"
                       onClick={async () => {
                         try {
                           await userService.sendResetEmail(editingUser!.id);
@@ -645,7 +657,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-9 gap-2 border-gray-700 text-gray-300 hover:bg-gray-800"
+                      className="h-9 gap-2 border-border text-muted-foreground hover:bg-muted"
                       onClick={() => {
                         const p = prompt('Enter new temporary password (min 6 chars):');
                         if (p && p.length >= 6) {
@@ -666,7 +678,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
           {activeTab === 'branches' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+              <div className="flex items-center gap-2 pb-2 border-b border-border">
                 <Building2 size={18} className="text-blue-400" />
                 <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
               </div>
@@ -676,10 +688,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               {(!editingUser || (editingUser.role !== 'admin' && editingUser.role !== 'owner')) && (
                 <>
                   {/* Branch Access Mode: Auto (single) / Restricted (multi) */}
-                  <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2">
-                    <p className="text-xs font-medium text-gray-300">Branch Access Mode</p>
+                  <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Branch Access Mode</p>
                     {branches.length === 0 ? (
-                      <p className="text-sm text-gray-500">No branches in company. Create branches in Settings → Company.</p>
+                      <p className="text-sm text-muted-foreground">No branches in company. Create branches in Settings → Company.</p>
                     ) : branches.length === 1 ? (
                       <div className="flex items-center gap-2 text-sm text-gray-200">
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">A</span>
@@ -693,15 +705,15 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     )}
                   </div>
                   {loadingAccess ? (
-                    <p className="text-sm text-gray-400">Loading...</p>
+                    <p className="text-sm text-muted-foreground">Loading...</p>
                   ) : (
                     <>
                       {branches.length === 1 && branches[0] && (
-                        <p className="text-sm text-gray-400">Branch: <span className="text-gray-200">{branches[0].name} {branches[0].code ? `(${branches[0].code})` : ''}</span></p>
+                        <p className="text-sm text-muted-foreground">Branch: <span className="text-gray-200">{branches[0].name} {branches[0].code ? `(${branches[0].code})` : ''}</span></p>
                       )}
                       {branches.length > 1 && (
                         <div className="space-y-3">
-                          <p className="text-xs text-gray-500">Select which branches this user can access.</p>
+                          <p className="text-xs text-muted-foreground">Select which branches this user can access.</p>
                           <div className="space-y-2 max-h-48 overflow-y-auto">
                             {branches.map((b) => (
                               <div key={b.id} className="flex items-center space-x-2">
@@ -714,7 +726,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                                     );
                                   }}
                                 />
-                                <Label htmlFor={`branch-${b.id}`} className="text-sm text-gray-300 cursor-pointer">
+                                <Label htmlFor={`branch-${b.id}`} className="text-sm text-muted-foreground cursor-pointer">
                                   {b.name} {b.code ? `(${b.code})` : ''}
                                 </Label>
                               </div>
@@ -722,9 +734,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                           </div>
                           {selectedBranchIds.length > 0 && (
                             <div className="space-y-1.5">
-                              <Label className="text-xs text-gray-400">Default Branch</Label>
+                              <Label className="text-xs text-muted-foreground">Default Branch</Label>
                               <Select value={effectiveDefaultBranchId} onValueChange={setDefaultBranchId}>
-                                <SelectTrigger className="w-full bg-gray-800 border-gray-700 text-gray-200">
+                                <SelectTrigger className="w-full bg-muted border-border text-gray-200">
                                   <SelectValue placeholder="Select default branch" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -751,18 +763,18 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
           {activeTab === 'accounts' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+              <div className="flex items-center gap-2 pb-2 border-b border-border">
                 <Wallet size={18} className="text-amber-400" />
                 <h3 className="text-sm font-semibold text-gray-200">Account Access</h3>
               </div>
-              <p className="text-xs text-gray-500">Select which accounts this user can use (e.g. for receiving payments). Admin sees all accounts.</p>
+              <p className="text-xs text-muted-foreground">Select which accounts this user can use (e.g. for receiving payments). Admin sees all accounts.</p>
               {(editingUser?.role === 'admin' || editingUser?.role === 'owner') && <p className="text-xs text-amber-400">Admin/Owner have full access.</p>}
               {loadingAccess ? (
-                <p className="text-sm text-gray-400">Loading...</p>
+                <p className="text-sm text-muted-foreground">Loading...</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {accounts.length === 0 ? (
-                    <p className="text-sm text-gray-500">No accounts. Create accounts in Settings → Accounting.</p>
+                    <p className="text-sm text-muted-foreground">No accounts. Create accounts in Settings → Accounting.</p>
                   ) : (
                     accounts.map((a) => (
                       <div key={a.id!} className="flex items-center space-x-2">
@@ -775,7 +787,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                             );
                           }}
                         />
-                        <Label htmlFor={`account-${a.id}`} className="text-sm text-gray-300 cursor-pointer">
+                        <Label htmlFor={`account-${a.id}`} className="text-sm text-muted-foreground cursor-pointer">
                           {a.code ? `${a.code} – ` : ''}{a.name}
                         </Label>
                       </div>
@@ -788,10 +800,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
           {/* Can Be Assigned As Salesman */}
           {activeTab === 'general' && (
-            <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-input-background border border-border rounded-lg">
               <div>
                 <Label htmlFor="can_be_salesman" className="text-gray-200">Can Be Assigned As Salesman</Label>
-                <p className="text-xs text-gray-400">Appears in Salesman dropdown in Sale forms</p>
+                <p className="text-xs text-muted-foreground">Appears in Salesman dropdown in Sale forms</p>
               </div>
               <Switch
                 id="can_be_salesman"
@@ -808,11 +820,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex gap-3 pt-4 border-t border-gray-800">
+        <div className="flex gap-3 pt-4 border-t border-border">
           <Button
             variant="outline"
             onClick={onClose}
-            className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+            className="flex-1 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
             disabled={saving}
           >
             Cancel

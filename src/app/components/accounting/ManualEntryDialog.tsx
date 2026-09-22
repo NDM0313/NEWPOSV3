@@ -216,18 +216,18 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       {/* Dialog */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div
-          className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl pointer-events-auto animate-in zoom-in-95 duration-200"
+          className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl pointer-events-auto animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-800">
+          <div className="flex items-center justify-between p-6 border-b border-border">
             <div>
-              <h2 className="text-xl font-bold text-white">Manual Journal Entry</h2>
-              <p className="text-sm text-gray-400 mt-1">Record custom accounting transaction</p>
+              <h2 className="text-xl font-bold text-foreground">Manual Journal Entry</h2>
+              <p className="text-sm text-muted-foreground mt-1">Record custom accounting transaction</p>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-gray-800 rounded-lg"
+              className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted rounded-lg"
             >
               <X size={20} />
             </button>
@@ -237,7 +237,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
           <div className="p-6 space-y-4">
             {/* Reference No */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-muted-foreground mb-2">
                 Reference No (Optional)
               </label>
               <input
@@ -245,19 +245,19 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                 value={referenceNo}
                 onChange={(e) => setReferenceNo(e.target.value)}
                 placeholder="Auto-generated if empty"
-                className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
 
             {/* Debit Account */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-muted-foreground mb-2">
                 Debit Account <span className="text-red-400">*</span>
               </label>
               <select
                 value={debitAccount}
                 onChange={(e) => setDebitAccount(e.target.value)}
-                className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:border-blue-500 transition-colors"
               >
                 <option value="">Select Debit Account</option>
                 {ACCOUNT_OPTIONS.map(account => (
@@ -268,13 +268,13 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
 
             {/* Credit Account */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-muted-foreground mb-2">
                 Credit Account <span className="text-red-400">*</span>
               </label>
               <select
                 value={creditAccount}
                 onChange={(e) => setCreditAccount(e.target.value)}
-                className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:border-blue-500 transition-colors"
               >
                 <option value="">Select Credit Account</option>
                 {ACCOUNT_OPTIONS.map(account => (
@@ -286,7 +286,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
             {/* Worker (required when Debit = Worker Payable) */}
             {isWorkerPayableDebit && (
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <label className="block text-sm font-semibold text-muted-foreground mb-2">
                   Worker <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -297,21 +297,21 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                     setWorkerName(opt?.name ?? '');
                   }}
                   disabled={workersLoading}
-                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:border-blue-500 transition-colors"
                 >
                   <option value="">Select worker (required for ledger)</option>
                   {workers.map((w) => (
                     <option key={w.id} value={w.id}>{w.name || w.id}</option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">Required so this payment appears in the worker&apos;s ledger.</p>
+                <p className="text-xs text-muted-foreground mt-1">Required so this payment appears in the worker&apos;s ledger.</p>
               </div>
             )}
 
             {/* Supplier (required when Debit = Accounts Payable) */}
             {isAccountsPayableDebit && (
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <label className="block text-sm font-semibold text-muted-foreground mb-2">
                   Supplier <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -322,21 +322,21 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                     setSupplierName(opt?.name ?? '');
                   }}
                   disabled={suppliersLoading}
-                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:border-blue-500 transition-colors"
                 >
                   <option value="">Select supplier (required for Supplier Ledger)</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>{s.name || s.id}</option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">Required so this payment appears in the Supplier Ledger.</p>
+                <p className="text-xs text-muted-foreground mt-1">Required so this payment appears in the Supplier Ledger.</p>
               </div>
             )}
 
             {/* Customer (required when Dr receiving account + Cr AR — same FIFO as Add Entry V2) */}
             {isCustomerReceiptToAr && (
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                <label className="block text-sm font-semibold text-muted-foreground mb-2">
                   Customer <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -347,7 +347,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                     setCustomerName(opt?.name ?? '');
                   }}
                   disabled={customersLoading}
-                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:border-blue-500 transition-colors"
                 >
                   <option value="">Select customer (required — open invoices settle FIFO)</option>
                   {customers.map((c) => (
@@ -356,7 +356,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   One receipt in Roznamcha; amounts apply automatically to oldest open invoices first. Leftover stays as unapplied credit.
                 </p>
               </div>
@@ -364,11 +364,11 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
 
             {/* Amount */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-muted-foreground mb-2">
                 Amount <span className="text-red-400">*</span>
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg font-semibold">
                   Rs
                 </span>
                 <input
@@ -377,7 +377,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                   onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
                   onFocus={(e) => e.target.select()}
                   placeholder="0.00"
-                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg pl-14 pr-4 py-2.5 text-white text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full bg-input-background border-2 border-border rounded-lg pl-14 pr-4 py-2.5 text-foreground text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                   min="0"
                   step="0.01"
                 />
@@ -386,7 +386,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-muted-foreground mb-2">
                 Description
               </label>
               <textarea
@@ -394,7 +394,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Enter transaction description..."
                 rows={3}
-                className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                className="w-full bg-input-background border-2 border-border rounded-lg px-4 py-2.5 text-foreground placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors resize-none"
               />
             </div>
 
@@ -414,11 +414,11 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-800">
+          <div className="flex items-center justify-end gap-3 p-6 border-t border-border">
             <Button
               variant="outline"
               onClick={onClose}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="border-border text-muted-foreground hover:bg-muted"
               disabled={isProcessing}
             >
               Cancel

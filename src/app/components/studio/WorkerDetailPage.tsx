@@ -98,7 +98,7 @@ const getDepartmentColor = (dept: DepartmentType) => {
     case 'Dyeing': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     case 'Stitching': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     case 'Handwork': return 'bg-pink-500/10 text-pink-400 border-pink-500/20';
-    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   }
 };
 
@@ -113,10 +113,10 @@ const getDepartmentIcon = (dept: DepartmentType) => {
 
 const getJobStatusColor = (status: JobStatus) => {
   switch (status) {
-    case 'pending': return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    case 'pending': return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
     case 'in_progress': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-    case 'completed': return 'bg-green-500/10 text-green-400 border-green-500/20';
-    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    case 'completed': return 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20';
+    default: return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   }
 };
 
@@ -132,7 +132,7 @@ const getJobStatusIcon = (status: JobStatus) => {
 const getPaymentStatusBadge = (status: PaymentStatus) => {
   switch (status) {
     case 'paid':
-      return { className: 'bg-green-500/10 text-green-400 border-green-500/20', label: 'Paid' };
+      return { className: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20', label: 'Paid' };
     case 'partial':
       return { className: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20', label: 'Partial' };
     case 'unpaid':
@@ -324,7 +324,7 @@ export const WorkerDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#111827]">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <Loader2 size={48} className="text-blue-500 animate-spin" />
       </div>
     );
@@ -332,9 +332,9 @@ export const WorkerDetailPage: React.FC = () => {
 
   if (!selectedWorkerId || !worker) {
     return (
-      <div className="min-h-screen bg-[#111827] text-white flex items-center justify-center">
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-400 mb-4">Worker not found</p>
+          <p className="text-muted-foreground mb-4">Worker not found</p>
           <Button onClick={handleGoBack} className="bg-blue-600 hover:bg-blue-500">
             <ArrowLeft size={18} className="mr-2" />
             Back to Workers
@@ -347,9 +347,9 @@ export const WorkerDetailPage: React.FC = () => {
   const DeptIcon = getDepartmentIcon(worker.department);
 
   return (
-    <div className="min-h-screen bg-[#111827] text-white">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/50 sticky top-0 z-10 backdrop-blur-sm">
+      <div className="border-b border-border bg-muted/40 sticky top-0 z-10 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -357,13 +357,13 @@ export const WorkerDetailPage: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 onClick={handleGoBack}
-                className="text-gray-400 hover:text-white"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft size={18} className="mr-2" />
                 Back to Workers
               </Button>
-              <div className="h-6 w-px bg-gray-700" />
-              <h1 className="text-xl font-bold text-white">Worker Detail</h1>
+              <div className="h-6 w-px bg-muted" />
+              <h1 className="text-xl font-bold text-foreground">Worker Detail</h1>
             </div>
             
             <Button
@@ -381,16 +381,16 @@ export const WorkerDetailPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         
         {/* Worker Summary — tasks and cost overview; pay via Accounting */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-          <p className="text-xs text-gray-500 mb-4">Tasks & cost overview. To pay this worker, use Accounting → Worker Payments.</p>
+        <div className="bg-card border border-border rounded-xl p-6">
+          <p className="text-xs text-muted-foreground mb-4">Tasks & cost overview. To pay this worker, use Accounting → Worker Payments.</p>
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
-              <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-3xl">
+              <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-foreground font-bold text-3xl">
                 {worker.name.charAt(0)}
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">{worker.name}</h2>
-                <div className="flex items-center gap-4 text-sm text-gray-400">
+                <h2 className="text-2xl font-bold text-foreground mb-2">{worker.name}</h2>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <Phone size={14} />
                     {worker.phone}
@@ -415,33 +415,33 @@ export const WorkerDetailPage: React.FC = () => {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-6 pt-6 border-t border-gray-800">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-6 pt-6 border-t border-border">
             <div className="text-center">
-              <p className="text-gray-400 text-sm mb-1">Active Jobs</p>
+              <p className="text-muted-foreground text-sm mb-1">Active Jobs</p>
               <p className="text-3xl font-bold text-yellow-400">{worker.activeJobs}</p>
             </div>
             <div className="text-center">
-              <p className="text-gray-400 text-sm mb-1">Pending Jobs</p>
+              <p className="text-muted-foreground text-sm mb-1">Pending Jobs</p>
               <p className="text-3xl font-bold text-orange-400">{worker.pendingJobs}</p>
             </div>
             <div className="text-center">
-              <p className="text-gray-400 text-sm mb-1">Completed</p>
-              <p className="text-3xl font-bold text-green-400">{worker.completedJobs}</p>
+              <p className="text-muted-foreground text-sm mb-1">Completed</p>
+              <p className="text-3xl font-bold text-[var(--erp-money-positive)]">{worker.completedJobs}</p>
             </div>
-            <div className="text-center border-l border-gray-800">
-              <p className="text-gray-400 text-sm mb-1">Total Paid</p>
-              <p className={`text-2xl font-bold ${worker.totalPaid > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+            <div className="text-center border-l border-border">
+              <p className="text-muted-foreground text-sm mb-1">Total Paid</p>
+              <p className={`text-2xl font-bold ${worker.totalPaid > 0 ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground'}`}>
                 Rs {worker.totalPaid.toLocaleString()}
               </p>
             </div>
-            <div className="text-center border-l border-gray-800">
-              <p className="text-gray-400 text-sm mb-1">Remaining Due</p>
-              <p className={`text-2xl font-bold ${worker.pendingAmount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+            <div className="text-center border-l border-border">
+              <p className="text-muted-foreground text-sm mb-1">Remaining Due</p>
+              <p className={`text-2xl font-bold ${worker.pendingAmount > 0 ? 'text-orange-400' : 'text-[var(--erp-money-positive)]'}`}>
                 {worker.pendingAmount > 0 ? `Rs ${worker.pendingAmount.toLocaleString()}` : 'Cleared'}
               </p>
             </div>
-            <div className="text-center border-l border-gray-800">
-              <p className="text-gray-400 text-sm mb-1">Total Earnings</p>
+            <div className="text-center border-l border-border">
+              <p className="text-muted-foreground text-sm mb-1">Total Earnings</p>
               <p className="text-2xl font-bold text-blue-400">
                 Rs {worker.totalEarnings.toLocaleString()}
               </p>
@@ -455,16 +455,16 @@ export const WorkerDetailPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-orange-400 font-semibold text-sm mb-1">Remaining Due (Payable)</p>
-                <p className="text-3xl font-bold text-white">
+                <p className="text-3xl font-bold text-foreground">
                   Rs {worker.pendingAmount.toLocaleString()}
                 </p>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   From studio costs + worker payments in Accounting. Pay via Accounting → Worker Payments.
                 </p>
               </div>
               <Button
                 onClick={handleGoToAccounting}
-                className="bg-orange-600 hover:bg-orange-500 text-white gap-2"
+                className="bg-orange-600 hover:bg-orange-500 text-foreground gap-2"
               >
                 View in Accounting
                 <ChevronRight size={16} />
@@ -474,17 +474,17 @@ export const WorkerDetailPage: React.FC = () => {
         )}
 
         {/* View Full Ledger: Payable & Paid entries */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <button
             type="button"
             onClick={() => setLedgerOpen((o) => !o)}
-            className="w-full p-6 border-b border-gray-800 flex items-center justify-between text-left hover:bg-gray-800/30 transition-colors"
+            className="w-full p-6 border-b border-border flex items-center justify-between text-left hover:bg-accent/30 transition-colors"
           >
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
               <FileText className="text-cyan-400" size={20} />
               View Full Ledger
             </h3>
-            {ledgerOpen ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+            {ledgerOpen ? <ChevronUp size={20} className="text-muted-foreground" /> : <ChevronDown size={20} className="text-muted-foreground" />}
           </button>
           {ledgerOpen && (
             <div className="p-4">
@@ -493,11 +493,11 @@ export const WorkerDetailPage: React.FC = () => {
                   <Loader2 size={24} className="animate-spin text-blue-500" />
                 </div>
               ) : ledgerEntries.length === 0 ? (
-                <p className="text-gray-500 text-sm py-4 text-center">No ledger entries yet</p>
+                <p className="text-muted-foreground text-sm py-4 text-center">No ledger entries yet</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+                    <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border">
                       <tr>
                         <th className="px-4 py-3 font-medium">Date</th>
                         <th className="px-4 py-3 font-medium">Reference</th>
@@ -506,16 +506,16 @@ export const WorkerDetailPage: React.FC = () => {
                         <th className="px-4 py-3 font-medium">Paid At</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800">
+                    <tbody className="divide-y divide-border">
                       {ledgerEntries.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-gray-800/30">
-                          <td className="px-4 py-3 text-gray-300">
+                        <tr key={entry.id} className="hover:bg-accent/30">
+                          <td className="px-4 py-3 text-muted-foreground">
                             {entry.created_at ? format(new Date(entry.created_at), 'dd MMM yyyy HH:mm') : '—'}
                           </td>
-                          <td className="px-4 py-3 text-gray-400">
+                          <td className="px-4 py-3 text-muted-foreground">
                             {entry.reference_type === 'studio_production_stage' ? 'Stage' : entry.reference_type} {entry.reference_id?.slice(0, 8)}
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-white">
+                          <td className="px-4 py-3 text-right font-semibold text-foreground">
                             Rs {entry.amount.toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -549,11 +549,11 @@ export const WorkerDetailPage: React.FC = () => {
                             >
                               <Badge variant="outline" className={cn(
                                 entry.status === 'paid'
-                                  ? 'bg-green-500/20 text-green-400 border-green-700'
+                                  ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-700'
                                   : entry.status === 'partial'
                                     ? 'bg-yellow-500/20 text-yellow-300 border-yellow-700'
                                     : entry.status === 'cancelled'
-                                      ? 'bg-gray-600/30 text-gray-400 border-gray-600'
+                                      ? 'bg-gray-600/30 text-muted-foreground border-gray-600'
                                       : 'bg-orange-500/20 text-orange-400 border-orange-700',
                                 'cursor-pointer hover:opacity-80'
                               )}>
@@ -567,7 +567,7 @@ export const WorkerDetailPage: React.FC = () => {
                               </Badge>
                             </button>
                           </td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
                             {entry.paid_at ? format(new Date(entry.paid_at), 'dd MMM yyyy') : '—'}
                           </td>
                         </tr>
@@ -581,15 +581,15 @@ export const WorkerDetailPage: React.FC = () => {
         </div>
 
         {/* Current Jobs Section */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="p-6 border-b border-gray-800">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="p-6 border-b border-border">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <Package className="text-yellow-400" size={20} />
                   Current Active Jobs
                 </h3>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                   {worker.currentJobs.length} jobs currently in progress
                 </p>
               </div>
@@ -598,7 +598,7 @@ export const WorkerDetailPage: React.FC = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border">
                 <tr>
                   <th className="px-6 py-3 font-medium">Job Card</th>
                   <th className="px-6 py-3 font-medium">Customer</th>
@@ -609,7 +609,7 @@ export const WorkerDetailPage: React.FC = () => {
                   <th className="px-6 py-3 font-medium text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {worker.currentJobs.map((job) => {
                   const StatusIcon = getJobStatusIcon(job.status);
                   const daysUntilDeadline = Math.ceil(
@@ -617,34 +617,34 @@ export const WorkerDetailPage: React.FC = () => {
                   );
 
                   return (
-                    <tr key={job.id} className="group hover:bg-gray-800/30 transition-colors">
+                    <tr key={job.id} className="group hover:bg-accent/30 transition-colors">
                       <td className="px-6 py-4">
                         <p className="font-mono text-blue-400 font-medium">{job.jobCardId}</p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           Assigned {format(job.assignedDate, 'MMM dd')}
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-white font-medium">{job.customerName}</p>
+                        <p className="text-foreground font-medium">{job.customerName}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-gray-300">{job.itemDescription}</p>
+                        <p className="text-muted-foreground">{job.itemDescription}</p>
                         <Badge variant="outline" className={`${getDepartmentColor(job.currentStage)} mt-1`}>
                           {job.currentStage}
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-white">{format(job.deadline, 'MMM dd, yyyy')}</p>
+                        <p className="text-foreground">{format(job.deadline, 'MMM dd, yyyy')}</p>
                         <p className={`text-xs mt-1 ${
                           daysUntilDeadline < 3 ? 'text-red-400' : 
                           daysUntilDeadline < 7 ? 'text-yellow-400' : 
-                          'text-gray-500'
+                          'text-muted-foreground'
                         }`}>
                           {daysUntilDeadline} days left
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="font-bold text-white">
+                        <p className="font-bold text-foreground">
                           Rs {job.paymentAmount.toLocaleString()}
                         </p>
                         <button
@@ -683,15 +683,15 @@ export const WorkerDetailPage: React.FC = () => {
         </div>
 
         {/* Job History Section */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="p-6 border-b border-gray-800">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="p-6 border-b border-border">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <CheckCircle2 className="text-green-400" size={20} />
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <CheckCircle2 className="text-[var(--erp-money-positive)]" size={20} />
                   Recent Completed Jobs
                 </h3>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                   Last {worker.recentCompletedJobs.length} completed assignments
                 </p>
               </div>
@@ -700,7 +700,7 @@ export const WorkerDetailPage: React.FC = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border">
                 <tr>
                   <th className="px-6 py-3 font-medium">Job Card</th>
                   <th className="px-6 py-3 font-medium">Customer</th>
@@ -710,23 +710,23 @@ export const WorkerDetailPage: React.FC = () => {
                   <th className="px-6 py-3 font-medium text-center">Payment Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {worker.recentCompletedJobs.map((job) => (
-                  <tr key={job.id} className="group hover:bg-gray-800/30 transition-colors">
+                  <tr key={job.id} className="group hover:bg-accent/30 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-mono text-gray-400 font-medium">{job.jobCardId}</p>
+                      <p className="font-mono text-muted-foreground font-medium">{job.jobCardId}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-gray-300">{job.customerName}</p>
+                      <p className="text-muted-foreground">{job.customerName}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-gray-400">{job.itemDescription}</p>
+                      <p className="text-muted-foreground">{job.itemDescription}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-gray-300">{format(job.deadline, 'MMM dd, yyyy')}</p>
+                      <p className="text-muted-foreground">{format(job.deadline, 'MMM dd, yyyy')}</p>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <p className="font-bold text-green-400">
+                      <p className="font-bold text-[var(--erp-money-positive)]">
                         +Rs {job.paymentAmount.toLocaleString()}
                       </p>
                     </td>
@@ -748,7 +748,7 @@ export const WorkerDetailPage: React.FC = () => {
             </table>
           </div>
 
-          <div className="p-4 bg-gray-950/50 border-t border-gray-800 text-center">
+          <div className="p-4 bg-muted/40 border-t border-border text-center">
             <Button
               variant="ghost"
               className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
@@ -776,16 +776,16 @@ export const WorkerDetailPage: React.FC = () => {
 
       {jobDetailStageId && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-bold text-white">Job detail</h3>
+              <h3 className="text-lg font-bold text-foreground">Job detail</h3>
               <Button variant="ghost" size="sm" onClick={() => { setJobDetailStageId(null); setJobDetail(null); }}>Close</Button>
             </div>
             {jobDetailLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="animate-spin text-blue-500" /></div>
             ) : jobDetail ? (
               <>
-                <p className="text-sm text-gray-400 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   {jobDetail.customer_name ?? '—'} · {jobDetail.production_no ?? jobDetail.invoice_no ?? '—'}
                 </p>
                 <StudioStageTimeline
@@ -805,7 +805,7 @@ export const WorkerDetailPage: React.FC = () => {
                 {jobDetail.sale_id && setSelectedStudioSaleId ? (
                   <Button
                     variant="outline"
-                    className="w-full mt-4 border-gray-700"
+                    className="w-full mt-4 border-border"
                     onClick={() => {
                       setSelectedStudioSaleId(jobDetail.sale_id!);
                       setJobDetailStageId(null);
@@ -817,7 +817,7 @@ export const WorkerDetailPage: React.FC = () => {
                 ) : null}
               </>
             ) : (
-              <p className="text-gray-500 text-sm">Could not load job detail.</p>
+              <p className="text-muted-foreground text-sm">Could not load job detail.</p>
             )}
           </div>
         </div>

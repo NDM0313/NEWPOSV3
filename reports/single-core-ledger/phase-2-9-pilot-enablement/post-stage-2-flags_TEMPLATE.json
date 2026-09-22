@@ -1,0 +1,21 @@
+{
+  "phase": "2.9",
+  "stage": "2-engine-and-screen",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "timestampUtc": null,
+  "executor": null,
+  "flagsEnabled": [
+    "unified_ledger_pilot",
+    "unified_ledger_engine",
+    "unified_ledger_screen_ledger_v2"
+  ],
+  "sqlRows": [],
+  "ledgerV2BannerModeToggleOff": "unified",
+  "mainTableChanged": false,
+  "mrJalilUnifiedClosingPkr": 216300,
+  "mrJalilTolerancePkr": 0.01,
+  "mrJalilPass": null,
+  "staffSeesPreviewToggle": false,
+  "soakHours": 24,
+  "result": null
+}

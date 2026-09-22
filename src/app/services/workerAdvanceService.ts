@@ -8,7 +8,10 @@
 import { supabase } from '@/lib/supabase';
 import { accountHelperService } from '@/app/services/accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
-import { resolveWorkerPayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
+import {
+  resolveWorkerAdvancePostingAccountId,
+  resolveWorkerPayablePostingAccountId,
+} from '@/app/services/partySubledgerAccountService';
 
 const EPS = 0.005;
 
@@ -33,6 +36,7 @@ async function getWorkerGlNetPayableForParty(
   const { data, error } = await supabase.rpc('get_contact_party_gl_balances', {
     p_company_id: companyId,
     p_branch_id: safeBranchForRpc(branchId),
+    p_as_of_date: null,
   });
   if (error || !Array.isArray(data)) return 0;
   const row = (data as { contact_id: string; gl_worker_payable?: number | string }[]).find(
@@ -41,6 +45,7 @@ async function getWorkerGlNetPayableForParty(
   return Number(row?.gl_worker_payable ?? 0) || 0;
 }
 
+/** Control 1180 id (fallback when no worker leaf). Prefer resolveWorkerAdvancePostingAccountId for posting. */
 export async function getWorkerAdvanceAccountId(companyId: string): Promise<string | null> {
   const byCode = await accountHelperService.getAccountByCode('1180', companyId);
   if (byCode?.id) return byCode.id;
@@ -51,6 +56,15 @@ export async function getWorkerAdvanceAccountId(companyId: string): Promise<stri
     .or('code.eq.1180,name.ilike.%Worker Advance%')
     .limit(1);
   return (data?.[0] as { id: string } | undefined)?.id ?? null;
+}
+
+/** Prefer WA-* leaf for worker; falls back to control 1180. */
+export async function getWorkerAdvancePostingAccountId(
+  companyId: string,
+  workerId?: string | null,
+): Promise<string | null> {
+  if (workerId) return resolveWorkerAdvancePostingAccountId(companyId, workerId);
+  return getWorkerAdvanceAccountId(companyId);
 }
 
 /**
@@ -97,11 +111,14 @@ export async function shouldDebitWorkerPayableForPayment(
 }
 
 /**
- * Net worker advance from GL lines on 1180 for this worker's payment + settlement entries.
+ * Net worker advance from GL lines on WA leaf (and control 1180 for legacy) for this worker's
+ * payment + settlement entries.
  */
 export async function getWorkerNetAdvanceBalanceFromJournals(companyId: string, workerId: string): Promise<number> {
-  const advanceId = await getWorkerAdvanceAccountId(companyId);
-  if (!advanceId) return 0;
+  const leafId = await resolveWorkerAdvancePostingAccountId(companyId, workerId);
+  const controlId = await getWorkerAdvanceAccountId(companyId);
+  const accountIds = Array.from(new Set([leafId, controlId].filter(Boolean) as string[]));
+  if (accountIds.length === 0) return 0;
 
   const { data: jes, error } = await supabase
     .from('journal_entries')
@@ -120,8 +137,8 @@ export async function getWorkerNetAdvanceBalanceFromJournals(companyId: string, 
     const chunk = ids.slice(i, i + chunkSize);
     const { data: lines } = await supabase
       .from('journal_entry_lines')
-      .select('debit, credit')
-      .eq('account_id', advanceId)
+      .select('debit, credit, account_id')
+      .in('account_id', accountIds)
       .in('journal_entry_id', chunk);
     for (const l of lines || []) {
       sum += (Number((l as { debit?: number }).debit) || 0) - (Number((l as { credit?: number }).credit) || 0);
@@ -163,10 +180,10 @@ export async function applyWorkerAdvanceAgainstNewBill(params: {
   const applyAmount = Math.min(Math.max(balance, 0), billAmount);
   if (applyAmount <= EPS) return null;
 
-  const advanceId = await getWorkerAdvanceAccountId(companyId);
+  const advanceId = await resolveWorkerAdvancePostingAccountId(companyId, workerId);
   const payableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
   if (!advanceId || !payableAccountId) {
-    console.warn('[workerAdvanceService] Missing Worker Advance (1180) or Worker Payable (2010); skip auto-apply');
+    console.warn('[workerAdvanceService] Missing Worker Advance (WA/1180) or Worker Payable (WP/2010); skip auto-apply');
     return null;
   }
 

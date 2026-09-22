@@ -1,0 +1,38 @@
+{
+  "generated": "2026-06-29",
+  "files": [
+    {
+      "path": "docs/accounting/OFFICE_CLOSING_PHASE_1_5_REMAINING_TASKS.md",
+      "classification": "HISTORICAL_STALE",
+      "date": "2026-06-20",
+      "reason": "Phase 1.5 staging blocked; pre-main-merge; superseded by production-ready pack"
+    },
+    {
+      "path": "docs/accounting/remaining-tasks-2026-06-16.md",
+      "classification": "OLD_BACKLOG_REVALIDATE",
+      "syncCommit": "3136cad7",
+      "reason": "Items may still be relevant but status unverified on current main"
+    },
+    {
+      "path": "docs/accounting/SINGLE_CORE_LEDGER_PRODUCTION_READY.md",
+      "classification": "ACTIVE_AUTHORITATIVE",
+      "date": "2026-06-29"
+    },
+    {
+      "path": "reports/single-core-ledger/final-production-ops-handoff/remaining-tasks-master-register.md",
+      "classification": "ACTIVE_AUTHORITATIVE",
+      "date": "2026-06-29"
+    }
+  ],
+  "notApproved": [
+    "BS_PL_main_loader_swap",
+    "R7_roznamcha_payment_rpc",
+    "R8_legacy_retirement",
+    "fourth_company_rollout",
+    "ad_hoc_gl_repair_without_data_approval"
+  ],
+  "macHomeNewWork": [
+    "party_ledger_discount_ae6c69d0",
+    "create_business_otp_ae6c69d0"
+  ]
+}

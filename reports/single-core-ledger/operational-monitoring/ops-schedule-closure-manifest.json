@@ -1,0 +1,37 @@
+{
+  "status": "OPERATIONAL_MONITORING_OPS_CLOSURE_COMPLETE_PASSWORD_ROTATION_COMPLETE",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "updated_at": "2026-06-29T07:52:41.845Z",
+  "latest_main_commit_at_start": "5a7fbe6f",
+  "monitoring_result": "PASS",
+  "monitoring_evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-42-30-177Z.json",
+  "latest_monitoring_pointer": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+  "password_rotation": {
+    "rotation_required": true,
+    "rotation_completed": true,
+    "post_rotation_monitoring_status": "PASS",
+    "credential_policy": "per-company",
+    "generic_fallback_allowed": false,
+    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json"
+  },
+  "docs_created": [
+    "scheduled-monitoring-ops-pack.md",
+    "windows-task-scheduler-guide.md",
+    "vps-cron-monitoring-guide.md",
+    "password-rotation-closure.md",
+    "monitoring-incident-response-runbook.md",
+    "ops-schedule-closure-report.md"
+  ],
+  "r7_status": "DESIGN_ONLY",
+  "r8_status": "BLOCKED",
+  "next_company": "BLOCKED",
+  "runtime_deployed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "credentials_committed": false,
+  "passwords_printed": false,
+  "tests_unified_ledger": "256/256 PASS",
+  "build": "PASS",
+  "deploy": "SKIPPED",
+  "ongoing_command": "npm run monitor:three-company-unified-ledger"
+}

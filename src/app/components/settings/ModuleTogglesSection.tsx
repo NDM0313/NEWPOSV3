@@ -16,15 +16,19 @@ export function ModuleTogglesSection({ value, onChange, disabled }: ModuleToggle
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Turning a module on enables company features. Sidebar items that are permission-gated (for example
+        Accounting) also need the matching role permission — Module Toggle alone does not show the nav item.
+      </p>
       {entries.map((m) => (
         <div
           key={m.moduleName}
-          className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800"
+          className="flex items-center justify-between bg-input-background p-5 rounded-lg border border-border"
         >
           <div>
-            <p className="text-white font-medium text-lg">{m.label}</p>
-            <p className="text-sm text-gray-400">{m.description}</p>
-            {m.notes ? <p className="text-xs text-gray-500 mt-1">{m.notes}</p> : null}
+            <p className="text-foreground font-medium text-lg">{m.label}</p>
+            <p className="text-sm text-muted-foreground">{m.description}</p>
+            {m.notes ? <p className="text-xs text-muted-foreground mt-1">{m.notes}</p> : null}
           </div>
           <Switch
             checked={value[m.settingsKey]}

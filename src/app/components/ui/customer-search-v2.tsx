@@ -166,7 +166,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
       {/* Input Field */}
       <div className="relative">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-          {icon || <User size={14} className="text-gray-400" />}
+          {icon || <User size={14} className="text-muted-foreground" />}
         </div>
         <Input
           ref={inputRef}
@@ -176,7 +176,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
           onFocus={handleInputFocus}
           placeholder={placeholder}
           className={cn(
-            'w-full pl-9 pr-20 bg-gray-950 border-gray-700 text-white h-10',
+            'w-full pl-9 pr-20 bg-input-background border-border text-foreground h-10',
             isOpen && 'border-blue-500 ring-1 ring-blue-500/20'
           )}
         />
@@ -185,7 +185,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
             <button
               type="button"
               onClick={handleClear}
-              className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
+              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
             >
               <X size={14} />
             </button>
@@ -193,7 +193,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
           <ChevronsUpDown
             size={14}
             className={cn(
-              'text-gray-400 transition-transform',
+              'text-muted-foreground transition-transform',
               isOpen && 'rotate-180'
             )}
           />
@@ -216,7 +216,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
       {isOpen && (
         <div
           ref={dropdownRef}
-          className="absolute top-full left-0 right-0 mt-1 z-[90] bg-gray-950 border border-gray-800 rounded-lg shadow-2xl overflow-hidden"
+          className="absolute top-full left-0 right-0 mt-1 z-[90] bg-input-background border border-border rounded-lg shadow-2xl overflow-hidden"
           style={{
             maxHeight: '280px',
           }}
@@ -232,7 +232,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
             }}
           >
             {filteredOptions.length === 0 && !showAddNew && (
-              <div className="px-4 py-8 text-center text-gray-400 text-sm">
+              <div className="px-4 py-8 text-center text-muted-foreground text-sm">
                 {emptyText}
               </div>
             )}
@@ -243,9 +243,9 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
                 type="button"
                 onClick={() => handleSelect(option.id)}
                 className={cn(
-                  'w-full px-4 py-2.5 text-left flex items-center justify-between gap-2 hover:bg-gray-800 transition-colors',
+                  'w-full px-4 py-2.5 text-left flex items-center justify-between gap-2 hover:bg-muted transition-colors',
                   value === option.id && 'bg-blue-500/10 border-l-2 border-blue-500',
-                  highlightedIndex === index && 'bg-gray-800'
+                  highlightedIndex === index && 'bg-muted'
                 )}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -255,7 +255,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
                       value === option.id ? 'opacity-100 text-blue-400' : 'opacity-0'
                     )}
                   />
-                  <span className="truncate text-sm text-white">
+                  <span className="truncate text-sm text-foreground">
                     {renderOption ? renderOption(option) : option.name}
                   </span>
                 </div>
@@ -277,7 +277,7 @@ export const CustomerSearchV2: React.FC<CustomerSearchV2Props> = ({
 
           {/* Add New Button - Separate, Always Visible When Enabled */}
           {enableAddNew && (
-            <div className="border-t border-gray-800 p-2 bg-gray-900/50">
+            <div className="border-t border-border p-2 bg-muted/40">
               <button
                 type="button"
                 onClick={handleAddNew}

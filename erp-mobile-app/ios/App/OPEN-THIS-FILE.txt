@@ -1,0 +1,15 @@
+Open App.xcworkspace in Xcode — NOT App.xcodeproj
+
+Double-click: App.xcworkspace
+
+Or from erp-mobile-app:
+  npm run cap:ios
+
+If build shows "Search path ... Capacitor not found":
+  1. Close Xcode
+  2. Open App.xcworkspace (not App.xcodeproj)
+  3. Product → Clean Build Folder
+  4. Build again
+
+After plugin changes:
+  cd erp-mobile-app/ios/App && pod install

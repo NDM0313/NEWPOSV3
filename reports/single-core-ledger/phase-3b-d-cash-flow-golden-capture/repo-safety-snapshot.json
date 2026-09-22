@@ -1,0 +1,24 @@
+{
+  "run": "PHASE_3B_D_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T12:30:00.000Z",
+  "branch": "main",
+  "head_commit": "90253205",
+  "phase_3b_deploy_commit": "90253205",
+  "origin_main_includes_90253205": true,
+  "staged_files_count": 0,
+  "capture_scope": "read_only_candidate_golden",
+  "deploy": false,
+  "constraints": {
+    "migrations_run": false,
+    "flags_toggled": false,
+    "gl_mutations": false,
+    "cash_flow_loader_swap": false,
+    "finance_approval": false
+  },
+  "excluded_dirty_paths": [
+    "reports/single-core-ledger/din-bridal/golden-fixtures.*",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/*",
+    "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.*",
+    "graphify-out/GRAPH_REPORT.md"
+  ]
+}

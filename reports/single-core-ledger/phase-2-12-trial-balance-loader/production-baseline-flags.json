@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-06-26T16:10:00Z",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "unified_ledger_loader_trial_balance": false,
+  "unified_ledger_screen_trial_balance": false,
+  "unified_ledger_loader_ledger_v2": true,
+  "unified_ledger_loader_account_statement": true,
+  "note": "TB loader/screen OFF before production baseline QA"
+}

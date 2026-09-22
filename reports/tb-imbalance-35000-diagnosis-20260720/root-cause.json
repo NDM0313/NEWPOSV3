@@ -1,0 +1,33 @@
+{
+  "company": "DIN BRIDAL",
+  "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "asOf": "2026-07-20",
+  "classification": "MULTIPLE_UNBALANCED_JES",
+  "tbTotalDebit": 29437453,
+  "tbTotalCredit": 29472453,
+  "tbDifference": -35000,
+  "unbalancedJes": [
+    {
+      "entryNo": "JE-0222",
+      "id": "a8a3b314-038e-486b-827c-8b58590b9bb7",
+      "referenceType": "sale",
+      "referenceId": "a840e797-274a-4fb7-a8eb-a7dfa3393b66",
+      "invoiceNo": "SL-0031",
+      "diff": -26000,
+      "defect": "COGS_debit_zero_with_inventory_credit_26000",
+      "cogsLineId": "16973f7a-cbaa-464a-aeb1-0d8f0c31be90"
+    },
+    {
+      "entryNo": "JE-0247",
+      "id": "45bb5fe1-b510-4d8e-8b6b-0ba85634f7b2",
+      "referenceType": "sale_reversal",
+      "referenceId": "05a438f7-b521-4a2e-b749-13647f64d655",
+      "invoiceNo": "SL-0042",
+      "diff": -9000,
+      "defect": "missing_extra_service_income_reversal_9000",
+      "extraAccountId": "1d0622a3-0b26-430c-be11-6625b87ef417"
+    }
+  ],
+  "sumJeDiffs": -35000,
+  "matchesTbDifference": true
+}

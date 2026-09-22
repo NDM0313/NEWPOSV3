@@ -1,0 +1,30 @@
+{
+  "run": "din-couture-next-company-rollout",
+  "generated_at": "2026-06-27T18:30:00Z",
+  "company": {
+    "name": "DIN COUTURE",
+    "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+    "is_active": true,
+    "ambiguous": false
+  },
+  "branches": [
+    { "id": "df93b9e4-feea-4b8b-8103-e630c185261b", "name": "SHOP A13" }
+  ],
+  "golden_party": {
+    "name": "DHARIA",
+    "party_id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
+    "account_code": "AR-CUS0010"
+  },
+  "unified_flags_on": 0,
+  "loader_flags_on": 0,
+  "unexpected_loader_flags": false,
+  "qa_user_binding": {
+    "email_masked": "ndm313@***",
+    "bound_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+    "bound_company_name": "DIN BRIDAL",
+    "din_couture_user": false
+  },
+  "din_china_flags_on": 12,
+  "din_bridal_flags_on": 12,
+  "other_company_loaders_on": 0
+}

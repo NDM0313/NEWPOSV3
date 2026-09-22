@@ -71,7 +71,7 @@ export function resolveModuleListBranchScope(
 export function rowInListBranchScope(row: Record<string, unknown>, scope: ListBranchScope): boolean {
   if (scope.mode === 'all') return true;
   const bid = rowBranchId(row);
-  if (!bid) return false;
+  if (!bid) return scope.mode === 'single';
   if (scope.mode === 'single') return bid === scope.branchId;
   return scope.branchIds.includes(bid);
 }

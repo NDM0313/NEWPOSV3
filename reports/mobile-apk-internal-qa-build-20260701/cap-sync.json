@@ -1,0 +1,17 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "cap-sync",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "status": "PASS",
+  "command": "npm run cap:sync:android:prod",
+  "steps": [
+    "build:mobile:prod (tsc + vite production)",
+    "verify-dist-for-capacitor.mjs",
+    "npx cap sync android",
+    "verify-dist-for-capacitor.mjs"
+  ],
+  "plugins_synced": 9,
+  "secrets_copied_to_git": false,
+  "unintended_config_changes": false,
+  "apk_built_during_sync": false
+}

@@ -6,6 +6,7 @@ import type { Screen } from '../types';
 
 const SCREEN_TO_MODULE: Record<string, string> = {
   sales: 'sales',
+  workorders: 'sales',
   purchase: 'purchase', // singular to match DB
   pos: 'pos',          // match DB pos module
   rental: 'rentals',

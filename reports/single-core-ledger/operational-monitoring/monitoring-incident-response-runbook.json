@@ -1,0 +1,53 @@
+{
+  "runbook": "monitoring-incident-response",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "incident_types": [
+    {
+      "id": 1,
+      "name": "credential_binding_failure",
+      "rollback_needed": false,
+      "finance_approval_needed": false,
+      "auto_fix_gl": false
+    },
+    {
+      "id": 2,
+      "name": "browser_session_timeout",
+      "rollback_needed": false,
+      "finance_approval_needed": false
+    },
+    {
+      "id": 3,
+      "name": "golden_value_mismatch",
+      "rollback_maybe": true,
+      "finance_approval_needed": true,
+      "severity": "P1"
+    },
+    {
+      "id": 4,
+      "name": "loader_flag_missing",
+      "finance_approval_needed": true
+    },
+    {
+      "id": 5,
+      "name": "cross_company_leakage",
+      "finance_approval_needed": true
+    },
+    {
+      "id": 6,
+      "name": "console_rpc_errors",
+      "finance_approval_if_totals_affected": true
+    },
+    {
+      "id": 7,
+      "name": "build_test_failure",
+      "production_impact": "only_if_deployed"
+    }
+  ],
+  "global_prohibitions": [
+    "no_auto_fix_gl",
+    "no_migrations_without_approval",
+    "no_flag_sql_without_approval",
+    "no_r7_r8",
+    "preserve_evidence"
+  ]
+}

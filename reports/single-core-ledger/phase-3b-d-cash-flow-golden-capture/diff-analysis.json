@@ -1,0 +1,57 @@
+{
+  "phase": "3B-D",
+  "capturedAt": "2026-06-29T12:16:53.046Z",
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "report": "Cash Flow",
+      "zeroDiff": false,
+      "legacySummary": "Cash In 104176812; Cash Out 67042426; Net 37134386; Closing 37134386",
+      "previewSummary": "Cash In 118313121; Cash Out 126854008; Net -8540887; Closing -8540887",
+      "maxDelta": 59811582,
+      "rowCountDelta": -82,
+      "ruleConfirmations": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.",
+        "NEEDS_RULE_CONFIRMATION — legacy vs unified preview totals differ; finance must confirm mapping before loader swap.",
+        "Reversal/void visibility may affect row-level compare — review with finance."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": true
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Cash Flow",
+      "zeroDiff": false,
+      "legacySummary": "Cash In 1836350; Cash Out 917780; Net 918570; Closing 918570",
+      "previewSummary": "Cash In 1916350; Cash Out 942780; Net 973570; Closing 973570",
+      "maxDelta": 80000,
+      "rowCountDelta": -2,
+      "ruleConfirmations": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.",
+        "NEEDS_RULE_CONFIRMATION — legacy vs unified preview totals differ; finance must confirm mapping before loader swap.",
+        "Reversal/void visibility may affect row-level compare — review with finance."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": true
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Cash Flow",
+      "zeroDiff": true,
+      "legacySummary": "Cash In 85000; Cash Out 34500; Net 50500; Closing 50500",
+      "previewSummary": "Cash In 85000; Cash Out 34500; Net 50500; Closing 50500",
+      "maxDelta": 0,
+      "rowCountDelta": 0,
+      "ruleConfirmations": [
+        "PREVIEW_ONLY — not finance-approved golden totals.",
+        "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap.",
+        "Reversal/void visibility may affect row-level compare — review with finance."
+      ],
+      "financeCanReviewNow": true,
+      "codeChangeNeededBeforeApproval": false
+    }
+  ],
+  "allZeroDiff": false
+}

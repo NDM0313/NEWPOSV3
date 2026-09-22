@@ -1,0 +1,81 @@
+{
+  "run": "PHASE_3_REMAINING_OPTIONAL_SCREEN_AUDIT",
+  "generatedAt": "2026-06-29",
+  "implementationApproved": false,
+  "phases": [
+    {
+      "id": "3A",
+      "name": "Balance Sheet + P&L parity design / preview-only",
+      "objective": "Unified TB-derived preview compare; no main loader swap",
+      "filesLikelyTouched": [
+        "src/app/lib/balanceSheetUnifiedPreview*.ts",
+        "src/app/lib/profitLossUnifiedPreview*.ts",
+        "src/app/components/reports/BalanceSheetPage.tsx",
+        "src/app/components/reports/ProfitLossPage.tsx"
+      ],
+      "testsRequired": ["unit_mapper_compare", "test:unified-ledger unchanged goldens"],
+      "rollback": "Remove preview UI; loaders OFF",
+      "approvalRequired": true,
+      "deployRequired": false,
+      "stopConditions": ["preview_compare_fails", "finance_rejects_mapping"]
+    },
+    {
+      "id": "3B",
+      "name": "Cash Flow parity audit and UI contract",
+      "objective": "Preview compare unified cash/bank vs legacy roznamcha",
+      "filesLikelyTouched": [
+        "src/app/services/cashFlowReportService.ts",
+        "src/app/lib/cashFlowReportLogic.ts",
+        "src/app/components/reports/CashFlowReportPage.tsx"
+      ],
+      "testsRequired": ["cashFlowReportLogic.test.ts"],
+      "rollback": "Legacy main unchanged",
+      "approvalRequired": true,
+      "deployRequired": false,
+      "stopConditions": ["blocked_r7_dependency"]
+    },
+    {
+      "id": "3C",
+      "name": "Mobile report/export/print parity audit",
+      "objective": "Mobile vs web parity docs and tests",
+      "filesLikelyTouched": [
+        "erp-mobile-app/src/components/accounts/reports/*",
+        "erp-mobile-app/src/api/roznamcha.ts"
+      ],
+      "testsRequired": ["mobile_unit", "pdf_snapshot_optional"],
+      "rollback": "Docs/tests only",
+      "approvalRequired": true,
+      "deployRequired": false,
+      "stopConditions": ["requires_web_loader_first"]
+    },
+    {
+      "id": "3D",
+      "name": "Tests and golden capture pack",
+      "objective": "Finance-approved BS/P&L/CF goldens",
+      "filesLikelyTouched": ["reports/single-core-ledger/phase-3-golden-capture/*"],
+      "testsRequired": ["golden_fixture_tests_after_finance_signoff"],
+      "rollback": "Do not enable loaders",
+      "approvalRequired": true,
+      "approvalType": "finance",
+      "deployRequired": false,
+      "stopConditions": ["NEEDS_GOLDEN_CAPTURE"]
+    },
+    {
+      "id": "3E",
+      "name": "Optional runtime implementation",
+      "objective": "Loader flags and main path swap per runbook",
+      "filesLikelyTouched": [
+        "src/app/lib/unifiedLedgerFlagKeys.ts",
+        "src/app/services/accountingReportsService.ts"
+      ],
+      "testsRequired": ["test:unified-ledger", "three-company-monitoring"],
+      "rollback": "L1 loader flag OFF",
+      "approvalRequired": true,
+      "approvalType": "finance_and_ops",
+      "deployRequired": true,
+      "stopConditions": ["golden_fail", "r8_next_company_scope"]
+    }
+  ],
+  "safeNextPhase": "3A",
+  "safeNextPhaseCondition": "operator_approval_only"
+}

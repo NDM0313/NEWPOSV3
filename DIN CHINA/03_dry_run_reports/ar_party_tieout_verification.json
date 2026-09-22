@@ -1,0 +1,38 @@
+{
+  "verifiedAt": "2026-06-16T09:10:00.755Z",
+  "results": [
+    {
+      "name": "AZIZ   JAMURAD",
+      "arCode": "AR-A987EE",
+      "trialBalancePartyNet": 0,
+      "rpcPartyGl": 0,
+      "customersReportDueGl": 0,
+      "statementDocClosing": 0,
+      "tbMatchesRpc": true,
+      "tbMatchesCsReport": true,
+      "tbMatchesStatement": true
+    },
+    {
+      "name": "SHAHURKH   KHAN",
+      "arCode": "AR-2BA4BA",
+      "trialBalancePartyNet": 0,
+      "rpcPartyGl": 0,
+      "customersReportDueGl": 0,
+      "statementDocClosing": 0,
+      "tbMatchesRpc": true,
+      "tbMatchesCsReport": true,
+      "tbMatchesStatement": true
+    },
+    {
+      "name": "LAL   MOHAMMAD",
+      "arCode": "AR-F8FD5E",
+      "trialBalancePartyNet": 64424,
+      "rpcPartyGl": 64424,
+      "customersReportDueGl": 64424,
+      "statementDocClosing": 64424,
+      "tbMatchesRpc": true,
+      "tbMatchesCsReport": true,
+      "tbMatchesStatement": true
+    }
+  ]
+}

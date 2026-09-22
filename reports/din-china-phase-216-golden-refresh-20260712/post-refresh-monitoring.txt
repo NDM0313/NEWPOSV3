@@ -1,0 +1,18 @@
+
+> @figma/my-make-file@0.0.1 monitor:three-company-unified-ledger
+> node scripts/single-core-ledger/run-three-company-operational-monitoring.mjs
+
+=== Three-company operational monitoring (read-only) ===
+[PASS] read-only loader guard
+
+--- Running profile: din-china (din@yahoo.com) — email-source=profile-default password-source=per-company ---
+[PASS] din-china Phase 2.16
+
+--- Running profile: din-bridal (ndm313@yahoo.com) — email-source=built-in-default password-source=per-company ---
+[PASS] din-bridal Phase 2.16
+
+--- Running profile: din-couture (zhd@dincouture.pk) — email-source=built-in-default password-source=per-company ---
+[PASS] din-couture Phase 2.16
+
+Wrote reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T20-31-19-621Z.md
+Three-company monitoring: PASS

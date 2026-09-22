@@ -90,6 +90,7 @@ export async function rankPartiesByOperationalVsGl(
   const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
     p_company_id: companyId,
     p_branch_id: b,
+    p_as_of_date: null,
   });
   const glRows = !glRpc.error && Array.isArray(glRpc.data) ? (glRpc.data as any[]) : [];
 

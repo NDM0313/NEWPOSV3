@@ -1,0 +1,27 @@
+{
+  "commit": "ae6c69d0",
+  "flow": {
+    "signup": "signUpForNewBusiness",
+    "otpGate": "needsEmailVerification -> wizard phase otp",
+    "verify": "verifySignupEmailOtp signup then email type",
+    "sessionPoll": "ensureAuthenticatedSession max 8000ms",
+    "businessCreation": "completeBusinessCreationAfterAuth -> create_business_transaction RPC"
+  },
+  "security": {
+    "serviceRoleInFrontend": false,
+    "credentialsCommitted": false,
+    "reservedEmailBlocked": true,
+    "duplicateBusinessGuard": "assertUserHasNoLinkedBusiness",
+    "authBypass": false
+  },
+  "ux": {
+    "loadingStates": true,
+    "resendCooldownSeconds": 60,
+    "otpMinLength": 4
+  },
+  "gaps": [
+    "Browser QA pending",
+    "No automated OTP wizard test"
+  ],
+  "verdict": "CODE_REVIEW_PASS"
+}

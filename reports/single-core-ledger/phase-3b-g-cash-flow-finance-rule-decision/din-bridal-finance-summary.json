@@ -1,0 +1,34 @@
+{
+  "run": "PHASE_3B_G_DIN_BRIDAL_FINANCE_SUMMARY",
+  "company": "DIN BRIDAL",
+  "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "approvalStatus": "CANDIDATE_ONLY_NOT_FINANCE_APPROVED",
+  "financeStatus": "NEEDS_RULE_CONFIRMATION",
+  "period": { "from": "2000-01-01", "to": "2026-06-29" },
+  "totals": {
+    "legacyClosing": 918570,
+    "previewClosing": 973570,
+    "closingDelta": -55000,
+    "legacyCashIn": 1836350,
+    "previewCashIn": 1916350,
+    "legacyCashOut": 917780,
+    "previewCashOut": 942780
+  },
+  "matchCounts": {
+    "exact": 2,
+    "strong": 48,
+    "weak": 0,
+    "legacyOnly": 1,
+    "previewOnly": 3
+  },
+  "openingBalanceIssue": {
+    "legacyOnlyRows": 1,
+    "legacyOnlyNetImpact": 25000,
+    "previewOnlyRows": 3,
+    "previewOnlyNetImpact": 80000,
+    "samplePeriod": "2026-06"
+  },
+  "financeQuestions": ["Q4", "Q7"],
+  "loaderSwapApproved": false,
+  "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/diff-reports/din-bridal/sample-row-diff-report.json"
+}

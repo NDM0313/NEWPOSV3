@@ -1,0 +1,41 @@
+{
+  "phase": "3B-D",
+  "capturedAt": "2026-06-29T12:16:53.046Z",
+  "productionUrl": "https://erp.dincouture.pk",
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "profileId": "din-china",
+      "cashFlowLoads": true,
+      "toggleVisible": true,
+      "toggleDefaultOff": true,
+      "legacyLoadsBeforePreview": true,
+      "previewLabelsPresent": true,
+      "previewPanelLoads": true,
+      "overall": "PASS"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "profileId": "din-bridal",
+      "cashFlowLoads": true,
+      "toggleVisible": true,
+      "toggleDefaultOff": true,
+      "legacyLoadsBeforePreview": true,
+      "previewLabelsPresent": true,
+      "previewPanelLoads": true,
+      "overall": "PASS"
+    },
+    {
+      "company": "DIN COUTURE",
+      "profileId": "din-couture",
+      "cashFlowLoads": true,
+      "toggleVisible": true,
+      "toggleDefaultOff": true,
+      "legacyLoadsBeforePreview": true,
+      "previewLabelsPresent": true,
+      "previewPanelLoads": true,
+      "overall": "PASS"
+    }
+  ],
+  "overall": "PASS"
+}

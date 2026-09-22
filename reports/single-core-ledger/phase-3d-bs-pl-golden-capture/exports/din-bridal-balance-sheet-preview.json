@@ -1,0 +1,70 @@
+{
+  "phase": "3A",
+  "screen": "balance_sheet",
+  "asOfDate": "2026-07-01",
+  "branchLabel": "All branches",
+  "previewBasis": "official_gl",
+  "engineState": {
+    "mode": "preview",
+    "killSwitchActive": false,
+    "companyEngineEnabled": true,
+    "screenFlagEnabled": true,
+    "pilotEnabled": true,
+    "localOverride": null,
+    "rpcAllowed": true
+  },
+  "diff": {
+    "legacyTotalAssets": 13521792,
+    "previewTotalAssets": 13521792,
+    "assetsDelta": 0,
+    "legacyTotalLiabilities": -547191,
+    "previewTotalLiabilities": -547191,
+    "liabilitiesDelta": 0,
+    "legacyTotalEquity": 14068983,
+    "previewTotalEquity": 14068983,
+    "equityDelta": 0,
+    "legacyLiabilitiesAndEquity": 13521792,
+    "previewLiabilitiesAndEquity": 13521792,
+    "liabilitiesAndEquityDelta": 0,
+    "legacyDifference": 0,
+    "previewDifference": 0,
+    "differenceDelta": 0,
+    "legacyTbImbalance": 0,
+    "previewTbImbalance": 0,
+    "pass": true,
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true
+  },
+  "preview": {
+    "previewOnly": true,
+    "needsFinanceGoldenApproval": true,
+    "asOfDate": "2026-07-01",
+    "totalAssets": 13521792,
+    "totalLiabilities": -547191,
+    "totalEquity": 14068983,
+    "totalLiabilitiesAndEquity": 13521792,
+    "difference": 0,
+    "tbImbalance": 0,
+    "netIncome": 139992,
+    "assetLineCount": 28,
+    "liabilityLineCount": 6,
+    "equityLineCount": 4,
+    "accountingRuleNotes": [
+      "Unified main loader active."
+    ]
+  },
+  "tbMeta": {
+    "engine": "unified_shadow",
+    "basis": "official_gl",
+    "featureFlagEnabled": true,
+    "shadowForce": false,
+    "queryDurationMs": 0,
+    "rowCount": 0,
+    "periodOpeningBalance": 0
+  },
+  "accountingRuleNotes": [
+    "Unified main loader active."
+  ],
+  "exportedAt": "2026-07-01T08:48:14.588Z",
+  "note": "PREVIEW_ONLY — legacy Balance Sheet table remains authoritative. NEEDS_FINANCE_GOLDEN_APPROVAL."
+}

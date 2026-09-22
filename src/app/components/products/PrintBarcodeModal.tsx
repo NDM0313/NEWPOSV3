@@ -34,13 +34,13 @@ export const PrintBarcodeModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px] bg-gray-900 text-white border-gray-800 p-0 gap-0 overflow-hidden shadow-2xl">
+      <DialogContent className="sm:max-w-[600px] bg-card text-foreground border-border p-0 gap-0 overflow-hidden shadow-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>Print Labels for: {productName}</DialogTitle>
         </DialogHeader>
         {/* Header */}
-        <div className="p-5 border-b border-gray-800 bg-gray-950 flex items-center justify-between">
-          <div className="text-lg font-bold text-white flex items-center gap-2">
+        <div className="p-5 border-b border-border bg-input-background flex items-center justify-between">
+          <div className="text-lg font-bold text-foreground flex items-center gap-2">
             <BarcodeIcon className="text-blue-500" size={20} />
             Print Labels for: <span className="text-blue-400">{productName}</span>
           </div>
@@ -52,12 +52,12 @@ export const PrintBarcodeModal = ({
           {/* Settings Column */}
           <div className="flex-1 space-y-6">
             <div className="space-y-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Label Size</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Label Size</Label>
               <Select value={labelSize} onValueChange={setLabelSize}>
-                <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                <SelectTrigger className="bg-muted border-border text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                <SelectContent className="bg-muted border-border text-foreground">
                   <SelectItem value="thermal">38x25mm (Thermal)</SelectItem>
                   <SelectItem value="a4">A4 Sheet (30 Labels)</SelectItem>
                 </SelectContent>
@@ -65,17 +65,17 @@ export const PrintBarcodeModal = ({
             </div>
 
             <div className="space-y-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Quantity</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Quantity</Label>
               <Input 
                 type="number" 
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="bg-gray-800 border-gray-700 text-white"
+                className="bg-muted border-border text-foreground"
               />
             </div>
 
             <div className="space-y-3">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Info to Print</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Info to Print</Label>
               <div className="space-y-3 pt-1">
                 <div className="flex items-center space-x-2">
                   <Checkbox 
@@ -84,7 +84,7 @@ export const PrintBarcodeModal = ({
                     onCheckedChange={(checked) => setShowPrice(checked as boolean)}
                     className="border-gray-500 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                   />
-                  <Label htmlFor="showPrice" className="text-sm font-medium leading-none text-gray-300 cursor-pointer">Show Price</Label>
+                  <Label htmlFor="showPrice" className="text-sm font-medium leading-none text-muted-foreground cursor-pointer">Show Price</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox 
@@ -93,7 +93,7 @@ export const PrintBarcodeModal = ({
                     onCheckedChange={(checked) => setShowName(checked as boolean)}
                     className="border-gray-500 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                   />
-                  <Label htmlFor="showName" className="text-sm font-medium leading-none text-gray-300 cursor-pointer">Show Product Name</Label>
+                  <Label htmlFor="showName" className="text-sm font-medium leading-none text-muted-foreground cursor-pointer">Show Product Name</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox 
@@ -102,7 +102,7 @@ export const PrintBarcodeModal = ({
                     onCheckedChange={(checked) => setShowBusinessName(checked as boolean)}
                     className="border-gray-500 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                   />
-                  <Label htmlFor="showBusiness" className="text-sm font-medium leading-none text-gray-300 cursor-pointer">Show Business Name</Label>
+                  <Label htmlFor="showBusiness" className="text-sm font-medium leading-none text-muted-foreground cursor-pointer">Show Business Name</Label>
                 </div>
               </div>
             </div>
@@ -110,13 +110,13 @@ export const PrintBarcodeModal = ({
 
           {/* Preview Column */}
           <div className="flex-1">
-             <Label className="text-xs text-gray-500 uppercase tracking-wider mb-3 block">Preview</Label>
+             <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-3 block">Preview</Label>
              
              {/* Sticker Container */}
-             <div className="bg-gray-800/50 rounded-xl border border-dashed border-gray-700 p-8 flex items-center justify-center h-full min-h-[250px]">
+             <div className="bg-muted/50 rounded-xl border border-dashed border-border p-8 flex items-center justify-center h-full min-h-[250px]">
                 {/* The Sticker Itself */}
                 <div className="bg-white text-black p-3 rounded-sm shadow-xl w-[200px] flex flex-col items-center text-center space-y-1 relative">
-                   {showBusinessName && <p className="text-[8px] font-bold uppercase tracking-wider text-gray-600">Fashion Store</p>}
+                   {showBusinessName && <p className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">Fashion Store</p>}
                    {showName && <p className="text-xs font-bold leading-tight line-clamp-2">{productName}</p>}
                    
                    {/* Fake Barcode Lines */}
@@ -130,7 +130,7 @@ export const PrintBarcodeModal = ({
                    {showPrice && <p className="text-sm font-bold mt-1">${price.toLocaleString()}</p>}
                 </div>
              </div>
-             <p className="text-center text-xs text-gray-500 mt-2">
+             <p className="text-center text-xs text-muted-foreground mt-2">
                {labelSize === 'thermal' ? '38mm x 25mm Preview' : 'A4 Grid Item Preview'}
              </p>
           </div>
@@ -138,8 +138,8 @@ export const PrintBarcodeModal = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-800 bg-gray-950 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white">
+        <div className="p-5 border-t border-border bg-input-background flex justify-end gap-3">
+          <Button variant="ghost" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             Cancel
           </Button>
           <Button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-600/20">

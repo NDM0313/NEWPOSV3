@@ -1,0 +1,10 @@
+{
+  "classification": "READ_ONLY_RECHECK_OK",
+  "manager_account_already_exists": false,
+  "din_bridal_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "recommended_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+  "recommended_branch_name": "Main Branch",
+  "rbac_role_name": "manager",
+  "migrations_required": false,
+  "creation_tool": "create-erp-user edge function or service-role auth.admin"
+}

@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-06-30T08:25:00.000Z",
+  "overall": "PARTIAL_PASS_KNOWN_DRIFT",
+  "exit_code": 1,
+  "profiles": {
+    "din-china": {
+      "phase_result": "FAIL",
+      "mr_jalil_checks": "PASS at 216299",
+      "account_statement_mr_jalil": "PASS closing=216299",
+      "party_ledger_mr_jalil": "PASS closing=216299",
+      "ledger_v2_mr_jalil": "PASS closing=216299",
+      "trial_balance_golden": {
+        "result": "FAIL",
+        "actual": 407957272.02,
+        "expected_config": 407957271.02,
+        "classification": "APPROVED_TEST_MUTATION_SIDE_EFFECT",
+        "note": "PKR 1 JE-0003 increases TB debit/credit total by 1; TB golden not updated per operator scope (MR JALIL only)"
+      },
+      "admin_compare_pilot_batch": {
+        "result": "FAIL",
+        "notes": "compared=9 pass=0 fail=9",
+        "classification": "UNDEPLOYED_FRONTEND_GOLDEN_CONSTANT",
+        "note": "Production bundle still has MR_JALIL_EXPECTED_BALANCE=216300 until separate deploy approved"
+      }
+    },
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "approved_je_recorded": "JE-0003",
+  "evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T08-11-15-806Z.json"
+}

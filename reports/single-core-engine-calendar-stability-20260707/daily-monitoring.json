@@ -1,0 +1,19 @@
+{
+  "classification": "CALENDAR_STABILITY_DAY_PASS",
+  "runLocalDateTime": "2026-07-05 16:28:13 +05:00",
+  "runLocalStart": "2026-07-05 16:15:36 +05:00",
+  "stabilityWindowCalendarDay": 7,
+  "calendarDaysElapsedSince20260701": 6,
+  "monitoringArtifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-05T11-15-38-400Z.json",
+  "loaderGuard": "PASS",
+  "roznamchaReached": true,
+  "dinChina": "PASS",
+  "adminCompare": "9/9_PASS",
+  "dinBridal": "PASS",
+  "dinCouture": "PASS",
+  "overall": "PASS",
+  "migrationsRun": false,
+  "glMutations": false,
+  "featureFlagsUnchanged": true,
+  "productionMutation": false
+}

@@ -1,0 +1,16 @@
+JE-0323 diagnosis (production read-only)
+=======================================
+
+Query date: 2026-07-20
+
+JE-0323 (correction_reversal, active)
+  payment_id: 88bc71bb-4059-407f-985f-20ac4fe50ffc
+  AR-ED1ABD (Receivable — HASSAN MARDAN): Dr 200,000
+  DC0108 (FHD MZ): Cr 200,000
+
+RCV-0326 (manual_receipt, voided)
+  payment_id: 88bc71bb-4059-407f-985f-20ac4fe50ffc
+  AR-ED1ABD: Cr 200,000
+  DC0108: Dr 200,000
+
+Conclusion: twin pair present; nets to zero on party AR sub-account.

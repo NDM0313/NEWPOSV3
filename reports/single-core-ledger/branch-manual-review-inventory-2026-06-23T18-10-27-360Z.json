@@ -1,0 +1,453 @@
+{
+  "run_at": "2026-06-23T18:10:27.360Z",
+  "clone_db": "ledger_stage_20260623_prodcheck",
+  "staging_guard": "UNIFIED_LEDGER_STAGING=1",
+  "diagnostics_branch_attribution_risk_total": 8,
+  "inventory_row_count": 8,
+  "summary": {
+    "total_rows": 8,
+    "by_company": [
+      {
+        "company_name": "DIN BRIDAL",
+        "total": 4,
+        "safe_recommendation": 2,
+        "finance_required": 2,
+        "exception_candidate": 0
+      },
+      {
+        "company_name": "DIN CHINA",
+        "total": 4,
+        "safe_recommendation": 0,
+        "finance_required": 2,
+        "exception_candidate": 2
+      }
+    ],
+    "safe_recommendation": 2,
+    "finance_required": 4,
+    "exception_candidate": 2
+  },
+  "rows": [
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0a573122-9cd1-4192-a61c-b948fd14abe8",
+      "entry_no": "JE-0204",
+      "entry_date": "2026-06-06T00:00:00.000Z",
+      "reference_type": "manual_receipt",
+      "reference_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+      "current_branch_id": null,
+      "description": "Customer receipt from Walk-in Customer old. (N31 Rently RB \"",
+      "amount": 80000,
+      "created_by": "50512623-c99f-4829-a566-01239f1effb6",
+      "created_by_email": "ndm313@yahoo.com",
+      "linked_payment_id": "a8a6e09c-3b2e-4324-9ce5-c471a7090880",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "1061",
+          "name": "NDM FSY",
+          "account_id": "3a3f3597-9f68-4ae7-a01f-a7fd48bd49f0",
+          "branch_id": null,
+          "debit": 80000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "AR-CUS0001",
+          "name": "Receivable — Walk-in Customer",
+          "account_id": "4a63ab46-b392-4c25-87d5-b877cd330314",
+          "branch_id": null,
+          "credit": 80000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "",
+      "to_account": "1061 NDM FSY",
+      "candidate_branch_1": "",
+      "candidate_branch_1_reason": "",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": null,
+      "recommended_branch_label": "",
+      "confidence": "low",
+      "final_status": "finance_required",
+      "approval_required": true,
+      "possible_branch_candidates": [],
+      "evidence": [
+        "No deterministic branch from payment or account"
+      ]
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "33e20c3b-89c3-48a0-9d09-f545a4e02555",
+      "entry_no": "EXP-0006",
+      "entry_date": "2026-06-05T00:00:00.000Z",
+      "reference_type": "expense",
+      "reference_id": "d008d8d2-9cd2-4b6f-9289-aa5f04ca969d",
+      "current_branch_id": null,
+      "description": "bikye__cargo - Bikye N308 rently",
+      "amount": 1000,
+      "created_by": "50512623-c99f-4829-a566-01239f1effb6",
+      "created_by_email": "ndm313@yahoo.com",
+      "linked_payment_id": "92d9ab6a-282f-4a1d-837f-7ced3fed2791",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "6100",
+          "name": "General operating expenses",
+          "account_id": "be1bf6fe-aae4-4e73-a5d6-4288d0040759",
+          "branch_id": null,
+          "debit": 1000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "1002",
+          "name": "CASH G140",
+          "account_id": "1c6ee483-95a4-4b49-95fd-cb7505a866d4",
+          "branch_id": null,
+          "credit": 1000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "",
+      "to_account": "",
+      "candidate_branch_1": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "candidate_branch_1_reason": "expense_branch_id",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "recommended_branch_label": "Main Branch",
+      "confidence": "high",
+      "final_status": "safe_recommendation",
+      "approval_required": false,
+      "possible_branch_candidates": [
+        {
+          "branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+          "reason": "expense_branch_id"
+        }
+      ],
+      "evidence": [
+        "expense_branch_id"
+      ]
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "7a1cbbbe-bfd2-4c43-bca4-8863df99b0a4",
+      "entry_no": "EXP-0004",
+      "entry_date": "2026-06-04T00:00:00.000Z",
+      "reference_type": "expense",
+      "reference_id": "811654ed-8160-4b97-8414-b1ad9fd3fe58",
+      "current_branch_id": null,
+      "description": "fadi - FADI TAILOR",
+      "amount": 5000,
+      "created_by": "50512623-c99f-4829-a566-01239f1effb6",
+      "created_by_email": "ndm313@yahoo.com",
+      "linked_payment_id": "98878869-6a8c-40c1-98de-0b9bc7b9b7ce",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "6100",
+          "name": "General operating expenses",
+          "account_id": "be1bf6fe-aae4-4e73-a5d6-4288d0040759",
+          "branch_id": null,
+          "debit": 5000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "1002",
+          "name": "CASH G140",
+          "account_id": "1c6ee483-95a4-4b49-95fd-cb7505a866d4",
+          "branch_id": null,
+          "credit": 5000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "",
+      "to_account": "",
+      "candidate_branch_1": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "candidate_branch_1_reason": "expense_branch_id",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "recommended_branch_label": "Main Branch",
+      "confidence": "high",
+      "final_status": "safe_recommendation",
+      "approval_required": false,
+      "possible_branch_candidates": [
+        {
+          "branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+          "reason": "expense_branch_id"
+        }
+      ],
+      "evidence": [
+        "expense_branch_id"
+      ]
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "21401d60-1e89-422d-bcdb-59310556d600",
+      "entry_no": "JE-0170",
+      "entry_date": "2026-06-01T00:00:00.000Z",
+      "reference_type": "manual_receipt",
+      "reference_id": "4549c5de-0599-435a-a6ab-6e622f99be64",
+      "current_branch_id": null,
+      "description": "Customer receipt from Walk-in Customer. N32",
+      "amount": 40000,
+      "created_by": "50512623-c99f-4829-a566-01239f1effb6",
+      "created_by_email": "ndm313@yahoo.com",
+      "linked_payment_id": "695973ff-862f-4c5a-a1d3-29092c50dbef",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "1061",
+          "name": "NDM FSY",
+          "account_id": "3a3f3597-9f68-4ae7-a01f-a7fd48bd49f0",
+          "branch_id": null,
+          "debit": 40000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "AR-CUS0001",
+          "name": "Receivable — Walk-in Customer",
+          "account_id": "4a63ab46-b392-4c25-87d5-b877cd330314",
+          "branch_id": null,
+          "credit": 40000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "",
+      "to_account": "1061 NDM FSY",
+      "candidate_branch_1": "",
+      "candidate_branch_1_reason": "",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": null,
+      "recommended_branch_label": "",
+      "confidence": "low",
+      "final_status": "finance_required",
+      "approval_required": true,
+      "possible_branch_candidates": [],
+      "evidence": [
+        "No deterministic branch from payment or account"
+      ]
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "1dd932ff-8798-46b4-8e47-b55832611515",
+      "entry_no": "JE-0309",
+      "entry_date": "2026-04-29T00:00:00.000Z",
+      "reference_type": "manual_receipt",
+      "reference_id": "bd580fba-ef2d-4edc-8e73-c19d783812cc",
+      "current_branch_id": null,
+      "description": "Customer receipt from MR YOUNS CHARSADA. [Edited 23/06/2026, 6:39 pm: Rs 58,500 → Rs 58,000]",
+      "amount": 58000,
+      "created_by": "5257707c-710e-4b94-9767-d53e3aa4e3e9",
+      "created_by_email": "din@yahoo.com",
+      "linked_payment_id": "d59669d8-16ec-4c35-b49a-2fa15956ff47",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "DC0108",
+          "name": "FHD MZ",
+          "account_id": "767952ce-e3ec-472f-8e8c-0f8001e4e5c7",
+          "branch_id": null,
+          "debit": 58000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "AR-BD580F",
+          "name": "Receivable — MR YOUNS CHARSADA",
+          "account_id": "a09178f9-9274-49eb-a0e6-95efafa9b13c",
+          "branch_id": null,
+          "credit": 58000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "",
+      "to_account": "DC0108 FHD MZ",
+      "candidate_branch_1": "",
+      "candidate_branch_1_reason": "",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": null,
+      "recommended_branch_label": "",
+      "confidence": "low",
+      "final_status": "finance_required",
+      "approval_required": true,
+      "possible_branch_candidates": [],
+      "evidence": [
+        "No deterministic branch from payment or account"
+      ]
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "653e66d2-6c38-41fc-b396-306488ae52e7",
+      "entry_no": "JE-0287",
+      "entry_date": "2026-04-24T00:00:00.000Z",
+      "reference_type": "manual_receipt",
+      "reference_id": "31375187-7c08-4a8e-8819-f65bde2224f7",
+      "current_branch_id": null,
+      "description": "Customer receipt from DIN COUTURE.",
+      "amount": 13000000,
+      "created_by": "5257707c-710e-4b94-9767-d53e3aa4e3e9",
+      "created_by_email": "din@yahoo.com",
+      "linked_payment_id": "7ea5a8be-7916-46f2-924a-2ed2c2b6923c",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "DC0159",
+          "name": "DIN NDM MZ",
+          "account_id": "a903c6d2-6ba8-4e40-849e-39e6b7394901",
+          "branch_id": null,
+          "debit": 13000000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "AR-313751",
+          "name": "Receivable — DIN COUTURE",
+          "account_id": "268350c5-6af1-4fde-9f8d-b354d04715e6",
+          "branch_id": null,
+          "credit": 13000000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "",
+      "to_account": "DC0159 DIN NDM MZ",
+      "candidate_branch_1": "",
+      "candidate_branch_1_reason": "",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": null,
+      "recommended_branch_label": "",
+      "confidence": "low",
+      "final_status": "finance_required",
+      "approval_required": true,
+      "possible_branch_candidates": [],
+      "evidence": [
+        "No deterministic branch from payment or account"
+      ]
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "a1e0faf5-30ca-499b-9ba2-cc1bd8e25a67",
+      "entry_no": "FT-000287",
+      "entry_date": "2025-09-30T00:00:00.000Z",
+      "reference_type": "transfer",
+      "reference_id": null,
+      "current_branch_id": null,
+      "description": "Owner Capital → MCB last Year Finical",
+      "amount": 1500000,
+      "created_by": "5257707c-710e-4b94-9767-d53e3aa4e3e9",
+      "created_by_email": "din@yahoo.com",
+      "linked_payment_id": "dd4c671d-5474-4d10-ae71-bf5c08de82c4",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "1061",
+          "name": "MCB",
+          "account_id": "cbd663c5-cfcf-4c1d-84b8-b4a4204c3f0e",
+          "branch_id": null,
+          "debit": 1500000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "3000",
+          "name": "Owner Capital",
+          "account_id": "86e6c00b-9179-4fcb-9077-4dbececcda1b",
+          "branch_id": null,
+          "credit": 1500000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "3000 Owner Capital",
+      "to_account": "1061 MCB",
+      "candidate_branch_1": "",
+      "candidate_branch_1_reason": "",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": null,
+      "recommended_branch_label": "",
+      "confidence": "low",
+      "final_status": "exception_candidate",
+      "approval_required": true,
+      "possible_branch_candidates": [],
+      "evidence": [
+        "Both liquidity accounts have NULL branch_id (company-wide COA)",
+        "Description: Owner Capital → MCB last Year Finical",
+        "Company-level bank transfer may intentionally have NULL JE branch_id"
+      ]
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "a1cc92d7-443f-465d-9473-9d6b526fdb99",
+      "entry_no": "FT-000309",
+      "entry_date": "2025-02-11T00:00:00.000Z",
+      "reference_type": "transfer",
+      "reference_id": null,
+      "current_branch_id": null,
+      "description": "Transfer MCB → WALI DIN T/T — WALI TT",
+      "amount": 500000,
+      "created_by": "5257707c-710e-4b94-9767-d53e3aa4e3e9",
+      "created_by_email": "din@yahoo.com",
+      "linked_payment_id": "4c413da5-f723-4f3a-a1db-1f7ca4137cf9",
+      "payment_branch_id": null,
+      "debit_accounts": [
+        {
+          "code": "1202",
+          "name": "WALI T/T",
+          "account_id": "13af87d4-cea5-4085-8cd5-6ea08dc12ada",
+          "branch_id": null,
+          "debit": 500000
+        }
+      ],
+      "credit_accounts": [
+        {
+          "code": "1061",
+          "name": "MCB",
+          "account_id": "cbd663c5-cfcf-4c1d-84b8-b4a4204c3f0e",
+          "branch_id": null,
+          "credit": 500000
+        }
+      ],
+      "issue_type": "branch_attribution_risk",
+      "fix_class": "branch_attribution_review",
+      "from_account": "1061 MCB",
+      "to_account": "1202 WALI T/T",
+      "candidate_branch_1": "",
+      "candidate_branch_1_reason": "",
+      "candidate_branch_2": "",
+      "candidate_branch_2_reason": "",
+      "recommended_branch_id": null,
+      "recommended_branch_label": "",
+      "confidence": "low",
+      "final_status": "exception_candidate",
+      "approval_required": true,
+      "possible_branch_candidates": [],
+      "evidence": [
+        "Both liquidity accounts have NULL branch_id (company-wide COA)",
+        "Description: Transfer MCB → WALI DIN T/T — WALI TT",
+        "Company-level bank transfer may intentionally have NULL JE branch_id"
+      ]
+    }
+  ]
+}

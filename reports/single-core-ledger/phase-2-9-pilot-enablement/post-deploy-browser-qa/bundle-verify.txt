@@ -1,0 +1,14 @@
+Phase 2.9A preview bundle verify @ 5b520cef
+Date: 2026-06-25T15:05:46Z
+Container: erp-frontend-preview
+Port: 3003 (tunnel local 3002)
+
+HTTP/1.1 200 OK
+
+FOUND: Unified engine preview
+FOUND: Load MR JALIL
+FOUND: phase2-compare-ledger-v2
+FOUND: unified-ledger-tieout
+
+Flags: 0 rows (unified_ledger% OFF for DIN CHINA)
+Production erp-frontend:3001 UNCHANGED

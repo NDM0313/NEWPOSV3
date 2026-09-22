@@ -493,6 +493,20 @@ export function groupProductRowsByName(rows: ParsedProductRow[]): Map<string, Pa
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
+
+  // Simple products (no variation_name): same name + different SKU = separate products.
+  for (const [nameKey, groupRows] of Array.from(groups.entries())) {
+    const hasVariants = groupRows.some((r) => isMatrixVariantRow(r));
+    if (hasVariants) continue;
+    const parentRows = groupRows.filter((r) => !isMatrixVariantRow(r));
+    if (parentRows.length <= 1) continue;
+    groups.delete(nameKey);
+    for (const row of parentRows) {
+      const skuPart = row.sku?.trim().toLowerCase() || 'auto';
+      groups.set(`${nameKey}|${skuPart}`, [row]);
+    }
+  }
+
   return groups;
 }
 

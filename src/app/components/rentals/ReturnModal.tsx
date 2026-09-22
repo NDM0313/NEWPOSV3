@@ -181,15 +181,9 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange} modal={!unifiedPaymentOpen}>
         <DialogContent
-          className="bg-gray-900 border-gray-700 max-w-[950px] p-0 overflow-hidden sm:max-w-[min(calc(100vw-2rem),950px)]"
-          onPointerDownOutside={(e) => {
-            if (unifiedPaymentOpen || blockParentDismissRef.current) e.preventDefault();
-          }}
-          onInteractOutside={(e) => {
-            if (unifiedPaymentOpen || blockParentDismissRef.current) e.preventDefault();
-          }}
+          className="bg-card border-border max-w-[950px] p-0 overflow-hidden sm:max-w-[min(calc(100vw-2rem),950px)]"
           onEscapeKeyDown={(e) => {
             if (unifiedPaymentOpen) {
               e.preventDefault();
@@ -197,45 +191,45 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
             }
           }}
         >
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-800">
-            <DialogTitle className="text-white text-xl">Confirm Return</DialogTitle>
-            <DialogDescription className="text-gray-400">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <DialogTitle className="text-foreground text-xl">Confirm Return</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               Process return for rental {rental?.rentalNo}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex min-h-[450px]">
             <div className="flex-[6] overflow-y-auto p-6 space-y-6">
-              <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
-                <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Rental Info</h4>
+              <div className="rounded-lg border border-border p-4 bg-accent/30">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Rental Info</h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <span className="text-gray-500">Rental #</span>
+                    <span className="text-muted-foreground">Rental #</span>
                     <p className="font-mono text-pink-400">{rental?.rentalNo}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Customer</span>
-                    <p className="text-white">{rental?.customerName}</p>
+                    <span className="text-muted-foreground">Customer</span>
+                    <p className="text-foreground">{rental?.customerName}</p>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-gray-500">Product(s)</span>
-                    <p className="text-white font-medium">{rental?.items?.map((i) => i.productName).join(', ') || '—'}</p>
+                    <span className="text-muted-foreground">Product(s)</span>
+                    <p className="text-foreground font-medium">{rental?.items?.map((i) => i.productName).join(', ') || '—'}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Pickup Date</span>
-                    <p className="text-white">{rental?.startDate}</p>
+                    <span className="text-muted-foreground">Pickup Date</span>
+                    <p className="text-foreground">{rental?.startDate}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Expected Return</span>
-                    <p className="text-white">{rental?.expectedReturnDate}</p>
+                    <span className="text-muted-foreground">Expected Return</span>
+                    <p className="text-foreground">{rental?.expectedReturnDate}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
-                <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Item Inspection</h4>
+              <div className="rounded-lg border border-border p-4 bg-accent/30">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Item Inspection</h4>
                 <div className="space-y-3">
-                  <Label className="text-gray-400 text-sm">Condition</Label>
+                  <Label className="text-muted-foreground text-sm">Condition</Label>
                   <div className="flex flex-wrap gap-4">
                     {CONDITION_OPTIONS.map((opt) => (
                       <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
@@ -244,26 +238,26 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                           name="condition"
                           checked={conditionType === opt.value}
                           onChange={() => setConditionType(opt.value)}
-                          className="w-4 h-4 text-green-500 border-gray-600 bg-gray-800 focus:ring-green-500"
+                          className="w-4 h-4 text-green-500 border-gray-600 bg-muted focus:ring-green-500"
                         />
-                        <span className="text-sm text-gray-300">{opt.label}</span>
+                        <span className="text-sm text-muted-foreground">{opt.label}</span>
                       </label>
                     ))}
                   </div>
                   {hasPenalty && (
                     <>
                       <div>
-                        <Label className="text-gray-400 text-sm">Damage Notes *</Label>
+                        <Label className="text-muted-foreground text-sm">Damage Notes *</Label>
                         <textarea
                           value={damageNotes}
                           onChange={(e) => setDamageNotes(e.target.value)}
                           placeholder="Describe the damage..."
                           rows={2}
-                          className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-white text-sm resize-none"
+                          className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-foreground text-sm resize-none"
                         />
                       </div>
                       <div>
-                        <Label className="text-gray-400 text-sm">Penalty Amount *</Label>
+                        <Label className="text-muted-foreground text-sm">Penalty Amount *</Label>
                         <Input
                           type="number"
                           min="0"
@@ -271,7 +265,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                           value={penaltyAmount}
                           onChange={(e) => setPenaltyAmount(e.target.value)}
                           placeholder="0"
-                          className="mt-1 bg-gray-800 border-gray-700 text-white"
+                          className="mt-1 bg-muted border-border text-foreground"
                         />
                       </div>
                     </>
@@ -280,17 +274,17 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
               </div>
 
               {hasPenalty && penalty > 0 && (
-                <div className="rounded-xl border border-gray-700/80 overflow-hidden bg-gradient-to-b from-gray-800/40 to-gray-900/40">
-                  <div className="px-4 py-3 border-b border-gray-700/80 flex items-center gap-2 bg-gray-800/50">
+                <div className="rounded-xl border border-border/80 overflow-hidden bg-gradient-to-b from-gray-800/40 to-gray-900/40">
+                  <div className="px-4 py-3 border-b border-border/80 flex items-center gap-2 bg-muted/50">
                     <FileWarning className="w-4 h-4 text-amber-400 shrink-0" />
                     <div>
-                      <h4 className="text-sm font-semibold text-white">Penalty settlement</h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
+                      <h4 className="text-sm font-semibold text-foreground">Penalty settlement</h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
                         Use the same payment screen as elsewhere (bank / cash accounts). Or bill the customer on AR.
                       </p>
                     </div>
                     <div className="ml-auto text-right">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-500">Amount</p>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Amount</p>
                       <p className="text-lg font-bold text-red-400 tabular-nums">{formatCurrency(penalty)}</p>
                     </div>
                   </div>
@@ -311,7 +305,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                         'rounded-lg border p-4 text-left transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-pink-500/40',
                         !penaltyCreditMode
                           ? 'border-pink-500/60 bg-pink-500/10 ring-1 ring-pink-500/30'
-                          : 'border-gray-700 bg-gray-800/20 hover:border-gray-600 hover:bg-gray-800/40'
+                          : 'border-border bg-accent/20 hover:border-gray-600 hover:bg-muted/40'
                       )}
                     >
                       <div className="flex items-start gap-3">
@@ -322,24 +316,24 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                           )}
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-white flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground flex items-center gap-2">
                             <Landmark className="w-4 h-4 text-pink-400 shrink-0" />
                             Receive payment now
                           </p>
-                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                             Opens the unified payment dialog: choose account (bank, cash, wallet), amount, date and attachments.
                           </p>
                           {!penaltyCreditMode && (
                             <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
                               <Button
                                 type="button"
-                                className="w-full bg-pink-600 hover:bg-pink-500 text-white"
+                                className="w-full bg-pink-600 hover:bg-pink-500 text-foreground"
                                 onClick={() => setUnifiedPaymentOpen(true)}
                               >
                                 Open payment…
                               </Button>
                               {penaltyPaymentPreRecorded ? (
-                                <p className="flex items-center gap-1.5 text-xs text-green-400">
+                                <p className="flex items-center gap-1.5 text-xs text-[var(--erp-money-positive)]">
                                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                                   Payment recorded — you can confirm return.
                                 </p>
@@ -373,7 +367,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                         'rounded-lg border p-4 text-left transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30',
                         penaltyCreditMode
                           ? 'border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/20'
-                          : 'border-gray-700 bg-gray-800/20 hover:border-gray-600 hover:bg-gray-800/40'
+                          : 'border-border bg-accent/20 hover:border-gray-600 hover:bg-muted/40'
                       )}
                     >
                       <div className="flex items-start gap-3">
@@ -384,8 +378,8 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                           )}
                         />
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-white">Bill customer (credit)</p>
-                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                          <p className="text-sm font-medium text-foreground">Bill customer (credit)</p>
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                             Add {formatCurrency(penalty)} to customer outstanding — collect later from customer ledger or next payment.
                           </p>
                         </div>
@@ -396,19 +390,19 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
               )}
             </div>
 
-            <div className="flex-[4] border-l border-gray-800 p-6 bg-gray-900/50 flex flex-col space-y-6">
-              <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
-                <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Guarantee Document</h4>
+            <div className="flex-[4] border-l border-border p-6 bg-muted/40 flex flex-col space-y-6">
+              <div className="rounded-lg border border-border p-4 bg-accent/30">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Guarantee Document</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between gap-2">
-                    <span className="text-gray-500">Document Type</span>
-                    <span className="text-white text-right">{docTypeLabel}</span>
+                    <span className="text-muted-foreground">Document Type</span>
+                    <span className="text-foreground text-right">{docTypeLabel}</span>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <span className="text-gray-500">Document Number</span>
-                    <span className="text-white font-mono text-right">{documentInfo?.documentNumber || '—'}</span>
+                    <span className="text-muted-foreground">Document Number</span>
+                    <span className="text-foreground font-mono text-right">{documentInfo?.documentNumber || '—'}</span>
                   </div>
-                  <p className="text-xs text-green-400 mt-2">Document received at pickup: Yes</p>
+                  <p className="text-xs text-[var(--erp-money-positive)] mt-2">Document received at pickup: Yes</p>
                 </div>
                 <label className="mt-4 flex items-center gap-2 cursor-pointer">
                   <Checkbox
@@ -416,32 +410,32 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                     onCheckedChange={(v) => setDocumentReturned(!!v)}
                     className="border-gray-600 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                   />
-                  <span className="text-sm text-gray-300">Document returned to customer</span>
+                  <span className="text-sm text-muted-foreground">Document returned to customer</span>
                 </label>
               </div>
 
-              <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30 flex-1">
-                <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Final Summary</h4>
+              <div className="rounded-lg border border-border p-4 bg-accent/30 flex-1">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Final Summary</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between gap-2">
-                    <span className="text-gray-500">Total Rental Amount</span>
-                    <span className="text-white tabular-nums">{formatCurrency(rental?.totalAmount ?? 0)}</span>
+                    <span className="text-muted-foreground">Total Rental Amount</span>
+                    <span className="text-foreground tabular-nums">{formatCurrency(rental?.totalAmount ?? 0)}</span>
                   </div>
                   {penalty > 0 && (
                     <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">Penalty</span>
+                      <span className="text-muted-foreground">Penalty</span>
                       <span className="text-red-400 tabular-nums">{formatCurrency(penalty)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between pt-2 border-t border-gray-700 gap-2">
-                    <span className="text-gray-500">Rental + penalty (info)</span>
-                    <span className="text-white font-semibold tabular-nums">
+                  <div className="flex justify-between pt-2 border-t border-border gap-2">
+                    <span className="text-muted-foreground">Rental + penalty (info)</span>
+                    <span className="text-foreground font-semibold tabular-nums">
                       {formatCurrency((rental?.totalAmount ?? 0) + penalty)}
                     </span>
                   </div>
                 </div>
                 <div className="mt-4">
-                  <Label className="text-gray-400 text-sm">Return Date</Label>
+                  <Label className="text-muted-foreground text-sm">Return Date</Label>
                   <DatePicker
                     value={returnDate}
                     onChange={(v) => setReturnDate(v)}
@@ -450,17 +444,17 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                   />
                 </div>
                 <div className="mt-3">
-                  <Label className="text-gray-400 text-sm">Returned By</Label>
-                  <p className="mt-1 text-sm text-gray-300">{returnedBy}</p>
+                  <Label className="text-muted-foreground text-sm">Returned By</Label>
+                  <p className="mt-1 text-sm text-muted-foreground">{returnedBy}</p>
                 </div>
                 <div className="mt-3">
-                  <Label className="text-gray-400 text-sm">Notes</Label>
+                  <Label className="text-muted-foreground text-sm">Notes</Label>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Add any notes..."
                     rows={2}
-                    className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-white text-sm resize-none"
+                    className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-foreground text-sm resize-none"
                   />
                 </div>
               </div>
@@ -469,19 +463,19 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
 
           {error && <p className="px-6 text-sm text-red-400">{error}</p>}
 
-          <DialogFooter className="px-6 py-4 border-t border-gray-800">
+          <DialogFooter className="px-6 py-4 border-t border-border">
             <Button
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={saving}
-              className="bg-gray-800 text-white border-gray-700"
+              className="bg-muted text-foreground border-border"
             >
               Cancel
             </Button>
             <Button
               onClick={handleConfirm}
               disabled={saving || !canConfirm}
-              className="bg-green-600 hover:bg-green-500 text-white"
+              className="bg-green-600 hover:bg-green-500 text-foreground"
               aria-busy={saving}
             >
               {saving ? 'Saving…' : 'Confirm Return'}

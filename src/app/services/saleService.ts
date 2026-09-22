@@ -5,10 +5,13 @@ import { SALE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
 import {
   canPostAccountingForSaleStatus,
   canPostStockForSaleStatus,
+  canRecordSaleCustomerPayment,
   wasSalePostedForReversal,
 } from '@/app/lib/postingStatusGate';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { recordPaymentWithAccounting } from '@/app/services/recordPaymentWithAccountingRpc';
+import { readSaleBillRef } from '@/app/utils/saleBillRef';
+import { composeCustomerPaymentNotesForRpc } from '@/app/utils/saleNotesComposition';
 import { employeeService } from './employeeService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
@@ -23,6 +26,10 @@ import {
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
 import { filterSaleLinesForStockPosting } from '@/app/lib/saleStockLineEligibility';
+import { coerceUuidOrNull } from '@/app/utils/uuidCoerce';
+
+/** Max rows for Reports dashboard period fetch (no pagination). */
+const REPORT_SALES_MAX = 5000;
 
 /** Sale lines that require stock balance check at Final (excludes deferred bespoke/fabric). */
 async function itemsRequiringStockAtFinal(items: SaleItem[], companyId: string): Promise<SaleItem[]> {
@@ -168,29 +175,89 @@ export type CreateSaleOptions = {
   allowNegativeStock?: boolean;
 };
 
-/** Insert lines in order; resolve parent_line_index → bespoke_parent_item_id. */
+/** Insert lines in order; resolve parent_line_index → bespoke_parent_item_id.
+ * Batch insert + optional parent-id updates (avoids N sequential round-trips). */
 export async function insertSaleItemsOrdered(
   saleId: string,
   items: SaleItem[],
 ): Promise<void> {
-  const insertedIds: (string | null)[] = [];
-  for (const item of items) {
+  if (!items.length) return;
+
+  type Prepared = {
+    row: Record<string, unknown>;
+    parentIdx: number | null | undefined;
+  };
+
+  const prepared: Prepared[] = items.map((item) => {
     const row: Record<string, unknown> = { ...item, sale_id: saleId };
+    if ('variation_id' in row && row.variation_id != null) {
+      row.variation_id = coerceUuidOrNull(row.variation_id);
+    }
+    if ('product_id' in row && row.product_id != null) {
+      row.product_id = coerceUuidOrNull(row.product_id) ?? row.product_id;
+    }
     delete row.discount_percentage;
     delete row.tax_percentage;
     const parentIdx = item.parent_line_index;
     delete row.parent_line_index;
-    if (parentIdx != null && parentIdx >= 0 && parentIdx < insertedIds.length) {
-      row.bespoke_parent_item_id = insertedIds[parentIdx];
+    // Parent resolved after batch insert via index; keep explicit bespoke_parent_item_id if set
+    if (parentIdx != null && parentIdx >= 0) {
+      delete row.bespoke_parent_item_id;
     } else if (item.bespoke_parent_item_id) {
       row.bespoke_parent_item_id = item.bespoke_parent_item_id;
     }
-    let res = await supabase.from('sales_items').insert(row).select('id').single();
-    if (res.error?.code === '42P01') {
-      res = await supabase.from('sale_items').insert(row).select('id').single();
+    return { row, parentIdx };
+  });
+
+  const payload = prepared.map((p) => p.row);
+  let res = await supabase.from('sales_items').insert(payload).select('id');
+  if (res.error?.code === '42P01') {
+    res = await supabase.from('sale_items').insert(payload).select('id');
+  }
+  if (res.error) throw res.error;
+
+  const insertedIds = (res.data ?? []).map((r: { id?: string }) => r.id ?? null);
+  if (insertedIds.length !== prepared.length) {
+    // Fallback sequential if RETURNING order/count unexpected
+    for (let i = 0; i < prepared.length; i++) {
+      if (insertedIds[i]) continue;
+      throw new Error('Sale items insert returned incomplete ids; cannot resolve fabric parent links.');
     }
-    if (res.error) throw res.error;
-    insertedIds.push(res.data?.id ?? null);
+  }
+
+  const parentPatches: { id: string; bespoke_parent_item_id: string }[] = [];
+  prepared.forEach((p, idx) => {
+    const parentIdx = p.parentIdx;
+    if (parentIdx == null || parentIdx < 0 || parentIdx >= insertedIds.length) return;
+    const childId = insertedIds[idx];
+    const parentId = insertedIds[parentIdx];
+    if (childId && parentId) {
+      parentPatches.push({ id: childId, bespoke_parent_item_id: parentId });
+    }
+  });
+
+  if (parentPatches.length === 0) return;
+
+  const table = 'sales_items';
+  const results = await Promise.all(
+    parentPatches.map((patch) =>
+      supabase.from(table).update({ bespoke_parent_item_id: patch.bespoke_parent_item_id }).eq('id', patch.id),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error?.code === '42P01') {
+    const retry = await Promise.all(
+      parentPatches.map((patch) =>
+        supabase
+          .from('sale_items')
+          .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+          .eq('id', patch.id),
+      ),
+    );
+    const retryFail = retry.find((r) => r.error);
+    if (retryFail?.error) throw retryFail.error;
+  } else if (failed?.error) {
+    throw failed.error;
   }
 }
 
@@ -447,62 +514,11 @@ export const saleService = {
       order_no: (saleData as any).order_no,
     });
 
-    // CRITICAL FIX: Fetch the complete sale with items to return
-    // This ensures items are included in the response
-    let completeSale = null;
-    let fetchError = null;
-
-    // Try sales_items first
-    const { data: salesItemsData, error: fetchSalesItemsError } = await supabase
-      .from('sales')
-      .select(`
-        *,
-        customer:contacts(*),
-        items:sales_items(
-          *,
-          product:products(id, name, sku, cost_price, retail_price, has_variations),
-          variation:product_variations(id, product_id, sku, attributes)
-        )
-      `)
-      .eq('id', saleData.id)
-      .single();
-
-    if (fetchSalesItemsError) {
-      // If sales_items fails, try sale_items (backward compatibility)
-      if (fetchSalesItemsError.code === '42P01' || fetchSalesItemsError.message?.includes('does not exist')) {
-        const { data: saleItemsData, error: fetchSaleItemsError } = await supabase
-          .from('sales')
-          .select(`
-            *,
-            customer:contacts(*),
-            items:sale_items(
-              *,
-              product:products(id, name, sku, cost_price, retail_price, has_variations),
-              variation:product_variations(id, product_id, sku, attributes)
-            )
-          `)
-          .eq('id', saleData.id)
-          .single();
-        
-        if (!fetchSaleItemsError) {
-          completeSale = saleItemsData;
-        } else {
-          fetchError = fetchSaleItemsError;
-        }
-      } else {
-        fetchError = fetchSalesItemsError;
-      }
-    } else {
-      completeSale = salesItemsData;
-    }
-
-    if (fetchError || !completeSale) {
-      // If fetch fails, still return saleData (items will be fetched separately on refresh)
-      console.warn('[SALE SERVICE] Failed to fetch sale with items:', fetchError);
-      return saleData;
-    }
-
-    return completeSale;
+    // Slim return: avoid nested products/variations re-fetch (list/edit load full sale later).
+    return {
+      ...saleData,
+      items: items.map((it) => ({ ...it, sale_id: saleData.id })),
+    };
   },
 
   // Get single sale by ID (with items for edit form).
@@ -878,6 +894,30 @@ export const saleService = {
       if (!saleRow) throw new Error('Sale not found');
       const invoiceNo = (saleRow as any).invoice_no || `SL-${id.substring(0, 8)}`;
       const priorPosted = wasSalePostedForReversal((saleRow as any).status);
+
+      // Cascade-cancel linked bespoke work orders (stock reverse + production JE void) before sale void.
+      {
+        const { data: linkedWos, error: woListErr } = await supabase
+          .from('bespoke_work_orders')
+          .select('id, status')
+          .eq('sale_id', id)
+          .neq('status', 'cancelled');
+        if (woListErr) throw new Error(woListErr.message);
+        const { data: authData } = await supabase.auth.getUser();
+        const actorId = authData?.user?.id ?? null;
+        for (const wo of linkedWos || []) {
+          const { data: woRes, error: woErr } = await supabase.rpc('cancel_bespoke_work_order', {
+            p_work_order_id: wo.id,
+            p_user_id: actorId,
+            p_reason: 'Sale cancelled',
+          });
+          if (woErr) throw new Error(woErr.message);
+          const res = woRes as { success?: boolean; error?: string } | null;
+          if (res && res.success === false) {
+            throw new Error(res.error || 'Failed to cancel linked work order');
+          }
+        }
+      }
 
       // Draft / quotation / order: no stock reversal, no accounting reversal (nothing was posted)
       if (!priorPosted) {
@@ -1402,13 +1442,24 @@ export const saleService = {
     options?: { notes?: string; attachments?: any }
   ) {
     // 🔒 CANCELLED: No payment allowed on cancelled sales
-    const { data: saleRow } = await supabase.from('sales').select('status, customer_id').eq('id', saleId).single();
-    if (saleRow && (saleRow as any).status === 'cancelled') {
+    // Only select columns that exist on public.sales (reference/ref_no/bill_ref do not — PostgREST 400).
+    const { data: saleRow, error: saleFetchErr } = await supabase
+      .from('sales')
+      .select('status, customer_id, customer_name, invoice_no, customer_bill_ref, notes')
+      .eq('id', saleId)
+      .single();
+    if (saleFetchErr) {
+      throw new Error(`Could not load sale for payment: ${saleFetchErr.message}`);
+    }
+    if (!saleRow) {
+      throw new Error('Sale not found.');
+    }
+    if ((saleRow as any).status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled invoice.');
     }
-    if (saleRow && !canPostAccountingForSaleStatus((saleRow as any).status)) {
+    if (!canRecordSaleCustomerPayment((saleRow as any).status)) {
       throw new Error(
-        `Payment and payment journal entries are only allowed after the sale is Final. Current status: ${(saleRow as any).status || 'unknown'}`
+        `Customer payments are only allowed for Order or Final sales (not draft/quotation). Current status: ${(saleRow as any).status || 'unknown'}`
       );
     }
     if (!accountId) {
@@ -1421,6 +1472,20 @@ export const saleService = {
 
     const callerRef = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
     const paymentDateValue = paymentDate || localNowDateString();
+    const customerBillRef = readSaleBillRef(saleRow as Record<string, unknown>);
+    const partyName = String((saleRow as { customer_name?: string }).customer_name ?? '').trim() || 'Customer';
+    const invoiceRef = String((saleRow as { invoice_no?: string }).invoice_no ?? '').trim() || undefined;
+    const { data: accountRow } = await supabase.from('accounts').select('name').eq('id', accountId).maybeSingle();
+    const paymentAccountName = String((accountRow as { name?: string } | null)?.name ?? '').trim();
+    const composedPaymentNotes = composeCustomerPaymentNotesForRpc({
+      partyName,
+      invoiceRef,
+      customerBillRef,
+      paymentAccountName,
+      paymentMethod,
+      combinedNotes: options?.notes,
+      bankTraceId: callerRef,
+    });
 
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
@@ -1444,7 +1509,7 @@ export const saleService = {
       paymentMethod,
       paymentDate: paymentDateValue,
       paymentAccountId: accountId,
-      notes: options?.notes ?? null,
+      notes: composedPaymentNotes || null,
       bankTraceId: callerRef,
       createdBy: authUserId,
     });
@@ -1569,7 +1634,9 @@ export const saleService = {
         })
         .eq('id', paymentId);
     } else if (upd.error) {
-      console.warn('[saleService.recordOnAccountPayment] payments patch after RPC:', upd.error.message);
+      throw new Error(
+        `Payment recorded but contact link failed: ${upd.error.message}. Reconcile contact_id on payment ${paymentId}.`
+      );
     }
 
     auditLogService.logPaymentCreated(companyId, paymentId, {
@@ -1603,6 +1670,8 @@ export const saleService = {
       paymentMethod?: string;
       accountId?: string;
       paymentDate?: string;
+      /** When set, updates payments.created_at (business event time for roznamcha / picker). */
+      eventTimestamp?: string;
       referenceNumber?: string;
       notes?: string;
       attachments?: any;
@@ -1668,6 +1737,7 @@ export const saleService = {
       if (normalizedPaymentMethod) updateData.payment_method = normalizedPaymentMethod;
       if (updates.accountId) updateData.payment_account_id = updates.accountId;
       if (updates.paymentDate) updateData.payment_date = updates.paymentDate;
+      if (updates.eventTimestamp) updateData.created_at = updates.eventTimestamp;
       if (updates.referenceNumber !== undefined) updateData.reference_number = updates.referenceNumber;
       if (updates.notes !== undefined) updateData.notes = updates.notes;
       if (updates.attachments !== undefined) {
@@ -1917,19 +1987,118 @@ export const saleService = {
     }
   },
 
-  // Get sales report
-  async getSalesReport(companyId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('sales')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('status', 'final')
-      .gte('invoice_date', startDate)
-      .lte('invoice_date', endDate)
-      .order('invoice_date');
+  /**
+   * Full date-range sales fetch for Reports (all lifecycle statuses by default).
+   * Lightweight select — no line items; enriches return counts for status badges.
+   */
+  async getSalesForReports(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null,
+    opts?: { statuses?: string[] }
+  ): Promise<{ data: any[]; total: number; truncated: boolean }> {
+    const max = REPORT_SALES_MAX;
+    const selectAttempts = [
+      `id, company_id, branch_id, invoice_no, draft_no, quotation_no, order_no,
+       invoice_date, customer_id, customer_name, status, payment_status, payment_method,
+       subtotal, discount_amount, tax_amount, extra_expenses, total, paid_amount, due_amount,
+       return_due, notes, is_studio, created_at, updated_at,
+       branch:branches(id, name, code)`,
+      `id, company_id, branch_id, invoice_no, draft_no, quotation_no, order_no,
+       invoice_date, customer_id, customer_name, status, payment_status, payment_method,
+       subtotal, discount_amount, tax_amount, total, paid_amount, due_amount,
+       notes, is_studio, created_at, updated_at,
+       branch:branches(id, name, code)`,
+      `*, branch:branches(id, name, code)`,
+    ];
 
-    if (error) throw error;
+    const runQuery = (selectFields: string) => {
+      let q = supabase
+        .from('sales')
+        .select(selectFields, { count: 'exact' })
+        .eq('company_id', companyId)
+        .gte('invoice_date', startDate)
+        .lte('invoice_date', endDate)
+        .order('invoice_date', { ascending: false })
+        .limit(max);
+      if (branchId && branchId !== 'all') {
+        q = q.eq('branch_id', branchId);
+      }
+      if (opts?.statuses?.length) {
+        q = q.in('status', opts.statuses);
+      }
+      return q;
+    };
+
+    let rows: any[] = [];
+    let count: number | null = null;
+    let lastError: { message?: string } | null = null;
+    for (const fields of selectAttempts) {
+      const { data, error, count: c } = await runQuery(fields);
+      if (!error) {
+        rows = data || [];
+        count = c;
+        lastError = null;
+        break;
+      }
+      lastError = error;
+      console.warn('[saleService.getSalesForReports] select fallback:', fields.trim().slice(0, 80), error.message || error);
+    }
+    if (lastError) throw lastError;
+
+    if (rows.length > 0) {
+      const saleIds = rows.map((s: any) => s.id);
+      const { data: allReturns } = await supabase
+        .from('sale_returns')
+        .select('original_sale_id')
+        .in('original_sale_id', saleIds)
+        .eq('status', 'final');
+      const returnsMap = new Map<string, number>();
+      (allReturns || []).forEach((r: any) => {
+        const c = returnsMap.get(r.original_sale_id) || 0;
+        returnsMap.set(r.original_sale_id, c + 1);
+      });
+      rows.forEach((sale: any) => {
+        sale.items = [];
+        sale.hasReturn = returnsMap.has(sale.id);
+        sale.returnCount = returnsMap.get(sale.id) || 0;
+      });
+    }
+    const total = count ?? rows.length;
+    return { data: rows, total, truncated: total > max };
+  },
+
+  /** POS / day-end: final invoices only in date range. */
+  async getSalesReport(companyId: string, startDate: string, endDate: string) {
+    const { data } = await this.getSalesForReports(companyId, startDate, endDate, undefined, {
+      statuses: ['final'],
+    });
     return data;
+  },
+
+  /** Sum of sale payment receipts in period (diagnostic — not GL cash position). */
+  async getSalePaymentsTotalInPeriod(
+    companyId: string,
+    startDate: string,
+    endDate: string,
+    branchId?: string | null
+  ): Promise<number> {
+    let q = supabase
+      .from('payments')
+      .select('amount, branch_id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale')
+      .gte('payment_date', startDate)
+      .lte('payment_date', endDate);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = (data || []) as { amount?: number; branch_id?: string }[];
+    const filtered =
+      branchId && branchId !== 'all'
+        ? rows.filter((r) => r.branch_id === branchId)
+        : rows;
+    return filtered.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   },
 
   // Get a single payment by ID (for ledger detail panel)
@@ -1960,6 +2129,7 @@ export const saleService = {
         reference_type,
         notes,
         created_at,
+        attachments,
         account:accounts(id, name)
       `)
       .eq('id', id)
@@ -1980,6 +2150,7 @@ export const saleService = {
       referenceType: p.reference_type,
       notes: p.notes || '',
       createdAt: p.created_at,
+      attachments: p.attachments,
     };
   },
 

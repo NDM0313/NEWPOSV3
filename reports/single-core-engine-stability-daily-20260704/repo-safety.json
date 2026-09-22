@@ -1,0 +1,11 @@
+{
+  "run": "SINGLE_CORE_STABILITY_DAY4_REPO_SAFETY",
+  "run_local_date": "2026-07-02",
+  "stability_day": 4,
+  "evidence_folder_date": "20260704",
+  "branch": "main",
+  "head": "12b596adc2dba85ea75b159d4dd29bf860bb6ec8",
+  "origin_main": "12b596adc2dba85ea75b159d4dd29bf860bb6ec8",
+  "day3_evidence_commit": "12b596ad",
+  "verdict": "SAFE"
+}

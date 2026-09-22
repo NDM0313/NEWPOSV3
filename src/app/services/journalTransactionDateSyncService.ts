@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { toLocalDateString } from '@/app/utils/localDate';
 
 const VOID_FILTER = 'is_void.is.null,is_void.eq.false';
 
@@ -15,7 +16,7 @@ export async function syncJournalEntryDateByDocumentRefs(params: {
 }): Promise<{ updated: number; error?: string }> {
   const { companyId, referenceTypes, referenceId, entryDate } = params;
   if (!companyId || !referenceId || !referenceTypes.length) return { updated: 0 };
-  const date = String(entryDate).slice(0, 10);
+  const date = toLocalDateString(entryDate);
 
   const { data: rows, error } = await supabase
     .from('journal_entries')
@@ -82,4 +83,26 @@ export async function syncJournalEntryDateByPaymentId(params: {
 
   if (upErr) return { updated: 0, error: upErr.message };
   return { updated: ids.length };
+}
+
+/** Align expenses.expense_date when a payment row references an expense document. */
+export async function syncExpenseDateByPaymentId(params: {
+  paymentId: string;
+  expenseDate: string;
+}): Promise<void> {
+  const { paymentId, expenseDate } = params;
+  if (!paymentId) return;
+  const date = String(expenseDate).slice(0, 10);
+
+  const { data: pay } = await supabase
+    .from('payments')
+    .select('reference_type, reference_id')
+    .eq('id', paymentId)
+    .maybeSingle();
+
+  const rt = String((pay as { reference_type?: string } | null)?.reference_type || '').toLowerCase();
+  const expenseId = String((pay as { reference_id?: string } | null)?.reference_id || '').trim();
+  if (rt !== 'expense' || !expenseId) return;
+
+  await supabase.from('expenses').update({ expense_date: date }).eq('id', expenseId);
 }

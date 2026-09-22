@@ -1,0 +1,9 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "tests-build",
+  "generated_at": "2026-07-01T14:35:00.000Z",
+  "unified_ledger": { "pass": 328, "fail": 0 },
+  "unit": { "pass": 122, "fail": 0 },
+  "build": "PASS",
+  "exit_code": 0
+}

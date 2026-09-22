@@ -1,0 +1,24 @@
+{
+  "window_start": "2026-07-01",
+  "r8_status": "BLOCKED",
+  "r8_requires": ["2-4_week_real_calendar_stability", "written_operator_approval"],
+  "days": [
+    { "day": 1, "local_date": "2026-07-01", "status": "PASS" },
+    {
+      "day": 2,
+      "local_date": "2026-07-02",
+      "status": "PASS",
+      "artifact": "three-company-monitoring-2026-07-02T12-55-47-086Z.json",
+      "commit": "eabab401"
+    },
+    {
+      "day": 3,
+      "local_date": "2026-07-03",
+      "status": "PENDING",
+      "gate": "local_date_gte_2026-07-03",
+      "office_blocked_on": "2026-07-02"
+    }
+  ],
+  "monitor_command": "npm run monitor:three-company-unified-ledger",
+  "evidence_folder_day3": "reports/single-core-engine-calendar-stability-20260703/"
+}

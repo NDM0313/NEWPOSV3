@@ -1,0 +1,34 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "production-bs-pl-smoke",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "method": "phase_3d_post_flag_golden_capture_exports",
+  "evidence_dir": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/exports/",
+  "overall": "PASS",
+  "no_gl_mutations": true,
+  "companies": [
+    {
+      "company": "DIN CHINA",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "balance_sheet": { "main_loader": "unified", "screenFlagEnabled": true, "total_assets": 89754087.52, "pass": true, "zero_diff": true },
+      "profit_loss": { "main_loader": "unified", "screenFlagEnabled": true, "net_profit": 8465730.87, "pass": true, "zero_diff": true }
+    },
+    {
+      "company": "DIN BRIDAL",
+      "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "balance_sheet": { "main_loader": "unified", "screenFlagEnabled": true, "total_assets": 13521792, "pass": true, "zero_diff": true },
+      "profit_loss": { "main_loader": "unified", "screenFlagEnabled": true, "net_profit": 119992, "pass": true, "zero_diff": true }
+    },
+    {
+      "company": "DIN COUTURE",
+      "companyId": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "balance_sheet": { "main_loader": "unified", "screenFlagEnabled": true, "total_assets": 22667273, "pass": true, "zero_diff": true },
+      "profit_loss": { "main_loader": "unified", "screenFlagEnabled": true, "net_profit": -16750, "pass": true, "zero_diff": true }
+    }
+  ],
+  "console_errors": "none_observed_in_capture",
+  "chunk_errors": "none_observed_in_capture",
+  "preview_compare_safe": true,
+  "legacy_fallback_available": "scripts/single-core-ledger/disable-bs-pl-loader-flags.sql",
+  "status": "PASS"
+}

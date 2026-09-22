@@ -44,6 +44,7 @@ services:
         VITE_SUPABASE_URL_MOBILE: ${VITE_SUPABASE_URL_MOBILE:-https://supabase.dincouture.pk}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_DISABLE_REALTIME: ${VITE_DISABLE_REALTIME:-true}
+        VITE_BUILD_COMMIT: ${VITE_BUILD_COMMIT:-dev}
         CACHEBUST: ${CACHEBUST:-0}
     env_file: ../.env.production
     container_name: erp-frontend

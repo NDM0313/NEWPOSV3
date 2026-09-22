@@ -1,0 +1,15 @@
+{
+  "generated": "2026-06-29",
+  "branch": "main",
+  "head": "cca0c246",
+  "originMain": "cca0c246",
+  "inSync": true,
+  "stagedFiles": false,
+  "dirtyPaths": ["graphify-out/", "downloads/", "erp-flutter-app/releases/"],
+  "tests": {
+    "unifiedLedger": { "pass": 298, "fail": 0 },
+    "unit": { "pass": 122, "fail": 0 },
+    "build": "PASS"
+  },
+  "result": "PASS"
+}

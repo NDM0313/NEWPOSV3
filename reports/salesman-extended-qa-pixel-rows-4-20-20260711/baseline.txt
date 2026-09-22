@@ -1,0 +1,7 @@
+Branch: main
+Starting HEAD: f7c66fd9
+origin/main: f7c66fd9
+f7c66fd9 in history: yes
+Date: 2026-07-11
+Session: Salesman extended QA rows 4-20
+Outcome: DEVICE_GATE_BLOCKED — adb empty after retry

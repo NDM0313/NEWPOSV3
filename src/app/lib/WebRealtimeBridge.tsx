@@ -4,6 +4,19 @@ import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 import { createDebouncedCallback, subscribeRealtimeDomains, type RealtimeDomain } from '@/app/lib/realtimeSubscriptions';
 import { webRealtimeHealth } from '@/lib/supabase';
 
+const FALLBACK_POLL_MS = 120_000;
+const FALLBACK_GRACE_MS = 120_000;
+
+const FALLBACK_DOMAINS: RealtimeDomain[] = [
+  'sales',
+  'purchases',
+  'accounting',
+  'contacts',
+  'inventory',
+  'rentals',
+  'studio',
+];
+
 export function WebRealtimeBridge() {
   const { companyId, branchId } = useSupabase();
 
@@ -29,31 +42,25 @@ export function WebRealtimeBridge() {
     const cleanup = subscribeRealtimeDomains({
       companyId,
       branchId,
-      domains: ['sales', 'purchases', 'accounting', 'contacts', 'inventory', 'rentals', 'studio'],
+      domains: FALLBACK_DOMAINS,
       channelKey: 'global',
       onChange: (domain) => queueFor(domain),
     });
     if (!cleanup || !webRealtimeHealth.canUseRealtime) {
-      const fallback = setInterval(() => {
-        (
-          [
-            'sales',
-            'purchases',
-            'accounting',
-            'contacts',
-            'inventory',
-            'rentals',
-            'studio',
-          ] as RealtimeDomain[]
-        ).forEach((domain) =>
+      const mountedAt = Date.now();
+      const runFallbackPoll = () => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        if (Date.now() - mountedAt < FALLBACK_GRACE_MS) return;
+        for (const domain of FALLBACK_DOMAINS) {
           dispatchDataInvalidated({
             domain,
             companyId,
             branchId: branchId ?? null,
             reason: 'fallback-poll',
-          })
-        );
-      }, 45000);
+          });
+        }
+      };
+      const fallback = setInterval(runFallbackPoll, FALLBACK_POLL_MS);
       return () => clearInterval(fallback);
     }
     return () => {

@@ -95,6 +95,15 @@ export interface LedgerLine {
   runningBalance: number;
   paymentId?: string | null;
   hasAttachments?: boolean;
+  /** journal_entries.description when line description differs */
+  entryDescription?: string | null;
+  /** Enriched party / counter-line labels when loader provides them */
+  partyName?: string | null;
+  counterAccountName?: string | null;
+  counterAccountCode?: string | null;
+  counterAccountType?: string | null;
+  /** Source CoA code when loader provides it (e.g. Supplier Business History 210017). */
+  glAccountCode?: string | null;
 }
 
 /** Fetch ledger lines for any account with optional date range and optional branch scope (web parity). */

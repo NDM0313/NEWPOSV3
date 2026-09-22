@@ -13,6 +13,9 @@ export interface BespokeMetadata {
   notes?: string;
 }
 
+/** Piece-type preset for fabric lines (cart title + hydrate). */
+export type BespokeFabricUsage = 'shirt' | 'dupatta' | 'trouser';
+
 export interface BespokeFabricMaterial {
   product_id: string;
   variation_id?: string;
@@ -20,7 +23,10 @@ export interface BespokeFabricMaterial {
   sku?: string;
   unit_code: string;
   quantity: number;
+  /** Display/reference only — stripped from normalize for billing safety. */
   retail_price?: number;
+  /** Shirt / Dupatta / Trouser — shown as cart line title prefix. */
+  usage?: BespokeFabricUsage;
 }
 
 export interface CustomizationDetails {
@@ -55,6 +61,13 @@ export function normalizeFabricMaterials(raw: unknown): BespokeFabricMaterial[] 
     const productId = String(o.product_id ?? '').trim();
     const qty = Number(o.quantity);
     if (!productId || !Number.isFinite(qty) || qty <= 0) continue;
+    const usageRaw = String(o.usage ?? '')
+      .trim()
+      .toLowerCase();
+    const usage: BespokeFabricUsage | undefined =
+      usageRaw === 'shirt' || usageRaw === 'dupatta' || usageRaw === 'trouser'
+        ? usageRaw
+        : undefined;
     out.push({
       product_id: productId,
       variation_id: o.variation_id ? String(o.variation_id) : undefined,
@@ -62,6 +75,7 @@ export function normalizeFabricMaterials(raw: unknown): BespokeFabricMaterial[] 
       sku: o.sku ? String(o.sku) : undefined,
       unit_code: String(o.unit_code ?? 'm'),
       quantity: qty,
+      ...(usage ? { usage } : {}),
     });
   }
   return out;

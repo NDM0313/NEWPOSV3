@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-07-11T19:54:46.809Z",
+  "method": "service_role_controlled_posting",
+  "overall": "PASS",
+  "supplier": {
+    "id": "36fe85d7-95cf-49ad-8922-cabe5f3596cc",
+    "name": "MR DIN MOHAMMAD"
+  },
+  "ap_account": {
+    "id": "ce35ae9e-de68-4be0-ae84-8c99463a1011",
+    "code": "AP-36FE85",
+    "name": "Payable — MR DIN MOHAMMAD"
+  },
+  "discount_account": {
+    "id": "aced7568-262b-4df4-877f-b3bd566a875a",
+    "code": "5210",
+    "name": "Discount Received"
+  },
+  "posting": {
+    "skipped": false,
+    "journalEntryId": "a00ea279-6c4e-425e-9492-a96bf6b7d552",
+    "entryNo": "JE-0028",
+    "fingerprint": "party_discount:30bd8592-3384-4f34-899a-f3907e336485:supplier:36fe85d7-95cf-49ad-8922-cabe5f3596cc:2026-07-11:1"
+  },
+  "verifyLines": [
+    {
+      "id": "a00ea279-6c4e-425e-9492-a96bf6b7d552",
+      "entry_no": "JE-0028",
+      "reference_type": "party_discount",
+      "action_fingerprint": "party_discount:30bd8592-3384-4f34-899a-f3907e336485:supplier:36fe85d7-95cf-49ad-8922-cabe5f3596cc:2026-07-11:1",
+      "debit": 1,
+      "credit": 0,
+      "code": "AP-36FE85"
+    },
+    {
+      "id": "a00ea279-6c4e-425e-9492-a96bf6b7d552",
+      "entry_no": "JE-0028",
+      "reference_type": "party_discount",
+      "action_fingerprint": "party_discount:30bd8592-3384-4f34-899a-f3907e336485:supplier:36fe85d7-95cf-49ad-8922-cabe5f3596cc:2026-07-11:1",
+      "debit": 0,
+      "credit": 1,
+      "code": "5210"
+    }
+  ],
+  "journalPass": true
+}

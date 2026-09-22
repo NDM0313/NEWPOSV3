@@ -1,0 +1,23 @@
+# Stability ledger — Day 4
+
+**Window start:** 2026-07-01  
+**Stability day:** 4  
+**Run local date:** 2026-07-02  
+**Evidence folder:** `20260704`  
+**Classification:** **STABILITY_DAY_PASS**
+
+| Item | Status |
+|------|--------|
+| Monitoring | **PASS** — `three-company-monitoring-2026-07-02T09-39-16-229Z` |
+| DIN CHINA | PASS (Admin Compare 9/9) |
+| DIN BRIDAL | PASS |
+| DIN COUTURE | PASS |
+| migrations_run | false |
+| gl_mutations | false |
+| Feature flags | unchanged |
+| Production mutation | **none** |
+| Fixture refresh | **none** |
+| Tests | 328/328 unified, 124/124 unit |
+| R8 legacy retirement | **BLOCKED** |
+| Mobile release | separate track |
+| Supplier Party Discount PKR 1 | separate approval |

@@ -1,0 +1,13 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA_RESUME",
+  "task": "final-monitoring",
+  "generated_at": "2026-07-01T11:43:10.039Z",
+  "status": "PASS",
+  "timestamp_slug": "2026-07-01T11-32-17-138Z",
+  "din_china": "PASS",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "admin_compare_din_china": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false
+}

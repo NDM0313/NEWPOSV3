@@ -18,7 +18,7 @@ export interface PrinterConfig {
 
 const DEFAULT_CONFIG: PrinterConfig = {
   mode: 'a4',
-  paperSize: '80mm',
+  paperSize: '58mm',
   defaultPrinterName: null,
   autoPrintReceipt: false,
 };
@@ -60,7 +60,7 @@ export function usePrinterConfig(): {
         const raw = data as Record<string, unknown>;
         setConfig({
           mode: (raw.printer_mode as PrinterMode) || 'a4',
-          paperSize: (raw.paper_size === '58mm' ? '58mm' : '80mm') as PaperSize,
+          paperSize: (raw.paper_size === '80mm' ? '80mm' : '58mm') as PaperSize,
           defaultPrinterName: (raw.default_printer_name as string) ?? null,
           autoPrintReceipt: !!raw.print_receipt_auto,
         });

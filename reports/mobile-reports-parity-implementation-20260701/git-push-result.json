@@ -1,0 +1,8 @@
+{
+  "run": "MOBILE_REPORTS_PARITY_IMPLEMENTATION",
+  "task": "git-push-result",
+  "evidence_commit": "9d52216c",
+  "origin_main": "9d52216c",
+  "push_status": "SUCCESS",
+  "commit_message": "feat(mobile): add unified financial reports parity without apk release"
+}
