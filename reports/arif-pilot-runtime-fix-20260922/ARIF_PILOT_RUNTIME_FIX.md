@@ -34,13 +34,16 @@ Owner screenshot on `/?view=accounting` used **Standard (PDF / share)** → Offi
 
 Issue class: **wrong component path (Standard V2 vs Advanced legacy)**.
 
-## 3. Production deployed SHA (pre-fix)
+## 3. Production deployed SHA
 
 | Item | Value |
 |------|--------|
-| VPS branch | `feat/arif-supplier-business-statement-pilot` |
-| VPS HEAD | `62d76a528180e92b13ea3503cba608fe662f208e` |
-| Bundle proof | Web chunk `AccountLedgerReportPage-*.js` contained ARIF contact UUID `21e1ac76…` (Advanced path only). Standard V2 had no pilot UI. |
+| Pre-fix VPS HEAD | `62d76a52` (Advanced-only pilot) |
+| Fix commit | `788b50a88371bfd4bb339c01857714452e0dd9c4` |
+| Post-fix VPS HEAD | `788b50a8` |
+| Bundle proof (post-fix) | `AccountingDashboard-*.js` contains `Business History` + ARIF UUID `21e1ac76…` (Standard path now includes pilot). `AccountLedgerReportPage-*.js` still has Advanced pilot. |
+| Health | `erp-frontend` healthy; `/` + `/health` HTTP 200 |
+| CACHEBUST | `1790084394` |
 
 ## 4. Files changed (this fix)
 
