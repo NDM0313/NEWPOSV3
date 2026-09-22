@@ -153,18 +153,24 @@ export async function getContacts(
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
-  const [partyGl, opSummary, bizMap] = await Promise.all([
+  const [partyGl, opSummary, bizResult] = await Promise.all([
     fetchContactPartyGlBalancesMap(company, branchId),
     fetchOperationalContactBalancesSummary(company, branchId),
     type === 'supplier' || type === undefined
       ? loadSupplierBusinessGlBalancesMap({ companyId: company, branchId, endDate: null })
-      : Promise.resolve(null as Awaited<ReturnType<typeof loadSupplierBusinessGlBalancesMap>> | null),
+      : Promise.resolve(null),
   ]);
   const glOk = partyGl.error == null;
   if (glOk && partyGl.map.size === 0 && (data || []).length > 0) {
     console.warn(
       '[ERP Mobile] get_contact_party_gl_balances returned zero rows; using operational fill where available.'
     );
+  }
+
+  const bizComplete = bizResult?.complete === true;
+  const bizMap = bizComplete ? bizResult!.map : null;
+  if (bizResult && !bizResult.complete && (type === 'supplier' || type === undefined)) {
+    console.warn('[ERP Mobile] Supplier Business GL batch incomplete:', bizResult.error);
   }
 
   const listRole: ContactRole | undefined =
@@ -191,6 +197,7 @@ export async function getContacts(
     });
     if (bizMap && isSupplierBusinessContactType(row.type)) {
       const slice = bizMap.get(row.id) ?? bizMap.get(String(row.id).trim());
+      // complete map always has a slice (incl. true zero) — apply Business GL.
       if (slice) balance = supplierBusinessListBalance(slice);
     }
     return {
@@ -215,6 +222,22 @@ export async function getContacts(
       createdFrom: row.created_from ?? null,
     };
   });
+
+  // Supplier Business GL incomplete: do not cache Official/zero overlays as Business truth.
+  if ((type === 'supplier' || type === undefined) && bizResult && !bizResult.complete) {
+    const cached = await listCacheGet<Contact[]>(cacheKey);
+    if (cached?.length) {
+      return {
+        data: cached,
+        error: `Supplier Business GL unavailable (${bizResult.error || 'incomplete'}); showing last cached list.`,
+      };
+    }
+    return {
+      data: [],
+      error: `Supplier Business GL unavailable: ${bizResult.error || 'incomplete read'}`,
+    };
+  }
+
   void listCacheSet(cacheKey, list);
   return { data: list, error: null };
 }

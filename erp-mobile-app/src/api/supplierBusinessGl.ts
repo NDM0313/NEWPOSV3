@@ -260,14 +260,39 @@ export async function loadSupplierBusinessHistory(params: {
 /**
  * Batch supplier business + official AP nets as-of endDate.
  * One accounts scan + paged lines scan — not N per-contact attributed loads.
+ *
+ * Fail-loud: on line-fetch failure returns `{ complete: false, error }` with an
+ * empty map so callers never treat "all zeros" as successful Business GL.
  */
+export type SupplierBusinessGlBalancesResult = {
+  map: Map<string, SupplierBusinessBalanceSlice>;
+  error: string | null;
+  /** True only when journal lines were scanned successfully (true zeros are valid). */
+  complete: boolean;
+  meta: {
+    accountCount: number;
+    lineCount: number;
+    supplierCount: number;
+    durationMs: number;
+  };
+};
+
 export async function loadSupplierBusinessGlBalancesMap(params: {
   companyId: string;
   branchId?: string | null;
   endDate?: string | null;
-}): Promise<Map<string, SupplierBusinessBalanceSlice>> {
+}): Promise<SupplierBusinessGlBalancesResult> {
+  const emptyMeta = { accountCount: 0, lineCount: 0, supplierCount: 0, durationMs: 0 };
+  const started = Date.now();
   const out = new Map<string, SupplierBusinessBalanceSlice>();
-  if (!isSupabaseConfigured) return out;
+  if (!isSupabaseConfigured) {
+    return {
+      map: out,
+      error: 'App not configured.',
+      complete: false,
+      meta: { ...emptyMeta, durationMs: Date.now() - started },
+    };
+  }
 
   const companyId = params.companyId;
   const branchId =
@@ -276,10 +301,18 @@ export async function loadSupplierBusinessGlBalancesMap(params: {
       : null;
   const endDate = params.endDate ? String(params.endDate).slice(0, 10) : null;
 
-  const { data: contactsRaw } = await supabase
+  const { data: contactsRaw, error: contactsErr } = await supabase
     .from('contacts')
     .select('id, type')
     .eq('company_id', companyId);
+  if (contactsErr) {
+    return {
+      map: out,
+      error: contactsErr.message,
+      complete: false,
+      meta: { ...emptyMeta, durationMs: Date.now() - started },
+    };
+  }
   const supplierContactIds = new Set(
     (contactsRaw || [])
       .filter((c: { id: string; type: string }) => isSupplierBusinessContactType(c.type))
@@ -287,10 +320,23 @@ export async function loadSupplierBusinessGlBalancesMap(params: {
   );
 
   const remaps = await loadVerifiedAccountRemaps(companyId);
-  const { data: accountsRaw } = await supabase
+  const { data: accountsRaw, error: accountsErr } = await supabase
     .from('accounts')
     .select('id, code, name, parent_id, linked_contact_id, is_active')
     .eq('company_id', companyId);
+  if (accountsErr) {
+    return {
+      map: out,
+      error: accountsErr.message,
+      complete: false,
+      meta: {
+        accountCount: 0,
+        lineCount: 0,
+        supplierCount: supplierContactIds.size,
+        durationMs: Date.now() - started,
+      },
+    };
+  }
   const accounts = (accountsRaw || []) as Array<{
     id: string;
     code: string | null;
@@ -325,7 +371,19 @@ export async function loadSupplierBusinessGlBalancesMap(params: {
     });
   }
 
-  if (accountIds.size === 0) return out;
+  if (accountIds.size === 0) {
+    return {
+      map: out,
+      error: null,
+      complete: true,
+      meta: {
+        accountCount: 0,
+        lineCount: 0,
+        supplierCount: supplierContactIds.size,
+        durationMs: Date.now() - started,
+      },
+    };
+  }
 
   const LINE_PAGE = 1000;
   let lines: unknown[] = [];
@@ -356,11 +414,19 @@ export async function loadSupplierBusinessGlBalancesMap(params: {
       { chunkSize: 25, concurrency: 3 },
     );
   } catch (e) {
-    console.error(
-      '[supplierBusinessGl] batch lines:',
-      e instanceof Error ? e.message : String(e),
-    );
-    return out;
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[supplierBusinessGl] batch lines:', msg);
+    return {
+      map: new Map(),
+      error: msg,
+      complete: false,
+      meta: {
+        accountCount: accountIds.size,
+        lineCount: 0,
+        supplierCount: supplierContactIds.size,
+        durationMs: Date.now() - started,
+      },
+    };
   }
 
   const seen = new Set<string>();
@@ -422,7 +488,17 @@ export async function loadSupplierBusinessGlBalancesMap(params: {
     }
   }
 
-  return out;
+  return {
+    map: out,
+    error: null,
+    complete: true,
+    meta: {
+      accountCount: accountIds.size,
+      lineCount: seen.size,
+      supplierCount: supplierContactIds.size,
+      durationMs: Date.now() - started,
+    },
+  };
 }
 
 /** List-row balance: signed Business GL (Cr−Dr). Positive = payable. */

@@ -84,4 +84,35 @@ describe('supplierBusinessGl (mobile)', () => {
     assert.equal(supplierBusinessListBalance({ businessNet: 39937, officialApNet: 0, businessLineCount: 24, officialApLineCount: 0 }), 39937);
     assert.equal(supplierBusinessListBalance(undefined), 0);
   });
+
+  it('fail-loud result shape: incomplete must not be treated as true-zero map', () => {
+    // Contract assertion used by getContacts / PartyLedgerReport:
+    // only apply overlay when complete === true.
+    const failed = {
+      map: new Map(),
+      error: 'simulated batch failure',
+      complete: false as const,
+      meta: { accountCount: 10, lineCount: 0, supplierCount: 5, durationMs: 1 },
+    };
+    assert.equal(failed.complete, false);
+    assert.ok(failed.error);
+    assert.equal(failed.map.size, 0);
+
+    const ok = {
+      map: new Map([
+        [
+          '21e1ac76-b911-44a1-87dd-6283969efa4c',
+          { businessNet: 39937, officialApNet: 0, businessLineCount: 24, officialApLineCount: 0 },
+        ],
+      ]),
+      error: null,
+      complete: true as const,
+      meta: { accountCount: 1, lineCount: 24, supplierCount: 1, durationMs: 12 },
+    };
+    assert.equal(ok.complete, true);
+    assert.equal(
+      supplierBusinessListBalance(ok.map.get('21e1ac76-b911-44a1-87dd-6283969efa4c')),
+      39937,
+    );
+  });
 });

@@ -8,9 +8,7 @@ import {
   isPartyGlLedgerEmptySuccess,
 } from '../../../api/partyGlLedger';
 import {
-  loadSupplierBusinessGlBalancesMap,
   loadSupplierBusinessHistory,
-  supplierBusinessListBalance,
   type SupplierStatementViewMode,
 } from '../../../api/supplierBusinessGl';
 import { getContacts, getContactWhatsAppPhone, type ContactRole } from '../../../api/contacts';
@@ -157,33 +155,35 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
               };
             }),
           );
+        } else if (kind === 'supplier') {
+          // Single Business GL source: getContacts already overlays Business balances once.
+          // Do NOT re-run Official AP resolve or a second batch map (silent-zero risk).
+          const { data, error } = await getContacts(companyId, 'supplier', branchId ?? null);
+          if (cancelled) return;
+          if (error && !(data || []).length) {
+            setParties([]);
+            setListError(error);
+            return;
+          }
+          if (error) setListError(error);
+          else setListError(null);
+          setParties(
+            (data || []).map((c) => ({
+              id: c.id,
+              name: c.name,
+              meta: [c.phone, c.email].filter(Boolean).join(' · ') || undefined,
+              balance: Number(c.balance || 0),
+              sharePhone: getContactWhatsAppPhone(c) || undefined,
+            })),
+          );
         } else {
           const role = kind as ContactRole;
-          const listLoads: Promise<unknown>[] = [
+          const [{ data, error }, partyGl, opSummary] = await Promise.all([
             getContacts(companyId, role, branchId ?? null),
             fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
             fetchOperationalContactBalancesSummary(companyId, branchId ?? null),
-          ];
-          if (kind === 'supplier') {
-            listLoads.push(
-              loadSupplierBusinessGlBalancesMap({
-                companyId,
-                branchId: branchId ?? null,
-                endDate: null,
-              }),
-            );
-          }
-          const results = await Promise.all(listLoads);
+          ]);
           if (cancelled) return;
-          const { data, error } = results[0] as Awaited<ReturnType<typeof getContacts>>;
-          const partyGl = results[1] as Awaited<ReturnType<typeof fetchContactPartyGlBalancesMap>>;
-          const opSummary = results[2] as Awaited<
-            ReturnType<typeof fetchOperationalContactBalancesSummary>
-          >;
-          const bizMap =
-            kind === 'supplier'
-              ? (results[3] as Awaited<ReturnType<typeof loadSupplierBusinessGlBalancesMap>>)
-              : null;
           if (error) {
             setParties([]);
             setListError(error);
@@ -192,7 +192,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           const glOk = partyGl.error == null;
           setParties(
             (data || []).map((c) => {
-              let balance = resolveContactListBalance({
+              const balance = resolveContactListBalance({
                 opening: Number(c.balance || 0),
                 contactType: role,
                 listRole: role,
@@ -200,13 +200,6 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
                 glSlice: partyGlSliceFromMap(partyGl.map, c.id),
                 opRow: balanceRowFromMap(opSummary.map, c.id),
               });
-              if (kind === 'supplier' && bizMap) {
-                const slice = bizMap.get(c.id) ?? bizMap.get(String(c.id).trim());
-                if (slice) {
-                  // Signed Business GL (Cr−Dr) — primary supplier list balance (web parity).
-                  balance = supplierBusinessListBalance(slice);
-                }
-              }
               return {
                 id: c.id,
                 name: c.name,
