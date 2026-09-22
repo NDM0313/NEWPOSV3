@@ -406,14 +406,16 @@ export const accountingReportsService = {
     assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'journal_entry_lines');
     let accountsQuery = supabase
       .from('accounts')
-      .select('id, code, name, type, parent_id, is_active')
-      .eq('company_id', companyId);
+      .select('id, code, name, type, parent_id')
+      .eq('company_id', companyId)
+      .eq('is_active', true);
     let { data: accounts, error: accErr } = await accountsQuery;
     if (accErr && String(accErr.message || '').includes('parent_id')) {
       const retry = await supabase
         .from('accounts')
-        .select('id, code, name, type, is_active')
-        .eq('company_id', companyId);
+        .select('id, code, name, type')
+        .eq('company_id', companyId)
+        .eq('is_active', true);
       accounts = retry.data as any;
     }
     if (!accounts?.length) {
