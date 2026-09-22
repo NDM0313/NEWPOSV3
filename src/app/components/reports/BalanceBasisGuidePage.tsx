@@ -25,6 +25,7 @@ import {
   rowHasGap,
   sortBalanceBasisGuideRows,
   sumBalanceBasisGuideTotals,
+  sumSupplierBusinessGlExposure,
   type BalanceBasisGuideRow,
   type BalanceBasisGuideSortKey,
   type BalanceBasisGuideTypeFilter,
@@ -173,9 +174,10 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
       'AR signed',
       'AR operational',
       'Hidden AR',
-      'AP signed',
-      'AP operational',
-      'Hidden AP',
+      'Official AP (2000)',
+      'Official AP Payable',
+      'Official AP Credit / Prepaid',
+      'Business GL',
       'Doc due AR',
       'Doc due AP',
     ];
@@ -186,9 +188,10 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
       formatCurrency(r.glArSigned),
       formatCurrency(r.operationalReceivable),
       formatCurrency(r.hiddenCreditAr),
-      formatCurrency(r.glApSigned),
+      formatCurrency(r.glApSigned + r.glWorkerSigned),
       formatCurrency(r.operationalPayable),
       formatCurrency(r.hiddenCreditAp),
+      r.businessGlNet != null ? formatCurrency(r.businessGlNet) : '—',
       formatCurrency(r.documentDueReceivable),
       formatCurrency(r.documentDuePayable),
     ]);
@@ -203,6 +206,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
         formatCurrency(filteredTotals.payablesPartySigned),
         formatCurrency(filteredTotals.payablesOperational),
         formatCurrency(filteredTotals.payablesOperationalVsSigned),
+        formatCurrency(sumSupplierBusinessGlExposure(filteredRows)),
         '',
         '',
       ]);
@@ -264,11 +268,11 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
     <div className="space-y-4">
       <ReportBasisBanner
         basis="effective_party"
-        detail="Operational columns = MAX(0, party GL) per contact — follow-up view (Contacts / collections). Not used on Balance Sheet."
+        detail="Operational columns = MAX(0, Official party GL) per contact — follow-up view (Contacts / collections). Not used on Balance Sheet."
       />
       <ReportBasisBanner
         basis="official_gl"
-        detail="Control GL columns = posted journal on 1100 AR / 2000 AP / 2010 Worker Payable — same source as Balance Sheet and Trial Balance."
+        detail="Official AP (2000) and Control GL = posted journals on 1100 / 2000 / 2010 — same source as Trial Balance / Balance Sheet. Business GL is a separate supplier-exposure view and is never folded into Control AP."
       />
 
       <div className="rounded-xl border border-blue-600/30 bg-primary/5">
@@ -280,7 +284,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
           <div>
             <h2 className="text-sm font-semibold text-blue-100">How to read this report</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Three bases: Operational (clamped) | Party GL signed | Control GL (Balance Sheet)
+              Official AP (2000) vs Business GL vs Control GL — dual basis (do not conflate)
             </p>
           </div>
           {introOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
@@ -291,31 +295,32 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
               <Info className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
               <div className="space-y-2">
                 <p>
-                  <strong>Operational (clamped)</strong> — per contact, only positive balances count toward follow-up
-                  (MAX(0, signed)). Customer advances and supplier credits show as 0 operational but remain on GL.
+                  <strong>Official AP (2000)</strong> — formal AP control-family balance used for TB / Balance Sheet /
+                  AP reconciliation. Columns: Official AP (2000), Official AP Payable (clamped), Official AP Credit /
+                  Prepaid.
                 </p>
                 <p>
-                  <strong>Party GL signed</strong> — full sub-ledger balance from journals (1100 / 2000 / 2010 party
-                  accounts). Sum of all parties should match control accounts.
+                  <strong>Business GL</strong> — complete deterministic supplier exposure including qualifying
+                  historical supplier-linked accounts (e.g. legacy 210xxx). Positive = payable; negative = supplier
+                  advance/recoverable. Worker/courier rows show "—".
                 </p>
                 <p>
-                  <strong>Control GL</strong> — main accounts 1100, 2000, 2010 on Trial Balance / Balance Sheet. This
-                  is the official books balance.
+                  <strong>Control GL</strong> — main accounts 1100, 2000, 2010 on Trial Balance / Balance Sheet.
                 </p>
                 <p className="text-amber-200/90">
-                  Example: Operational payables 109k vs Control AP −547k is normal when many suppliers have credit
-                  balances — operational hides negatives; Balance Sheet uses signed control GL.
+                  Historical suppliers can legitimately have Business GL while Official AP is zero — that is
+                  explainable basis divergence, not database corruption.
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
               <div className="rounded border border-cyan-700/40 bg-cyan-950/20 p-2">
-                <strong className="text-cyan-200">Operational</strong>
-                <p className="text-muted-foreground mt-1">Collections / payments follow-up — not on Balance Sheet</p>
+                <strong className="text-cyan-200">Official AP (2000)</strong>
+                <p className="text-muted-foreground mt-1">Control-family party AP — TB / BS reconciliation</p>
               </div>
-              <div className="rounded border border-emerald-700/40 bg-emerald-950/20 p-2">
-                <strong className="text-emerald-200">Party GL signed</strong>
-                <p className="text-muted-foreground mt-1">Per-contact journal sub-ledger (+ and −)</p>
+              <div className="rounded border border-violet-700/40 bg-violet-950/20 p-2">
+                <strong className="text-violet-200">Business GL</strong>
+                <p className="text-muted-foreground mt-1">Supplier exposure (AP + qualifying legacy) — not Control AP</p>
               </div>
               <div className="rounded border border-sky-700/40 bg-sky-950/20 p-2">
                 <strong className="text-sky-200">Control GL</strong>
@@ -410,17 +415,17 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-gray-200">Payables</h3>
+            <h3 className="text-sm font-semibold text-gray-200">Payables (Official AP / Control)</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <StatCard
-                label="Operational (clamped)"
+                label="Official AP Payable (clamped)"
                 value={formatCurrency(totals.payablesOperational)}
-                note="MAX(0, AP+worker) per contact"
+                note="MAX(0, Official AP+worker) per contact"
               />
               <StatCard
-                label="Party GL signed"
+                label="Official AP (2000) party signed"
                 value={formatCurrency(totals.payablesPartySigned)}
-                note="Sum of supplier + worker sub-ledgers"
+                note="Sum of Official AP + worker sub-ledgers — not Business GL"
                 highlight
               />
               <StatCard
@@ -431,9 +436,14 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
             </div>
             <VarianceLine label="Party vs control" value={totals.payablesPartyVsControl} formatCurrency={formatCurrency} />
             <VarianceLine
-              label="Operational vs signed (hidden credits/advances)"
+              label="Operational vs Official AP signed (credits/prepaid)"
               value={totals.payablesOperationalVsSigned}
               formatCurrency={formatCurrency}
+            />
+            <StatCard
+              label="Supplier Business Exposure"
+              value={formatCurrency(sumSupplierBusinessGlExposure(filteredRows))}
+              note="Sum of Business GL for visible supplier rows — outside Control AP variance"
             />
             <p className="text-[10px] text-muted-foreground">See Balance Sheet → Accounts Payable (2000) for the liability line.</p>
           </section>
@@ -513,9 +523,10 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
                   <SortHeader col="glArSigned" label="AR signed" />
                   <SortHeader col="operationalReceivable" label="AR operational" />
                   <SortHeader col="hiddenCreditAr" label="Hidden AR" />
-                  <SortHeader col="glApSigned" label="AP signed" />
-                  <SortHeader col="operationalPayable" label="AP operational" />
-                  <SortHeader col="hiddenCreditAp" label="Hidden AP" />
+                  <SortHeader col="glApSigned" label="Official AP (2000)" />
+                  <SortHeader col="operationalPayable" label="Official AP Payable" />
+                  <SortHeader col="hiddenCreditAp" label="Official AP Credit / Prepaid" />
+                  <SortHeader col="businessGlNet" label="Business GL" />
                   <th className="py-2 px-3 text-right">Doc due AR</th>
                   <th className="py-2 px-3 text-right">Doc due AP</th>
                 </tr>
@@ -523,7 +534,7 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
               <tbody>
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={13} className="py-8 text-center text-muted-foreground">
                       No contacts match filters
                     </td>
                   </tr>
@@ -554,6 +565,9 @@ export function BalanceBasisGuidePage({ asOfDate, branchId }: Props) {
                     <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(filteredTotals.payablesOperational)}</td>
                     <td className="py-2 px-3 text-right tabular-nums text-amber-300/90">
                       {formatCurrency(filteredTotals.payablesOperationalVsSigned)}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums text-violet-300/90">
+                      {formatCurrency(sumSupplierBusinessGlExposure(filteredRows))}
                     </td>
                     <td className="py-2 px-3" colSpan={2} />
                   </tr>
@@ -606,12 +620,15 @@ function ContactRow({
         <td className={cn('py-2 px-3 text-right tabular-nums', Math.abs(row.hiddenCreditAp) > 0.009 && 'text-amber-300')}>
           {formatCurrency(row.hiddenCreditAp)}
         </td>
+        <td className="py-2 px-3 text-right tabular-nums text-violet-300/90">
+          {row.businessGlNet != null ? formatCurrency(row.businessGlNet) : '—'}
+        </td>
         <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatCurrency(row.documentDueReceivable)}</td>
         <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatCurrency(row.documentDuePayable)}</td>
       </tr>
       {expanded && hasGap ? (
         <tr className="bg-amber-950/5">
-          <td colSpan={12} className="py-2 px-4 text-xs text-amber-100/80 font-mono">
+          <td colSpan={13} className="py-2 px-4 text-xs text-amber-100/80 font-mono">
             {formatRowGapExplanation(row)}
           </td>
         </tr>

@@ -68,6 +68,11 @@ import {
   type PartyAttributedGlResult,
 } from '@/app/services/partyAttributedGlLedgerService';
 import {
+  loadSupplierBusinessHistory,
+  type SupplierBusinessHistoryResult,
+  type SupplierStatementViewMode,
+} from '@/app/lib/supplierBusinessGl';
+import {
   resolveAccountStatementPreviewCompareSource,
   buildAccountStatementPreviewCompareRows,
 } from '@/app/lib/resolveAccountStatementPreviewCompareSource';
@@ -424,6 +429,9 @@ export const AccountLedgerReportPage: React.FC<{
   const [entries, setEntries] = useState<AccountLedgerEntry[]>([]);
   const [attributedGl, setAttributedGl] = useState<PartyAttributedGlResult | null>(null);
   const [showAttributedOutsideOfficial, setShowAttributedOutsideOfficial] = useState(false);
+  /** Supplier statement: Business History (default) vs Official AP. */
+  const [supplierViewMode, setSupplierViewMode] = useState<SupplierStatementViewMode>('business_history');
+  const [supplierBusinessHistory, setSupplierBusinessHistory] = useState<SupplierBusinessHistoryResult | null>(null);
   const [partyByKey, setPartyByKey] = useState<Record<string, { name: string; contactId: string }>>({});
   /** payment_id → label from payments.payment_account_id (cash / bank / wallet). */
   const [paymentSettlementById, setPaymentSettlementById] = useState<Record<string, string>>({});
@@ -721,6 +729,28 @@ export const AccountLedgerReportPage: React.FC<{
           setAttributedGl(null);
         }
 
+        // Supplier Business History: Business History with opening-balance safety (omit startDate on attributed read).
+        if (
+          applied.statementType === 'supplier' &&
+          Boolean(applied.selectedContactId)
+        ) {
+          try {
+            const bh = await loadSupplierBusinessHistory({
+              companyId,
+              contactId: applied.selectedContactId,
+              branchId: branchId === 'all' ? null : branchId || null,
+              startDate,
+              endDate,
+            });
+            setSupplierBusinessHistory(bh);
+          } catch (bhErr) {
+            if (import.meta.env?.DEV) console.warn('[AccountLedgerReportPage] supplier business history', bhErr);
+            setSupplierBusinessHistory(null);
+          }
+        } else {
+          setSupplierBusinessHistory(null);
+        }
+
         setLoadError(null);
         if (isDebugErpEnabled()) {
           console.log('[STATEMENT_FILTER_TRACE] fetch', {
@@ -969,6 +999,12 @@ export const AccountLedgerReportPage: React.FC<{
     };
   }, [entries, companyId]);
 
+  useEffect(() => {
+    if (applied.statementType === 'supplier' && applied.selectedContactId) {
+      setSupplierViewMode('business_history');
+    }
+  }, [companyId, applied.selectedContactId, applied.statementType]);
+
   const selectedPartyName =
     applied.statementType === 'worker'
       ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
@@ -1147,8 +1183,16 @@ export const AccountLedgerReportPage: React.FC<{
     }));
   }, []);
 
+  const isSupplierBusinessActive =
+    applied.statementType === 'supplier' &&
+    Boolean(applied.selectedContactId);
+
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const entriesWithAttributedExtras = useMemo(() => {
+    // Supplier Business History replaces the main table (Official AP stays on toggle).
+    if (isSupplierBusinessActive && supplierViewMode === 'business_history' && supplierBusinessHistory?.statementRows) {
+      return supplierBusinessHistory.statementRows;
+    }
     if (!showAttributedOutsideOfficial || !attributedGl?.attributedRows?.length) return entries;
     const seen = new Set(
       entries
@@ -1171,7 +1215,15 @@ export const AccountLedgerReportPage: React.FC<{
       return true;
     });
     return extras.length ? [...entries, ...extras] : entries;
-  }, [entries, attributedGl, showAttributedOutsideOfficial, applied.statementType]);
+  }, [
+    entries,
+    attributedGl,
+    showAttributedOutsideOfficial,
+    applied.statementType,
+    isSupplierBusinessActive,
+    supplierViewMode,
+    supplierBusinessHistory,
+  ]);
 
   const sortedEntries = useMemo(() => {
     const base = [...entriesWithAttributedExtras].filter((e) => {
@@ -1617,6 +1669,19 @@ export const AccountLedgerReportPage: React.FC<{
       };
     }
 
+    // Supplier Business History: liability totals from opening-safe wrapper (omit startDate on attributed read).
+    if (isSupplierBusinessActive && supplierViewMode === 'business_history' && supplierBusinessHistory) {
+      const t = supplierBusinessHistory.totals;
+      return {
+        openingBalance: t.opening,
+        totalDebit: t.periodDebit,
+        totalCredit: t.periodCredit,
+        closingBalance: t.closing,
+        netMovement: t.closing - t.opening,
+        txCount: supplierBusinessHistory.periodRows.length,
+      };
+    }
+
     const apLiabilityStyle = applied.statementType === 'supplier';
     if (!presentedEntries.length) {
       return { openingBalance: 0, totalDebit: 0, totalCredit: 0, closingBalance: 0, netMovement: 0, txCount: 0 };
@@ -1642,7 +1707,14 @@ export const AccountLedgerReportPage: React.FC<{
     const netMovement = closingBalance - openingBalance;
 
     return { openingBalance, totalDebit, totalCredit, closingBalance, netMovement, txCount: rowsNoOpening.length };
-  }, [presentedEntries, applied.statementType, officialGlSummary]);
+  }, [
+    presentedEntries,
+    applied.statementType,
+    officialGlSummary,
+    isSupplierBusinessActive,
+    supplierViewMode,
+    supplierBusinessHistory,
+  ]);
 
   const openingBalanceAttention = partyBalanceAttention(applied.statementType, summary.openingBalance);
   const closingBalanceAttention = partyBalanceAttention(applied.statementType, summary.closingBalance);
@@ -2042,19 +2114,76 @@ export const AccountLedgerReportPage: React.FC<{
       </div>
 
       <StatementScopeBanner
-        statementLabel={accountingStatementModeLabel(applied.statementType)}
+        statementLabel={
+          isSupplierBusinessActive && supplierViewMode === 'business_history'
+            ? `${(applied.selectedPartyName || 'Supplier')} — Business History`
+            : accountingStatementModeLabel(applied.statementType)
+        }
         periodLabel={`${startDate} → ${endDate}`}
         branchScopeLabel={branchScopeResolved}
         basisLabel={
-          applied.statementType === 'supplier'
-            ? 'Supplier statement: GL on Accounts Payable (code 2000 and linked AP accounts) for this supplier — purchases, payments, openings, reversals per accountingService; summary uses the same rows as the table.'
-            : applied.statementType === 'gl'
-              ? 'Closing = official posted GL (Debit − Credit as of End date) — matches Trial Balance for this account. Table filters may hide rows without changing Closing.'
-              : viewMode === 'effective'
-                ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
-                : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
+          isSupplierBusinessActive && supplierViewMode === 'business_history'
+            ? 'Supplier Business History: attributed GL on linked AP/legacy leaves. Opening is liability-style net of rows before Start; Official AP (2000 subtree) is unchanged on the other tab.'
+            : applied.statementType === 'supplier'
+              ? 'Supplier statement: GL on Accounts Payable (code 2000 and linked AP accounts) for this supplier — purchases, payments, openings, reversals per accountingService; summary uses the same rows as the table.'
+              : applied.statementType === 'gl'
+                ? 'Closing = official posted GL (Debit − Credit as of End date) — matches Trial Balance for this account. Table filters may hide rows without changing Closing.'
+                : viewMode === 'effective'
+                  ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
+                  : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
         }
       />
+
+      {isSupplierBusinessActive ? (
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium text-foreground">
+              {(applied.selectedPartyName || 'Supplier')} —{' '}
+              {supplierViewMode === 'business_history' ? 'Business History' : 'Official AP'}
+            </p>
+            <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+              <button
+                type="button"
+                className={cn(
+                  'px-3 py-1.5',
+                  supplierViewMode === 'business_history'
+                    ? 'bg-primary/20 text-foreground font-medium'
+                    : 'bg-background text-muted-foreground hover:bg-muted/60',
+                )}
+                onClick={() => setSupplierViewMode('business_history')}
+              >
+                Business History
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'px-3 py-1.5 border-l border-border',
+                  supplierViewMode === 'official_ap'
+                    ? 'bg-primary/20 text-foreground font-medium'
+                    : 'bg-background text-muted-foreground hover:bg-muted/60',
+                )}
+                onClick={() => setSupplierViewMode('official_ap')}
+              >
+                Official AP
+              </button>
+            </div>
+          </div>
+          {supplierViewMode === 'business_history' && supplierBusinessHistory ? (
+            <p className="text-xs text-muted-foreground">
+              Source accounts from linked CoA leaves. Opening {supplierBusinessHistory.totals.opening.toLocaleString()} ·
+              period Dr {supplierBusinessHistory.totals.periodDebit.toLocaleString()} / Cr{' '}
+              {supplierBusinessHistory.totals.periodCredit.toLocaleString()} · closing{' '}
+              {supplierBusinessHistory.totals.closing.toLocaleString()} · {supplierBusinessHistory.periodRows.length} period
+              line(s). Official AP tab uses the unchanged 2000-subtree supplier loader.
+            </p>
+          ) : supplierViewMode === 'official_ap' ? (
+            <p className="text-xs text-muted-foreground">
+              Official AP remains the existing supplier AP (code 2000) statement — empty until an AP-SUP leaf exists for
+              this contact.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {applied.statementType === 'gl' && officialGlSummary ? (
         <ReportBasisBanner
@@ -2190,7 +2319,9 @@ export const AccountLedgerReportPage: React.FC<{
         {selectedPartyName
           ? applied.statementType === 'worker'
             ? ` · Worker: ${selectedPartyName}`
-            : ` · Party: ${selectedPartyName}`
+            : isSupplierBusinessActive && supplierViewMode === 'business_history'
+              ? ` · ${(applied.selectedPartyName || 'Supplier')} — Business History`
+              : ` · Party: ${selectedPartyName}`
           : ''}
       </p>
 
@@ -2249,6 +2380,14 @@ export const AccountLedgerReportPage: React.FC<{
               <tr>
                 <th className="p-3 text-left font-medium text-muted-foreground">Date</th>
                 <th className="p-3 text-left font-medium text-muted-foreground">Reference</th>
+                {isSupplierBusinessActive && supplierViewMode === 'business_history' ? (
+                  <th
+                    className="p-3 text-left font-medium text-muted-foreground max-w-[8rem]"
+                    title="CoA leaf that carried this journal line (e.g. legacy 210017)."
+                  >
+                    Source Account
+                  </th>
+                ) : null}
                 <th className="p-3 text-left font-medium text-muted-foreground">Branch</th>
                 <th className="p-3 text-left font-medium text-muted-foreground max-w-[7rem]" title="Which product area posted this line (sales, purchases, accounting, …).">
                   Module
@@ -2300,7 +2439,10 @@ export const AccountLedgerReportPage: React.FC<{
             <tbody className="divide-y divide-border">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="p-6 text-center text-muted-foreground max-w-3xl mx-auto text-sm leading-relaxed">
+                  <td
+                    colSpan={isSupplierBusinessActive && supplierViewMode === 'business_history' ? 19 : 18}
+                    className="p-6 text-center text-muted-foreground max-w-3xl mx-auto text-sm leading-relaxed"
+                  >
                     {loadError || emptyPeriodMessage}
                   </td>
                 </tr>
@@ -2358,6 +2500,11 @@ export const AccountLedgerReportPage: React.FC<{
                         })()}
                       </div>
                     </td>
+                    {isSupplierBusinessActive && supplierViewMode === 'business_history' ? (
+                      <td className="p-3 font-mono text-xs text-muted-foreground align-top whitespace-nowrap">
+                        {e.gl_account_code || '—'}
+                      </td>
+                    ) : null}
                     <td className="p-3 text-muted-foreground text-xs">{e.branch_name || e.branch_id || '—'}</td>
                     <td className="p-3 text-muted-foreground max-w-[7rem] break-words" title={e.source_module || undefined}>
                       {e.source_module || '—'}

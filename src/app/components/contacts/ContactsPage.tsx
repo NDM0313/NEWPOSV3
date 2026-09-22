@@ -554,24 +554,84 @@ export const ContactsPage = () => {
             );
           }
           setPartyGlByContactId(partyMap);
+          // Overlay supplier Business Net (AP-2000 + linked legacy) for supplier roles only.
+          // Official AP (RPC glApPayable) remains available via diagnostics; display uses Business.
+          let businessMap: Map<
+            string,
+            { businessNet: number; officialApNet: number }
+          > | null = null;
+          try {
+            const { loadSupplierBusinessGlBalancesMap } = await import(
+              '@/app/lib/supplierBusinessGl'
+            );
+            businessMap = await loadSupplierBusinessGlBalancesMap({
+              companyId,
+              branchId: branchId === 'all' ? null : branchId,
+              endDate: null,
+            });
+          } catch (bhErr) {
+            if (import.meta.env?.DEV) {
+              console.warn('[CONTACTS PAGE] supplier business GL overlay failed', bhErr);
+            }
+          }
           const withBalances: Contact[] = phase1Contacts.map((contact) => {
             const uuid = contact.uuid;
             const bal = uuid ? partyMap.get(String(uuid)) : undefined;
+            const biz = uuid && businessMap ? businessMap.get(String(uuid)) : undefined;
+            const isSupplierRole =
+              contact.type === 'supplier' ||
+              contact.type === 'both' ||
+              String(contact.type || '').toLowerCase().includes('supplier') ||
+              String(contact.type || '').toLowerCase() === 'money_exchange';
+            const isWorkerOrCourier =
+              contact.type === 'worker' ||
+              String(contact.type || '').toLowerCase().includes('worker') ||
+              contact.type === 'courier' ||
+              String(contact.type || '').toLowerCase().includes('courier');
+            let glAp = Number(bal?.glApPayable ?? 0) || 0;
+            if (biz && isSupplierRole && !isWorkerOrCourier) {
+              glAp = Number(biz.businessNet) || 0;
+            }
             const r = Math.max(0, Number(bal?.glArReceivable ?? 0) || 0);
             const p = Math.max(
               0,
-              (Number(bal?.glApPayable ?? 0) || 0) + (Number(bal?.glWorkerPayable ?? 0) || 0)
+              glAp + (Number(bal?.glWorkerPayable ?? 0) || 0),
             );
+            // Supplier advance (Business Net negative): surface as receivable-side for Contacts GL card.
+            const rAdj =
+              biz && isSupplierRole && !isWorkerOrCourier && glAp < 0
+                ? r + Math.abs(glAp)
+                : r;
+            const pAdj =
+              biz && isSupplierRole && !isWorkerOrCourier && glAp < 0 ? 0 : p;
             if (debugTraceId && uuid === debugTraceId) {
               console.log('[CONTACTS BALANCE TRACE]', {
                 contactId: uuid,
-                source: 'party_gl_rpc',
+                source: 'party_gl_rpc+supplier_business_overlay',
                 before: { r: contact.receivables, p: contact.payables },
-                after: { r, p },
+                after: { r: rAdj, p: pAdj },
+                officialAp: bal?.glApPayable,
+                businessNet: biz?.businessNet,
               });
             }
-            return { ...contact, receivables: r, payables: p, netBalance: r - p };
+            return { ...contact, receivables: rAdj, payables: pAdj, netBalance: rAdj - pAdj };
           });
+          // Keep partyGlByContactId with Business overlay for supplier GL column reads.
+          if (businessMap && businessMap.size > 0) {
+            const overlaid = new Map(partyMap);
+            for (const [cid, slice] of businessMap) {
+              const cur = overlaid.get(cid) ?? {
+                glArReceivable: 0,
+                glApPayable: 0,
+                glWorkerPayable: 0,
+              };
+              overlaid.set(cid, {
+                ...cur,
+                glApPayable: Number(slice.businessNet) || 0,
+              });
+            }
+            setPartyGlByContactId(overlaid);
+          }
           if (myGen !== loadContactsGenerationRef.current) return;
           if (debugContactsReceiptEditEnabled()) {
             const sal = withBalances.find((c) => c.name?.toLowerCase() === 'salar');

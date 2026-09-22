@@ -11,6 +11,12 @@ export type BalanceBasisGuideRow = {
   glArSigned: number;
   glApSigned: number;
   glWorkerSigned: number;
+  /**
+   * Supplier Business GL (Cr−Dr) for merchandise supplier roles only.
+   * null = not applicable (worker/courier/customer) — UI shows "—".
+   * Never folded into Control AP / Official AP variance.
+   */
+  businessGlNet: number | null;
   operationalReceivable: number;
   operationalPayable: number;
   hiddenCreditAr: number;
@@ -39,6 +45,7 @@ export type BalanceBasisGuideSortKey =
   | 'contactName'
   | 'glArSigned'
   | 'glApSigned'
+  | 'businessGlNet'
   | 'operationalReceivable'
   | 'operationalPayable'
   | 'hiddenCreditAr'
@@ -65,6 +72,8 @@ export function buildBalanceBasisGuideRow(args: {
   glArSigned: number;
   glApSigned: number;
   glWorkerSigned: number;
+  /** null/omit → not a supplier Business GL row */
+  businessGlNet?: number | null;
   documentDueReceivable?: number;
   documentDuePayable?: number;
 }): BalanceBasisGuideRow {
@@ -80,6 +89,7 @@ export function buildBalanceBasisGuideRow(args: {
     glArSigned: args.glArSigned,
     glApSigned: args.glApSigned,
     glWorkerSigned: args.glWorkerSigned,
+    businessGlNet: args.businessGlNet ?? null,
     operationalReceivable,
     operationalPayable,
     hiddenCreditAr: computeHiddenCredit(args.glArSigned, operationalReceivable),
@@ -170,7 +180,14 @@ export function filterBalanceBasisGuideRows(
   }
 
   if (filters.hideZeroOperational) {
-    out = out.filter((r) => r.operationalReceivable > EPS || r.operationalPayable > EPS);
+    // Keep supplier rows with non-zero Business GL even when Official AP operational is 0
+    // (e.g. ARIF: Official AP = 0, Business GL = 39,937).
+    out = out.filter(
+      (r) =>
+        r.operationalReceivable > EPS ||
+        r.operationalPayable > EPS ||
+        (r.businessGlNet != null && Math.abs(r.businessGlNet) > EPS),
+    );
   }
 
   if (filters.showOnlyWithGap) {
@@ -206,6 +223,10 @@ export function sortBalanceBasisGuideRows(
       case 'glApSigned':
         av = a.glApSigned + a.glWorkerSigned;
         bv = b.glApSigned + b.glWorkerSigned;
+        break;
+      case 'businessGlNet':
+        av = a.businessGlNet ?? 0;
+        bv = b.businessGlNet ?? 0;
         break;
       case 'operationalReceivable':
         av = a.operationalReceivable;
@@ -243,8 +264,22 @@ export function formatRowGapExplanation(row: BalanceBasisGuideRow): string {
   const paySigned = row.glApSigned + row.glWorkerSigned;
   if (Math.abs(row.hiddenCreditAp) > EPS) {
     parts.push(
-      `AP signed ${paySigned.toFixed(2)} → operational ${row.operationalPayable.toFixed(2)} (hidden ${row.hiddenCreditAp.toFixed(2)})`
+      `Official AP (2000) ${paySigned.toFixed(2)} → Official AP Payable ${row.operationalPayable.toFixed(2)} (Official AP Credit/Prepaid ${row.hiddenCreditAp.toFixed(2)})`
+    );
+  }
+  if (row.businessGlNet != null && Math.abs(row.businessGlNet) > EPS && Math.abs(row.glApSigned) <= EPS) {
+    parts.push(
+      `Business GL ${row.businessGlNet.toFixed(2)} while Official AP (2000) is 0 — historical supplier exposure (not control AP)`,
     );
   }
   return parts.join('; ') || 'No gap — signed equals operational';
+}
+
+/** Sum Supplier Business GL for supplier rows only (display card; never Control AP math). */
+export function sumSupplierBusinessGlExposure(rows: BalanceBasisGuideRow[]): number {
+  let sum = 0;
+  for (const r of rows) {
+    if (r.businessGlNet != null) sum += r.businessGlNet;
+  }
+  return sum;
 }
