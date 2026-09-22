@@ -11,7 +11,7 @@
 | Old main | `a7ca57922ee2e960768208ee5e3e24a5eaaf2040` |
 | Source branch tip | `8f7c5794ba42adc607c775d85faa60d2c745c122` (`feat/mobile-supplier-business-gl-parity`) |
 | Merge commit | `848a5196334403b42e588fefd7bc38b54e16badc` |
-| Final main | `848a5196334403b42e588fefd7bc38b54e16badc` |
+| Final main (incl. this evidence) | `50528f8b18fadc00fc364c595d3a7f32402a2f7c` |
 
 Merge message: `merge: mobile supplier Business GL parity`  
 Strategy: normal `--no-ff` merge. Source contained current main; no conflicts.
