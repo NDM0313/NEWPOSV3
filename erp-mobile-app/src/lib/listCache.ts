@@ -41,7 +41,8 @@ export const listCacheKeys = {
   paymentAccounts: (companyId: string) => `pa:${companyId}`,
   branches: (companyId: string) => `br:${companyId}`,
   products: (companyId: string) => `pr:${companyId}`,
-  contacts: (companyId: string, type: string, branchId: string) => `ct:${companyId}:${type}:${branchId}`,
+  contacts: (companyId: string, type: string, branchId: string) =>
+    `ct:v2biz:${companyId}:${type}:${branchId}`,
   sales: (companyId: string, branchId: string, rangeKey: string) =>
     `sl:${companyId}:${branchId}:${rangeKey}`,
   purchases: (companyId: string, branchId: string, rangeKey: string) =>
