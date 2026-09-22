@@ -10,7 +10,7 @@
 |------|-------|
 | Starting main SHA | `a7ca57922ee2e960768208ee5e3e24a5eaaf2040` |
 | Branch | `feat/mobile-supplier-business-gl-parity` |
-| Branch tip | *(set after push)* |
+| Branch tip | `a4b58298d9317bcf2c876acf0c3ea6278cf01fea` |
 | Main merged | **NO** |
 
 ## Exact mobile files changed
