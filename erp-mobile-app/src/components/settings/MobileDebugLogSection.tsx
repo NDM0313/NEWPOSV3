@@ -16,7 +16,7 @@ import { resolveSupabaseApiUrl } from '../../lib/resolveSupabaseApiUrl';
 import { getProductImageBlobDisplayUrl } from '../../utils/productImageUpload';
 
 /** Keep in sync with android/app/build.gradle versionCode */
-export const APK_BUILD_CODE = 39;
+export const APK_BUILD_CODE = 42;
 
 function levelColor(level: string): string {
   if (level === 'error') return 'text-red-400';
