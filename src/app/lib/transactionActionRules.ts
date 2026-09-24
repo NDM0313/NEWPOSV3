@@ -17,6 +17,10 @@ import {
   type JournalTransactionLike,
 } from '@/app/lib/unifiedTransactionEdit';
 import { STALE_REVERSAL_VOID_LABEL } from '@/app/lib/staleCorrectionReversalPolicy';
+import {
+  isManualJournalHardDeleteEligible,
+  MANUAL_JE_HARD_DELETE_LABEL,
+} from '@/app/lib/manualJournalHardDeletePolicy';
 
 export type TransactionActionContext =
   | 'journal'
@@ -33,6 +37,7 @@ export type TransactionActionId =
   | 'cancel_payment'
   | 'cancel_entry'
   | 'cancel_orphan'
+  | 'complete_delete'
   | 'void_stale_reversal'
   | 'undo_last_change'
   | 'open_source_document'
@@ -103,6 +108,17 @@ function hasPaymentTraceTarget(row: TransactionActionRowInput): boolean {
   return rt === 'payment_adjustment' || rt === 'payment';
 }
 
+function pushCompleteDeleteIfEligible(actions: TransactionAction[], row: TransactionActionRowInput): void {
+  if (!isManualJournalHardDeleteEligible(row)) return;
+  actions.push({
+    id: 'complete_delete',
+    label: MANUAL_JE_HARD_DELETE_LABEL,
+    severity: 'destructive',
+    title:
+      'Permanently hard-delete this journal and its lines from the database. Requires typing HARD DELETE.',
+  });
+}
+
 function normalizeEditLabel(label: string): string {
   if (label === 'Edit payment') return 'Edit Payment';
   if (label === 'Edit journal') return 'Edit Entry';
@@ -157,6 +173,7 @@ export function getTransactionActions(
         title: 'Mark reversal void — removes from Cash, Trial Balance, and normal Day Book (audit trail kept)',
       });
     }
+    pushCompleteDeleteIfEligible(actions, row);
     if (hasPaymentTraceTarget(row)) {
       actions.push({ id: 'view_trace', label: 'View Trace', severity: 'secondary' });
     }
@@ -180,6 +197,7 @@ export function getTransactionActions(
   }
 
   if (row.is_void === true) {
+    pushCompleteDeleteIfEligible(actions, row);
     if (hasPaymentTraceTarget(row)) {
       actions.push({ id: 'view_trace', label: 'View Trace', severity: 'secondary' });
     }
@@ -289,6 +307,8 @@ export function getTransactionActions(
       disabledReason: options.paymentChainBlockReason,
     });
   }
+
+  pushCompleteDeleteIfEligible(actions, row);
 
   if (hasPaymentTraceTarget(row)) {
     actions.push({ id: 'view_trace', label: 'View Trace', severity: 'secondary' });

@@ -144,7 +144,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const [listFilter, setListFilter] = useState<RentalListFilter>('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [salesmanFilter, setSalesmanFilter] = useState('all');
-  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created'>('created');
+  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created' | 'booking'>('created');
   const [salesmen, setSalesmen] = useState<Array<{ id: string; full_name?: string; name?: string }>>([]);
   const [viewDetailsPrintMode, setViewDetailsPrintMode] = useState(false);
   const [pageSize, setPageSize] = useState(25);
@@ -244,7 +244,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const today = new Date().toISOString().slice(0, 10);
 
   const rentalDateKey = useCallback((r: RentalUI) => {
-    const raw = dateFilterMode === 'created' ? r.createdAt : r.startDate;
+    const raw =
+      dateFilterMode === 'pickup'
+        ? r.startDate
+        : dateFilterMode === 'booking'
+          ? r.bookingDate
+          : r.createdAt;
     if (!raw) return '';
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) return String(raw).slice(0, 10);
@@ -322,7 +327,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     });
     if (matchesWithoutDate && (startDate || endDate)) {
       if (dateFilterMode === 'pickup') {
-        return 'No rentals in selected date range by pickup date. Use Filters → Booking / created date to list recent bookings (including future pickups).';
+        return 'No rentals in selected date range by pickup date. Use Filters → Created date to list recent entries (including future pickups).';
+      }
+      if (dateFilterMode === 'booking') {
+        return 'No rentals in selected date range by booking date. Try Filters → Created date for same-day entries.';
       }
       return 'No rentals in selected date range';
     }
@@ -493,10 +501,11 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
               <select
                 className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
                 value={dateFilterMode}
-                onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created')}
+                onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created' | 'booking')}
               >
+                <option value="created">Created date</option>
+                <option value="booking">Booking date</option>
                 <option value="pickup">Pickup / start date</option>
-                <option value="created">Booking / created date</option>
               </select>
               <label className="text-xs text-muted-foreground mt-2 block">Branch</label>
               <select

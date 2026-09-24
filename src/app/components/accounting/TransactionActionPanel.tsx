@@ -10,6 +10,7 @@ import {
   Pencil,
   RotateCcw,
   Search,
+  Trash2,
   Undo2,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
@@ -29,6 +30,7 @@ const ACTION_ICONS: Partial<Record<TransactionActionId, React.ComponentType<{ cl
   cancel_payment: RotateCcw,
   cancel_orphan: RotateCcw,
   cancel_entry: RotateCcw,
+  complete_delete: Trash2,
   undo_last_change: Undo2,
   open_source_document: ExternalLink,
   view_trace: Search,
@@ -40,6 +42,8 @@ function severityClasses(action: TransactionAction): string {
     case 'cancel_payment':
     case 'cancel_entry':
     case 'cancel_orphan':
+    case 'complete_delete':
+    case 'void_stale_reversal':
       return 'text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40';
     case 'undo_last_change':
       return 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 disabled:opacity-40';
@@ -61,6 +65,8 @@ function dropdownItemClasses(action: TransactionAction): string {
     case 'cancel_payment':
     case 'cancel_entry':
     case 'cancel_orphan':
+    case 'complete_delete':
+    case 'void_stale_reversal':
       return 'text-red-400 focus:text-red-300 focus:bg-red-900/20 data-[disabled]:opacity-40';
     case 'undo_last_change':
       return 'text-orange-400 focus:text-orange-300 focus:bg-orange-900/20 data-[disabled]:opacity-40';
@@ -80,6 +86,8 @@ function isDestructiveAction(action: TransactionAction): boolean {
     action.id === 'cancel_payment' ||
     action.id === 'cancel_entry' ||
     action.id === 'cancel_orphan' ||
+    action.id === 'complete_delete' ||
+    action.id === 'void_stale_reversal' ||
     action.id === 'undo_last_change'
   );
 }

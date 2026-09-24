@@ -45,6 +45,6 @@ describe('manualJournalCancelPolicy', () => {
     const cancel = actions.find((a) => a.id === 'cancel_entry');
     assert.ok(cancel);
     assert.equal(cancel!.label, MANUAL_JE_CANCEL_LABEL);
-    assert.ok(!actions.some((a) => a.label.toLowerCase().includes('delete')));
+    assert.ok(actions.some((a) => a.id === 'complete_delete'));
   });
 });

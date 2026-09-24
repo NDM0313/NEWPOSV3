@@ -229,7 +229,13 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           return [{ id: editRental!.customerId!, name: editRental!.customerName }, ...prev];
         });
       }
-      setBookingDate(editRental.createdAt ? parseLocalDateInput(editRental.createdAt) : new Date());
+      setBookingDate(
+        editRental.bookingDate
+          ? parseLocalDateInput(editRental.bookingDate)
+          : editRental.createdAt
+            ? parseLocalDateInput(editRental.createdAt)
+            : new Date()
+      );
       const editPickup = editRental.startDate ? parseLocalDateInput(editRental.startDate) : new Date();
       const editReturn = editRental.expectedReturnDate
         ? parseLocalDateInput(editRental.expectedReturnDate)

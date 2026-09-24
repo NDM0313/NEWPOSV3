@@ -30,7 +30,10 @@ export interface RentalUI {
   dueAmount: number;
   itemsCount: number;
   items?: RentalItemUI[];
+  /** Real row created_at (entry time). Use for Created column / Today filters. */
   createdAt?: string;
+  /** Business booking_date (may differ from created_at). */
+  bookingDate?: string;
   salesmanId?: string | null;
   salesmanName?: string;
   createdBy?: string;

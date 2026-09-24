@@ -57,6 +57,13 @@ import {
   MANUAL_JE_CANCEL_LABEL,
   manualJournalCancelConfirmMessage,
 } from '@/app/lib/manualJournalCancelPolicy';
+import {
+  MANUAL_JE_HARD_DELETE_CONFIRM_PHRASE,
+  isManualJournalHardDeleteEligible,
+  manualJournalHardDeleteBlockedReason,
+  manualJournalHardDeleteConfirmMessage,
+} from '@/app/lib/manualJournalHardDeletePolicy';
+import { hardDeleteJournalEntry } from '@/app/services/journalHardDeleteService';
 import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
 import { TransactionConfirmDialog } from '@/app/components/accounting/TransactionConfirmDialog';
 import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
@@ -365,7 +372,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     title: string;
     description: string;
     confirmLabel: string;
-    action: 'reverse' | 'void_stale' | 'void_payment' | 'orphan' | 'undo_last';
+    action: 'reverse' | 'void_stale' | 'void_payment' | 'orphan' | 'undo_last' | 'complete_delete';
+    requireTypedPhrase?: string;
   } | null>(null);
   const canVoidStaleReversal = canApplyDeveloperRepair(userRole);
 
@@ -1310,6 +1318,45 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  const handleCompleteDelete = async () => {
+    if (!transaction?.id || !companyId) return;
+    const row = {
+      reference_type: transaction.reference_type,
+      reference_id: transaction.reference_id,
+      payment_id:
+        transaction.payment_id ??
+        (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id) ??
+        null,
+      is_void: transaction.is_void,
+      description: transaction.description,
+    };
+    if (!isManualJournalHardDeleteEligible(row)) {
+      toast.error(manualJournalHardDeleteBlockedReason(row) || 'Hard delete not allowed.');
+      return;
+    }
+    setPendingConfirm({
+      title: `Complete Delete ${transaction.entry_no || ''}?`.trim(),
+      description: manualJournalHardDeleteConfirmMessage(transaction.entry_no),
+      confirmLabel: 'Yes, Hard Delete Forever',
+      action: 'complete_delete',
+      requireTypedPhrase: MANUAL_JE_HARD_DELETE_CONFIRM_PHRASE,
+    });
+  };
+
+  const executeCompleteDelete = async () => {
+    if (!transaction?.id || !companyId) return;
+    try {
+      const res = await hardDeleteJournalEntry(companyId, String(transaction.id));
+      if (!res.success) throw new Error(res.error || 'Hard delete failed');
+      toast.success(`${transaction.entry_no || 'Journal'} permanently deleted`);
+      onClose();
+      dispatchAccountingEditCommitted();
+      await accounting.refreshEntries?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Hard delete failed');
+    }
+  };
+
   const handleCancelOrphanReceipt = async () => {
     if (!transaction || !companyId) return;
     const paymentId =
@@ -1387,6 +1434,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     else if (action === 'void_payment') await executeVoidJournal();
     else if (action === 'orphan') await executeCancelOrphanReceipt();
     else if (action === 'undo_last') await executeUndoLastPaymentChange();
+    else if (action === 'complete_delete') await executeCompleteDelete();
   };
 
   const handleOpenSourceDocumentFromModal = async () => {
@@ -1425,6 +1473,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         break;
       case 'void_stale_reversal':
         void run('Removing...', () => handleVoidStaleReversal());
+        break;
+      case 'complete_delete':
+        void run('Preparing delete...', () => handleCompleteDelete());
         break;
       case 'undo_last_change':
         void run('Undoing...', () => handleUndoLastPaymentChange());
@@ -2775,6 +2826,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         description={pendingConfirm.description}
         confirmLabel={pendingConfirm.confirmLabel}
         cancelLabel="No"
+        requireTypedPhrase={pendingConfirm.requireTypedPhrase}
+        typedPhraseHint={
+          pendingConfirm.requireTypedPhrase
+            ? `Type ${pendingConfirm.requireTypedPhrase} exactly to enable hard delete`
+            : undefined
+        }
         onConfirm={() => {
           const action = pendingConfirm.action;
           setPendingConfirm(null);
