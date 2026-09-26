@@ -13,6 +13,7 @@ import {
   filterCoaRowsByCollapse,
   getCoaParentIdsWithChildren,
 } from '../../lib/coaTreeRows';
+import { isUiAutoRefreshEnabled } from '../../lib/uiAutoRefresh';
 
 interface ChartOfAccountsViewProps {
   onBack: () => void;
@@ -59,6 +60,7 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId, reportRef
   }, [load, reportRefreshEpoch]);
 
   useEffect(() => {
+    if (!isUiAutoRefreshEnabled()) return;
     const onVis = () => {
       if (document.visibilityState === 'visible') void load();
     };

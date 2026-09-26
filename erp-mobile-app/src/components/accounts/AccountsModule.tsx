@@ -47,6 +47,7 @@ import {
   shouldAcceptMobileInvalidation,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '../../lib/uiAutoRefresh';
 import { localNowDateTimeString } from '../../utils/localDate';
 
 interface AccountsModuleProps {
@@ -259,6 +260,7 @@ export function AccountsModule({
       ) {
         return;
       }
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;

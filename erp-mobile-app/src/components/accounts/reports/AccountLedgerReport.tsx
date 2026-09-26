@@ -37,6 +37,7 @@ import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../
 import { formatLedgerLinePresentation, toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
 import { effectiveNetLedgerPresentation } from '../../../lib/ledgerEffectiveNet';
 import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
+import { isUiAutoRefreshEnabled } from '../../../lib/uiAutoRefresh';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
@@ -294,6 +295,7 @@ export function AccountLedgerReport({
 
   useEffect(() => {
     if (!selected) return;
+    if (!isUiAutoRefreshEnabled()) return;
     const onVis = () => {
       if (document.visibilityState === 'visible') setLedgerRefreshNonce((n) => n + 1);
     };

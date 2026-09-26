@@ -13,6 +13,7 @@ import { addPending } from '../../lib/offlineStore';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '../../lib/uiAutoRefresh';
 import { localNowDateTimeString } from '../../utils/localDate';
 import { maybeAutoPrintAfterTransaction } from '../../services/printAfterTransaction';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
@@ -208,6 +209,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
       ) {
         return;
       }
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;

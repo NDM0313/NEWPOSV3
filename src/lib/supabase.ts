@@ -101,15 +101,18 @@ const erpWebCanUseRealtime = !isPlaceholderUrl && !isDemoAnonKey && !isRealtimeD
 
 let webRealtimeRuntimeDisabled = false;
 let webRealtimeFailureCount = 0;
+let webRealtimeTeardownDone = false;
 const WEB_REALTIME_MAX_FAILURES = 3;
 
+/** Assigned after createClient — tears down channels/WS so failed sockets stop reconnecting. */
+let tearDownWebRealtimeChannels: () => void = () => {};
+
 export function noteWebRealtimeConnectionFailure(): void {
-  if (!import.meta.env.DEV) return;
   webRealtimeFailureCount += 1;
-  if (webRealtimeFailureCount >= WEB_REALTIME_MAX_FAILURES) {
-    webRealtimeRuntimeDisabled = true;
-    console.warn('[Supabase] Realtime disabled for this session after repeated WebSocket failures');
-  }
+  if (webRealtimeFailureCount < WEB_REALTIME_MAX_FAILURES || webRealtimeRuntimeDisabled) return;
+  webRealtimeRuntimeDisabled = true;
+  console.warn('[Supabase] Realtime disabled for this session after repeated WebSocket failures');
+  tearDownWebRealtimeChannels();
 }
 
 export function resetWebRealtimeFailureCount(): void {
@@ -277,6 +280,21 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+tearDownWebRealtimeChannels = () => {
+  if (webRealtimeTeardownDone) return;
+  webRealtimeTeardownDone = true;
+  try {
+    void supabase.removeAllChannels();
+  } catch {
+    /* ignore */
+  }
+  try {
+    supabase.realtime.disconnect();
+  } catch {
+    /* ignore */
+  }
+};
+
 /**
  * Vite dev proxies REST/auth to Kong via `/supabase`, but Realtime WebSockets through that
  * hop often fail (ws://localhost:5173/supabase/realtime/...). Keep HTTP on the proxy; attach
@@ -285,6 +303,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
   if (typeof window === 'undefined' || !import.meta.env.DEV) return;
   if (!erpWebCanUseRealtime) return;
+  // Passive UI auto-refresh off → no direct WSS (avoids reconnect spam while testing).
+  if (import.meta.env.VITE_UI_AUTO_REFRESH !== '1') return;
   if (!configuredSupabaseHost.startsWith('https://') || configuredSupabaseHost.includes('localhost')) {
     return;
   }

@@ -22,6 +22,7 @@ import type { User } from '../../types';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getJournalEntries, getAccounts, type JournalEntryLineRow } from '../../api/accounts';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '../../lib/uiAutoRefresh';
 import { localNowDateString } from '../../utils/localDate';
 import {
   type EntrySourceKind,
@@ -377,6 +378,7 @@ export function AccountsDashboard({
       ) {
         return;
       }
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;

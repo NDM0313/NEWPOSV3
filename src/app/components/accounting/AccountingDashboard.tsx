@@ -99,6 +99,7 @@ import {
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '@/app/lib/uiAutoRefresh';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { AccountCategory } from '@/app/services/chartAccountService';
@@ -728,6 +729,7 @@ export const AccountingDashboard = () => {
       ) {
         return;
       }
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
       bump();
     };
     window.addEventListener('accountingEntriesChanged', bump);

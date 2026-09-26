@@ -12,6 +12,7 @@ import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
 import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
+import { isUiAutoRefreshEnabled } from '../../../lib/uiAutoRefresh';
 
 export type AccountKind = 'cash' | 'bank' | 'wallet';
 
@@ -115,6 +116,7 @@ export function AccountSummaryReport({
   }, [companyId, accounts, range.from, range.to, movementsRefreshNonce]);
 
   useEffect(() => {
+    if (!isUiAutoRefreshEnabled()) return;
     const onVis = () => {
       if (document.visibilityState === 'visible') setMovementsRefreshNonce((n) => n + 1);
     };

@@ -5,6 +5,7 @@ import {
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '@/app/lib/uiAutoRefresh';
 
 const LEGACY_RELOAD_EVENTS = ['accountingEntriesChanged', 'paymentAdded', 'ledgerUpdated'] as const;
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -42,8 +43,10 @@ export function subscribeAccountingReportReload(
       return;
     }
     // Align with Sales/Purchase/Expense/Rental: fallback-poll must not remount report UIs.
+    // When UI auto-refresh is off, also skip realtime-change (keep scroll/filters).
     const reason = String(detail?.reason ?? '').toLowerCase();
     if (reason.includes('fallback-poll')) return;
+    if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
     schedule();
   };
 

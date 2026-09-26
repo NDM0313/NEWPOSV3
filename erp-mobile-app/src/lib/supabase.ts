@@ -198,7 +198,7 @@ export const supabase = createClient(url, key, {
 });
 
 export function noteMobileRealtimeConnectionFailure(): void {
-  if (!env.DEV || mobileRealtimeRuntimeDisabled) return;
+  if (mobileRealtimeRuntimeDisabled) return;
   const now = Date.now();
   if (now - lastMobileRealtimeFailureAt < MOBILE_REALTIME_FAILURE_DEBOUNCE_MS) return;
   lastMobileRealtimeFailureAt = now;
@@ -209,7 +209,11 @@ export function noteMobileRealtimeConnectionFailure(): void {
     if (!mobileRealtimeTeardownDone) {
       mobileRealtimeTeardownDone = true;
       void supabase.removeAllChannels().catch(() => {});
-      console.info('[ERP Mobile] Realtime unavailable in dev — using 45s polling fallback');
+      try {
+        supabase.realtime.disconnect();
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

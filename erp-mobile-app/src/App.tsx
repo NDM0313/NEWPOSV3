@@ -38,6 +38,7 @@ import { markUnlocked, clearUnlockMark, shouldRelock, markBackgrounded, touchPin
 import { isMediaCaptureActive, wasMediaCaptureRecent } from './lib/mediaCaptureSession';
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
+import { isUiAutoRefreshEnabled } from './lib/uiAutoRefresh';
 import { mobileRealtimeHealth } from './lib/supabase';
 import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
 import { POSLockScreen } from './components/auth/POSLockScreen';
@@ -346,6 +347,7 @@ export default function App() {
 
   useEffect(() => {
     if (!companyId || !user?.id) return;
+    if (!isUiAutoRefreshEnabled()) return;
     const cleanup = subscribeMobileRealtime({
       companyId,
       branchId: selectedBranch?.id ?? null,
@@ -367,6 +369,7 @@ export default function App() {
 
   useEffect(() => {
     if (!companyId || mobileRealtimeHealth.canUseRealtime) return;
+    if (!isUiAutoRefreshEnabled()) return;
     const fallback = setInterval(() => {
       (['sales', 'purchases', 'accounting', 'contacts'] as const).forEach((domain) =>
         dispatchMobileInvalidated({

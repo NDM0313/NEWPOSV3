@@ -17,6 +17,7 @@ import {
   shouldAcceptMobileInvalidation,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '../../lib/uiAutoRefresh';
 import {
   syncSaleDocumentJournalInPlaceMobile,
   saleAccountingSnapshotFromRow,
@@ -713,6 +714,7 @@ export function SalesHome({
       ) {
         return;
       }
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
       queue();
     };
     window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);

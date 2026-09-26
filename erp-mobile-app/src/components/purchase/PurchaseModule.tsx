@@ -40,6 +40,7 @@ import {
   MOBILE_DATA_INVALIDATED_EVENT,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '../../lib/uiAutoRefresh';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { getCurrentLocalTimestamp, localNowDateTimeString } from '../../utils/localDate';
 import { DateTimeInputField } from '../shared/DateTimePicker';
@@ -436,6 +437,7 @@ export function PurchaseModule({
       ) {
         return;
       }
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
       queue();
     };
     window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 import { createDebouncedCallback, subscribeRealtimeDomains, type RealtimeDomain } from '@/app/lib/realtimeSubscriptions';
+import { isUiAutoRefreshEnabled } from '@/app/lib/uiAutoRefresh';
 import { webRealtimeHealth } from '@/lib/supabase';
 
 const FALLBACK_POLL_MS = 120_000;
@@ -22,6 +23,9 @@ export function WebRealtimeBridge() {
 
   useEffect(() => {
     if (!companyId) return;
+    // Passive auto-refresh off: no Realtime subscribe and no fallback-poll.
+    if (!isUiAutoRefreshEnabled()) return;
+
     const debouncedByDomain = new Map<RealtimeDomain, () => void>();
     const queueFor = (domain: RealtimeDomain) => {
       let queue = debouncedByDomain.get(domain);

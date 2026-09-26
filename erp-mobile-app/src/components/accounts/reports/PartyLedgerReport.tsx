@@ -41,6 +41,7 @@ import {
   effectiveNetLedgerPresentation,
   formatPartyLedgerLoadError,
 } from '../../../lib/ledgerEffectiveNet';
+import { isUiAutoRefreshEnabled } from '../../../lib/uiAutoRefresh';
 
 export type PartyLedgerKind = 'customer' | 'supplier' | 'worker';
 
@@ -325,6 +326,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
 
   useEffect(() => {
     if (!selected) return;
+    if (!isUiAutoRefreshEnabled()) return;
     const onVis = () => {
       if (document.visibilityState === 'visible') setLedgerRefreshNonce((n) => n + 1);
     };
@@ -334,6 +336,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
 
   useEffect(() => {
     if (selected) return;
+    if (!isUiAutoRefreshEnabled()) return;
     const onVis = () => {
       if (document.visibilityState === 'visible') setListRefreshNonce((n) => n + 1);
     };

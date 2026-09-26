@@ -44,6 +44,7 @@ import {
 import { usePermissions } from '../../context/PermissionContext';
 
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '../../lib/uiAutoRefresh';
 
 
 
@@ -443,6 +444,8 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
         return;
 
       }
+
+      if (shouldIgnorePassiveInvalidation(detail?.reason)) return;
 
       if (timer) return;
 

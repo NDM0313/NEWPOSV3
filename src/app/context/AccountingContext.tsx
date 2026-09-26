@@ -23,6 +23,7 @@ import {
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
+import { shouldIgnorePassiveInvalidation } from '@/app/lib/uiAutoRefresh';
 import { isBulkImportActive } from '@/app/lib/bulkImportSession';
 import { formatLocalDateYYYYMMDD, localNowDateString } from '@/app/utils/localDate';
 import {
@@ -536,6 +537,7 @@ function invalidationShouldReloadAccounts(reason?: string): boolean {
   if (!reason) return false;
   // Header / focus refresh must reload the accounts list (Chart of Accounts).
   if (isGlobalRefreshReason(reason)) return true;
+  if (shouldIgnorePassiveInvalidation(reason)) return false;
   const r = reason.toLowerCase();
   if (
     /realtime-change|fallback-poll|contact-balance|sale-payment|saledocumentjournalcreated|accounting-entries-changed|manualreceipt|manualsupplier|sale:|rental:|payment-added|sales-context-payment/.test(
@@ -550,12 +552,13 @@ function invalidationShouldReloadAccounts(reason?: string): boolean {
 /**
  * Journal reload when accounting lists are active.
  * Global refresh always schedules entries (ensureEntriesLoaded in coalesced path).
- * Fallback poll allowed once bootstrapped so mobile→web updates without F5 when realtime is weak.
+ * Fallback poll / realtime allowed only when VITE_UI_AUTO_REFRESH=1.
  */
 function invalidationShouldReloadEntries(reason: string | undefined, entriesBootstrapped: boolean): boolean {
   if (isGlobalRefreshReason(reason)) return true;
   if (!entriesBootstrapped) return false;
   if (!reason) return true;
+  if (shouldIgnorePassiveInvalidation(reason)) return false;
   const r = reason.toLowerCase();
   // Date/branch filter changes are handled by dedicated effects — skip unrelated domain noise.
   if (
