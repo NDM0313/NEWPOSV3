@@ -2,7 +2,8 @@ import { Plus } from 'lucide-react';
 import {
   formatStockLabel,
   getTotalProductStock,
-  isSaleBlockedByStock,
+  isPickerStockGateExempt,
+  isProductSaleBlockedByStock,
   stockLabelClassName,
 } from '../../utils/productStockGate';
 import { ProductImage } from '../products/ProductImage';
@@ -35,7 +36,9 @@ export function FabricProductGrid({
     <div className="grid grid-cols-2 gap-2">
       {items.map((item) => {
         const totalStock = getTotalProductStock(item);
-        const blocked = !relaxStock && settingsLoaded && isSaleBlockedByStock(totalStock, allowNegativeStock);
+        const exempt = isPickerStockGateExempt(item);
+        const blocked =
+          !relaxStock && settingsLoaded && isProductSaleBlockedByStock(item, allowNegativeStock);
         const isSelected = selectedId === item.id;
         return (
           <button
@@ -52,8 +55,8 @@ export function FabricProductGrid({
             </div>
             <h3 className="font-medium text-xs text-[#F9FAFB] line-clamp-2 mb-0.5">{item.name}</h3>
             <p className="text-[10px] text-[#9CA3AF] truncate">{item.sku || '—'}</p>
-            <p className={`text-[10px] mb-1 ${stockLabelClassName(totalStock, gateAllowNegative)}`}>
-              {formatStockLabel(totalStock, gateAllowNegative)}
+            <p className={`text-[10px] mb-1 ${stockLabelClassName(totalStock, gateAllowNegative, { exempt })}`}>
+              {formatStockLabel(totalStock, gateAllowNegative, { exempt })}
             </p>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-[#3B82F6]">Rs. {item.price.toLocaleString()}</span>

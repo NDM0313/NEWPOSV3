@@ -108,9 +108,9 @@ async function filterProductRowsForBranch<T extends { id: string }>(
   return { rows: filtered, error: null };
 }
 
-/** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
+/** Products table select: omit current_stock so query works when column is missing. Stock from movements. */
 const PRODUCTS_SELECT =
-  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, is_dyeable, image_urls, product_categories(name), units(name, allow_decimal)';
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, is_dyeable, track_stock, image_urls, product_categories(name), units(name, allow_decimal)';
 
 export interface ProductRow {
   id: string;
@@ -123,6 +123,7 @@ export interface ProductRow {
   category_id?: string | null;
   unit_id?: string | null;
   is_active: boolean;
+  track_stock?: boolean | null;
   category?: { id: string; name: string } | null;
 }
 
@@ -141,6 +142,8 @@ export interface Product {
   unit: string;
   unitAllowDecimal?: boolean;
   isDyeable?: boolean;
+  /** false = non-tracked / stock-deferred (e.g. CUSTOM-* parents). Default true when unknown. */
+  trackStock?: boolean;
   status: 'active' | 'inactive';
   description?: string;
   barcode?: string;
@@ -292,6 +295,7 @@ export async function getProductByBarcodeOrSku(
       unit: row.units?.name || 'Piece',
       unitAllowDecimal: row.units?.allow_decimal ?? false,
       isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
+      trackStock: (row as { track_stock?: boolean | null }).track_stock !== false,
       status: row.is_active !== false ? 'active' : 'inactive',
       description: row.description ?? undefined,
       barcode: row.barcode ?? undefined,
@@ -340,6 +344,7 @@ export async function getProductByBarcodeOrSku(
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
     isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
+    trackStock: (row as { track_stock?: boolean | null }).track_stock !== false,
     status: row.is_active !== false ? 'active' : 'inactive',
     description: row.description ?? undefined,
     barcode: row.barcode ?? undefined,
@@ -428,6 +433,7 @@ async function getProductsInner(
       unit: unitName,
       unitAllowDecimal,
       isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
+      trackStock: (row as { track_stock?: boolean | null }).track_stock !== false,
       status: row.is_active !== false ? 'active' : 'inactive',
       description: row.description ?? undefined,
       barcode: row.barcode ?? undefined,
@@ -502,6 +508,7 @@ async function buildProductFromRow(
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
     isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
+    trackStock: row.track_stock !== false,
     status: row.is_active !== false ? 'active' : 'inactive',
     description: row.description ?? undefined,
     barcode: row.barcode ?? undefined,
@@ -927,6 +934,7 @@ export async function createProduct(
       retailPrice: Number(row.retail_price) || 0,
       stock: openingQty,
       unit: p.unit,
+      trackStock: true,
       status: row.is_active !== false ? 'active' : 'inactive',
       description: p.description,
       barcode: p.barcode,

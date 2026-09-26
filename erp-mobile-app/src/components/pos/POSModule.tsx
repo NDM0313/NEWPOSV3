@@ -21,7 +21,8 @@ import { useSettings } from '../../context/SettingsContext';
 import {
   formatStockLabel,
   getTotalProductStock,
-  isSaleBlockedByStock,
+  isPickerStockGateExempt,
+  isProductSaleBlockedByStock,
   isVariationSaleBlocked,
   stockLabelClassName,
 } from '../../utils/productStockGate';
@@ -42,6 +43,7 @@ interface POSProduct {
   price: number;
   sku: string;
   stock: number;
+  trackStock?: boolean;
   imageUrl?: string | null;
   variations?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }[];
 }
@@ -112,7 +114,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
 
   const isProductBlocked = useCallback(
     (product: POSProduct) =>
-      settingsLoaded && isSaleBlockedByStock(getTotalProductStock(product), negativeStockAllowed),
+      settingsLoaded && isProductSaleBlockedByStock(product, negativeStockAllowed),
     [settingsLoaded, negativeStockAllowed],
   );
 
@@ -165,6 +167,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
       price: p.retailPrice ?? 0,
       sku: p.sku ?? '—',
       stock: p.stock ?? 0,
+      trackStock: p.trackStock !== false,
       imageUrl: p.imageUrls?.[0] ?? null,
       variations: p.variations?.length
         ? p.variations.map((v) => ({
@@ -286,6 +289,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     price: p.retailPrice ?? 0,
     sku: p.sku ?? '—',
     stock: p.stock ?? 0,
+    trackStock: p.trackStock !== false,
     imageUrl: p.imageUrls?.[0] ?? null,
     variations: p.variations?.length
       ? p.variations.map((v) => ({
@@ -550,6 +554,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
           {filtered.map((product) => {
             const totalStock = getTotalProductStock(product);
             const blocked = isProductBlocked(product);
+            const exempt = isPickerStockGateExempt(product);
             const hasVariations = product.variations && product.variations.length > 0;
             return (
               <button
@@ -574,8 +579,8 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
                 <h3 className="text-white font-medium text-sm mb-1 line-clamp-2">{product.name}</h3>
                 <p className="text-[#6B7280] text-xs mb-2">{product.sku}</p>
                 <p className="text-[#10B981] font-semibold">Rs. {product.price.toLocaleString()}</p>
-                <p className={`text-xs mt-1 ${stockLabelClassName(totalStock, effectiveAllowNegative)}`}>
-                  {formatStockLabel(totalStock, effectiveAllowNegative)}
+                <p className={`text-xs mt-1 ${stockLabelClassName(totalStock, effectiveAllowNegative, { exempt })}`}>
+                  {formatStockLabel(totalStock, effectiveAllowNegative, { exempt })}
                   {hasVariations && !blocked ? ' (options)' : ''}
                 </p>
               </button>

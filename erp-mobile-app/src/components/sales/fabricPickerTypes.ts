@@ -16,6 +16,7 @@ export type FabricPickerProduct = {
   isDyeable?: boolean;
   imageUrl?: string;
   stock?: number;
+  trackStock?: boolean;
 };
 
 export function mapApiProductToFabricPicker(p: productsApi.Product): FabricPickerProduct {
@@ -33,5 +34,6 @@ export function mapApiProductToFabricPicker(p: productsApi.Product): FabricPicke
     isDyeable: Boolean(p.isDyeable),
     imageUrl: p.imageUrls?.[0],
     stock: p.stock ?? 0,
+    trackStock: p.trackStock !== false,
   };
 }

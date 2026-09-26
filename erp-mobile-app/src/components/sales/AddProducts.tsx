@@ -10,7 +10,8 @@ import { useSettings } from '../../context/SettingsContext';
 import {
   formatStockLabel,
   getTotalProductStock,
-  isSaleBlockedByStock,
+  isPickerStockGateExempt,
+  isProductSaleBlockedByStock,
   isVariationSaleBlocked,
   stockLabelClassName,
 } from '../../utils/productStockGate';
@@ -150,7 +151,7 @@ export function AddProducts({
     (product: AvailableProduct) =>
       !relaxStockForAdd &&
       settingsLoaded &&
-      isSaleBlockedByStock(getTotalProductStock(product), negativeStockAllowed),
+      isProductSaleBlockedByStock(product, negativeStockAllowed),
     [settingsLoaded, negativeStockAllowed, relaxStockForAdd],
   );
 
@@ -187,6 +188,7 @@ export function AddProducts({
               variations: p.variations,
               unitAllowDecimal: p.unitAllowDecimal ?? false,
               stock: p.stock ?? 0,
+              trackStock: p.trackStock !== false,
               imageUrl: p.imageUrls?.[0],
             };
           })
@@ -643,6 +645,7 @@ export function AddProducts({
                   {filteredCustom.map((item) => {
                     const totalStock = getTotalProductStock(item);
                     const blocked = isProductBlocked(item);
+                    const exempt = isPickerStockGateExempt(item);
                     return (
                       <button
                         key={`custom-${item.id}`}
@@ -656,8 +659,8 @@ export function AddProducts({
                         </div>
                         <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
                         <p className="text-xs text-[#9CA3AF] mb-1">{item.sku}</p>
-                        <p className={`text-xs mb-2 ${stockLabelClassName(totalStock, gateAllowNegative)}`}>
-                          {formatStockLabel(totalStock, gateAllowNegative)}
+                        <p className={`text-xs mb-2 ${stockLabelClassName(totalStock, gateAllowNegative, { exempt })}`}>
+                          {formatStockLabel(totalStock, gateAllowNegative, { exempt })}
                         </p>
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-semibold text-[#3B82F6]">
