@@ -43,6 +43,7 @@ interface POSProduct {
   price: number;
   sku: string;
   stock: number;
+  totalStock?: number;
   trackStock?: boolean;
   imageUrl?: string | null;
   variations?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }[];
@@ -167,6 +168,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
       price: p.retailPrice ?? 0,
       sku: p.sku ?? '—',
       stock: p.stock ?? 0,
+      totalStock: p.totalStock ?? p.stock ?? 0,
       trackStock: p.trackStock !== false,
       imageUrl: p.imageUrls?.[0] ?? null,
       variations: p.variations?.length
@@ -289,6 +291,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     price: p.retailPrice ?? 0,
     sku: p.sku ?? '—',
     stock: p.stock ?? 0,
+    totalStock: p.totalStock ?? p.stock ?? 0,
     trackStock: p.trackStock !== false,
     imageUrl: p.imageUrls?.[0] ?? null,
     variations: p.variations?.length

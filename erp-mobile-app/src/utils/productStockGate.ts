@@ -2,6 +2,8 @@ import { isBespokeGenericSku } from '../lib/bespokeCartInjection';
 
 export interface StockableProduct {
   stock?: number;
+  /** Web-parity SUM of all movements for product_id (incl. inactive variation keys). */
+  totalStock?: number | null;
   hasVariations?: boolean;
   variations?: { stock?: number }[];
   sku?: string | null;
@@ -23,6 +25,10 @@ export function isPickerStockGateExempt(product: {
 }
 
 export function getTotalProductStock(product: StockableProduct): number {
+  // Prefer web-parity rollup when present (includes inactive variation movement keys).
+  if (product.totalStock != null && Number.isFinite(Number(product.totalStock))) {
+    return Number(product.totalStock);
+  }
   if (product.hasVariations) {
     const variationSum = (product.variations ?? []).reduce((sum, v) => sum + (v.stock ?? 0), 0);
     // product.stock holds orphan parent movements (variation_id IS NULL), not forced to 0.

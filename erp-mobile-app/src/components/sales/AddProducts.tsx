@@ -188,6 +188,7 @@ export function AddProducts({
               variations: p.variations,
               unitAllowDecimal: p.unitAllowDecimal ?? false,
               stock: p.stock ?? 0,
+              totalStock: p.totalStock ?? p.stock ?? 0,
               trackStock: p.trackStock !== false,
               imageUrl: p.imageUrls?.[0],
             };

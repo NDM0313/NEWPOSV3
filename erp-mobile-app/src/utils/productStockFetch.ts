@@ -92,6 +92,26 @@ function aggregateMovementRows(movData: StockMovementRow[]): Record<string, numb
   return map;
 }
 
+/**
+ * Web inventoryOverview parity: SUM of all movement qty for a product_id
+ * (orphan parent key + every productId_variationId key).
+ */
+export function sumProductStockFromKeyMap(
+  stockByKey: Record<string, number>,
+  productId: string,
+): number {
+  const id = String(productId || '').trim();
+  if (!id) return 0;
+  const prefix = `${id}_`;
+  let sum = 0;
+  for (const [key, qty] of Object.entries(stockByKey)) {
+    if (key === id || key.startsWith(prefix)) {
+      sum += Number(qty) || 0;
+    }
+  }
+  return sum;
+}
+
 async function loadStockFromMovements(
   companyId: string,
   productIds: string[],

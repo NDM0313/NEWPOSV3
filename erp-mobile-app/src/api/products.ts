@@ -8,7 +8,7 @@ import {
   listCacheRemoveByPrefix,
   listCacheSet,
 } from '../lib/listCache';
-import { fetchProductStockByKey, sumProductStockFromMovements } from '../utils/productStockFetch';
+import { fetchProductStockByKey, sumProductStockFromKeyMap, sumProductStockFromMovements } from '../utils/productStockFetch';
 import { fetchInBatches } from '../lib/chunkInQuery';
 import { isRealBranchUuid } from '../utils/branchId';
 
@@ -139,6 +139,11 @@ export interface Product {
   costPrice: number;
   retailPrice: number;
   stock: number;
+  /**
+   * Web-parity on-hand: SUM of all stock_movements for this product_id
+   * (includes inactive variation keys). Prefer for sales picker gate/label.
+   */
+  totalStock?: number;
   unit: string;
   unitAllowDecimal?: boolean;
   isDyeable?: boolean;
@@ -292,6 +297,7 @@ export async function getProductByBarcodeOrSku(
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
       stock,
+      totalStock: stock,
       unit: row.units?.name || 'Piece',
       unitAllowDecimal: row.units?.allow_decimal ?? false,
       isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
@@ -341,6 +347,7 @@ export async function getProductByBarcodeOrSku(
     costPrice: Number(row.cost_price) || 0,
     retailPrice: Number(row.retail_price) || 0,
     stock,
+    totalStock: stock,
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
     isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
@@ -419,6 +426,7 @@ async function getProductsInner(
     const unitAllowDecimal = r.units?.allow_decimal ?? false;
     const orphanParent = stockByKey[row.id] ?? 0;
     const productStock = orphanParent;
+    const totalStock = sumProductStockFromKeyMap(stockByKey, row.id);
     list.push({
       id: row.id,
       sku: row.sku || '—',
@@ -430,6 +438,7 @@ async function getProductsInner(
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
       stock: productStock,
+      totalStock,
       unit: unitName,
       unitAllowDecimal,
       isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
@@ -505,6 +514,7 @@ async function buildProductFromRow(
     costPrice: Number(row.cost_price) || 0,
     retailPrice: parentRetail,
     stock: orphanParent,
+    totalStock: sumProductStockFromKeyMap(stockByKey, row.id),
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
     isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
@@ -933,6 +943,7 @@ export async function createProduct(
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
       stock: openingQty,
+      totalStock: openingQty,
       unit: p.unit,
       trackStock: true,
       status: row.is_active !== false ? 'active' : 'inactive',
