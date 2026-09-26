@@ -1,13 +1,15 @@
 # Transaction cancel / remove guide
 
-ERP **never hard-deletes** money rows. "Delete" means **soft void** (`journal_entries.is_void = true`): the row stays for audit but disappears from Cash, Trial Balance, and normal Day Book.
+ERP default for money rows is **soft void** (`journal_entries.is_void = true`): the row stays for audit but disappears from Cash, Trial Balance, and normal Day Book.
+
+**Exception — Complete Delete:** Accounting Transaction Detail (and mobile journal/payment detail) can permanently hard-delete eligible **manual journals** and **Receive/Pay** payments (payment row + JE chain + allocations) after typing `HARD DELETE`. Sale/purchase/rental/studio **bill** journals stay blocked — cancel from the source module. Prefer **Cancel Payment** / **Cancel Entry** whenever an audit trail is required.
 
 ## By transaction type
 
 | Type | Example | Where to act | Button / action |
 |------|---------|--------------|-----------------|
-| Payment receipt | RCV-* | Transaction detail on active payment | **Cancel Payment** |
-| Manual journal | Manual JE | Transaction detail / Journal list | **Cancel Entry** |
+| Payment receipt / pay | RCV-* / PAY-* | Transaction detail on active payment | **Cancel Payment** (void) or **Complete Delete** (hard erase) |
+| Manual journal | Manual JE | Transaction detail / Journal list | **Cancel Entry** (void) or **Complete Delete** (hard erase) |
 | Sale / Purchase / Rental invoice | SL-*, PUR-* | Sales / Purchases / Rentals module | Cancel document there — not from Journal |
 | **Stale correction reversal** | JE-0168 class | AR/AP → **Journal hygiene** or Transaction detail | **Remove from live GL** (Admin/Owner) |
 | GL correction repair | JV-* | Hybrid Repair / Developer Center | Repair workflow — not ad-hoc delete |
@@ -60,6 +62,6 @@ Legacy **Reports → Ledger Center V2** and Accounting **Ledger** dropdown were 
 
 ## Hard delete
 
-Not supported in production. Use void only.
+**Complete Delete** (type `HARD DELETE`) is supported for cleanup of eligible manual journals and Receive/Pay payments. Prefer void (**Cancel**) for normal operations. Bill/document journals are never hard-deleted from Accounting.
 
-See also: [`remaining-tasks-2026-06-12.md`](remaining-tasks-2026-06-12.md)
+See also: [`remaining-tasks-2026-06-12.md`](remaining-tasks-2026-06-12.md) · [`../changelogs/2026-09-26-complete-delete-receive-payment.md`](../changelogs/2026-09-26-complete-delete-receive-payment.md)

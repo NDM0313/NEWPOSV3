@@ -8,6 +8,7 @@ import {
   Loader2,
   SquarePen,
   Ban,
+  Trash2,
 } from 'lucide-react';
 import {
   getTransactionDetail,
@@ -25,6 +26,8 @@ import { ReceiptPreviewPdf } from '../../shared/ReceiptPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
 import { useTransactionCancel } from '../../../hooks/useTransactionCancel';
+import { useJournalCompleteDelete } from '../../../hooks/useJournalCompleteDelete';
+import { MANUAL_JE_HARD_DELETE_LABEL } from '../../../lib/manualJournalHardDeletePolicy';
 import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 import { AttachmentPreviewModal } from '../../sales/AttachmentPreviewModal';
 import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
@@ -82,6 +85,21 @@ export function TransactionDetailSheet({
     },
   });
 
+  const {
+    hardDeleteBusy,
+    hardDeleteError,
+    beginCompleteDeleteByJournalEntryId,
+    CompleteDeleteConfirmPortal,
+    completeDeleteHint,
+  } = useJournalCompleteDelete({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      onCancelled?.();
+      onClose();
+    },
+  });
+
   useEffect(() => {
     setLoading(true);
     getTransactionDetail(companyId, paymentId)
@@ -126,6 +144,49 @@ export function TransactionDetailSheet({
     () => (detail ? canCancelTransactionRow(detail) : { show: false, label: 'Cancel Entry' as const, journalEntryId: null }),
     [detail],
   );
+
+  const hardDeleteHint = useMemo(() => {
+    if (!detail) return { show: false, isPayment: false };
+    const jeId =
+      resolveJournalEntryIdForCancel({
+        id: detail.id,
+        journalEntryId: detail.journalEntryId,
+        paymentId: detail.paymentId,
+      }) || detail.journalEntryId;
+    const payId = String(detail.paymentId || '').trim();
+    const je = String(jeId || '').trim();
+    // Journal-only rows often reuse paymentId prop as the JE id — do not treat as payment link.
+    const realPaymentId = payId && payId !== je && !detail.id.startsWith('journal-') ? payId : null;
+    return completeDeleteHint({
+      journalEntryId: jeId,
+      paymentId: realPaymentId,
+      referenceType: detail.referenceType,
+    });
+  }, [detail, completeDeleteHint]);
+
+  const beginCompleteDelete = async () => {
+    if (!detail) return;
+    setCancelError(null);
+    let jeId =
+      resolveJournalEntryIdForCancel({
+        id: detail.id,
+        journalEntryId: detail.journalEntryId,
+        paymentId: detail.paymentId,
+      }) || cancelHint.journalEntryId;
+    if (!jeId && detail.paymentId) {
+      jeId = await resolveJournalEntryIdFromPayment(companyId, detail.paymentId);
+    }
+    const paymentIdLooksLikeUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId);
+    if (!jeId && paymentIdLooksLikeUuid && (detail.id.startsWith('journal-') || detail.journalEntryId === paymentId)) {
+      jeId = paymentId;
+    }
+    if (!jeId) {
+      setCancelError('No journal entry linked — cannot Complete Delete.');
+      return;
+    }
+    await beginCompleteDeleteByJournalEntryId(jeId);
+  };
 
   const openAttachmentPreview = (items: Array<{ url: string; name: string }>, startIndex = 0) => {
     setAttachmentPreviewList(items);
@@ -356,7 +417,7 @@ export function TransactionDetailSheet({
               {cancelHint.show && (
                 <button
                   type="button"
-                  disabled={cancelBusy}
+                  disabled={cancelBusy || hardDeleteBusy}
                   onClick={() => void beginCancel()}
                   className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#7F1D1D] hover:bg-[#991B1B] rounded-lg text-white font-semibold text-sm mt-1 disabled:opacity-50"
                 >
@@ -368,9 +429,24 @@ export function TransactionDetailSheet({
                   {cancelHint.label}
                 </button>
               )}
-              {cancelError ? (
+              {hardDeleteHint.show && (
+                <button
+                  type="button"
+                  disabled={cancelBusy || hardDeleteBusy}
+                  onClick={() => void beginCompleteDelete()}
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#450A0A] hover:bg-[#7F1D1D] border border-[#EF4444]/50 rounded-lg text-white font-semibold text-sm mt-1 disabled:opacity-50"
+                >
+                  {hardDeleteBusy ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {MANUAL_JE_HARD_DELETE_LABEL}
+                </button>
+              )}
+              {cancelError || hardDeleteError ? (
                 <div className="col-span-2 p-3 bg-[#EF4444]/15 border border-[#EF4444]/40 rounded-lg text-sm text-[#FCA5A5]">
-                  {cancelError}
+                  {cancelError || hardDeleteError}
                 </div>
               ) : null}
             </div>
@@ -379,6 +455,7 @@ export function TransactionDetailSheet({
       </div>
 
       {CancelConfirmPortal}
+      {CompleteDeleteConfirmPortal}
 
       {preview.brand && detail && (
         <PdfPreviewModal

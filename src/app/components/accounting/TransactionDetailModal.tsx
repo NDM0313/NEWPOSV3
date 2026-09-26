@@ -60,6 +60,7 @@ import {
 import {
   MANUAL_JE_HARD_DELETE_CONFIRM_PHRASE,
   isManualJournalHardDeleteEligible,
+  isPaymentHardDeleteTarget,
   manualJournalHardDeleteBlockedReason,
   manualJournalHardDeleteConfirmMessage,
 } from '@/app/lib/manualJournalHardDeletePolicy';
@@ -1320,23 +1321,26 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
   const handleCompleteDelete = async () => {
     if (!transaction?.id || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id) ??
+      null;
     const row = {
       reference_type: transaction.reference_type,
       reference_id: transaction.reference_id,
-      payment_id:
-        transaction.payment_id ??
-        (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id) ??
-        null,
+      payment_id: paymentId,
       is_void: transaction.is_void,
       description: transaction.description,
+      payment_obj: Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment,
     };
     if (!isManualJournalHardDeleteEligible(row)) {
       toast.error(manualJournalHardDeleteBlockedReason(row) || 'Hard delete not allowed.');
       return;
     }
+    const isPayment = isPaymentHardDeleteTarget(row);
     setPendingConfirm({
       title: `Complete Delete ${transaction.entry_no || ''}?`.trim(),
-      description: manualJournalHardDeleteConfirmMessage(transaction.entry_no),
+      description: manualJournalHardDeleteConfirmMessage(transaction.entry_no, { isPayment }),
       confirmLabel: 'Yes, Hard Delete Forever',
       action: 'complete_delete',
       requireTypedPhrase: MANUAL_JE_HARD_DELETE_CONFIRM_PHRASE,
@@ -1351,6 +1355,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       toast.success(`${transaction.entry_no || 'Journal'} permanently deleted`);
       onClose();
       dispatchAccountingEditCommitted();
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
       await accounting.refreshEntries?.();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Hard delete failed');

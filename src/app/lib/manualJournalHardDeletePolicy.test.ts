@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   isManualJournalHardDeleteEligible,
+  isPaymentHardDeleteTarget,
   isValidHardDeleteConfirmPhrase,
   manualJournalHardDeleteBlockedReason,
   manualJournalHardDeleteConfirmMessage,
@@ -46,21 +47,47 @@ describe('manualJournalHardDeletePolicy', () => {
     );
   });
 
-  it('payment-linked JE is blocked', () => {
+  it('payment-linked JE is eligible for complete delete', () => {
     assert.equal(
       isManualJournalHardDeleteEligible({
         reference_type: 'payment',
         payment_id: 'pay-1',
         is_void: false,
       }),
-      false
+      true
     );
-    assert.match(
+    assert.equal(
+      isPaymentHardDeleteTarget({
+        reference_type: 'manual_receipt',
+        payment_id: 'pay-1',
+      }),
+      true
+    );
+    assert.equal(
       manualJournalHardDeleteBlockedReason({
         reference_type: 'payment',
         payment_id: 'pay-1',
-      }) || '',
-      /Payment-linked/i
+      }),
+      null
+    );
+  });
+
+  it('sale-linked receive (payment_id + sale rt) is eligible', () => {
+    assert.equal(
+      isManualJournalHardDeleteEligible({
+        reference_type: 'sale',
+        reference_id: 's1',
+        payment_id: 'pay-sale',
+        is_void: false,
+      }),
+      true
+    );
+    assert.equal(
+      isPaymentHardDeleteTarget({
+        reference_type: 'sale',
+        payment_id: 'pay-sale',
+      }),
+      true
     );
   });
 
@@ -89,6 +116,9 @@ describe('manualJournalHardDeletePolicy', () => {
     assert.match(msg, /JE-6741/);
     assert.match(msg, /HARD DELETE/);
     assert.match(msg, /permanently/i);
+    const payMsg = manualJournalHardDeleteConfirmMessage('JE-100', { isPayment: true });
+    assert.match(payMsg, /payment record/i);
+    assert.match(payMsg, /allocations/i);
     assert.equal(isValidHardDeleteConfirmPhrase('HARD DELETE'), true);
     assert.equal(isValidHardDeleteConfirmPhrase('hard delete'), false);
     assert.equal(isValidHardDeleteConfirmPhrase(''), false);
@@ -110,6 +140,23 @@ describe('manualJournalHardDeletePolicy', () => {
     assert.ok(hard);
     assert.equal(hard!.label, MANUAL_JE_HARD_DELETE_LABEL);
     assert.ok(actions.some((a) => a.id === 'cancel_entry'));
+  });
+
+  it('detail modal exposes Complete Delete for receive/pay', () => {
+    const actions = getTransactionActions(
+      {
+        reference_type: 'on_account',
+        reference_id: 'c1',
+        payment_id: 'pay-1',
+        is_void: false,
+        journal_line_count: 2,
+        payment_obj: { id: 'pay-1', reference_type: 'on_account', payment_type: 'paid' },
+      },
+      'detail_modal',
+      { includeViewAction: false }
+    );
+    assert.ok(actions.some((a) => a.id === 'complete_delete'));
+    assert.ok(actions.some((a) => a.id === 'cancel_payment'));
   });
 
   it('detail modal exposes Complete Delete for correction_reversal', () => {

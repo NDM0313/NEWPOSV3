@@ -1,15 +1,15 @@
 /**
- * Hard-delete journal entry (Complete Delete) or full payment cascade (Receive/Pay).
- * Fail-closed when non-line FKs still reference chain JEs.
+ * Complete Delete (hard delete) for journals and Receive/Pay — mobile API.
+ * Mirrors web journalHardDeleteService.
  */
 
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
 import {
   isManualJournalHardDeleteEligible,
   isPaymentHardDeleteTarget,
   manualJournalHardDeleteBlockedReason,
   type ManualJournalHardDeleteRow,
-} from '@/app/lib/manualJournalHardDeletePolicy';
+} from '../lib/manualJournalHardDeletePolicy';
 
 const FK_PROBE_TABLES = [
   'rental_payments',
@@ -40,19 +40,6 @@ async function countFkRefs(journalEntryId: string): Promise<{ table: string; cou
   return results;
 }
 
-async function countFkRefsForMany(
-  journalEntryIds: string[]
-): Promise<{ table: string; count: number; journalEntryId: string }[]> {
-  const all: { table: string; count: number; journalEntryId: string }[] = [];
-  for (const id of journalEntryIds) {
-    const blockers = await countFkRefs(id);
-    for (const b of blockers) {
-      all.push({ ...b, journalEntryId: id });
-    }
-  }
-  return all;
-}
-
 async function deleteJournalHeadersAndLines(
   companyId: string,
   journalEntryIds: string[]
@@ -63,7 +50,6 @@ async function deleteJournalHeadersAndLines(
     .from('journal_entry_lines')
     .delete()
     .in('journal_entry_id', journalEntryIds);
-
   if (linesErr) return { success: false, error: `Could not delete lines: ${linesErr.message}` };
 
   const { error: headErr } = await supabase
@@ -71,14 +57,12 @@ async function deleteJournalHeadersAndLines(
     .delete()
     .in('id', journalEntryIds)
     .eq('company_id', companyId);
-
   if (headErr) return { success: false, error: `Could not delete journal: ${headErr.message}` };
 
   return { success: true };
 }
 
-/** Resolve payment id from a JE row (primary payment_id or payment_adjustment reference_id). */
-export function resolvePaymentIdFromJournalRow(row: {
+function resolvePaymentIdFromJournalRow(row: {
   payment_id?: string | null;
   reference_type?: string | null;
   reference_id?: string | null;
@@ -93,12 +77,6 @@ export function resolvePaymentIdFromJournalRow(row: {
   return null;
 }
 
-/**
- * Collect all JE ids in a payment chain:
- * - primary JEs (payment_id = paymentId)
- * - payment_adjustment (reference_id = paymentId)
- * - correction_reversal pointing at any of the above
- */
 async function collectPaymentChainJournalIds(
   companyId: string,
   paymentId: string
@@ -143,16 +121,11 @@ async function collectPaymentChainJournalIds(
   return { ids: Array.from(idSet) };
 }
 
-/**
- * Clear rental_payments rows linked to this payment or its chain JEs.
- * Prefer delete; if blocked, null journal_entry_id then retry delete by payment_id when column exists.
- */
 async function clearRentalPaymentLinks(
   companyId: string,
   paymentId: string,
   journalEntryIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  // By payment_id (if column exists on rental_payments)
   {
     const { error } = await supabase
       .from('rental_payments')
@@ -175,7 +148,6 @@ async function clearRentalPaymentLinks(
     if (nullErr) {
       const msg = String(nullErr.message || '');
       if (!/does not exist|column|Could not find|schema cache/i.test(msg)) {
-        // Try delete by journal_entry_id instead
         const { error: delErr } = await supabase
           .from('rental_payments')
           .delete()
@@ -193,9 +165,6 @@ async function clearRentalPaymentLinks(
   return { success: true };
 }
 
-/**
- * Permanently delete a payment + allocations + full JE chain.
- */
 export async function hardDeletePaymentTransaction(
   companyId: string,
   paymentId: string
@@ -204,23 +173,10 @@ export async function hardDeletePaymentTransaction(
     return { success: false, error: 'Company and payment id are required.' };
   }
 
-  const { data: payment, error: payLoadErr } = await supabase
-    .from('payments')
-    .select('id, company_id')
-    .eq('id', paymentId)
-    .eq('company_id', companyId)
-    .maybeSingle();
-
-  if (payLoadErr) return { success: false, error: payLoadErr.message };
-  if (!payment) {
-    // Payment already gone — still try to clean orphan chain JEs with this payment_id
-  }
-
   const chain = await collectPaymentChainJournalIds(companyId, paymentId);
   if (chain.error) return { success: false, error: chain.error };
   const jeIds = chain.ids;
 
-  // 1) Allocations first (paid_amount recalc triggers)
   const { error: allocErr } = await supabase.from('payment_allocations').delete().eq('payment_id', paymentId);
   if (allocErr) {
     const msg = String(allocErr.message || '');
@@ -229,22 +185,20 @@ export async function hardDeletePaymentTransaction(
     }
   }
 
-  // 2) Clear rental_payments links before JE delete
   const rentalClear = await clearRentalPaymentLinks(companyId, paymentId, jeIds);
   if (!rentalClear.success) return rentalClear;
 
-  // 3) FK probe remaining tables (after rental clear)
   if (jeIds.length > 0) {
     try {
-      const blockers = await countFkRefsForMany(jeIds);
-      if (blockers.length > 0) {
-        const detail = blockers
-          .map((b) => `${b.table} (${b.count}) on ${b.journalEntryId.slice(0, 8)}…`)
-          .join(', ');
-        return {
-          success: false,
-          error: `Cannot hard-delete: other records still reference chain journals (${detail}).`,
-        };
+      for (const id of jeIds) {
+        const blockers = await countFkRefs(id);
+        if (blockers.length > 0) {
+          const detail = blockers.map((b) => `${b.table} (${b.count})`).join(', ');
+          return {
+            success: false,
+            error: `Cannot hard-delete: other records still reference chain journals (${detail}).`,
+          };
+        }
       }
     } catch (e: unknown) {
       return { success: false, error: e instanceof Error ? e.message : 'FK probe failed.' };
@@ -254,22 +208,16 @@ export async function hardDeletePaymentTransaction(
     if (!delJe.success) return delJe;
   }
 
-  // 4) Delete payment row
   const { error: payDelErr } = await supabase
     .from('payments')
     .delete()
     .eq('id', paymentId)
     .eq('company_id', companyId);
-
   if (payDelErr) return { success: false, error: `Could not delete payment: ${payDelErr.message}` };
 
   return { success: true };
 }
 
-/**
- * Complete Delete entry point from a journal entry id.
- * Delegates to payment cascade when the JE is payment-linked.
- */
 export async function hardDeleteJournalEntry(
   companyId: string,
   journalEntryId: string

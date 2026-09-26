@@ -115,7 +115,7 @@ function pushCompleteDeleteIfEligible(actions: TransactionAction[], row: Transac
     label: MANUAL_JE_HARD_DELETE_LABEL,
     severity: 'destructive',
     title:
-      'Permanently hard-delete this journal and its lines from the database. Requires typing HARD DELETE.',
+      'Permanently hard-delete this journal (and for Receive/Pay: payment + chain + allocations). Requires typing HARD DELETE.',
   });
 }
 
@@ -264,6 +264,7 @@ export function getTransactionActions(
       severity: 'destructive',
       title: ORPHAN_RECEIPT_HIDE_HELP,
     });
+    pushCompleteDeleteIfEligible(actions, row);
     if (hasPaymentTraceTarget(row)) {
       actions.push({ id: 'view_trace', label: 'View Trace', severity: 'secondary' });
     }

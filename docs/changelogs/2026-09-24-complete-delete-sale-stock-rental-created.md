@@ -8,6 +8,8 @@
 - **Blocked:** payment-linked JEs and source-document roots (sale / purchase / rental / studio). Use Cancel Payment / open source document instead.
 - **Cancel Entry** unchanged (still posts `correction_reversal` / reverse path).
 
+> **Update 2026-09-26:** Complete Delete now also applies to Receive/Pay (`payment_id` cascades). See [`2026-09-26-complete-delete-receive-payment.md`](2026-09-26-complete-delete-receive-payment.md). Document-root bills remain blocked.
+
 ### Files
 
 - `src/app/lib/manualJournalHardDeletePolicy.ts` (+ tests)
