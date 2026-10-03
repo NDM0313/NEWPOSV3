@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Ban, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, Ban, ExternalLink, Loader2, Trash2 } from 'lucide-react';
 import {
   allowsDayBookUnifiedEdit,
   getMobileSalePurchaseOpenTarget,
@@ -20,6 +20,8 @@ import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { loadMergedAttachmentsForJournalEntry } from '../../lib/loadMergedAttachments';
 import type { NormalizedAttachment } from '../../lib/normalizeAttachments';
 import { useTransactionCancel, canCancelJournalRow } from '../../hooks/useTransactionCancel';
+import { useJournalCompleteDelete } from '../../hooks/useJournalCompleteDelete';
+import { MANUAL_JE_HARD_DELETE_LABEL } from '../../lib/manualJournalHardDeletePolicy';
 
 interface Props {
   entry: AccountEntry;
@@ -62,6 +64,26 @@ export function JournalEntryDetailPanel({
     onSuccess: () => {
       onBack();
     },
+  });
+
+  const {
+    hardDeleteBusy,
+    hardDeleteError,
+    beginCompleteDeleteByJournalEntryId,
+    CompleteDeleteConfirmPortal,
+    completeDeleteHint,
+  } = useJournalCompleteDelete({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      onBack();
+    },
+  });
+
+  const hardDeleteHint = completeDeleteHint({
+    journalEntryId: entry.id,
+    paymentId: entry.paymentId ?? detail?.payment_id,
+    referenceType: entry.referenceType ?? detail?.reference_type,
   });
 
   useEffect(() => {
@@ -336,7 +358,7 @@ export function JournalEntryDetailPanel({
           {cancelHint.show ? (
             <button
               type="button"
-              disabled={cancelBusy}
+              disabled={cancelBusy || hardDeleteBusy}
               onClick={() => void beginCancelByJournalEntryId(entry.id)}
               className="w-full flex items-center justify-center gap-2 py-3 bg-[#7F1D1D] hover:bg-[#991B1B] rounded-lg text-white font-semibold text-sm disabled:opacity-50"
             >
@@ -344,9 +366,20 @@ export function JournalEntryDetailPanel({
               {cancelHint.label}
             </button>
           ) : null}
-          {cancelError ? (
+          {hardDeleteHint.show ? (
+            <button
+              type="button"
+              disabled={cancelBusy || hardDeleteBusy}
+              onClick={() => void beginCompleteDeleteByJournalEntryId(entry.id)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-[#450A0A] hover:bg-[#7F1D1D] border border-[#EF4444]/50 rounded-lg text-white font-semibold text-sm disabled:opacity-50"
+            >
+              {hardDeleteBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {MANUAL_JE_HARD_DELETE_LABEL}
+            </button>
+          ) : null}
+          {cancelError || hardDeleteError ? (
             <div className="p-3 bg-[#EF4444]/15 border border-[#EF4444]/40 rounded-lg text-sm text-[#FCA5A5]">
-              {cancelError}
+              {cancelError || hardDeleteError}
             </div>
           ) : null}
         </div>
@@ -372,6 +405,7 @@ export function JournalEntryDetailPanel({
       )}
 
       {CancelConfirmPortal}
+      {CompleteDeleteConfirmPortal}
       {AttachmentPreviewPortal}
     </>
   );
