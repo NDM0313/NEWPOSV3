@@ -43,6 +43,10 @@ import {
   isStatementTimeoutMessage,
   wideDateRangeClampLimitation,
 } from '@/app/lib/wideDateRangeClamp';
+import {
+  ENTRIES_FETCH_LIMIT,
+  ENTRIES_FETCH_LIMIT_ON_TIMEOUT,
+} from '@/app/lib/journalEntriesListSelect';
 
 /** Prefer source document branch (rental/sale/purchase) over session branch selector. */
 function resolvePostingBranchId(
@@ -536,8 +540,6 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
 const COALESCED_REFRESH_MS = 400;
-/** Page size for Day Book getAllEntries (one lean page per loadEntries call). */
-const ENTRIES_FETCH_LIMIT = 500;
 /** Skip identical journal list reloads within this window (invalidation / auth storms). */
 const ENTRIES_FETCH_DEDUPE_MS = 2500;
 
@@ -590,7 +592,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const [dayBookDateRangeClamped, setDayBookDateRangeClamped] = useState(false);
   const [dayBookDateClampNote, setDayBookDateClampNote] = useState<string | null>(null);
   const [entriesPage, setEntriesPageState] = useState(0);
-  const entriesPageSize = ENTRIES_FETCH_LIMIT;
+  const [entriesPageSize, setEntriesPageSize] = useState(ENTRIES_FETCH_LIMIT);
+  const entriesPageSizeRef = useRef(ENTRIES_FETCH_LIMIT);
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -1129,6 +1132,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           }
 
+          const adaptiveNote = (n: number) =>
+            `Day Book showing latest ${n} entries after a timeout — paginate or narrow dates for more.`;
+
           if (clamp?.clamped) {
             setDayBookDateRangeClamped(true);
             setDayBookDateClampNote(wideDateRangeClampLimitation(clamp, 'Day Book'));
@@ -1138,30 +1144,42 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           }
 
           // True Day Book pagination: one lean page only (opts.page). Never loop the full range.
-          const offset = pageIdx * ENTRIES_FETCH_LIMIT;
+          const pageSize = entriesPageSizeRef.current;
+          const offset = pageIdx * pageSize;
 
-          const fetchPage = () =>
+          const fetchPage = (limit: number, pageOffset: number) =>
             accountingService.getAllEntries(companyId, branchArg, startArg, endArg, {
-              limit: ENTRIES_FETCH_LIMIT,
-              offset,
+              limit,
+              offset: pageOffset,
               mode: 'list',
             });
 
           let result: Awaited<ReturnType<typeof accountingService.getAllEntries>>;
           try {
-            result = await fetchPage();
+            result = await fetchPage(pageSize, offset);
           } catch (firstErr) {
             const msg =
               firstErr && typeof firstErr === 'object' && 'message' in firstErr
                 ? String((firstErr as { message?: string }).message)
                 : String(firstErr ?? '');
             if (!isStatementTimeoutMessage(msg)) throw firstErr;
+            const fallbackLimit = ENTRIES_FETCH_LIMIT_ON_TIMEOUT;
             if (import.meta.env?.DEV) {
-              console.warn('[ACCOUNTING CONTEXT] Day Book 57014 — retrying once after 1.5s');
+              console.warn(
+                `[ACCOUNTING CONTEXT] Day Book 57014 — retrying once after 1.5s with limit=${fallbackLimit}`
+              );
             }
             await new Promise((r) => setTimeout(r, 1500));
             try {
-              result = await fetchPage();
+              const fallbackOffset = pageIdx * fallbackLimit;
+              result = await fetchPage(fallbackLimit, fallbackOffset);
+              entriesPageSizeRef.current = fallbackLimit;
+              setEntriesPageSize(fallbackLimit);
+              const note = clamp?.clamped
+                ? `${wideDateRangeClampLimitation(clamp, 'Day Book')} ${adaptiveNote(fallbackLimit)}`
+                : adaptiveNote(fallbackLimit);
+              setDayBookDateClampNote(note);
+              if (clamp?.clamped) setDayBookDateRangeClamped(true);
             } catch (retryErr) {
               toast.error('Day Book timed out — narrow the date filter.');
               throw retryErr;
@@ -1260,19 +1278,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       pendingEntriesReloadRef.current = false;
       void loadEntries({ showBlockingLoading: false, skipBalanceSync: true });
     }
-    // Payment account repair + balance sync off critical path
+    // Payment account repair off critical path. Idle journal→accounts.balance
+    // write-back is deferred (not on Day Book / JE entry bootstrap) to cut PG load.
     schedulePaymentAccountSyncIdle();
-    const ric = typeof window !== 'undefined' ? window.requestIdleCallback : undefined;
-    if (typeof ric === 'function') {
-      ric(() => {
-        void maybeSyncBalancesFromJournal();
-      }, { timeout: 5000 });
-    } else {
-      setTimeout(() => {
-        void maybeSyncBalancesFromJournal();
-      }, 2000);
-    }
-  }, [companyId, loadEntries, schedulePaymentAccountSyncIdle, maybeSyncBalancesFromJournal]);
+  }, [companyId, loadEntries, schedulePaymentAccountSyncIdle]);
 
   const scheduleCoalescedRefresh = useCallback(
     (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {
@@ -1471,6 +1480,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     entriesBootstrappedRef.current = false;
     lastEntriesFetchKeyRef.current = '';
     lastEntriesFetchAtRef.current = 0;
+    entriesPageSizeRef.current = ENTRIES_FETCH_LIMIT;
+    setEntriesPageSize(ENTRIES_FETCH_LIMIT);
     setEntriesPageState(0);
     void loadAccountsRef.current();
   }, [companyId, branchId]);
@@ -1483,9 +1494,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => window.removeEventListener('erp-accounting-bootstrap-entries', onBootstrap);
   }, [ensureEntriesLoaded]);
 
-  // Reset journal page when global date filter changes
+  // Reset journal page when global date filter changes (restore default page size too)
   useEffect(() => {
     setEntriesPageState(0);
+    entriesPageSizeRef.current = ENTRIES_FETCH_LIMIT;
+    setEntriesPageSize(ENTRIES_FETCH_LIMIT);
   }, [startDateISO, endDateISO]);
 
   // Reload entries when date range or page changes after bootstrap

@@ -28,6 +28,9 @@ import {
   recalcApLiabilityRunningBalances,
   splitRoleFilteredApRowsByPeriod,
 } from '@/app/lib/importFxPartyLedgerRoleFilter';
+import { JOURNAL_ENTRIES_LIST_SELECT } from '@/app/lib/journalEntriesListSelect';
+
+export { JOURNAL_ENTRIES_LIST_SELECT } from '@/app/lib/journalEntriesListSelect';
 
 export interface JournalEntry {
   id?: string;
@@ -673,10 +676,10 @@ export const accountingService = {
       const offset = opts?.offset ?? 0;
       const listMode = opts?.mode === 'list';
 
-      // List mode: journal_entries headers only (total_debit/total_credit) — no nested lines/accounts
-      // (wide From-start ranges timeout when every row embeds lines). Full mode keeps nested select.
+      // List mode: explicit lean headers only (no `*`, no nested lines) — avoids 57014 under All Branches.
+      // Full mode keeps nested select for detail/enrichment callers.
       const selectClause = listMode
-        ? '*'
+        ? JOURNAL_ENTRIES_LIST_SELECT
         : `
           *,
           lines:journal_entry_lines(

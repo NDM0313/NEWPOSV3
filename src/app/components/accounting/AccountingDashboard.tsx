@@ -51,8 +51,8 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
-import { useExpenses } from '@/app/context/ExpenseContext';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { journalRowPresentation } from '@/app/lib/accountingJournalRowPresentation';
 import { ManualEntryDialog } from './ManualEntryDialog';
 import { AccountLedgerView } from './AccountLedgerView';
@@ -132,7 +132,6 @@ const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport'
 const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
 const CashFlowReportPage = lazy(() => import('@/app/components/reports/CashFlowReportPage').then((m) => ({ default: m.CashFlowReportPage })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
-import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
@@ -384,13 +383,182 @@ const ReportTabSuspenseFallback = ({ label }: { label: string }) => (
   </div>
 );
 
+/** Mount-only when Receivables tab is open — activates SalesContext full list. */
+function OperationalReceivablesPanel() {
+  const sales = useSales();
+  const { formatCurrency } = useFormatCurrency();
+  const dueSales = sales.sales.filter((s) => s.due > 0);
+  if (dueSales.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <TrendingUp size={48} className="mx-auto text-muted-foreground mb-3" />
+        <p className="text-muted-foreground text-sm">No receivables</p>
+        <p className="text-muted-foreground text-xs mt-1">All customers are paid up</p>
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead className="bg-card border-b border-border">
+          <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <th className="px-4 py-3 text-left">Customer</th>
+            <th className="px-4 py-3 text-left">Invoice No</th>
+            <th className="px-4 py-3 text-left">Date</th>
+            <th className="px-4 py-3 text-right">Total Amount</th>
+            <th className="px-4 py-3 text-right">Paid</th>
+            <th className="px-4 py-3 text-right">Due</th>
+            <th className="px-4 py-3 text-left">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dueSales.map((sale) => (
+            <tr
+              key={sale.id}
+              className="border-b border-border hover:bg-accent/30 transition-colors"
+            >
+              <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
+                {sale.customerName}
+              </td>
+              <td className="px-4 py-3 text-sm text-blue-400 font-mono">{sale.invoiceNo}</td>
+              <td className="px-4 py-3 text-sm text-muted-foreground">
+                {new Date(sale.date).toLocaleDateString()}
+              </td>
+              <td className="px-4 py-3 text-sm text-muted-foreground text-right">
+                {formatCurrency(sale.total)}
+              </td>
+              <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
+                {formatCurrency(sale.paid)}
+              </td>
+              <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
+                {formatCurrency(sale.due)}
+              </td>
+              <td className="px-4 py-3 text-xs">
+                <Badge
+                  className={
+                    sale.paymentStatus === 'paid'
+                      ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
+                      : sale.paymentStatus === 'partial'
+                        ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                        : 'bg-red-500/10 text-red-400 border-red-500/30'
+                  }
+                >
+                  {sale.paymentStatus}
+                </Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Mount-only when Payables tab is open — activates PurchaseContext full list. */
+function OperationalPayablesPanel({
+  canPostAccounting,
+  onPayCourier,
+}: {
+  canPostAccounting: boolean;
+  onPayCourier: () => void;
+}) {
+  const purchases = usePurchases();
+  const { formatCurrency } = useFormatCurrency();
+  const duePurchases = purchases.purchases.filter((p) => p.due > 0);
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="text-sm text-muted-foreground">Supplier & Courier payables</span>
+        {canPostAccounting && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gray-600 text-muted-foreground hover:bg-muted hover:text-foreground gap-1.5"
+            onClick={onPayCourier}
+          >
+            <Truck size={14} />
+            Pay Courier
+          </Button>
+        )}
+      </div>
+      <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground space-y-0.5">
+        <p>
+          <span className="text-muted-foreground">Operational payables</span> — unpaid purchase
+          bills / supplier due for payment scheduling (not GL 2000).
+        </p>
+        <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
+      </div>
+      {duePurchases.length === 0 ? (
+        <div className="text-center py-12">
+          <TrendingDown size={48} className="mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground text-sm">No payables</p>
+          <p className="text-muted-foreground text-xs mt-1">All suppliers are paid up</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-card border-b border-border">
+              <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                <th className="px-4 py-3 text-left">Supplier</th>
+                <th className="px-4 py-3 text-left">PO No</th>
+                <th className="px-4 py-3 text-left">Date</th>
+                <th className="px-4 py-3 text-right">Total Amount</th>
+                <th className="px-4 py-3 text-right">Paid</th>
+                <th className="px-4 py-3 text-right">Due</th>
+                <th className="px-4 py-3 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {duePurchases.map((purchase) => (
+                <tr
+                  key={purchase.id}
+                  className="border-b border-border hover:bg-accent/30 transition-colors"
+                >
+                  <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
+                    {purchase.supplierName}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-blue-400 font-mono">
+                    {purchase.purchaseNo}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {new Date(purchase.date).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground text-right">
+                    {formatCurrency(purchase.total)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
+                    {formatCurrency(purchase.paid)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
+                    {formatCurrency(purchase.due)}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    <Badge
+                      className={
+                        purchase.paymentStatus === 'paid'
+                          ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
+                          : purchase.paymentStatus === 'partial'
+                            ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                            : 'bg-red-500/10 text-red-400 border-red-500/30'
+                      }
+                    >
+                      {purchase.paymentStatus}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const AccountingDashboard = () => {
   const { canAccessAccounting, canPostAccounting } = useCheckPermission();
   const { modules: settingsModules } = useSettings();
   const accounting = useAccounting();
-  const sales = useSales();
-  const purchases = usePurchases();
-  const expenses = useExpenses();
   const { openDrawer, setCurrentView, accountStatementV2Initial, setAccountStatementV2Initial, accountingTabInitial, setAccountingTabInitial } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
@@ -420,8 +588,17 @@ export const AccountingDashboard = () => {
   } = useJournalTransactionActionHandlers();
   const { formatCurrency } = useFormatCurrency();
 
+  const [dayBookLoadSettled, setDayBookLoadSettled] = useState(false);
+
   useEffect(() => {
-    void accounting.ensureEntriesLoaded();
+    let cancelled = false;
+    setDayBookLoadSettled(false);
+    void accounting.ensureEntriesLoaded().finally(() => {
+      if (!cancelled) setDayBookLoadSettled(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [accounting.ensureEntriesLoaded]);
 
   useEffect(() => {
@@ -746,12 +923,15 @@ export const AccountingDashboard = () => {
     };
   }, [branchId, companyId]);
 
+  // Party-GL only when Accounts/CoA tab is open (not on Day Book / JE entry path).
   useEffect(() => {
     let cancelled = false;
     if (!companyId) {
       setPartyGlByContactId(null);
       return;
     }
+    if (activeTab !== 'accounts') return;
+    if (!dayBookLoadSettled) return;
     contactService
       .getContactPartyGlBalancesMap(companyId, branchId === 'all' ? null : branchId)
       .then((m) => {
@@ -760,7 +940,7 @@ export const AccountingDashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, partyGlEpoch]);
+  }, [companyId, branchId, partyGlEpoch, dayBookLoadSettled, activeTab]);
 
   const linkedPartiesControl = useMemo(
     () =>
@@ -1205,11 +1385,14 @@ export const AccountingDashboard = () => {
       <div className="px-6 py-4 bg-secondary min-w-0">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
-            {accounting.dayBookDateRangeClamped && accounting.dayBookDateClampNote ? (
+            {accounting.dayBookDateClampNote ? (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-start gap-2">
                 <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
                 <span>
-                  {accounting.dayBookDateClampNote} Statements still use the full header filter.
+                  {accounting.dayBookDateClampNote}
+                  {accounting.dayBookDateRangeClamped
+                    ? ' Statements still use the full header filter.'
+                    : ''}
                 </span>
               </div>
             ) : null}
@@ -2099,11 +2282,14 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'daybook' && (
           <div className="space-y-4">
-            {accounting.dayBookDateRangeClamped && accounting.dayBookDateClampNote ? (
+            {accounting.dayBookDateClampNote ? (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-start gap-2">
                 <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
                 <span>
-                  {accounting.dayBookDateClampNote} Statements still use the full header filter.
+                  {accounting.dayBookDateClampNote}
+                  {accounting.dayBookDateRangeClamped
+                    ? ' Statements still use the full header filter.'
+                    : ''}
                 </span>
               </div>
             ) : null}
@@ -2437,158 +2623,15 @@ export const AccountingDashboard = () => {
               </p>
               <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
-            {sales.sales.filter(s => s.due > 0).length === 0 ? (
-              <div className="text-center py-12">
-                <TrendingUp size={48} className="mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground text-sm">No receivables</p>
-                <p className="text-muted-foreground text-xs mt-1">All customers are paid up</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-card border-b border-border">
-                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left">Customer</th>
-                      <th className="px-4 py-3 text-left">Invoice No</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-right">Total Amount</th>
-                      <th className="px-4 py-3 text-right">Paid</th>
-                      <th className="px-4 py-3 text-right">Due</th>
-                      <th className="px-4 py-3 text-left">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sales.sales
-                      .filter(s => s.due > 0)
-                      .map((sale) => (
-                        <tr 
-                          key={sale.id} 
-                          className="border-b border-border hover:bg-accent/30 transition-colors"
-                        >
-                          <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
-                            {sale.customerName}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-blue-400 font-mono">
-                            {sale.invoiceNo}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            {new Date(sale.date).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground text-right">
-                            {formatCurrency(sale.total)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
-                            {formatCurrency(sale.paid)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
-                            {formatCurrency(sale.due)}
-                          </td>
-                          <td className="px-4 py-3 text-xs">
-                            <Badge className={
-                              sale.paymentStatus === 'paid' 
-                                ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
-                                : sale.paymentStatus === 'partial'
-                                ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                                : 'bg-red-500/10 text-red-400 border-red-500/30'
-                            }>
-                              {sale.paymentStatus}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <OperationalReceivablesPanel />
           </div>
         )}
 
         {activeTab === 'payables' && (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-sm text-muted-foreground">Supplier & Courier payables</span>
-              {canPostAccounting && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-600 text-muted-foreground hover:bg-muted hover:text-foreground gap-1.5"
-                  onClick={() => setPayCourierOpen(true)}
-                >
-                  <Truck size={14} />
-                  Pay Courier
-                </Button>
-              )}
-            </div>
-            <div className="px-4 py-2 border-b border-border text-[11px] text-muted-foreground space-y-0.5">
-              <p>
-                <span className="text-muted-foreground">Operational payables</span> — unpaid purchase bills / supplier due for payment scheduling (not GL 2000).
-              </p>
-              <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
-            </div>
-            {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
-              <div className="text-center py-12">
-                <TrendingDown size={48} className="mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground text-sm">No payables</p>
-                <p className="text-muted-foreground text-xs mt-1">All suppliers are paid up</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-card border-b border-border">
-                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left">Supplier</th>
-                      <th className="px-4 py-3 text-left">PO No</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-right">Total Amount</th>
-                      <th className="px-4 py-3 text-right">Paid</th>
-                      <th className="px-4 py-3 text-right">Due</th>
-                      <th className="px-4 py-3 text-left">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchases.purchases
-                      .filter(p => p.due > 0)
-                      .map((purchase) => (
-                        <tr 
-                          key={purchase.id} 
-                          className="border-b border-border hover:bg-accent/30 transition-colors"
-                        >
-                          <td className="px-4 py-3 text-sm text-muted-foreground font-medium">
-                            {purchase.supplierName}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-blue-400 font-mono">
-                            {purchase.purchaseNo}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            {new Date(purchase.date).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground text-right">
-                            {formatCurrency(purchase.total)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-[var(--erp-money-positive)] text-right">
-                            {formatCurrency(purchase.paid)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
-                            {formatCurrency(purchase.due)}
-                          </td>
-                          <td className="px-4 py-3 text-xs">
-                            <Badge className={
-                              purchase.paymentStatus === 'paid' 
-                                ? 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/30'
-                                : purchase.paymentStatus === 'partial'
-                                ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                                : 'bg-red-500/10 text-red-400 border-red-500/30'
-                            }>
-                              {purchase.paymentStatus}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <OperationalPayablesPanel
+            canPostAccounting={canPostAccounting}
+            onPayCourier={() => setPayCourierOpen(true)}
+          />
         )}
 
         {activeTab === 'courier' && (
