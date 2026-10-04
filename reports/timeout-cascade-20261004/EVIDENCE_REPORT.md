@@ -85,3 +85,16 @@
 ## Immediate workaround (no deploy)
 
 Switch Global Filter from **From start** → **Current Financial Year** or **Last 30 days**, then hard-refresh.
+
+## Deploy verification (2026-10-04 ~11:04 UTC)
+
+| Check | Result |
+|-------|--------|
+| Commits on `main` | `2289def3` (clamp) + `3afeeb0a` (dockerignore shrink) |
+| VPS `HEAD` | `3afeeb0a` |
+| `erp-frontend` | healthy on new `deploy-erp` image; HTTP **200** |
+| Bundle smoke | `CLAMP_OK` — `"too wide for"` present in `/usr/share/nginx/html/assets/*.js` |
+| n8n | Temporarily scaled to **0** during dual `npm ci` (host load peaked ~42 on 2 vCPU); restored to **1/1 Running** after rebuild |
+| First hard-rebuild attempt | Failed: Alpine `apk` TLS, then 1.4GB context, then mobile `npm ci` ECONNRESET — frontend restored from prior image in between |
+
+**Browser smoke (operator):** hard-refresh with Global Filter **From start** → Journal/Day Book should request `gte.2026-01-01` (not 2016) and show clamp banner.
