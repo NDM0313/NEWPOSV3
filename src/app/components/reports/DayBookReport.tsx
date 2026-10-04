@@ -35,6 +35,7 @@ import { Label } from '@/app/components/ui/label';
 import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { clampWideDateRange, wideDateRangeClampLimitation } from '@/app/lib/wideDateRangeClamp';
 
 export interface DayBookEntry {
   id: string;
@@ -147,16 +148,22 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     !contextBranchId || contextBranchId === 'all' ? 'All branches' : 'Selected branch + company-wide JEs';
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
-  const dateFrom = useGlobalRange
+  const rawDateFrom = useGlobalRange
     ? (globalStartDate ?? '').slice(0, 10)
     : dateRange.from
       ? formatLocalDateYYYYMMDD(dateRange.from)
       : '';
-  const dateTo = useGlobalRange
+  const rawDateTo = useGlobalRange
     ? (globalEndDate ?? '').slice(0, 10)
     : dateRange.to
       ? formatLocalDateYYYYMMDD(dateRange.to)
-      : dateFrom;
+      : rawDateFrom;
+  const dateClamp =
+    rawDateFrom && rawDateTo ? clampWideDateRange(rawDateFrom, rawDateTo) : null;
+  const dateFrom = dateClamp?.dateFrom ?? rawDateFrom;
+  const dateTo = dateClamp?.dateTo ?? rawDateTo;
+  const dateClampNote =
+    dateClamp?.clamped ? wideDateRangeClampLimitation(dateClamp, 'Day Book') : null;
 
   useEffect(() => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -169,21 +176,23 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     setLoadError(null);
     setTruncationWarning(null);
     (async () => {
+      // Cap pages under wide ranges (From start). Nested embeds / 200×500 pages → 57014.
       const JE_CHUNK = 500;
-      const MAX_JE_PAGES = 200;
+      const MAX_JE_PAGES = 2;
       const allHeaders: Array<Record<string, unknown>> = [];
       let offset = 0;
       let page = 0;
       let fetchError: { message: string } | null = null;
       let hitTruncationCap = false;
       try {
+        // Newest-first pages (same as Journal list), then chronological for display.
+        // Headers only, then lines without accounts embed, then account name lookup.
         while (page < MAX_JE_PAGES) {
           let q = supabase
             .from('journal_entries')
-            .select(`
-              id, entry_no, entry_date, description, reference_type, created_at, payment_id, action_fingerprint, economic_event_id, is_void,
-              lines:journal_entry_lines(id, debit, credit, description, account:accounts(name, code))
-            `)
+            .select(
+              'id, entry_no, entry_date, description, reference_type, created_at, payment_id, action_fingerprint, economic_event_id, is_void, total_debit, total_credit'
+            )
             .eq('company_id', companyId)
             .gte('entry_date', dateFrom)
             .lte('entry_date', dateTo);
@@ -194,15 +203,79 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
             q = q.or('is_void.is.null,is_void.eq.false');
           }
           const { data: chunk, error } = await q
-            .order('entry_date', { ascending: true })
-            .order('created_at', { ascending: true })
+            .order('entry_date', { ascending: false })
+            .order('created_at', { ascending: false })
             .range(offset, offset + JE_CHUNK - 1);
           if (error) {
             fetchError = error;
             break;
           }
-          const rows = chunk || [];
-          allHeaders.push(...rows);
+          const rows = (chunk || []) as Array<Record<string, unknown>>;
+          if (rows.length === 0) break;
+
+          const pageIds = rows
+            .map((r) => String(r.id || '').trim())
+            .filter(Boolean);
+          const rawLines: Array<Record<string, unknown>> = [];
+          for (let i = 0; i < pageIds.length; i += 80) {
+            const idChunk = pageIds.slice(i, i + 80);
+            const { data: lineRows, error: lineErr } = await supabase
+              .from('journal_entry_lines')
+              .select('id, journal_entry_id, account_id, debit, credit, description')
+              .in('journal_entry_id', idChunk);
+            if (lineErr) {
+              fetchError = lineErr;
+              break;
+            }
+            rawLines.push(...((lineRows || []) as Array<Record<string, unknown>>));
+          }
+          if (fetchError) break;
+
+          const accountIds = [
+            ...new Set(
+              rawLines
+                .map((l) => String(l.account_id || '').trim())
+                .filter(Boolean)
+            ),
+          ];
+          const accountById = new Map<string, { name?: string; code?: string }>();
+          for (let i = 0; i < accountIds.length; i += 150) {
+            const accChunk = accountIds.slice(i, i + 150);
+            const { data: accRows, error: accErr } = await supabase
+              .from('accounts')
+              .select('id, name, code')
+              .in('id', accChunk);
+            if (accErr) {
+              fetchError = accErr;
+              break;
+            }
+            for (const a of accRows || []) {
+              const id = String((a as { id?: string }).id || '');
+              if (id) {
+                accountById.set(id, {
+                  name: (a as { name?: string }).name,
+                  code: (a as { code?: string }).code,
+                });
+              }
+            }
+          }
+          if (fetchError) break;
+
+          const linesByJe = new Map<string, Array<Record<string, unknown>>>();
+          for (const lr of rawLines) {
+            const jid = String(lr.journal_entry_id || '');
+            if (!jid) continue;
+            const aid = String(lr.account_id || '');
+            const acc = aid ? accountById.get(aid) : undefined;
+            const arr = linesByJe.get(jid) || [];
+            arr.push({ ...lr, account: acc || null });
+            linesByJe.set(jid, arr);
+          }
+
+          for (const row of rows) {
+            const jid = String(row.id || '');
+            allHeaders.push({ ...row, lines: linesByJe.get(jid) || [] });
+          }
           page += 1;
           if (rows.length < JE_CHUNK) break;
           offset += JE_CHUNK;
@@ -219,11 +292,17 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
           return;
         }
 
-        const data = allHeaders;
+        // Chronological for Day Book table / print after newest-first fetch pages.
+        const data = [...allHeaders].sort((a, b) => {
+          const da = String(a.entry_date || '');
+          const db = String(b.entry_date || '');
+          if (da !== db) return da.localeCompare(db);
+          return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+        });
         setJournalHeaderCount(data.length);
         if (hitTruncationCap) {
           setTruncationWarning(
-            `Showing first ${MAX_JE_PAGES * JE_CHUNK} journal vouchers only. Narrow the date range to see more.`
+            `Showing the ${MAX_JE_PAGES * JE_CHUNK} most recent journal vouchers in this range. Narrow the date range to see more.`
           );
         }
 
@@ -711,6 +790,11 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         )}
       </p>
 
+      {dateClampNote ? (
+        <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl text-amber-200 text-sm">
+          {dateClampNote} Statements still use the full header filter.
+        </div>
+      ) : null}
       {loadError && !loading && (
         <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-sm">
           Day Book failed to load: {loadError}

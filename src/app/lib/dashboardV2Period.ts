@@ -1,10 +1,38 @@
 /**
- * Dashboard V2 — date range helpers (prior period comparison).
+ * Dashboard V2 — date range helpers (prior period comparison + From-start clamp).
  */
+
+import {
+  clampWideDateRange,
+  isStatementTimeoutMessage,
+  wideDateRangeClampLimitation,
+  WIDE_DATE_RANGE_MAX_SPAN_DAYS,
+  type WideDateRangeClampResult,
+} from './wideDateRangeClamp';
 
 export interface DateRangeYmd {
   from: string;
   to: string;
+}
+
+/** @deprecated Prefer WIDE_DATE_RANGE_MAX_SPAN_DAYS from wideDateRangeClamp */
+export const DASHBOARD_V2_MAX_SPAN_DAYS = WIDE_DATE_RANGE_MAX_SPAN_DAYS;
+
+export type DashboardV2DateClampResult = WideDateRangeClampResult;
+
+export function clampDashboardV2DateRange(
+  dateFrom: string,
+  dateTo: string,
+): DashboardV2DateClampResult {
+  return clampWideDateRange(dateFrom, dateTo);
+}
+
+export function dashboardV2ClampLimitation(clamp: DashboardV2DateClampResult): string {
+  return wideDateRangeClampLimitation(clamp, 'Dashboard');
+}
+
+export function isDashboardRpcTimeoutMessage(message: string | null | undefined): boolean {
+  return isStatementTimeoutMessage(message);
 }
 
 export function priorComparablePeriod(from: string, to: string): DateRangeYmd {

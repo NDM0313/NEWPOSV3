@@ -40,6 +40,7 @@ import {
   Loader2,
   Paperclip,
   Upload,
+  Info,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { DatePicker } from '@/app/components/ui/DatePicker';
@@ -1204,6 +1205,14 @@ export const AccountingDashboard = () => {
       <div className="px-6 py-4 bg-secondary min-w-0">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
+            {accounting.dayBookDateRangeClamped && accounting.dayBookDateClampNote ? (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-start gap-2">
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
+                <span>
+                  {accounting.dayBookDateClampNote} Statements still use the full header filter.
+                </span>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <h3 className="text-lg font-bold text-foreground">Journal Entries</h3>
@@ -2090,6 +2099,14 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'daybook' && (
           <div className="space-y-4">
+            {accounting.dayBookDateRangeClamped && accounting.dayBookDateClampNote ? (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-start gap-2">
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
+                <span>
+                  {accounting.dayBookDateClampNote} Statements still use the full header filter.
+                </span>
+              </div>
+            ) : null}
             <h3 className="text-lg font-bold text-foreground">Day Book (Journal)</h3>
             <p className="text-sm text-muted-foreground mb-4">Click voucher number to open transaction detail</p>
             <Suspense fallback={<ReportTabSuspenseFallback label="Loading day book…" />}>

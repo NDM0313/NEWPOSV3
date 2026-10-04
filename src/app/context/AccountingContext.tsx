@@ -38,6 +38,11 @@ import { logPaymentCreated } from '@/app/services/auditLogService';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { mergeAttachmentLists, normalizeAttachmentList } from '@/app/utils/transactionAttachments';
 import { isOrphanReceiptJournalEntry } from '@/app/lib/orphanReceiptPolicy';
+import {
+  clampWideDateRange,
+  isStatementTimeoutMessage,
+  wideDateRangeClampLimitation,
+} from '@/app/lib/wideDateRangeClamp';
 
 /** Prefer source document branch (rental/sale/purchase) over session branch selector. */
 function resolvePostingBranchId(
@@ -266,6 +271,10 @@ interface AccountingContextType {
   entriesPage: number;
   entriesPageSize: number;
   setEntriesPage: (page: number) => void;
+  /** True when Day Book / journal list fetch window was capped (From start too wide). */
+  dayBookDateRangeClamped: boolean;
+  /** One-line note when dayBookDateRangeClamped (for banner). */
+  dayBookDateClampNote: string | null;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
   getAccountBalance: (accountType: AccountType) => number;
@@ -527,9 +536,10 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
 const COALESCED_REFRESH_MS = 400;
-/** Chunk size per getAllEntries call (Day Book parity). Not a total cap — loadEntries loops until done. */
+/** Page size for Day Book getAllEntries (one lean page per loadEntries call). */
 const ENTRIES_FETCH_LIMIT = 500;
-const ENTRIES_MAX_PAGES = 200;
+/** Skip identical journal list reloads within this window (invalidation / auth storms). */
+const ENTRIES_FETCH_DEDUPE_MS = 2500;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
@@ -577,6 +587,8 @@ type LoadEntriesOptions = {
 export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [entriesTotal, setEntriesTotal] = useState(0);
+  const [dayBookDateRangeClamped, setDayBookDateRangeClamped] = useState(false);
+  const [dayBookDateClampNote, setDayBookDateClampNote] = useState<string | null>(null);
   const [entriesPage, setEntriesPageState] = useState(0);
   const entriesPageSize = ENTRIES_FETCH_LIMIT;
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
@@ -604,6 +616,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const currentUserId = user?.id;
 
   const loadEntriesInFlightRef = useRef<Promise<void> | null>(null);
+  /** Dedupe identical journal list fetches (hard-refresh / invalidation storms). */
+  const lastEntriesFetchKeyRef = useRef<string>('');
+  const lastEntriesFetchAtRef = useRef(0);
+  const inFlightEntriesFetchKeyRef = useRef<string>('');
   const entriesBootstrappedRef = useRef(false);
   const pendingEntriesReloadRef = useRef(false);
   const startDateISORef = useRef(startDateISO);
@@ -653,6 +669,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const activeLines = lines.filter((line: any) => Number(line?.debit || 0) > 0 || Number(line?.credit || 0) > 0);
     const debitLine = activeLines.find((line: any) => Number(line.debit || 0) > 0);
     const creditLine = activeLines.find((line: any) => Number(line.credit || 0) > 0);
+    const headerTotalDebit = Number((journalEntry as { total_debit?: number }).total_debit || 0);
+    const headerTotalCredit = Number((journalEntry as { total_credit?: number }).total_credit || 0);
+    const leanListRow = activeLines.length === 0;
     const payParty = (journalEntry as { _payment_contact_name?: string })._payment_contact_name;
     const purParty = (journalEntry as { _purchase_supplier_name?: string })._purchase_supplier_name;
     const saleRetParty = (journalEntry as { _sale_return_customer_name?: string })._sale_return_customer_name;
@@ -709,6 +728,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (resolvedAmount === 0 && activeLines.length > 0) {
       resolvedAmount = Math.max(sumDebits, sumCredits);
     }
+    if (resolvedAmount === 0 && leanListRow) {
+      resolvedAmount = Math.max(headerTotalDebit, headerTotalCredit);
+    }
 
     let debitAccountDisplay = debitLine
       ? withPartyContextForLine(debitLine as any, partyForContext)
@@ -720,19 +742,25 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       debitAccountDisplay = linesSummary.debitLabel;
       creditAccountDisplay = linesSummary.creditLabel;
     }
+    if (leanListRow) {
+      debitAccountDisplay = '—';
+      creditAccountDisplay = '—';
+    }
 
-    const debitStable =
-      journalLineEmbeddedAccount(debitLine as any)?.name ||
-      (debitLine as any)?.account_name ||
-      (Array.isArray((debitLine as any)?.account) ? (debitLine as any).account[0]?.name : (debitLine as any)?.account?.name) ||
-      'Expense';
-    const creditStable =
-      journalLineEmbeddedAccount(creditLine as any)?.name ||
-      (creditLine as any)?.account_name ||
-      (Array.isArray((creditLine as any)?.account)
-        ? (creditLine as any).account[0]?.name
-        : (creditLine as any)?.account?.name) ||
-      'Cash';
+    const debitStable = leanListRow
+      ? '—'
+      : journalLineEmbeddedAccount(debitLine as any)?.name ||
+        (debitLine as any)?.account_name ||
+        (Array.isArray((debitLine as any)?.account) ? (debitLine as any).account[0]?.name : (debitLine as any)?.account?.name) ||
+        'Expense';
+    const creditStable = leanListRow
+      ? '—'
+      : journalLineEmbeddedAccount(creditLine as any)?.name ||
+        (creditLine as any)?.account_name ||
+        (Array.isArray((creditLine as any)?.account)
+          ? (creditLine as any).account[0]?.name
+          : (creditLine as any)?.account?.name) ||
+        'Cash';
 
     // Extract metadata from description or reference (PF-14.3B: root for grouped Journal list)
     const raw = journalEntry as { root_reference_id?: string; root_reference_type?: string };
@@ -751,7 +779,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       rootReferenceId: raw.root_reference_id ?? journalEntry.reference_id ?? undefined,
       rootReferenceType: raw.root_reference_type ?? journalEntry.reference_type ?? undefined,
       journalLinesSummary: linesSummary,
-      journalLineCount: activeLines.length,
+      journalLineCount: leanListRow ? undefined : activeLines.length,
       actionFingerprint: (journalEntry as { action_fingerprint?: string | null }).action_fingerprint ?? undefined,
       economicEventId: (journalEntry as { economic_event_id?: string | null }).economic_event_id ?? undefined,
     };
@@ -773,12 +801,15 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     metadata.hasActiveCorrectionReversal =
       (journalEntry as { _has_active_correction_reversal?: boolean })._has_active_correction_reversal === true;
     const linkedPaymentAmount = (journalEntry as { _payment_amount?: number })._payment_amount;
-    const orphanReceipt = isOrphanReceiptJournalEntry({
-      reference_type: journalEntry.reference_type,
-      payment_id: journalEntry.payment_id,
-      is_void: metadata.journalEntryVoid,
-      journalLineCount: activeLines.length,
-    });
+    // Lean list rows omit lines — do not treat missing lines as orphan receipts.
+    const orphanReceipt =
+      !leanListRow &&
+      isOrphanReceiptJournalEntry({
+        reference_type: journalEntry.reference_type,
+        payment_id: journalEntry.payment_id,
+        is_void: metadata.journalEntryVoid,
+        journalLineCount: activeLines.length,
+      });
     if (orphanReceipt) {
       metadata.isOrphanReceipt = true;
       metadata.orphanReceiptStatus = 'orphan_posting_failed';
@@ -998,10 +1029,14 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               branchId === 'all' ? undefined : branchId,
             );
             if (mark) console.timeEnd(mark);
+            // Empty map = RPC unavailable; keep stored balances (do not zero the CoA).
+            if (!journalBalances || Object.keys(journalBalances).length === 0) {
+              return;
+            }
             setAccounts((prev) =>
               prev.map((acc) => ({
                 ...acc,
-                balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
+                balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : acc.balance,
               })),
             );
           } catch (jbErr) {
@@ -1049,9 +1084,33 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         return;
       }
 
+      const branchArg = branchId === 'all' ? undefined : branchId || undefined;
+      const rawStart = startDateISO || undefined;
+      const rawEnd = endDateISO || undefined;
+      const clamp =
+        rawStart && rawEnd ? clampWideDateRange(rawStart, rawEnd) : null;
+      const startArg = clamp?.dateFrom ?? rawStart;
+      const endArg = clamp?.dateTo ?? rawEnd;
+      const pageIdx = Math.max(0, opts?.page ?? entriesPage);
+      const fetchKey = `${companyId}|${branchArg ?? 'all'}|${startArg ?? ''}|${endArg ?? ''}|${pageIdx}`;
+
       if (loadEntriesInFlightRef.current) {
-        pendingEntriesReloadRef.current = true;
+        // Same params already loading — wait; do not queue another identical reload.
+        if (inFlightEntriesFetchKeyRef.current !== fetchKey) {
+          pendingEntriesReloadRef.current = true;
+        }
         return loadEntriesInFlightRef.current;
+      }
+
+      // Identical successful fetch within dedupe window — skip (stops invalidation storms).
+      if (
+        lastEntriesFetchKeyRef.current === fetchKey &&
+        Date.now() - lastEntriesFetchAtRef.current < ENTRIES_FETCH_DEDUPE_MS
+      ) {
+        if (import.meta.env?.DEV) {
+          console.log('[ACCOUNTING CONTEXT] skip duplicate journal fetch', fetchKey);
+        }
+        return;
       }
 
       const blocking = opts?.showBlockingLoading === true;
@@ -1059,6 +1118,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       const run = async () => {
         if (blocking) setInitialLoading(true);
         else setBackgroundSync(true);
+        inFlightEntriesFetchKeyRef.current = fetchKey;
         try {
           if (import.meta.env?.DEV) {
             fullReloadCountRef.current += 1;
@@ -1069,53 +1129,54 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           }
 
-          const branchArg = branchId === 'all' ? undefined : branchId || undefined;
-          const startArg = startDateISO || undefined;
-          const endArg = endDateISO || undefined;
+          if (clamp?.clamped) {
+            setDayBookDateRangeClamped(true);
+            setDayBookDateClampNote(wideDateRangeClampLimitation(clamp, 'Day Book'));
+          } else {
+            setDayBookDateRangeClamped(false);
+            setDayBookDateClampNote(null);
+          }
 
-          // Full date-range load: page through getAllEntries (Day Book–style).
-          // Stop using filtered chunk.length < limit — void/orphan filters shrink pages
-          // and would truncate the year early. Advance by offset vs DB count instead.
-          const allRows: any[] = [];
-          let total = 0;
-          let pageIdx = 0;
-          while (pageIdx < ENTRIES_MAX_PAGES) {
-            const offset = pageIdx * ENTRIES_FETCH_LIMIT;
-            if (pageIdx > 0 && offset >= total) break;
+          // True Day Book pagination: one lean page only (opts.page). Never loop the full range.
+          const offset = pageIdx * ENTRIES_FETCH_LIMIT;
 
-            const result = await accountingService.getAllEntries(
-              companyId,
-              branchArg,
-              startArg,
-              endArg,
-              // list mode: lean rows for Journal tab (avoid full enrichment empty-on-error)
-              { limit: ENTRIES_FETCH_LIMIT, offset, mode: 'list' }
-            );
-            const isPaginated =
-              result && typeof result === 'object' && 'data' in result && 'total' in result;
-            const chunk = isPaginated
-              ? (result as { data: any[]; total: number }).data
-              : (result as any[]);
-            if (isPaginated) {
-              total = (result as { data: any[]; total: number }).total;
-            } else if (pageIdx === 0) {
-              total = chunk?.length ?? 0;
+          const fetchPage = () =>
+            accountingService.getAllEntries(companyId, branchArg, startArg, endArg, {
+              limit: ENTRIES_FETCH_LIMIT,
+              offset,
+              mode: 'list',
+            });
+
+          let result: Awaited<ReturnType<typeof accountingService.getAllEntries>>;
+          try {
+            result = await fetchPage();
+          } catch (firstErr) {
+            const msg =
+              firstErr && typeof firstErr === 'object' && 'message' in firstErr
+                ? String((firstErr as { message?: string }).message)
+                : String(firstErr ?? '');
+            if (!isStatementTimeoutMessage(msg)) throw firstErr;
+            if (import.meta.env?.DEV) {
+              console.warn('[ACCOUNTING CONTEXT] Day Book 57014 — retrying once after 1.5s');
             }
-            allRows.push(...(chunk || []));
-            pageIdx += 1;
+            await new Promise((r) => setTimeout(r, 1500));
+            try {
+              result = await fetchPage();
+            } catch (retryErr) {
+              toast.error('Day Book timed out — narrow the date filter.');
+              throw retryErr;
+            }
+          }
 
-            if (!isPaginated) break;
-            // Day Book parity: stop on short page; exact total is secondary guard
-            if ((chunk?.length ?? 0) < ENTRIES_FETCH_LIMIT) break;
-            if (offset + ENTRIES_FETCH_LIMIT >= total) break;
-          }
-          if (pageIdx >= ENTRIES_MAX_PAGES && import.meta.env?.DEV) {
-            console.warn(
-              `[ACCOUNTING CONTEXT] journal fetch hit ENTRIES_MAX_PAGES=${ENTRIES_MAX_PAGES}; loaded=${allRows.length} total=${total}`
-            );
-          }
-          setEntriesTotal(total > 0 ? total : allRows.length);
-          const data = allRows;
+          const isPaginated =
+            result && typeof result === 'object' && 'data' in result && 'total' in result;
+          const data = isPaginated
+            ? (result as { data: any[]; total: number }).data
+            : (result as any[]);
+          const total = isPaginated
+            ? (result as { data: any[]; total: number }).total
+            : (data?.length ?? 0);
+          setEntriesTotal(total > 0 ? total : data.length);
           const jeIds = (data as { id?: string }[])
             .map((j) => String(j.id || '').trim())
             .filter(Boolean);
@@ -1143,11 +1204,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
           }));
           const convertedEntries = applyJournalRowsToState(dataWithReversalFlag as JournalEntryWithLines[]);
+          lastEntriesFetchKeyRef.current = fetchKey;
+          lastEntriesFetchAtRef.current = Date.now();
           if (import.meta.env?.DEV) {
             console.log(
               '✅ Journal entries loaded:',
               convertedEntries.length,
-              `(raw=${data.length}, dbTotal=${total}, pages=${pageIdx + 1})`
+              `(raw=${data.length}, dbTotal=${total}, page=${pageIdx}${clamp?.clamped ? ', clamped' : ''})`
             );
           }
 
@@ -1161,6 +1224,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           if (blocking) setInitialLoading(false);
           setBackgroundSync(false);
           loadEntriesInFlightRef.current = null;
+          inFlightEntriesFetchKeyRef.current = '';
           if (pendingEntriesReloadRef.current) {
             pendingEntriesReloadRef.current = false;
             scheduleCoalescedRefreshRef.current({ entries: true });
@@ -1172,7 +1236,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       loadEntriesInFlightRef.current = p;
       return p;
     },
-    [companyId, branchId, startDateISO, endDateISO, applyJournalRowsToState, maybeSyncBalancesFromJournal]
+    [companyId, branchId, startDateISO, endDateISO, entriesPage, applyJournalRowsToState, maybeSyncBalancesFromJournal]
   );
 
   const setEntriesPage = useCallback((p: number) => {
@@ -1184,7 +1248,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const startSnap = startDateISORef.current;
     const endSnap = endDateISORef.current;
     const branchSnap = branchIdRef.current;
-    await loadEntries({ showBlockingLoading: true, skipBalanceSync: true });
+    await loadEntries({ showBlockingLoading: true, skipBalanceSync: true, page: 0 });
     entriesBootstrappedRef.current = true;
     // Header FY/preset can settle during bootstrap — reload if range/branch drifted or pending.
     if (
@@ -1405,6 +1469,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!companyId) return;
     paymentSyncDoneForCompanyRef.current = null;
     entriesBootstrappedRef.current = false;
+    lastEntriesFetchKeyRef.current = '';
+    lastEntriesFetchAtRef.current = 0;
     setEntriesPageState(0);
     void loadAccountsRef.current();
   }, [companyId, branchId]);
@@ -3622,6 +3688,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     entriesPage,
     entriesPageSize,
     setEntriesPage,
+    dayBookDateRangeClamped,
+    dayBookDateClampNote,
     getEntriesByReference,
     getEntriesBySource,
     getAccountBalance,
@@ -3651,7 +3719,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     getAccountsByType,
     getAccountById,
   }), [
-    entries, entriesTotal, entriesPage, entriesPageSize, setEntriesPage, balances, initialLoading, backgroundSync, accounts,
+    entries, entriesTotal, entriesPage, entriesPageSize, setEntriesPage, dayBookDateRangeClamped, dayBookDateClampNote, balances, initialLoading, backgroundSync, accounts,
     createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, refreshJournalEntries, ensureEntriesLoaded, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
     getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
