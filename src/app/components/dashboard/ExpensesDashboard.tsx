@@ -14,7 +14,9 @@ import {
   List as ListIcon,
   Loader2,
   Clock,
-  Paperclip
+  Paperclip,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
@@ -172,7 +174,8 @@ export const ExpensesDashboard = () => {
 
   // List filtering states (declared before hooks that depend on them)
   const [searchTerm, setSearchTerm] = useState('');
-  const [pageSize, setPageSize] = useState(25);
+  /** -1 = All rows (default so full filtered list is visible). */
+  const [pageSize, setPageSize] = useState(-1);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -511,14 +514,23 @@ export const ExpensesDashboard = () => {
     return operationalExpenses.filter((expense) => {
       let filterReason: string | undefined;
 
-      // Search filter
+      // Search filter: ref #, amount, description, expense for, payment account / method / reference
       if (searchTerm) {
-        const search = searchTerm.toLowerCase();
+        const search = searchTerm.toLowerCase().trim();
+        const searchDigits = search.replace(/[^\d.]/g, '');
+        const amountStr = String(expense.amount ?? '');
+        const amountDigits = amountStr.replace(/[^\d.]/g, '');
+        const accountLabel = paymentDisplayForExpense(expense).toLowerCase();
         const matchesSearch =
           (expense.expenseNo || '').toLowerCase().includes(search) ||
           (expense.category || '').toLowerCase().includes(search) ||
           (expense.description || '').toLowerCase().includes(search) ||
-          (expense.payeeName || '').toLowerCase().includes(search);
+          (expense.payeeName || '').toLowerCase().includes(search) ||
+          (expense.paymentReference || '').toLowerCase().includes(search) ||
+          (expense.paymentMethod || '').toLowerCase().includes(search) ||
+          accountLabel.includes(search) ||
+          amountStr.toLowerCase().includes(search) ||
+          (searchDigits.length > 0 && amountDigits.includes(searchDigits));
         if (!matchesSearch) filterReason = 'search_term_mismatch';
       }
 
@@ -662,7 +674,12 @@ export const ExpensesDashboard = () => {
   };
 
   const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
+    // ListToolbar "All (N)" emits totalItems; keep -1 so the list stays uncapped when filters change.
+    if (size < 0 || size === filteredExpenses.length) {
+      setPageSize(-1);
+    } else {
+      setPageSize(size);
+    }
     setCurrentPage(1);
   };
 
@@ -1011,10 +1028,10 @@ export const ExpensesDashboard = () => {
             search={{
               value: searchTerm,
               onChange: setSearchTerm,
-              placeholder: "Search by ref #, category, description, account..."
+              placeholder: "Search by ref #, amount, description, expense for, account..."
             }}
             rowsSelector={{
-              value: pageSize,
+              value: pageSize === -1 ? filteredExpenses.length : pageSize,
               onChange: handlePageSizeChange,
               totalItems: filteredExpenses.length
             }}
@@ -1323,6 +1340,49 @@ export const ExpensesDashboard = () => {
                  </tbody>
               </table>
            </div>
+           {pageSize !== -1 && filteredExpenses.length > 0 ? (
+             <div className="border-t border-border bg-muted/30 px-6 py-2.5 flex items-center justify-between gap-3 text-sm">
+               <span className="text-muted-foreground">
+                 Showing{' '}
+                 <span className="text-foreground font-medium">
+                   {(currentPage - 1) * pageSize + 1}
+                 </span>
+                 –
+                 <span className="text-foreground font-medium">
+                   {Math.min(currentPage * pageSize, filteredExpenses.length)}
+                 </span>{' '}
+                 of{' '}
+                 <span className="text-foreground font-medium">{filteredExpenses.length}</span>
+               </span>
+               <div className="flex items-center gap-1">
+                 <Button
+                   type="button"
+                   variant="outline"
+                   size="sm"
+                   className="h-8 px-2"
+                   disabled={currentPage <= 1}
+                   onClick={() => handlePageChange(currentPage - 1)}
+                   aria-label="Previous page"
+                 >
+                   <ChevronLeft className="h-4 w-4" />
+                 </Button>
+                 <span className="text-muted-foreground px-2 tabular-nums">
+                   {currentPage} / {Math.max(1, totalPages)}
+                 </span>
+                 <Button
+                   type="button"
+                   variant="outline"
+                   size="sm"
+                   className="h-8 px-2"
+                   disabled={currentPage >= totalPages}
+                   onClick={() => handlePageChange(currentPage + 1)}
+                   aria-label="Next page"
+                 >
+                   <ChevronRight className="h-4 w-4" />
+                 </Button>
+               </div>
+             </div>
+           ) : null}
            {/* Fixed summary bar – Total / Grand Total + entries count */}
            <div className="border-t border-border bg-input-background/80 px-6 py-3 flex items-center justify-between text-sm">
              <span className="text-muted-foreground">

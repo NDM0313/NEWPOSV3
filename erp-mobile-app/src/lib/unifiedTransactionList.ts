@@ -1,7 +1,7 @@
 import type { RentalListItem } from '../api/rentals';
 import type { SaleListTypeFilter } from './saleTypeClassification';
 import { matchesSaleListTypeFilter } from './saleTypeClassification';
-import { formatDocumentListDateTime } from '../utils/localDate';
+import { formatDocumentListDateTime, toLocalDateString } from '../utils/localDate';
 
 export type UnifiedListRow = {
   kind: 'sale' | 'rental';
@@ -21,6 +21,9 @@ export type UnifiedListRow = {
   saleRaw?: Record<string, unknown>;
   rentalId?: string;
   rentalStatus?: string;
+  /** Document / booking calendar day (YYYY-MM-DD) for list date filters. */
+  documentDateYmd?: string;
+  branchId?: string | null;
 };
 
 export type SaleRecordLike = {
@@ -42,6 +45,11 @@ export type SaleRecordLike = {
 export function saleToUnifiedRow(sale: SaleRecordLike): UnifiedListRow {
   const rawDate = (sale.raw.invoice_date as string) || (sale.raw.created_at as string) || '';
   const sortMs = rawDate ? new Date(rawDate).getTime() : 0;
+  const documentDateYmd = rawDate ? toLocalDateString(rawDate) : '';
+  const branchId =
+    sale.raw.branch_id != null && String(sale.raw.branch_id).trim() !== ''
+      ? String(sale.raw.branch_id)
+      : null;
   return {
     kind: 'sale',
     id: sale.id,
@@ -58,6 +66,8 @@ export function saleToUnifiedRow(sale: SaleRecordLike): UnifiedListRow {
     shipment_status: sale.shipment_status,
     sortMs,
     saleRaw: sale.raw,
+    documentDateYmd: documentDateYmd || undefined,
+    branchId,
   };
 }
 
@@ -66,6 +76,7 @@ export function rentalToUnifiedRow(r: RentalListItem): UnifiedListRow {
     ? formatDocumentListDateTime({ documentDate: r.bookingDate, eventTimestamp: r.bookingDate })
     : '—';
   const sortMs = r.bookingDate ? new Date(r.bookingDate).getTime() : 0;
+  const documentDateYmd = r.bookingDate ? toLocalDateString(r.bookingDate) : '';
   return {
     kind: 'rental',
     id: r.bookingNo || r.no,
@@ -81,6 +92,8 @@ export function rentalToUnifiedRow(r: RentalListItem): UnifiedListRow {
     sortMs,
     rentalId: r.id,
     rentalStatus: r.status,
+    documentDateYmd: documentDateYmd || undefined,
+    branchId: r.branchId ?? null,
   };
 }
 
@@ -100,15 +113,50 @@ export function filterUnifiedRows(
   );
 }
 
+/** Strip non-digits for bill-ref / SL figure search (e.g. 260 → N260, SL-000260). */
+function digitsOnly(value: string): string {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function fieldMatchesSearch(field: string, q: string, queryDigits: string): boolean {
+  const text = String(field || '').toLowerCase();
+  if (!text) return false;
+  if (text.includes(q)) return true;
+  if (queryDigits.length >= 2 && digitsOnly(text).includes(queryDigits)) return true;
+  return false;
+}
+
+function saleRawSearchFields(raw: Record<string, unknown> | undefined): string[] {
+  if (!raw) return [];
+  return [
+    raw.invoice_no,
+    raw.order_no,
+    raw.draft_no,
+    raw.quotation_no,
+    raw.customer_bill_ref,
+    raw.reference,
+    raw.ref_no,
+    raw.bill_ref,
+  ]
+    .map((v) => (v != null ? String(v) : ''))
+    .filter(Boolean);
+}
+
+/**
+ * List search: invoice/SL/order/rental id, bill ref, customer.
+ * Digit-only queries (≥2 digits) also match the numeric core of prefixed refs (N260, SL-…).
+ */
 export function searchUnifiedRows(rows: UnifiedListRow[], query: string): UnifiedListRow[] {
   const q = query.trim().toLowerCase();
   if (!q) return rows;
+  const queryDigits = digitsOnly(q);
   return rows.filter((row) => {
-    const bill = (row.billRef || '').toLowerCase();
-    return (
-      row.id.toLowerCase().includes(q) ||
-      row.customer.toLowerCase().includes(q) ||
-      bill.includes(q)
-    );
+    const haystacks = [
+      row.id,
+      row.billRef || '',
+      row.customer,
+      ...saleRawSearchFields(row.saleRaw),
+    ];
+    return haystacks.some((field) => fieldMatchesSearch(field, q, queryDigits));
   });
 }

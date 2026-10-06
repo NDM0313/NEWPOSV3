@@ -512,33 +512,50 @@ export const expenseService = {
   async getReversedExpenseIds(companyId: string, expenseIds: string[]): Promise<Set<string>> {
     const out = new Set<string>();
     if (!companyId || expenseIds.length === 0) return out;
-    const { data: jes, error: jeErr } = await supabase
-      .from('journal_entries')
-      .select('id, reference_id, created_at')
-      .eq('company_id', companyId)
-      .eq('reference_type', 'expense')
-      .in('reference_id', expenseIds)
-      .or('is_void.is.null,is_void.eq.false')
-      .order('created_at', { ascending: false });
-    if (jeErr || !jes?.length) return out;
+    const { fetchInBatches } = await import('@/app/lib/chunkInQuery');
+    const jes = await fetchInBatches(
+      expenseIds,
+      async (chunk) => {
+        const { data, error: jeErr } = await supabase
+          .from('journal_entries')
+          .select('id, reference_id, created_at')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'expense')
+          .in('reference_id', chunk)
+          .or('is_void.is.null,is_void.eq.false')
+          .order('created_at', { ascending: false });
+        if (jeErr) throw jeErr;
+        return (data || []) as { id: string; reference_id: string }[];
+      },
+      { chunkSize: 40 },
+    );
+    if (!jes.length) return out;
     /** Only the latest active JE per expense matters — older reversed JEs must not hide the row after repost. */
     const latestJeByExpense = new Map<string, string>();
-    for (const j of jes as { id: string; reference_id: string }[]) {
+    for (const j of jes) {
       if (j.reference_id && !latestJeByExpense.has(j.reference_id)) {
         latestJeByExpense.set(j.reference_id, j.id);
       }
     }
     const latestJeIds = [...latestJeByExpense.values()];
     if (!latestJeIds.length) return out;
-    const { data: revs, error: revErr } = await supabase
-      .from('journal_entries')
-      .select('reference_id')
-      .eq('company_id', companyId)
-      .eq('reference_type', 'correction_reversal')
-      .in('reference_id', latestJeIds)
-      .or('is_void.is.null,is_void.eq.false');
-    if (revErr || !revs?.length) return out;
-    const reversedJeIds = new Set((revs as { reference_id: string }[]).map((r) => r.reference_id));
+    const revs = await fetchInBatches(
+      latestJeIds,
+      async (chunk) => {
+        const { data, error: revErr } = await supabase
+          .from('journal_entries')
+          .select('reference_id')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'correction_reversal')
+          .in('reference_id', chunk)
+          .or('is_void.is.null,is_void.eq.false');
+        if (revErr) throw revErr;
+        return (data || []) as { reference_id: string }[];
+      },
+      { chunkSize: 40 },
+    );
+    if (!revs.length) return out;
+    const reversedJeIds = new Set(revs.map((r) => r.reference_id));
     latestJeByExpense.forEach((jeId, expenseId) => {
       if (reversedJeIds.has(jeId)) out.add(expenseId);
     });

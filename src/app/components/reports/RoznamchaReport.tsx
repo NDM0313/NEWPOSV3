@@ -129,7 +129,7 @@ import { exportToExcel } from '@/app/utils/exportUtils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
-import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { Input } from '../ui/input';
 import { cn } from '../ui/utils';
 import { format, parseISO } from 'date-fns';
@@ -140,6 +140,13 @@ function rowSortTimeKey(r: { time?: string | null }): string {
   if (t.length === 5) return `${t}:00`;
   if (t.length >= 8) return t.slice(0, 8);
   return '00:00:00';
+}
+
+/** Expense cash/bank/wallet movements (Shop Expense, EXP-*, extra_expense). */
+function isRoznamchaExpenseRow(r: { referenceType?: string | null; type?: string }): boolean {
+  const rt = String(r.referenceType || '').toLowerCase();
+  if (rt === 'expense' || rt === 'extra_expense') return true;
+  return String(r.type || '').toLowerCase().includes('expense');
 }
 
 /** Cash-book order: business date → time → ref → id (stable). */
@@ -240,6 +247,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [paymentAccountOptions, setPaymentAccountOptions] = useState<PaymentLeafOption[]>([]);
   const [paymentParentGroups, setPaymentParentGroups] = useState<PaymentParentGroup[]>([]);
   const [ledgerPickerOpen, setLedgerPickerOpen] = useState(false);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+  /** When false, hide expense rows so sale receipts/balances are easier to scan. Default on = current behavior. */
+  const [showExpenses, setShowExpenses] = useState(true);
   const paymentAccountOptionsRef = useRef(paymentAccountOptions);
   paymentAccountOptionsRef.current = paymentAccountOptions;
   const paymentLedgerFilter = useMemo(
@@ -358,8 +368,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return orderedRows;
-    return orderedRows.filter((r) => {
+    let rows = orderedRows;
+    if (!showExpenses) {
+      rows = rows.filter((r) => !isRoznamchaExpenseRow(r));
+    }
+    if (!q) return rows;
+    return rows.filter((r) => {
       const textHay = [
         r.ref,
         r.journalEntryNo,
@@ -387,7 +401,41 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         .join(' ');
       return amtHay.includes(q.replace(/,/g, ''));
     });
-  }, [orderedRows, searchTerm]);
+  }, [orderedRows, searchTerm, showExpenses]);
+
+  /** When expenses are hidden, totals match the visible list; otherwise use loaded period summary. */
+  const displaySummary = useMemo(() => {
+    if (!data?.summary) return null;
+    if (showExpenses) return data.summary;
+    const openingBalance = data.summary.openingBalance;
+    let cashIn = 0;
+    let cashOut = 0;
+    for (const r of filteredRows) {
+      cashIn += Number(r.cashIn) || 0;
+      cashOut += Number(r.cashOut) || 0;
+    }
+    return {
+      openingBalance,
+      cashIn,
+      cashOut,
+      closingBalance: openingBalance + cashIn - cashOut,
+    };
+  }, [data?.summary, showExpenses, filteredRows]);
+
+  const displayCashSplit = useMemo(() => {
+    if (!data?.cashSplit) return null;
+    if (showExpenses) return data.cashSplit;
+    let cash = 0;
+    let bank = 0;
+    let wallet = 0;
+    for (const r of filteredRows) {
+      const net = (Number(r.cashIn) || 0) - (Number(r.cashOut) || 0);
+      if (r.accountType === 'bank') bank += net;
+      else if (r.accountType === 'wallet') wallet += net;
+      else cash += net;
+    }
+    return { cash, bank, wallet, total: cash + bank + wallet };
+  }, [data?.cashSplit, showExpenses, filteredRows]);
 
   const totalRows = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -777,9 +825,17 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerFilter, dateSort, pageSize, overrideGlobalDates, searchTerm]);
+  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerFilter, dateSort, pageSize, overrideGlobalDates, searchTerm, showExpenses]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
+
+  const dateTriggerLabel = useMemo(() => {
+    if (!dateFrom && !dateTo) return 'Select dates';
+    if (useGlobalRange && !overrideGlobalDates) {
+      return `${getDateRangeLabel()} · ${dateFrom} → ${dateTo}`;
+    }
+    return `${dateFrom} → ${dateTo}`;
+  }, [useGlobalRange, overrideGlobalDates, getDateRangeLabel, dateFrom, dateTo]);
 
   useEffect(() => {
     setPrintOrientation(reportExport.accountingPrintOptions.orientation);
@@ -794,21 +850,21 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const generatedAt = useMemo(() => new Date().toLocaleString(), [reportExport.previewOpen]);
 
   const rozPrintPreview = useMemo(() => {
-    if (!data?.summary) return null;
+    if (!displaySummary) return null;
     return {
-      summaryStats: buildRoznamchaSummaryStats(data.summary, formatCurrency),
+      summaryStats: buildRoznamchaSummaryStats(displaySummary, formatCurrency),
       rows: buildRoznamchaPrintRows(filteredRows, roznamchaDetailsForDisplay),
-      openingBalance: formatCurrency(data.summary.openingBalance),
-      closingBalance: formatCurrency(data.summary.closingBalance),
+      openingBalance: formatCurrency(displaySummary.openingBalance),
+      closingBalance: formatCurrency(displaySummary.closingBalance),
     };
-  }, [data?.summary, filteredRows, formatCurrency]);
+  }, [displaySummary, filteredRows, formatCurrency]);
 
   const exportData = {
     title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchLabel}`,
     headers: ['Date & Time', 'Ref / Journal', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
-    rows: data
+    rows: data && displaySummary
       ? [
-          ['Opening', '—', 'Opening Balance', '—', '', '', data.summary.openingBalance],
+          ['Opening', '—', 'Opening Balance', '—', '', '', displaySummary.openingBalance],
           ...filteredRows.map((r: RoznamchaRowWithBalance) => {
             const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' • ');
             const jeSub = roznamchaJournalSubtitle(r);
@@ -992,283 +1048,283 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
       <div className="space-y-6">
 
-      {/* 1. FILTERS */}
-      <div className="no-print rounded-xl border border-border bg-muted/40 p-4">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Filters</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 items-start">
-          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2 xl:col-span-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date range</Label>
-            {useGlobalRange ? (
-              <>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {getDateRangeLabel()} · {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}
-                  {!overrideGlobalDates ? ' (active)' : ' (overridden locally)'}
-                </p>
-                {weekNavigator}
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="roznamcha-override-global-dates"
-                    checked={overrideGlobalDates}
-                    onCheckedChange={setOverrideGlobalDates}
+      {/* 1. FILTERS — compact toolbar */}
+      <div className="no-print rounded-xl border border-border bg-muted/40 p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 max-w-[min(100%,22rem)] justify-start gap-2 bg-input-background border-border text-foreground font-normal"
+              >
+                <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate text-sm">{dateTriggerLabel}</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[22rem] p-3 space-y-3" align="start">
+              <p className="text-sm font-medium text-foreground">Date range</p>
+              {useGlobalRange ? (
+                <>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {getDateRangeLabel()} · {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}
+                    {!overrideGlobalDates ? ' (active)' : ' (overridden locally)'}
+                  </p>
+                  {weekNavigator}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="roznamcha-override-global-dates"
+                      checked={overrideGlobalDates}
+                      onCheckedChange={setOverrideGlobalDates}
+                    />
+                    <Label htmlFor="roznamcha-override-global-dates" className="text-sm text-muted-foreground cursor-pointer">
+                      Custom start / end (override)
+                    </Label>
+                  </div>
+                  {overrideGlobalDates ? (
+                    <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (or one day)" />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {weekNavigator}
+                  <DateRangePicker
+                    value={dateRange}
+                    onChange={setDateRange}
+                    placeholder="Start & end (same day = single date)"
                   />
-                  <Label htmlFor="roznamcha-override-global-dates" className="text-sm text-muted-foreground cursor-pointer">
-                    Custom start / end (override)
-                  </Label>
-                </div>
-                {overrideGlobalDates && (
-                  <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (or one day)" />
-                )}
-              </>
-            ) : (
-              <>
-                {weekNavigator}
-                <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (same day = single date)" />
-              </>
-            )}
-          </div>
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
 
-          <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Branch</Label>
+          <div className="min-w-[10rem] max-w-[14rem]">
             <BranchSelector variant="inline" showAllBranchesOption />
           </div>
 
-          <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Liquidity</Label>
-            <Select value={accountFilter} onValueChange={(v: AccountFilter) => setAccountFilter(v)}>
-              <SelectTrigger className="w-full max-w-[200px] bg-input-background border-border text-foreground">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="bank">Bank</SelectItem>
-                <SelectItem value="wallet">Wallet</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={accountFilter} onValueChange={(v: AccountFilter) => setAccountFilter(v)}>
+            <SelectTrigger className="h-9 w-[8.5rem] bg-input-background border-border text-foreground">
+              <SelectValue placeholder="Liquidity" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All liquidity</SelectItem>
+              <SelectItem value="cash">Cash</SelectItem>
+              <SelectItem value="bank">Bank</SelectItem>
+              <SelectItem value="wallet">Wallet</SelectItem>
+            </SelectContent>
+          </Select>
 
-          <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Ledger account</Label>
-            <Popover open={ledgerPickerOpen} onOpenChange={setLedgerPickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
+          <Popover open={ledgerPickerOpen} onOpenChange={setLedgerPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 min-w-[9rem] max-w-[14rem] justify-between bg-input-background border-border text-foreground font-normal"
+              >
+                <span className="truncate text-sm">
+                  {paymentLedgerAccountIds.length === 0
+                    ? 'All accounts'
+                    : paymentLedgerAccountIds.length === 1
+                      ? paymentAccountOptions.find((o) => o.id === paymentLedgerAccountIds[0])?.label ||
+                        '1 account'
+                      : `${paymentLedgerAccountIds.length} accounts`}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-3 space-y-3" align="start">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">Payment accounts</p>
+                <button
                   type="button"
-                  variant="outline"
-                  className="w-full min-w-0 max-w-[320px] justify-between bg-input-background border-border text-foreground font-normal"
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                  onClick={() => setPaymentLedgerAccountIds([])}
                 >
-                  <span className="truncate">
-                    {paymentLedgerAccountIds.length === 0
-                      ? 'All payment accounts'
-                      : paymentLedgerAccountIds.length === 1
-                        ? paymentAccountOptions.find((o) => o.id === paymentLedgerAccountIds[0])?.label ||
-                          '1 account'
-                        : `${paymentLedgerAccountIds.length} accounts`}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-3 space-y-3" align="start">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-foreground">Payment accounts</p>
-                  <button
-                    type="button"
-                    className="text-xs text-blue-400 hover:text-blue-300"
-                    onClick={() => setPaymentLedgerAccountIds([])}
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                  {paymentParentGroups.map((group) => {
-                    const selectedCount = group.childIds.filter((id) =>
-                      paymentLedgerAccountIds.includes(id),
-                    ).length;
-                    const allSelected = selectedCount === group.childIds.length && group.childIds.length > 0;
-                    const someSelected = selectedCount > 0 && !allSelected;
-                    return (
-                      <div key={group.id} className="space-y-1">
-                        <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-                          <Checkbox
-                            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-                            onCheckedChange={(checked) => {
-                              setPaymentLedgerAccountIds((prev) => {
-                                const without = prev.filter((id) => !group.childIds.includes(id));
-                                if (checked === true) return [...without, ...group.childIds];
-                                return without;
-                              });
-                            }}
-                          />
-                          <span className="font-medium truncate">{group.label}</span>
-                          <span className="text-[10px] text-muted-foreground">(parent)</span>
-                        </label>
-                        <div className="pl-6 space-y-1">
-                          {group.childIds.map((childId) => {
-                            const leaf = paymentAccountOptions.find((o) => o.id === childId);
-                            if (!leaf) return null;
-                            return (
-                              <label
-                                key={childId}
-                                className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer"
-                              >
-                                <Checkbox
-                                  checked={paymentLedgerAccountIds.includes(childId)}
-                                  onCheckedChange={(checked) => {
-                                    setPaymentLedgerAccountIds((prev) => {
-                                      if (checked === true) {
-                                        return prev.includes(childId) ? prev : [...prev, childId];
-                                      }
-                                      return prev.filter((id) => id !== childId);
-                                    });
-                                  }}
-                                />
-                                <span className="truncate">{leaf.label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {paymentAccountOptions
-                    .filter((l) => !l.parentId || !paymentParentGroups.some((g) => g.id === l.parentId))
-                    .map((leaf) => (
-                      <label
-                        key={leaf.id}
-                        className="flex items-center gap-2 text-sm text-foreground cursor-pointer"
-                      >
+                  Clear
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                {paymentParentGroups.map((group) => {
+                  const selectedCount = group.childIds.filter((id) =>
+                    paymentLedgerAccountIds.includes(id),
+                  ).length;
+                  const allSelected = selectedCount === group.childIds.length && group.childIds.length > 0;
+                  const someSelected = selectedCount > 0 && !allSelected;
+                  return (
+                    <div key={group.id} className="space-y-1">
+                      <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
                         <Checkbox
-                          checked={paymentLedgerAccountIds.includes(leaf.id)}
+                          checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                           onCheckedChange={(checked) => {
                             setPaymentLedgerAccountIds((prev) => {
-                              if (checked === true) {
-                                return prev.includes(leaf.id) ? prev : [...prev, leaf.id];
-                              }
-                              return prev.filter((id) => id !== leaf.id);
+                              const without = prev.filter((id) => !group.childIds.includes(id));
+                              if (checked === true) return [...without, ...group.childIds];
+                              return without;
                             });
                           }}
                         />
-                        <span className="truncate">{leaf.label}</span>
+                        <span className="font-medium truncate">{group.label}</span>
+                        <span className="text-[10px] text-muted-foreground">(parent)</span>
                       </label>
-                    ))}
-                  {paymentAccountOptions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No payment accounts found.</p>
-                  ) : null}
-                </div>
-                <div className="flex gap-2 pt-1 border-t border-border">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="flex-1"
-                    disabled={!companyId}
-                    onClick={() => {
-                      if (!companyId) return;
-                      saveDefaultPaymentAccountIds(companyId, paymentLedgerAccountIds);
-                      toast.success(
-                        paymentLedgerAccountIds.length === 0
-                          ? 'Default cleared (all accounts)'
-                          : 'Default payment accounts saved',
-                      );
-                    }}
-                  >
-                    Save as default
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    disabled={!companyId}
-                    onClick={() => {
-                      if (!companyId) return;
-                      saveDefaultPaymentAccountIds(companyId, []);
-                      setPaymentLedgerAccountIds([]);
-                      toast.message('Defaults reset');
-                    }}
-                  >
-                    Reset
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-            <span className="text-xs text-muted-foreground">
-              Multi-select Cash/Bank/Wallet; parent selects all children.
-            </span>
+                      <div className="pl-6 space-y-1">
+                        {group.childIds.map((childId) => {
+                          const leaf = paymentAccountOptions.find((o) => o.id === childId);
+                          if (!leaf) return null;
+                          return (
+                            <label
+                              key={childId}
+                              className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={paymentLedgerAccountIds.includes(childId)}
+                                onCheckedChange={(checked) => {
+                                  setPaymentLedgerAccountIds((prev) => {
+                                    if (checked === true) {
+                                      return prev.includes(childId) ? prev : [...prev, childId];
+                                    }
+                                    return prev.filter((id) => id !== childId);
+                                  });
+                                }}
+                              />
+                              <span className="truncate">{leaf.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                {paymentAccountOptions
+                  .filter((l) => !l.parentId || !paymentParentGroups.some((g) => g.id === l.parentId))
+                  .map((leaf) => (
+                    <label
+                      key={leaf.id}
+                      className="flex items-center gap-2 text-sm text-foreground cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={paymentLedgerAccountIds.includes(leaf.id)}
+                        onCheckedChange={(checked) => {
+                          setPaymentLedgerAccountIds((prev) => {
+                            if (checked === true) {
+                              return prev.includes(leaf.id) ? prev : [...prev, leaf.id];
+                            }
+                            return prev.filter((id) => id !== leaf.id);
+                          });
+                        }}
+                      />
+                      <span className="truncate">{leaf.label}</span>
+                    </label>
+                  ))}
+                {paymentAccountOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No payment accounts found.</p>
+                ) : null}
+              </div>
+              <div className="flex gap-2 pt-1 border-t border-border">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="flex-1"
+                  disabled={!companyId}
+                  onClick={() => {
+                    if (!companyId) return;
+                    saveDefaultPaymentAccountIds(companyId, paymentLedgerAccountIds);
+                    toast.success(
+                      paymentLedgerAccountIds.length === 0
+                        ? 'Default cleared (all accounts)'
+                        : 'Default payment accounts saved',
+                    );
+                  }}
+                >
+                  Save as default
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  disabled={!companyId}
+                  onClick={() => {
+                    if (!companyId) return;
+                    saveDefaultPaymentAccountIds(companyId, []);
+                    setPaymentLedgerAccountIds([]);
+                    toast.message('Defaults reset');
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-input-background px-2.5 cursor-pointer shrink-0">
+            <Checkbox
+              id="roznamcha-show-expenses"
+              checked={showExpenses}
+              onCheckedChange={(v) => setShowExpenses(v === true)}
+            />
+            <span className="text-sm text-foreground whitespace-nowrap">Show expenses</span>
+          </label>
+
+          <Select value={dateSort} onValueChange={(v: 'asc' | 'desc') => setDateSort(v)}>
+            <SelectTrigger className="h-9 w-[8.5rem] bg-input-background border-border text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="asc">Oldest first</SelectItem>
+              <SelectItem value="desc">Newest first</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+            <SelectTrigger className="h-9 w-[5.5rem] bg-input-background border-border text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="25">25</SelectItem>
+              <SelectItem value="50">50</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="relative flex-1 min-w-[12rem] max-w-md">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Ref, party, amount…"
+              className="pl-8 h-9 bg-input-background border-border text-foreground"
+            />
           </div>
 
-          <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Date order</Label>
-            <Select value={dateSort} onValueChange={(v: 'asc' | 'desc') => setDateSort(v)}>
-              <SelectTrigger className="w-full max-w-[200px] bg-input-background border-border text-foreground">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="asc">Oldest first</SelectItem>
-                <SelectItem value="desc">Newest first</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2 min-w-0">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Rows per page</Label>
-            <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
-              <SelectTrigger className="w-full max-w-[120px] bg-input-background border-border text-foreground">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Search</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Ref, description, party, or amount…"
-                className="pl-9 bg-input-background border-border text-foreground h-10"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="roznamcha-include-voided"
-                checked={includeVoidedReversed}
-                onCheckedChange={setIncludeVoidedReversed}
-              />
-              <Label htmlFor="roznamcha-include-voided" className="text-sm text-muted-foreground cursor-pointer leading-snug">
-                Include voided payments (audit)
-              </Label>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              Off by default: reversed/voided receipts do not affect Roznamcha totals.
-            </span>
-          </div>
+          <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-input-background px-2.5 cursor-pointer shrink-0">
+            <Switch
+              id="roznamcha-include-voided"
+              checked={includeVoidedReversed}
+              onCheckedChange={setIncludeVoidedReversed}
+            />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Voided</span>
+          </label>
         </div>
-        <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/80">
-          Date: {dateFrom} → {dateTo}
-          {useGlobalRange && !overrideGlobalDates ? ' (from top bar)' : ''}
-          {useGlobalRange && overrideGlobalDates ? ' (custom override)' : ''}
+        <p className="text-xs text-muted-foreground">
+          Showing: {dateFrom} → {dateTo}
+          {useGlobalRange && !overrideGlobalDates ? ' (top bar)' : ''}
+          {useGlobalRange && overrideGlobalDates ? ' (custom)' : ''}
           {' · '}
-          Branch: {selectedBranchLabel} · Liquidity:{' '}
-          {accountFilter === 'all' ? 'All' : accountFilter === 'wallet' ? 'Wallet' : accountFilter}
+          {selectedBranchLabel}
+          {' · '}
+          {accountFilter === 'all' ? 'All liquidity' : accountFilter}
           {paymentLedgerAccountIds.length > 0
-            ? ` · Ledger: ${
+            ? ` · ${
                 paymentLedgerAccountIds.length === 1
                   ? paymentAccountOptions.find((o) => o.id === paymentLedgerAccountIds[0])?.label ||
-                    paymentLedgerAccountIds[0]
+                    '1 account'
                   : `${paymentLedgerAccountIds.length} accounts`
               }`
             : ''}
           {' · '}
-          Order: {dateSort === 'asc' ? 'oldest first' : 'newest first'} · {pageSize}/page
-          {includeVoidedReversed ? ' · Voided rows shown' : ''}
+          {totalRows} row{totalRows === 1 ? '' : 's'}
+          {!showExpenses ? ' · Expenses hidden' : ''}
+          {includeVoidedReversed ? ' · Voided shown' : ''}
         </p>
       </div>
 
@@ -1276,30 +1332,30 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         <div className="flex justify-center py-16">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
         </div>
-      ) : data ? (
+      ) : data && displaySummary && displayCashSplit ? (
         <>
           {/* 2. SUMMARY CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard
               title="Opening Balance"
-              value={data.summary.openingBalance}
+              value={displaySummary.openingBalance}
               subtitle="yesterday closing"
             />
             <SummaryCard
               title="Cash In Today"
-              value={data.summary.cashIn}
-              subtitle="total incoming"
+              value={displaySummary.cashIn}
+              subtitle={!showExpenses ? 'visible rows (expenses hidden)' : 'total incoming'}
               variant="in"
             />
             <SummaryCard
               title="Cash Out Today"
-              value={data.summary.cashOut}
-              subtitle="total outgoing"
+              value={displaySummary.cashOut}
+              subtitle={!showExpenses ? 'visible rows (expenses hidden)' : 'total outgoing'}
               variant="out"
             />
             <SummaryCard
               title="Closing Balance"
-              value={data.summary.closingBalance}
+              value={displaySummary.closingBalance}
               subtitle="opening + in − out"
             />
           </div>
@@ -1313,7 +1369,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                   <Wallet size={18} /> Cash
                 </span>
                 <span className="font-mono font-semibold text-foreground">
-                  {data.cashSplit.cash.toLocaleString()}
+                  {displayCashSplit.cash.toLocaleString()}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-input-background border border-border px-4 py-3">
@@ -1321,7 +1377,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                   <Building2 size={18} /> Bank
                 </span>
                 <span className="font-mono font-semibold text-foreground">
-                  {data.cashSplit.bank.toLocaleString()}
+                  {displayCashSplit.bank.toLocaleString()}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-input-background border border-border px-4 py-3">
@@ -1329,7 +1385,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                   <Smartphone size={18} /> Wallet
                 </span>
                 <span className="font-mono font-semibold text-foreground">
-                  {data.cashSplit.wallet.toLocaleString()}
+                  {displayCashSplit.wallet.toLocaleString()}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-muted border border-border px-4 py-3">
@@ -1337,7 +1393,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                   <CreditCard size={18} /> Total
                 </span>
                 <span className="font-mono font-bold text-foreground">
-                  {data.cashSplit.total.toLocaleString()}
+                  {displayCashSplit.total.toLocaleString()}
                 </span>
               </div>
             </div>
@@ -1383,7 +1439,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                     <td className="px-4 py-3 text-right">—</td>
                     <td className="px-4 py-3 text-right">—</td>
                     <td className="px-4 py-3 text-right font-mono text-foreground">
-                      {data.summary.openingBalance.toLocaleString()}
+                      {displaySummary.openingBalance.toLocaleString()}
                     </td>
                     {showRoznamchaActions ? <td className="px-2 py-3 w-12" /> : null}
                   </tr>
@@ -1481,13 +1537,13 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                       Closing
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-[var(--erp-money-positive)]">
-                      {data.summary.cashIn.toLocaleString()}
+                      {displaySummary.cashIn.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-red-400">
-                      {data.summary.cashOut.toLocaleString()}
+                      {displaySummary.cashOut.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-foreground">
-                      {data.summary.closingBalance.toLocaleString()}
+                      {displaySummary.closingBalance.toLocaleString()}
                     </td>
                     {showRoznamchaActions ? <td className="px-2 py-3 w-12" /> : null}
                   </tr>

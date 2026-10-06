@@ -184,6 +184,8 @@ export function PurchaseModule({
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
   const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
   const { branchIds, isAdminOrOwner } = usePermissions();
+  /** Admin/owner with no counter-worker PIN: company-wide list (higher fetch cap, no creator isolation). */
+  const adminCompanyList = isAdminOrOwner && !isolateWorkerData;
 
   const listBranchScope = useMemo(
     () => resolveCounterListBranchScope(branchId, branchIds, isAdminOrOwner, isolateWorkerData),
@@ -384,14 +386,17 @@ export function PurchaseModule({
       const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
       const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
       const [{ data, error }, pending] = await Promise.all([
-        purchasesApi.getPurchases(companyId, apiBranchId, { accessibleBranchIds }),
+        purchasesApi.getPurchases(companyId, apiBranchId, {
+          accessibleBranchIds,
+          ...(adminCompanyList ? { limit: 2000 } : {}),
+        }),
         getPendingPurchaseRows(companyId, apiBranchId, accessibleBranchIds),
       ]);
       if (!opts?.silent) setLoading(false);
       const merged = mergePurchasesWithPending(error ? [] : data, pending);
       setOrders(merged);
     },
-    [companyId, listBranchScope],
+    [companyId, listBranchScope, adminCompanyList],
   );
 
   const handleSwipeBack = useCallback(() => {
@@ -414,6 +419,15 @@ export function PurchaseModule({
     }
     loadOrders();
   }, [companyId, listBranchScope, loadOrders]);
+
+  /** After counter-worker PIN clears, bust cache and reload as session admin. */
+  const prevIsolateWorkerRef = useRef(isolateWorkerData);
+  useEffect(() => {
+    const wasIsolated = prevIsolateWorkerRef.current;
+    prevIsolateWorkerRef.current = isolateWorkerData;
+    if (!wasIsolated || isolateWorkerData || !companyId || !adminCompanyList) return;
+    void invalidatePurchasesListCache(companyId).then(() => loadOrders({ silent: true }));
+  }, [isolateWorkerData, companyId, adminCompanyList, loadOrders]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -1321,6 +1335,11 @@ export function PurchaseModule({
           </button>
           <div className="flex-1">
             <h1 className="font-semibold text-white">Purchase Orders</h1>
+            {adminCompanyList && listBranchScope.mode === 'single' ? (
+              <p className="text-[11px] text-amber-100/90 mt-0.5">
+                Branch-filtered — switch header to All to see every branch
+              </p>
+            ) : null}
             <p className="text-xs text-white/80">Supplier orders & bills</p>
           </div>
           <button

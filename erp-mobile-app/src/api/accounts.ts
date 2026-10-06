@@ -267,10 +267,11 @@ export async function overlayAccountBalancesFromJournal(
 /** Payment accounts: cash, bank, mobile wallet only (no generic asset / AR / etc.). */
 export async function getPaymentAccounts(
   companyId: string,
-  options?: { includeLiquidityParents?: boolean }
+  options?: { includeLiquidityParents?: boolean; skipBalances?: boolean }
 ): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const includeParents = options?.includeLiquidityParents === true;
+  const skipBalances = options?.skipBalances === true;
   const cacheKey = listCacheKeys.paymentAccounts(companyId) + (includeParents ? ':parents' : '');
   if (isBrowserOffline()) {
     const cached = await listCacheGet<AccountRow[]>(cacheKey);
@@ -315,8 +316,8 @@ export async function getPaymentAccounts(
       return a.isGroup !== true;
     });
   }
-  const rows = await mergeJournalBalances(companyId, liquidityRows);
-  void listCacheSet(cacheKey, rows);
+  const rows = skipBalances ? liquidityRows : await mergeJournalBalances(companyId, liquidityRows);
+  if (!skipBalances) void listCacheSet(cacheKey, rows);
   return { data: rows, error: null };
 }
 

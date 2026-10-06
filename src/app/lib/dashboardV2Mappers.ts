@@ -36,6 +36,10 @@ export interface DashboardV2Snapshot {
     periodScope: string;
     cashBankScope: string;
     arApBasis?: string;
+    /** True when RPC window was capped (e.g. Global Filter From start). */
+    dateRangeClamped?: boolean;
+    /** Original Global Filter start before Dashboard clamp. */
+    requestedDateFrom?: string;
   };
   summary: {
     periodSales: number;
@@ -189,7 +193,8 @@ export function buildMeta(
   dateFrom: string,
   dateTo: string,
   branchId: string | null,
-  m: FinancialDashboardMetrics
+  m: FinancialDashboardMetrics,
+  opts?: { dateRangeClamped?: boolean; requestedDateFrom?: string },
 ): DashboardV2Snapshot['meta'] {
   return {
     loadedAt: new Date().toISOString(),
@@ -200,5 +205,8 @@ export function buildMeta(
     periodScope: m.period_scope || (branchId && branchId !== 'all' ? 'branch' : 'all_branches'),
     cashBankScope: m.cash_bank_scope || 'company',
     arApBasis: m.ar_ap_basis,
+    ...(opts?.dateRangeClamped
+      ? { dateRangeClamped: true, requestedDateFrom: opts.requestedDateFrom }
+      : {}),
   };
 }

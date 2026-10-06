@@ -492,6 +492,7 @@ export function TransactionDetailSheet({
           companyId={companyId}
           mode={editSheetTarget.mode}
           targetId={editSheetTarget.id}
+          initialDetail={editSheetTarget.mode === 'payment' ? detail : null}
           onClose={() => {
             setShowEdit(false);
             setEditSheetTarget(null);

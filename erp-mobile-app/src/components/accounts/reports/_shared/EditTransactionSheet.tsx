@@ -36,6 +36,8 @@ interface EditTransactionSheetProps {
   branchId?: string | null;
   mode: 'payment' | 'journal';
   targetId: string;
+  /** Already-loaded payment detail — skip a second getTransactionDetail round-trip. */
+  initialDetail?: TransactionDetail | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -59,6 +61,7 @@ export function EditTransactionSheet({
   branchId,
   mode,
   targetId,
+  initialDetail,
   onClose,
   onSaved,
 }: EditTransactionSheetProps) {
@@ -97,13 +100,20 @@ export function EditTransactionSheet({
     setPendingFiles([]);
     setSingleAttachPolicy(false);
     setEffectiveMode(mode);
-    Promise.all([getAccounts(companyId), getPaymentAccounts(companyId)])
+    Promise.all([getAccounts(companyId), getPaymentAccounts(companyId, { skipBalances: true })])
       .then(async ([accRes, payRes]) => {
         if (cancelled) return;
         setAccounts((accRes.data || []).map((a) => ({ id: a.id, name: a.name })));
         setPaymentAccounts((payRes.data || []).map((a) => ({ id: a.id, name: a.name })));
         if (mode === 'payment') {
-          const res = await getTransactionDetail(companyId, targetId);
+          const reused =
+            initialDetail &&
+            (initialDetail.paymentId === targetId || initialDetail.id === targetId)
+              ? initialDetail
+              : null;
+          const res = reused
+            ? { data: reused, error: null as string | null }
+            : await getTransactionDetail(companyId, targetId);
           if (cancelled) return;
           if (res.error || !res.data) {
             setError(res.error || 'Transaction not found.');
@@ -241,7 +251,7 @@ export function EditTransactionSheet({
     return () => {
       cancelled = true;
     };
-  }, [companyId, mode, open, targetId]);
+  }, [companyId, initialDetail, mode, open, targetId]);
 
   const refTypeLower = String(journalDetail?.referenceType || '').toLowerCase();
   const showFromTo =

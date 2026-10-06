@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Package, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Package, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import * as salesApi from '../../api/sales';
+import * as branchesApi from '../../api/branches';
 import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
@@ -75,9 +76,17 @@ import { printReceiptLines } from '../../services/printService';
 import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { DateInputField } from '../shared/DateTimePicker';
+import { makeInitialRange, type DateRangeValue } from '../shared/DateRangeBar';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
 import { SaleAddAttachmentsSheet } from './SaleAddAttachmentsSheet';
 import { SaleAttachmentEditor } from './SaleAttachmentEditor';
+import {
+  SalesListFilterSheet,
+  currentMonthCursor,
+  salesDateRangeSummary,
+  type SalesDateMode,
+  type SalesMonthCursor,
+} from './SalesListFilterSheet';
 import { usePermissions } from '../../context/PermissionContext';
 import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
 import {
@@ -115,9 +124,12 @@ import {
   rowInListBranchScope,
   type ListBranchScope,
 } from '../../lib/listBranchScope';
+import { invalidateSalesListCache } from '../../lib/listCache';
 
-const SALE_LIST_FETCH_CAP = 100;
-const SALE_LIST_DISPLAY_CAP = 50;
+/** Workers/salesmen keep a smaller list; admin/owner (no worker isolation) can see company-wide history. */
+const SALE_LIST_FETCH_CAP_WORKER = 100;
+const SALE_LIST_FETCH_CAP_ADMIN = 2000;
+const SALE_LIST_DISPLAY_CAP_WORKER = 50;
 
 type SaleRecord = {
   raw: Record<string, unknown>;
@@ -228,6 +240,9 @@ export function SalesHome({
 
   const useScopedStats =
     isolateWorkerData || listBranchScope.mode === 'accessible';
+  /** Admin/owner with no counter-worker PIN: lift the 100/50 caps so other users' sales appear. */
+  const adminCompanyList = isAdminOrOwner && !isolateWorkerData;
+  const saleListFetchCap = adminCompanyList ? SALE_LIST_FETCH_CAP_ADMIN : SALE_LIST_FETCH_CAP_WORKER;
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [recentRentals, setRecentRentals] = useState<RentalListItem[]>([]);
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
@@ -235,12 +250,38 @@ export function SalesHome({
   const [searchQuery, setSearchQuery] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<SaleListTypeFilter>('all');
   const [selectedRentalId, setSelectedRentalId] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dateMode, setDateMode] = useState<SalesDateMode>('all');
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange('all'));
+  const [monthCursor, setMonthCursor] = useState<SalesMonthCursor>(() => currentMonthCursor());
+  const [createdByFilter, setCreatedByFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [branchNameById, setBranchNameById] = useState<Map<string, string>>(() => new Map());
 
   useEffect(() => {
     if (!studioModuleOn && saleTypeFilter === 'studio') {
       setSaleTypeFilter('all');
     }
   }, [studioModuleOn, saleTypeFilter]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setBranchNameById(new Map());
+      return;
+    }
+    let cancelled = false;
+    void branchesApi.getBranches(companyId).then(({ data }) => {
+      if (cancelled) return;
+      const map = new Map<string, string>();
+      for (const b of data || []) {
+        if (b?.id) map.set(b.id, b.name || b.location || b.id);
+      }
+      setBranchNameById(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [menuSale, setMenuSale] = useState<SaleRecord | null>(null);
@@ -310,7 +351,7 @@ export function SalesHome({
       let list: SaleRecord[] = [];
       if (merged.length) {
         list = merged
-          .slice(0, SALE_LIST_FETCH_CAP)
+          .slice(0, saleListFetchCap)
           .map((s: Record<string, unknown>) => mapEnrichedRowToSaleRecord(s));
         setRecentSales(list);
       } else {
@@ -326,7 +367,16 @@ export function SalesHome({
       }
       return list;
     },
-    [companyId, listBranchScope, online, useScopedStats, isolateWorkerData, effectiveUserId, effectiveProfileId],
+    [
+      companyId,
+      listBranchScope,
+      online,
+      useScopedStats,
+      isolateWorkerData,
+      effectiveUserId,
+      effectiveProfileId,
+      saleListFetchCap,
+    ],
   );
 
   useEffect(() => {
@@ -336,6 +386,15 @@ export function SalesHome({
     }
     void refetchSales();
   }, [companyId, branchId, refetchSales]);
+
+  /** After counter-worker PIN clears, bust cache and reload as session admin (not stuck on worker-scoped list). */
+  const prevIsolateWorkerRef = useRef(isolateWorkerData);
+  useEffect(() => {
+    const wasIsolated = prevIsolateWorkerRef.current;
+    prevIsolateWorkerRef.current = isolateWorkerData;
+    if (!wasIsolated || isolateWorkerData || !companyId || !adminCompanyList) return;
+    void invalidateSalesListCache(companyId).then(() => refetchSales({ silent: true }));
+  }, [isolateWorkerData, companyId, adminCompanyList, refetchSales]);
 
   useEffect(() => {
     const onSync = () => void refetchSales({ silent: true });
@@ -443,11 +502,106 @@ export function SalesHome({
     return { today, week, month };
   }, [stats, scopedRecentSales, scopedRecentRentals, useScopedStats]);
 
+  const creatorFilterOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of unifiedList) {
+      const n = (row.created_by_name || '').trim();
+      if (n) names.add(n);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [unifiedList]);
+
+  const branchFilterOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of unifiedList) {
+      if (row.branchId) ids.add(row.branchId);
+    }
+    for (const id of branchNameById.keys()) ids.add(id);
+    return [...ids]
+      .map((id) => ({
+        id,
+        name: branchNameById.get(id) || (() => {
+          const hit = unifiedList.find((r) => r.branchId === id);
+          const joined = hit?.saleRaw?.branch as { name?: string } | null | undefined;
+          return joined?.name?.trim() || id.slice(0, 8);
+        })(),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [unifiedList, branchNameById]);
+
+  const showBranchFilterChips = adminCompanyList && branchFilterOptions.length > 1;
+
+  const activeListFilterCount = useMemo(() => {
+    let n = 0;
+    if (dateMode !== 'all' && (dateRange.from || dateRange.to || dateMode === 'custom')) n += 1;
+    if (createdByFilter !== 'all') n += 1;
+    if (branchFilter !== 'all') n += 1;
+    return n;
+  }, [dateMode, dateRange, createdByFilter, branchFilter]);
+
+  const dateFilterSummary = useMemo(
+    () => salesDateRangeSummary(dateMode, dateRange, monthCursor),
+    [dateMode, dateRange, monthCursor],
+  );
+
+  const clearListFilters = useCallback(() => {
+    setDateMode('all');
+    setDateRange(makeInitialRange('all'));
+    setMonthCursor(currentMonthCursor());
+    setCreatedByFilter('all');
+    setBranchFilter('all');
+  }, []);
+
+  const resolveRowBranchName = useCallback(
+    (row: { branchId?: string | null; saleRaw?: Record<string, unknown> }): string => {
+      const id = row.branchId || (row.saleRaw?.branch_id != null ? String(row.saleRaw.branch_id) : '');
+      if (!id) return '';
+      const joined = row.saleRaw?.branch as { name?: string } | null | undefined;
+      if (joined?.name?.trim()) return joined.name.trim();
+      return branchNameById.get(id) || '';
+    },
+    [branchNameById],
+  );
+
+  const showBranchOnCards = adminCompanyList || branchFilter !== 'all';
+
   const filteredList = useMemo(() => {
-    const byType = filterUnifiedRows(unifiedList, saleTypeFilter);
-    const searched = searchUnifiedRows(byType, searchQuery);
-    return searched.slice(0, SALE_LIST_DISPLAY_CAP);
-  }, [unifiedList, saleTypeFilter, searchQuery]);
+    let rows = filterUnifiedRows(unifiedList, saleTypeFilter);
+
+    if (dateMode !== 'all' && (dateRange.from || dateRange.to)) {
+      const from = dateRange.from || '';
+      const to = dateRange.to || '';
+      rows = rows.filter((row) => {
+        const ymd = (row.documentDateYmd || '').slice(0, 10);
+        if (!ymd) return false;
+        if (from && ymd < from) return false;
+        if (to && ymd > to) return false;
+        return true;
+      });
+    }
+
+    if (createdByFilter !== 'all') {
+      const want = createdByFilter.trim().toLowerCase();
+      rows = rows.filter((row) => (row.created_by_name || '').trim().toLowerCase() === want);
+    }
+
+    if (branchFilter !== 'all') {
+      rows = rows.filter((row) => (row.branchId || '') === branchFilter);
+    }
+
+    const searched = searchUnifiedRows(rows, searchQuery);
+    if (adminCompanyList) return searched;
+    return searched.slice(0, SALE_LIST_DISPLAY_CAP_WORKER);
+  }, [
+    unifiedList,
+    saleTypeFilter,
+    searchQuery,
+    adminCompanyList,
+    dateMode,
+    dateRange,
+    createdByFilter,
+    branchFilter,
+  ]);
 
   const listRowBadge = (row: { kind: 'sale' | 'rental'; saleRaw?: Record<string, unknown> }) => {
     if (row.kind === 'rental') {
@@ -1776,6 +1930,11 @@ export function SalesHome({
                   ? `${filteredList.length} item${filteredList.length === 1 ? '' : 's'}`
                   : `${filteredList.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} item${filteredList.length === 1 ? '' : 's'}`}
             </p>
+            {adminCompanyList && listBranchScope.mode === 'single' ? (
+              <p className="text-[11px] text-amber-200/90 mt-0.5">
+                Branch-filtered — switch header to All to see every branch
+              </p>
+            ) : null}
           </div>
           <button
             onClick={onNewSale}
@@ -1825,17 +1984,64 @@ export function SalesHome({
           <p className="text-[10px] text-white/60 mb-2 -mt-1">Totals include all sale types.</p>
         )}
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search invoice, rental, bill # or customer..."
-            className="w-full h-10 bg-white/15 border border-white/20 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/40"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search SL #, bill ref (e.g. 260), or customer..."
+              className="w-full h-10 bg-white/15 border border-white/20 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/40"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            className={`relative h-10 px-3 rounded-xl border text-sm font-medium flex items-center gap-1.5 shrink-0 transition-colors ${
+              filtersOpen || activeListFilterCount > 0
+                ? 'bg-white text-[#2563EB] border-white'
+                : 'bg-white/15 text-white border-white/20 hover:bg-white/25'
+            }`}
+            aria-expanded={filtersOpen}
+            aria-label="List filters"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            Filter
+            {activeListFilterCount > 0 ? (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#2563EB] text-white text-[10px] font-bold flex items-center justify-center">
+                {activeListFilterCount}
+              </span>
+            ) : null}
+          </button>
         </div>
+        {activeListFilterCount > 0 ? (
+          <p className="text-[11px] text-white/75 mt-2">
+            Filtered · {dateFilterSummary}
+            {createdByFilter !== 'all' ? ` · ${createdByFilter}` : ''}
+          </p>
+        ) : null}
       </div>
+
+      <SalesListFilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        dateMode={dateMode}
+        onDateModeChange={setDateMode}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        monthCursor={monthCursor}
+        onMonthCursorChange={setMonthCursor}
+        createdByFilter={createdByFilter}
+        onCreatedByFilterChange={setCreatedByFilter}
+        creatorOptions={creatorFilterOptions}
+        branchFilter={branchFilter}
+        onBranchFilterChange={setBranchFilter}
+        branchOptions={branchFilterOptions}
+        showBranchFilter={showBranchFilterChips}
+        onClear={clearListFilters}
+        activeFilterCount={activeListFilterCount}
+      />
 
       <PullToRefresh
         onRefresh={async () => {
@@ -1859,6 +2065,7 @@ export function SalesHome({
                 const paid = row.balance_due <= 0;
                 const partial = row.balance_due > 0 && row.total_received > 0;
                 const unpaid = row.balance_due > 0 && row.total_received === 0;
+                const rentalBranchName = showBranchOnCards ? resolveRowBranchName(row) : '';
                 return (
                   <div key={`rental-${row.rentalId}`} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#3B82F6]/50 transition-all min-w-0">
                     <button
@@ -1879,6 +2086,9 @@ export function SalesHome({
                       <div className="mt-1">{listRowBadge(row)}</div>
                       {row.created_by_name ? (
                         <p className="text-xs text-[#9CA3AF] mt-0.5">Salesman: {row.created_by_name}</p>
+                      ) : null}
+                      {rentalBranchName ? (
+                        <p className="text-xs text-[#93C5FD]/90 mt-0.5">Branch: {rentalBranchName}</p>
                       ) : null}
                       <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
                         <Calendar className="w-3.5 h-3.5 shrink-0" />
@@ -1953,6 +2163,7 @@ export function SalesHome({
               const partial = !overpaid && sale.balance_due > 0 && sale.total_received > 0;
               const unpaid = !overpaid && sale.balance_due > 0 && sale.total_received === 0;
               const showAddPayment = !isCancelled && !overpaid && sale.balance_due > 0;
+              const saleBranchName = showBranchOnCards ? resolveRowBranchName(row) : '';
               return (
               <div key={sale.id} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#3B82F6]/50 transition-all min-w-0">
                 <button
@@ -1982,6 +2193,9 @@ export function SalesHome({
                   {sale.created_by_name && (
                     <p className="text-xs text-[#9CA3AF] mt-0.5">Created by: {sale.created_by_name}</p>
                   )}
+                  {saleBranchName ? (
+                    <p className="text-xs text-[#93C5FD]/90 mt-0.5">Branch: {saleBranchName}</p>
+                  ) : null}
                   <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
                     <Calendar className="w-3.5 h-3.5 shrink-0" />
                     <span>{sale.date}</span>
