@@ -319,6 +319,11 @@ interface SalesContextType {
   pageSize: number;
   /** Set current page and reload (0-based). */
   setPage: (page: number) => void;
+  /** Set page size (rows per page) and reset to first page. Use -1 for All (capped fetch). */
+  setPageSize: (size: number) => void;
+  /** Server-side list search (debounced from SalesPage). */
+  listSearch: string;
+  setListSearch: (q: string) => void;
   getSaleById: (id: string) => Sale | undefined;
   createSale: (sale: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>) => Promise<Sale>;
   updateSale: (id: string, updates: Partial<Sale>) => Promise<void>;
@@ -347,6 +352,9 @@ export const useSales = () => {
         page: 0,
         pageSize: 50,
         setPage: () => {},
+        setPageSize: () => {},
+        listSearch: '',
+        setListSearch: () => {},
         getSaleById: () => undefined,
         createSale: defaultError as SalesContextType['createSale'],
         updateSale: defaultError,
@@ -594,13 +602,17 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
 };
 
 const DEFAULT_PAGE_SIZE = 50;
+const ALLOWED_PAGE_SIZES = [50, 100, 200, 500] as const;
+/** Hard cap when Rows = All (-1). */
+const ALL_PAGE_SIZE_CAP = 2000;
 
 export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPageState] = useState(0);
-  const [pageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSizeState] = useState(DEFAULT_PAGE_SIZE);
+  const [listSearch, setListSearchState] = useState('');
   const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
   const accounting = useAccountingOptional();
   const { companyId, branchId, user, userRole } = useSupabase();
@@ -612,10 +624,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     if (!companyId) return;
     try {
       setLoading(true);
+      const isAll = pageSize === -1;
+      const effectiveLimit = isAll ? ALL_PAGE_SIZE_CAP : pageSize;
+      const effectiveOffset = isAll ? 0 : page * pageSize;
       const result = await saleService.getAllSales(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined,
-        { offset: page * pageSize, limit: pageSize }
+        {
+          offset: effectiveOffset,
+          limit: effectiveLimit,
+          search: listSearch || undefined,
+        }
       );
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
@@ -644,10 +663,28 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, page, pageSize]);
+  }, [companyId, branchId, page, pageSize, listSearch]);
 
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
+  }, []);
+
+  const setPageSize = useCallback((size: number) => {
+    if (size === -1) {
+      setPageSizeState(-1);
+      setPageState(0);
+      return;
+    }
+    const next = (ALLOWED_PAGE_SIZES as readonly number[]).includes(size)
+      ? size
+      : DEFAULT_PAGE_SIZE;
+    setPageSizeState(next);
+    setPageState(0);
+  }, []);
+
+  const setListSearch = useCallback((q: string) => {
+    setListSearchState(String(q || '').trim());
+    setPageState(0);
   }, []);
 
   const activatedRef = React.useRef(false);
@@ -3132,6 +3169,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     page,
     pageSize,
     setPage,
+    setPageSize,
+    listSearch,
+    setListSearch,
     getSaleById,
     createSale,
     updateSale,
@@ -3142,7 +3182,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     refreshSales: loadSales,
     __activate: activate,
   }), [
-    sales, loading, totalCount, page, pageSize, setPage, getSaleById, createSale, updateSale, deleteSale,
+    sales, loading, totalCount, page, pageSize, setPage, setPageSize, listSearch, setListSearch,
+    getSaleById, createSale, updateSale, deleteSale,
     recordPayment, updateShippingStatus, convertQuotationToInvoice, loadSales, activate,
   ]);
 

@@ -325,6 +325,15 @@ async function ensureFinalSaleInvoiceNoAllocated(saleId: string, row: Record<str
   );
 }
 
+/** Strip PostgREST filter metacharacters from list search input. */
+function sanitizeSalesListSearch(raw?: string | null): string {
+  if (!raw) return '';
+  return String(raw)
+    .trim()
+    .replace(/[%_,.()*"'\\]/g, '')
+    .slice(0, 100);
+}
+
 export const saleService = {
   // Create sale with items. options.allowNegativeStock from caller (context or DB) — allow if either says true.
   async createSale(sale: Sale, items: SaleItem[], options?: CreateSaleOptions) {
@@ -637,12 +646,63 @@ export const saleService = {
   async getAllSales(
     companyId: string,
     branchId?: string,
-    opts?: { limit?: number; offset?: number }
+    opts?: { limit?: number; offset?: number; search?: string }
   ): Promise<any[] | { data: any[]; total: number }> {
     const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes))`;
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
+    const searchTerm = sanitizeSalesListSearch(opts?.search);
     const schemaFlags = await getDocumentConversionSchemaFlags();
+
+    let contactIds: string[] = [];
+    let branchIdsFromSearch: string[] = [];
+    let saleIdsFromItems: string[] = [];
+    if (searchTerm) {
+      const [contactsRes, branchesRes, productsRes] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select('id')
+          .eq('company_id', companyId)
+          .or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,mobile.ilike.%${searchTerm}%`)
+          .limit(200),
+        supabase
+          .from('branches')
+          .select('id')
+          .eq('company_id', companyId)
+          .ilike('name', `%${searchTerm}%`)
+          .limit(50),
+        supabase
+          .from('products')
+          .select('id')
+          .eq('company_id', companyId)
+          .or(`sku.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%`)
+          .limit(200),
+      ]);
+      contactIds = (contactsRes.data || []).map((r: { id: string }) => r.id);
+      branchIdsFromSearch = (branchesRes.data || []).map((r: { id: string }) => r.id);
+      const productIds = (productsRes.data || []).map((r: { id: string }) => r.id);
+      if (productIds.length > 0) {
+        let itemsRes = await supabase
+          .from('sales_items')
+          .select('sale_id')
+          .in('product_id', productIds)
+          .limit(500);
+        if (itemsRes.error && (itemsRes.error.code === '42P01' || String(itemsRes.error.message || '').includes('sales_items'))) {
+          itemsRes = await supabase
+            .from('sale_items')
+            .select('sale_id')
+            .in('product_id', productIds)
+            .limit(500);
+        }
+        const idSet = new Set<string>();
+        for (const row of itemsRes.data || []) {
+          const sid = (row as { sale_id?: string }).sale_id;
+          if (sid) idSet.add(sid);
+        }
+        saleIdsFromItems = [...idSet];
+      }
+    }
+
     const runMainList = (hideConverted: boolean) => {
       let q = supabase
         .from('sales')
@@ -652,6 +712,26 @@ export const saleService = {
         .order('invoice_date', { ascending: false });
       if (hideConverted && schemaFlags.salesConvertedColumn) q = q.eq('converted', false);
       if (branchId) q = q.eq('branch_id', branchId);
+      if (searchTerm) {
+        const orParts = [
+          `invoice_no.ilike.%${searchTerm}%`,
+          `draft_no.ilike.%${searchTerm}%`,
+          `quotation_no.ilike.%${searchTerm}%`,
+          `order_no.ilike.%${searchTerm}%`,
+          `notes.ilike.%${searchTerm}%`,
+          `customer_name.ilike.%${searchTerm}%`,
+        ];
+        if (contactIds.length > 0) {
+          orParts.push(`customer_id.in.(${contactIds.join(',')})`);
+        }
+        if (!branchId && branchIdsFromSearch.length > 0) {
+          orParts.push(`branch_id.in.(${branchIdsFromSearch.join(',')})`);
+        }
+        if (saleIdsFromItems.length > 0) {
+          orParts.push(`id.in.(${saleIdsFromItems.join(',')})`);
+        }
+        q = q.or(orParts.join(','));
+      }
       if (opts) q = q.range(offset, offset + limit - 1);
       return q;
     };
