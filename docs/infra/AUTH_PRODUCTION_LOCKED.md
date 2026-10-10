@@ -20,8 +20,8 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 
 ## Client runtime (locked behavior)
 
-- **Web:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) forces **same-origin** on the ERP host in production so `/auth` and `/rest` go through ERP nginx → Kong (avoids cross-origin CORS in the browser). Current production host: **`https://erp.ndmcore.com`** (legacy `https://erp.dincouture.pk` still recognized).
-- **Capacitor native (Android/iOS):** resolves to **`https://api.ndmcore.com`** — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md). Do not reuse the web `window.location.origin` shortcut on native.
+- **Web on ndmcore:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) uses **`https://api.ndmcore.com`** directly (Cloudflare Tunnel → Kong). Do **not** same-origin-proxy `/auth` via `erp.ndmcore.com` (that path 502s). Legacy **`https://erp.dincouture.pk`** still uses same-origin nginx → Kong.
+- **Capacitor native (Android/iOS):** resolves to **`https://api.ndmcore.com`** — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md).
 
 ## After changing keys
 

@@ -24,23 +24,20 @@ let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUB
 /** Baked env host — used for direct Realtime WSS in Vite dev while REST uses /supabase proxy. */
 const configuredSupabaseHost = supabaseUrl.replace(/\/$/, '');
 const NDMCORE_API = 'https://api.ndmcore.com';
-function isProductionErpOrigin(origin: string): boolean {
-  return (
-    origin.includes('erp.ndmcore.com') || origin.includes('erp.dincouture.pk')
-  );
-}
 function isLegacyDincoutureApiUrl(url: string): boolean {
   return /(?:erp|supabase)\.dincouture\.pk/i.test(url);
 }
-// Production ERP host (erp.ndmcore.com / legacy erp.dincouture.pk): same-origin so /auth/, /rest/
-// go through nginx → Kong (avoids SecurityError / CORS). Vite dev: same-origin `/supabase` proxy.
+// Vite dev: same-origin `/supabase` proxy.
+// Production on erp.ndmcore.com: call Kong directly at https://api.ndmcore.com (Cloudflare Tunnel).
+// Do NOT use same-origin erp.ndmcore.com/auth (nginx upstream 502). Legacy VPS host keeps same-origin.
 if (typeof window !== 'undefined') {
   if (import.meta.env.DEV) {
     supabaseUrl = `${window.location.origin}/supabase`;
-  } else if (isProductionErpOrigin(window.location.origin)) {
+  } else if (window.location.origin.includes('erp.ndmcore.com')) {
+    supabaseUrl = NDMCORE_API;
+  } else if (window.location.origin.includes('erp.dincouture.pk')) {
     supabaseUrl = window.location.origin;
-  } else if (isLegacyDincoutureApiUrl(supabaseUrl)) {
-    // Non-ERP origins with stale baked env → ndmcore API (CORS allows erp.ndmcore.com).
+  } else if (isLegacyDincoutureApiUrl(supabaseUrl) || /api\.ndmcore\.com/i.test(supabaseUrl)) {
     supabaseUrl = NDMCORE_API;
   }
 }
