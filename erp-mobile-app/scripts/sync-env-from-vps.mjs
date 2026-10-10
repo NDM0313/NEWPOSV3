@@ -39,7 +39,7 @@ try {
 }
 
 const p = parse(remoteRaw);
-const url = p.VITE_SUPABASE_URL || 'https://supabase.dincouture.pk';
+const url = p.VITE_SUPABASE_URL || 'https://api.ndmcore.com';
 const key = p.VITE_SUPABASE_ANON_KEY || '';
 const disableRt = p.VITE_DISABLE_REALTIME || 'true';
 

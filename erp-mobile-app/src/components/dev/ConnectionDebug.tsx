@@ -26,8 +26,7 @@ export function ConnectionDebug({ supabaseUrl, companyId, branchId, userEmail }:
   const baked = (import.meta.env.VITE_SUPABASE_URL || supabaseUrl || '').trim();
   const runtime = getResolvedSupabaseUrl().trim();
   const url = runtime || baked;
-  const isErpProxy = url.includes('erp.dincouture.pk');
-  const isVps = url.includes('supabase.dincouture.pk');
+  const isNdmcoreApi = url.includes('api.ndmcore.com');
 
   const label = showErpDevTools()
     ? 'Connection Debug (dev only)'
@@ -41,12 +40,12 @@ export function ConnectionDebug({ supabaseUrl, companyId, branchId, userEmail }:
           <Database className="w-4 h-4 text-[#3B82F6] flex-shrink-0 mt-0.5" />
           <div>
             <span className="text-[#9CA3AF]">Supabase API (runtime):</span>{' '}
-            <span className={isErpProxy ? 'text-emerald-400' : isVps ? 'text-amber-400' : 'text-white'}>
+            <span className={isNdmcoreApi ? 'text-emerald-400' : 'text-white'}>
               {url || 'Not set'}
             </span>
-            {isErpProxy && <span className="ml-1 text-emerald-500 text-xs">✓ ERP proxy</span>}
-            {Capacitor.isNativePlatform() && !isErpProxy && (
-              <span className="ml-1 text-red-400 text-xs">⚠ native should use erp.dincouture.pk</span>
+            {isNdmcoreApi && <span className="ml-1 text-emerald-500 text-xs">✓ ndmcore API</span>}
+            {Capacitor.isNativePlatform() && !isNdmcoreApi && (
+              <span className="ml-1 text-red-400 text-xs">⚠ native should use api.ndmcore.com</span>
             )}
           </div>
         </div>

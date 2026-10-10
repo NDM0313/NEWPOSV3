@@ -84,7 +84,7 @@ function logNativeStorageSignFailureOnce(bucket: string, err: unknown): void {
 /**
  * Module-level cache so the same `bucket/path` is signed at most once per TTL window —
  * without this every parent re-render re-runs `createSignedUrl` and hammers Storage with
- * 404s when the underlying file no longer exists (see erp.dincouture.pk production log).
+ * 404s when the underlying file no longer exists (production storage log).
  */
 type SignedUrlCacheEntry = { url: string | null; expiresAt: number };
 const signedUrlCache = new Map<string, SignedUrlCacheEntry>();

@@ -79,7 +79,7 @@ Symptoms: `.tsx` load errors, `ws://localhost:5174` WebSocket failures, boot err
    npm run cap:sync:android:prod   # or ios
    ```
 4. Verify `dist/index.html` uses `./assets/` (not `/assets/`)
-5. Uninstall old APK/IPA from device, install fresh build; keep Wi-Fi on for API (`https://erp.dincouture.pk`)
+5. Uninstall old APK/IPA from device, install fresh build; keep Wi-Fi on for API (`https://api.ndmcore.com`)
 
 ## Browser dev (laptop only)
 

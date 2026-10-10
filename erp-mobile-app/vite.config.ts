@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 /** Kong may reject WS/API when forwarded Origin is localhost; set on the Node→Kong leg only. */
-const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.dincouture.pk';
-const supabaseProxyHost = 'supabase.dincouture.pk';
+const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.ndmcore.com';
+const supabaseProxyHost = 'api.ndmcore.com';
 
 type ProxyWithEvents = {
   on: (event: string, fn: (...args: unknown[]) => void) => void;
@@ -60,7 +60,7 @@ function attachSupabaseProxyOrigin(proxy: ProxyWithEvents) {
 }
 
 const supabaseProxy = (extra: { ws?: boolean } = {}) => ({
-  target: 'https://supabase.dincouture.pk',
+  target: 'https://api.ndmcore.com',
   changeOrigin: true,
   secure: false,
   ws: extra.ws === true,

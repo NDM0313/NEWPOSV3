@@ -43,7 +43,8 @@ const GET_SESSION_TIMEOUT_MS = 8000;
 
 function isProductionMobileHost(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.hostname.includes('erp.dincouture.pk');
+  const h = window.location.hostname;
+  return h.includes('erp.ndmcore.com') || h.includes('api.ndmcore.com');
 }
 
 function isStorageOrSecurityError(err: unknown): boolean {
@@ -73,7 +74,7 @@ function formatSignInErrorMessage(msg: string): string {
   if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
     const base = 'Cannot reach the server. Check network or contact admin.';
     if (Capacitor.isNativePlatform()) {
-      return `${base} If https://erp.dincouture.pk/m/ works, install the latest APK build.`;
+      return `${base} If https://erp.ndmcore.com/m/ works, install the latest APK build.`;
     }
     return base;
   }

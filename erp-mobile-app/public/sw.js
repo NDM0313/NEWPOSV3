@@ -35,7 +35,7 @@ self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   // Do not cache API, Auth, Storage, or Realtime calls
   const isInternal = u.origin === self.location.origin;
-  const isExternalApi = u.origin.includes('supabase.dincouture.pk');
+  const isExternalApi = u.origin.includes('api.ndmcore.com');
   
   if (isExternalApi || u.pathname.includes('/auth/') || u.pathname.includes('/rest/') || 
       u.pathname.includes('/storage/') || u.pathname.includes('/realtime/')) {
