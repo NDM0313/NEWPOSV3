@@ -46,16 +46,16 @@ export const CompanyLogoUpload: React.FC<CompanyLogoUploadProps> = ({ logoUrl, o
 
   return (
     <div className="col-span-2 space-y-3">
-      <Label className="text-gray-300 block">Company Logo</Label>
-      <p className="text-xs text-gray-500">
+      <Label className="text-muted-foreground block">Company Logo</Label>
+      <p className="text-xs text-muted-foreground">
         Used on invoices, receipts, reports, and other prints. PNG, JPG, or WebP, max 2 MB.
       </p>
       <div className="flex flex-wrap items-start gap-4">
-        <div className="w-28 h-28 rounded-lg border border-gray-700 bg-gray-950 flex items-center justify-center overflow-hidden shrink-0">
+        <div className="w-28 h-28 rounded-lg border border-border bg-input-background flex items-center justify-center overflow-hidden shrink-0">
           {displayUrl ? (
             <img src={displayUrl} alt="Company logo" className="max-w-full max-h-full object-contain" />
           ) : (
-            <ImagePlus className="text-gray-600" size={32} />
+            <ImagePlus className="text-muted-foreground" size={32} />
           )}
         </div>
         <div className="flex flex-col gap-2">
@@ -69,7 +69,7 @@ export const CompanyLogoUpload: React.FC<CompanyLogoUploadProps> = ({ logoUrl, o
           <Button
             type="button"
             variant="outline"
-            className="border-gray-700 text-white hover:bg-gray-800"
+            className="border-border text-foreground hover:bg-muted"
             disabled={uploading || !companyId}
             onClick={() => inputRef.current?.click()}
           >

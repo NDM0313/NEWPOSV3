@@ -116,5 +116,35 @@ export async function updateTransaction(
     }
 
     await supabase.from('payments').update(patch).eq('id', resolvedPaymentId);
+
+    const { data: payRef } = await supabase
+      .from('payments')
+      .select('reference_type, reference_id')
+      .eq('id', resolvedPaymentId)
+      .maybeSingle();
+    const refType = String((payRef as { reference_type?: string } | null)?.reference_type || '').toLowerCase();
+    const expenseId = String((payRef as { reference_id?: string } | null)?.reference_id || '').trim();
+    if (refType === 'expense' && expenseId) {
+      await supabase
+        .from('expenses')
+        .update({ expense_date: updates.paymentDate })
+        .eq('id', expenseId);
+    }
+  }
+
+  const refType = String(detail.referenceType || '').toLowerCase();
+  if (!resolvedPaymentId && refType === 'expense') {
+    const { data: jeRef } = await supabase
+      .from('journal_entries')
+      .select('reference_id')
+      .eq('id', jeId)
+      .maybeSingle();
+    const expenseId = String((jeRef as { reference_id?: string } | null)?.reference_id || '').trim();
+    if (expenseId) {
+      await supabase
+        .from('expenses')
+        .update({ expense_date: updates.paymentDate })
+        .eq('id', expenseId);
+    }
   }
 }

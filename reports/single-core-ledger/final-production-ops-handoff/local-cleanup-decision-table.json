@@ -1,0 +1,6 @@
+{
+  "run": "LOCAL_CLEANUP_DECISION_TABLE",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "total_files": 25,
+  "note": "See local-cleanup-decision-table.md for full table; mirrors local-cleanup-file-classification.json with action columns"
+}

@@ -1,0 +1,37 @@
+{
+  "run": "OPERATOR_DECISION_DASHBOARD",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "program_mode": "PRODUCTION_OPS",
+  "fully_complete": [
+    "three-company-unified-ledger-baseline",
+    "migration-closure",
+    "credential-hardening",
+    "ops-schedule-incident-runbook",
+    "password-rotation-post-monitoring",
+    "final-production-ops-handoff"
+  ],
+  "daily_ongoing": {
+    "command": "npm run monitor:three-company-unified-ledger",
+    "credential_policy": "per-company only"
+  },
+  "safe_without_approval": [
+    { "item": "scheduled monitoring", "class": "ONGOING_OPS" },
+    { "item": "local cleanup dry-run", "class": "SAFE_LOCAL_CLEANUP" },
+    { "item": "remaining screens audit", "class": "SAFE_AUDIT_ONLY" },
+    { "item": "docs/register updates", "class": "SAFE_DOCS_ONLY" }
+  ],
+  "requires_finance_signoff": [
+    "next-company-rollout",
+    "gl-journal-payment-repair",
+    "r7-migration",
+    "r8-legacy-retirement"
+  ],
+  "requires_migration_approval": ["r7-roznamcha-payment-rpc"],
+  "must_not_start": ["r7-apply", "r8-delete", "next-company-enable", "monitoring-failure-migrations", "unapproved-flag-toggles", "fx-app"],
+  "recommended_next_prompt": "OFFICE PC LOCAL CLEANUP REVIEW — DRY RUN ONLY",
+  "pointers": {
+    "register": "remaining-tasks-master-register.md",
+    "seven_phase": "seven-phase-remaining-plan.md",
+    "local_inventory": "office-pc-local-change-inventory.md"
+  }
+}

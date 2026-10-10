@@ -1,0 +1,12 @@
+{
+  "run": "SINGLE_CORE_STABILITY_DAY8_RETRY1_REPO_SAFETY",
+  "run_local_datetime": "2026-07-02T17:31:22+05:00",
+  "stability_sample_label": "Day 8 retry 1",
+  "calendar_days_elapsed_since_window_start": 1,
+  "evidence_folder": "reports/single-core-engine-stability-daily-20260708-retry1",
+  "branch": "main",
+  "head": "0700955f0cc0b0b70548dc8370b1b133a890e624",
+  "origin_main": "0700955f0cc0b0b70548dc8370b1b133a890e624",
+  "day8_evidence_commit": "0700955f",
+  "verdict": "SAFE"
+}

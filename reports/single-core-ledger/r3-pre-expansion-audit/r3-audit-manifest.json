@@ -1,0 +1,76 @@
+{
+  "phase": "R3",
+  "status": "AUDIT_COMPLETE — R5_BLOCKED_ON_FINANCE_SIGN_OFF",
+  "completed_at": "2026-06-27",
+  "production_url": "https://erp.dincouture.pk",
+  "audit_method": "read_only_sql_via_vps",
+  "scripts": [
+    "scripts/single-core-ledger/r3-readonly-expansion-audit.sql",
+    "scripts/single-core-ledger/r3-readonly-golden-baseline.sql"
+  ],
+  "gates": {
+    "other_company_loader_flags_enabled": 0,
+    "din_china_unified_flags_on": 12,
+    "din_china_loader_flags_on": 5,
+    "gl_mutations": 0,
+    "flag_sql_executed": false
+  },
+  "companies": [
+    {
+      "name": "DIN BRIDAL",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "unified_flag_rows": 0,
+      "je_count": 254,
+      "branches": 2,
+      "expansion_candidate": true,
+      "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json"
+    },
+    {
+      "name": "DIN CHINA",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "unified_flag_rows": 12,
+      "je_count": 443,
+      "branches": 2,
+      "expansion_candidate": false,
+      "note": "CLOSED — live unified loaders",
+      "golden_fixture_path": "reports/single-core-ledger/din-china/golden-fixtures.json"
+    },
+    {
+      "name": "DIN COUTURE",
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "unified_flag_rows": 0,
+      "je_count": 79,
+      "branches": 1,
+      "expansion_candidate": true,
+      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json"
+    }
+  ],
+  "candidate_baselines": {
+    "din-bridal": {
+      "trial_balance_debit_credit_pkr": 21919575,
+      "golden_party": "MR REHAN ALI",
+      "golden_party_closing_pkr": 530000,
+      "roznamcha_proxy_note": "raw GL liquidity — not parity UI"
+    },
+    "din-couture": {
+      "trial_balance_debit_credit_pkr": 49747104,
+      "golden_party": "DHARIA",
+      "golden_party_closing_pkr": 4488088,
+      "roznamcha_proxy_note": "raw GL liquidity — not parity UI"
+    }
+  },
+  "din_china_rpc_sanity": {
+    "mr_jalil_party_rpc_closing_pkr": 216300,
+    "matches_phase_216_golden": true
+  },
+  "blocked_next": {
+    "phase": "R5",
+    "reason": "No finance sign-off artifact; no target company selected for pilot",
+    "required_before_r5": [
+      "Finance sign-off per SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md",
+      "Named target company selection",
+      "Legacy browser golden capture (roznamcha parity totals)",
+      "Monitoring profile activation in monitoring-company-profiles.json"
+    ]
+  }
+}

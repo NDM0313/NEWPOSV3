@@ -1,0 +1,47 @@
+{
+  "reportType": "phase_2_9a_7_operator_browser_gate_signoff",
+  "generatedAt": "2026-06-25T16:51:42Z",
+  "status": "PHASE_2_9A_STILL_BLOCKED_PARTY_PILOT_LEDGER_V2_GATE_NOT_PASSED",
+  "branch": "feature/single-core-ledger-phase-2-9a3-preview-deploy-plan",
+  "evidenceCommit": "7e8fef33",
+  "baseUrl": "http://localhost:3002",
+  "tunnel": "ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
+  "tunnelReachable": true,
+  "cashBankWaiver": "Cash/Bank waived for Stage 1; remediation Phase 2.9A-CB",
+  "stage1Sql": "NOT_RUN",
+  "stage2Sql": "NOT_RUN",
+  "flagEnablement": "NONE",
+  "stage1FlagScope": {
+    "enableOnly": "unified_ledger_pilot",
+    "doNotEnableInStage1": [
+      "unified_ledger_engine",
+      "unified_ledger_screen_ledger_v2",
+      "unified_ledger_screen_roznamcha"
+    ]
+  },
+  "gates": {
+    "gate1_party_mr_jalil": {
+      "result": "SKIP",
+      "notes": "QA_BROWSER_PASSWORD not set — run run-phase-29a7-operator-gate-signoff.mjs"
+    },
+    "gate2_pilot_batch": {
+      "result": "SKIP",
+      "notes": "Operator browser session required"
+    },
+    "gate3_ledger_v2": {
+      "result": "SKIP",
+      "notes": "Operator browser session required"
+    },
+    "gate3_admin_compare": {
+      "result": "SKIP",
+      "notes": "Operator browser session required"
+    },
+    "gate4_flags_off": {
+      "result": "PASS",
+      "notes": "0 rows unified_ledger% — read-only SQL 2026-06-25T16:51Z",
+      "rows": []
+    }
+  },
+  "operatorScript": "scripts/single-core-ledger/run-phase-29a7-operator-gate-signoff.mjs",
+  "priorGateConfirmation": "phase-2.9a-6-gate-confirmation.json"
+}

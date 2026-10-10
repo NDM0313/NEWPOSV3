@@ -1,0 +1,12 @@
+{
+  "run_name": "CLOSE PARTY DISCOUNT QA MONITORING DRIFT — TB GOLDEN + FRONTEND CONSTANT DEPLOY",
+  "generated_at": "2026-06-30T09:00:00.000Z",
+  "branch": "main",
+  "head": "37721e48ecbe6814f1a6cd560448cdb55542cb13",
+  "origin_main": "37721e48ecbe6814f1a6cd560448cdb55542cb13",
+  "prior_evidence_commit": "37721e48",
+  "staged_files": [],
+  "credentials_staged": false,
+  "graphify_staged": false,
+  "status": "PASS"
+}

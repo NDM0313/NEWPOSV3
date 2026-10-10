@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-06-26T14:59:46.315399Z",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "flags": [
+    { "feature_key": "unified_ledger_engine", "enabled": true },
+    { "feature_key": "unified_ledger_loader_account_statement", "enabled": true },
+    { "feature_key": "unified_ledger_loader_ledger_v2", "enabled": true },
+    { "feature_key": "unified_ledger_pilot", "enabled": true },
+    { "feature_key": "unified_ledger_screen_account_statement", "enabled": true },
+    { "feature_key": "unified_ledger_screen_ledger_v2", "enabled": true }
+  ],
+  "build_label": "phase-211-prod"
+}

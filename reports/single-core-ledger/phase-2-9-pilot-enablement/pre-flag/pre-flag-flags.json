@@ -1,0 +1,13 @@
+{
+  "phase": "2.9A",
+  "check": "pre-flag-feature-flags-baseline",
+  "timestampUtc": "2026-06-25T12:47:00.819Z",
+  "environment": "production VPS supabase-db (read-only)",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "companyName": "DIN CHINA",
+  "sql": "SELECT feature_key, enabled, updated_at FROM feature_flags WHERE company_id = '30bd8592-3384-4f34-899a-f3907e336485' AND feature_key LIKE 'unified_ledger%' ORDER BY feature_key",
+  "rows": [],
+  "interpretation": "No rows = all unified ledger flags OFF (safe default)",
+  "productionDbMutation": "NONE",
+  "result": "PASS"
+}

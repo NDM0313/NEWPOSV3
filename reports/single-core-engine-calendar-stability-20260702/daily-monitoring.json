@@ -1,0 +1,20 @@
+{
+  "run": "CALENDAR_STABILITY_DAY2_MONITORING",
+  "classification": "CALENDAR_STABILITY_DAY_PASS",
+  "stability_window_calendar_day": 2,
+  "run_local_datetime_start": "2026-07-02T17:55:00+05:00",
+  "run_local_datetime_end": "2026-07-02T18:06:31+05:00",
+  "monitoring_completed_at": "2026-07-02T13:06:10.275Z",
+  "calendar_days_elapsed_since_window_start": 1,
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T12-55-47-086Z.json",
+  "roznamcha_reached": true,
+  "overall": "PASS",
+  "din_china": "PASS",
+  "din_china_admin_compare_9_9": "PASS",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "production_mutation": false
+}

@@ -104,14 +104,14 @@ export const InlineVariationSelector: React.FC<InlineVariationSelectorProps> = (
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
-      className="border-t border-gray-700 bg-gray-950/95 backdrop-blur-sm"
+      className="border-t border-border bg-input-background/95 backdrop-blur-sm"
     >
       <div className="p-3">
         <div className="text-xs font-medium text-blue-400 mb-2 flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
           Select Variation for "{productName}"
         </div>
-        <div className="text-[10px] text-gray-500 mb-3">
+        <div className="text-[10px] text-muted-foreground mb-3">
           Use ↑↓←→ arrows and Enter, or click
         </div>
         
@@ -126,8 +126,8 @@ export const InlineVariationSelector: React.FC<InlineVariationSelectorProps> = (
                 'relative px-3 py-2.5 rounded-lg text-left transition-all duration-150',
                 'border text-sm font-medium',
                 selectedIndex === index
-                  ? 'bg-blue-500 text-white border-blue-400 shadow-lg shadow-blue-900/50 scale-105'
-                  : 'bg-gray-900 text-gray-300 border-gray-700 hover:border-blue-500/50 hover:bg-gray-800'
+                  ? 'bg-blue-500 text-foreground border-blue-400 shadow-lg shadow-blue-900/50 scale-105'
+                  : 'bg-popover text-muted-foreground border-border hover:border-blue-500/50 hover:bg-muted'
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -137,7 +137,7 @@ export const InlineVariationSelector: React.FC<InlineVariationSelectorProps> = (
                 )}
               </div>
               {variation.size && variation.color && (
-                <div className="flex gap-2 mt-1 text-[11px] text-gray-500">
+                <div className="flex gap-2 mt-1 text-[11px] text-muted-foreground">
                   <span>{variation.size}</span>
                   <span>·</span>
                   <span>{variation.color}</span>

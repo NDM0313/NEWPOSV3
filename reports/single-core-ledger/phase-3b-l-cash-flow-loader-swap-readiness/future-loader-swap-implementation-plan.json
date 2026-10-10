@@ -1,0 +1,78 @@
+{
+  "phase": "3B-L",
+  "run": "future-loader-swap-implementation-plan",
+  "proposedPhaseName": "Phase 3B-M Cash Flow Controlled Loader Swap",
+  "status": "FUTURE_ONLY_NOT_APPROVED",
+  "loaderSwapApproved": false,
+  "preconditions": [
+    "Phase 3B-K finance basis sign-off complete",
+    "Phase 3B-L readiness pack complete",
+    "Operator written approval on record (see operator-loader-swap-approval-template.md)",
+    "Rollback SQL templates prepared per company",
+    "Flag resolver + keys implemented and tested",
+    "npm run test:unified-ledger PASS",
+    "npm run build PASS",
+    "Pre-swap monitor:three-company-unified-ledger PASS"
+  ],
+  "expectedFilesLikelyTouched": [
+    "src/app/lib/unifiedLedgerFlagKeys.ts",
+    "src/app/lib/unifiedLedgerScreenFlags.ts",
+    "src/app/lib/resolveCashFlowMainLoaderSource.ts",
+    "src/app/services/cashFlowReportService.ts",
+    "src/app/components/reports/CashFlowReportPage.tsx",
+    "src/app/services/featureFlagsService.ts",
+    "scripts/single-core-ledger/monitoring-company-profiles.json",
+    "reports/single-core-ledger/phase-3b-m-*/ (evidence folder)"
+  ],
+  "flagDesign": {
+    "loaderKey": "unified_ledger_loader_cash_flow",
+    "screenKey": "unified_ledger_screen_cash_flow",
+    "engineKey": "unified_ledger_engine",
+    "killSwitchKey": "unified_ledger_kill_switch",
+    "unifiedWhen": "loader AND engine AND screen AND NOT kill_switch"
+  },
+  "smokeTestSteps": [
+    "Login DIN CHINA / DIN BRIDAL / DIN COUTURE",
+    "Cash Flow page loads without console errors",
+    "Main table shows unified-aligned totals (not legacy) when flag ON",
+    "Preview toggle still available for compare if retained",
+    "Export/print still works",
+    "Row-keyed JSON export if compare panel retained"
+  ],
+  "monitoringCommands": [
+    "npm run monitor:three-company-unified-ledger"
+  ],
+  "rollbackSteps": [
+    "Disable unified_ledger_loader_cash_flow per company",
+    "Optional: enable unified_ledger_kill_switch if emergency",
+    "Redeploy prior frontend if code defect",
+    "Re-run monitoring until PASS",
+    "Document incident in phase evidence"
+  ],
+  "postSwapEvidenceRequired": [
+    "production-deploy-notes",
+    "post-swap-smoke per company",
+    "post-swap-monitoring JSON",
+    "flag state snapshot",
+    "screenshots of main Cash Flow totals"
+  ],
+  "commitDeploySequence": [
+    "1. Implement resolver + main loader branch in code",
+    "2. Tests/build PASS locally",
+    "3. Commit + push",
+    "4. Frontend deploy (vps-build-erp-only.sh) — only after operator approval",
+    "5. Enable screen flag if needed (may already be ON from engine rollout)",
+    "6. Enable loader flag per company ONE AT A TIME or all three per operator plan",
+    "7. Post-swap smoke + monitoring",
+    "8. Evidence commit"
+  ],
+  "stopConditions": [
+    "monitor FAIL",
+    "material console/RPC errors",
+    "other_company_loaders_on > 0",
+    "gl_mutations true",
+    "finance requests halt",
+    "operator revokes approval"
+  ],
+  "requiredOperatorApprovalText": "I approve Phase 3B-M Cash Flow controlled loader swap planning/execution for DIN CHINA, DIN BRIDAL, and DIN COUTURE. I understand that aligned preview finance basis differs from legacy Cash Flow for DIN CHINA and DIN BRIDAL. I approve proceeding to a controlled loader-swap phase only; no GL/data mutations are approved."
+}

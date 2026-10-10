@@ -45,7 +45,7 @@ export const InvoiceDocument: React.FC<InvoiceDocumentProps> = ({
 
   if (!document || !template) {
     return (
-      <div className="p-4 text-sm text-gray-600">
+      <div className="p-4 text-sm text-muted-foreground">
         No invoice data available.
       </div>
     );

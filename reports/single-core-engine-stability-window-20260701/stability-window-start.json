@@ -1,0 +1,21 @@
+{
+  "run": "SINGLE_CORE_ENGINE_STABILITY_WINDOW_START",
+  "task": "stability-window-start",
+  "generated_at": "2026-07-01T15:16:00.000Z",
+  "status": "STARTED",
+  "start_date": "2026-07-01",
+  "target_duration_weeks": "2-4",
+  "earliest_r8_review_date": "2026-07-15",
+  "latest_r8_review_date": "2026-07-29",
+  "scope": {
+    "three_company_unified_loaders": "LIVE",
+    "cash_flow_main": "LIVE",
+    "bs_pl_loader_swap": "COMPLETE",
+    "din_bridal_golden_refresh": "COMPLETE"
+  },
+  "baseline_monitoring": "PASS",
+  "production_mutation": false,
+  "r8_legacy_retirement": "BLOCKED",
+  "fourth_company_rollout": "BLOCKED_PENDING_FINANCE_SIGNOFF",
+  "mobile_release": "SEPARATE_TRACK_BLOCKED_PARTIAL_DEVICE_QA"
+}

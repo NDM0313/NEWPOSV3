@@ -1,0 +1,39 @@
+Localhost → VPS sync — 2026-07-19
+
+## Commits
+
+| Item | Value |
+|------|--------|
+| Sync commit | `a9d048bd` — chore(erp): sync localhost web and mobile UX to main for VPS deploy |
+| Files in sync commit | 132 (src/ + erp-mobile-app/ + docs/infra/DOCUMENTS_AND_PRINTING.md) |
+| origin/main | `a9d048bd` |
+
+## Excluded from commit (intentional)
+
+- migrations/20260719120000_product_sku_sequence_observe.sql (not applied)
+- migration-tools/*
+- graphify-out/*
+- tmp/*
+- customer import-gap docs/SQL
+
+## Deploy
+
+| Item | Value |
+|------|--------|
+| Method | `deploy/vps-build-erp-only.sh` via ssh dincouture-vps |
+| VITE_BUILD_COMMIT | `a9d048bd` |
+| Rollback tag | erp-frontend:rollback-before-localhost-sync-* |
+| DB migrations applied | none |
+| Kill switch toggled | no |
+
+## Production verify (post-health)
+
+| Check | Result |
+|-------|--------|
+| VPS git HEAD | `a9d048bd` |
+| origin/main | `a9d048bd` |
+| erp-frontend health | healthy |
+| https://erp.dincouture.pk | 200 |
+| https://erp.dincouture.pk/m/ | 200 |
+
+Operator: hard-refresh browser (Ctrl+Shift+R) to clear PWA/cache.

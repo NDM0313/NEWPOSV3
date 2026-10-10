@@ -300,32 +300,32 @@ export const EnhancedProductForm = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-white">
-      <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+    <div className="flex flex-col h-full bg-card text-foreground">
+      <div className="p-6 border-b border-border flex justify-between items-center bg-card sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold">Add New Product</h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Complete product details for inventory
           </p>
         </div>
         <button
           onClick={onCancel}
-          className="p-2 hover:bg-gray-800 rounded-full"
+          className="p-2 hover:bg-muted rounded-full"
         >
           <X size={20} />
         </button>
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-800 bg-gray-900 sticky top-[89px] z-10">
+      <div className="border-b border-border bg-card sticky top-[89px] z-10">
         <div className="flex px-6">
           <button
             onClick={() => setActiveTab('basic')}
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
               activeTab === 'basic'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Basic Info
@@ -335,8 +335,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
               activeTab === 'variations'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Variations {generatedVariations.length > 0 && `(${generatedVariations.length})`}
@@ -346,8 +346,8 @@ export const EnhancedProductForm = ({
             className={clsx(
               "px-6 py-3 text-sm font-medium border-b-2 transition-colors",
               activeTab === 'combos'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
+                ? "border-blue-500 text-foreground"
+                : "border-transparent text-muted-foreground hover:text-muted-foreground"
             )}
           >
             Combos {combos.length > 0 && `(${combos.length})`}
@@ -374,7 +374,7 @@ export const EnhancedProductForm = ({
                     id="name"
                     {...register("name")}
                     placeholder="e.g. Cotton Premium Shirt"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                   {errors.name && (
                     <p className="text-red-500 text-xs mt-1">
@@ -392,12 +392,12 @@ export const EnhancedProductForm = ({
                       id="sku"
                       {...register("sku")}
                       placeholder="AUTO-GENERATED"
-                      className="bg-gray-800 border-gray-700 text-white pr-10"
+                      className="bg-muted border-border text-foreground pr-10"
                     />
                     <button
                       type="button"
                       onClick={generateSKUForForm}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <RefreshCcw size={16} />
                     </button>
@@ -424,10 +424,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="ean13">
                             EAN-13
                           </SelectItem>
@@ -462,10 +462,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Brand" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="gul_ahmed">
                             Gul Ahmed
                           </SelectItem>
@@ -495,10 +495,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Category" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="unstitched">
                             Unstitched
                           </SelectItem>
@@ -529,10 +529,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Sub-Category" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="men">
                             Men's Wear
                           </SelectItem>
@@ -559,10 +559,10 @@ export const EnhancedProductForm = ({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                       >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                           <SelectValue placeholder="Select Unit" />
                         </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectContent className="bg-popover border-border text-popover-foreground">
                           <SelectItem value="pcs">
                             Pieces
                           </SelectItem>
@@ -602,7 +602,7 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("purchasePrice")}
                     placeholder="0.00"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
 
@@ -614,7 +614,7 @@ export const EnhancedProductForm = ({
                     type="number"
                     {...register("margin")}
                     placeholder="0"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    className="bg-muted border-border text-foreground mt-1"
                   />
                 </div>
 
@@ -627,7 +627,7 @@ export const EnhancedProductForm = ({
                     {...register("sellingPrice")}
                     placeholder="0.00"
                     className={clsx(
-                      "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
+                      "bg-green-900/30 border-green-700 text-foreground mt-1 font-bold",
                       errors.sellingPrice &&
                         "border-red-500 ring-1 ring-red-500",
                     )}
@@ -650,10 +650,10 @@ export const EnhancedProductForm = ({
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                     >
-                      <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                         <SelectValue placeholder="Select Tax Type" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
                         <SelectItem value="exclusive">
                           Exclusive (Tax Added)
                         </SelectItem>
@@ -673,12 +673,12 @@ export const EnhancedProductForm = ({
               <Collapsible
                 open={isRentalOptionsOpen}
                 onOpenChange={setIsRentalOptionsOpen}
-                className="border border-gray-800 rounded-lg bg-gray-800/20"
+                className="border border-border rounded-lg bg-accent/20"
               >
-                <CollapsibleTrigger className="flex items-center justify-between w-full p-4 text-sm font-medium hover:bg-gray-800/50 rounded-t-lg transition-colors">
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-4 text-sm font-medium hover:bg-muted/50 rounded-t-lg transition-colors">
                   <span className="flex items-center gap-2">
                     Rental Options{" "}
-                    <span className="text-gray-500 font-normal">
+                    <span className="text-muted-foreground font-normal">
                       (Optional)
                     </span>
                   </span>
@@ -707,7 +707,7 @@ export const EnhancedProductForm = ({
                           type="number"
                           {...register("rentalPrice")}
                           placeholder="0.00"
-                          className="bg-gray-800 border-gray-700 text-white mt-1"
+                          className="bg-muted border-border text-foreground mt-1"
                         />
                       </div>
 
@@ -719,7 +719,7 @@ export const EnhancedProductForm = ({
                           type="number"
                           {...register("securityDeposit")}
                           placeholder="0.00"
-                          className="bg-gray-800 border-gray-700 text-white mt-1"
+                          className="bg-muted border-border text-foreground mt-1"
                         />
                       </div>
                     </div>
@@ -769,7 +769,7 @@ export const EnhancedProductForm = ({
                       type="number"
                       {...register("initialStock")}
                       placeholder="0"
-                      className="bg-gray-800 border-gray-700 text-white mt-1"
+                      className="bg-muted border-border text-foreground mt-1"
                     />
                   </div>
 
@@ -785,9 +785,9 @@ export const EnhancedProductForm = ({
                       type="number"
                       {...register("alertQty")}
                       placeholder="5"
-                      className="bg-gray-800 border-red-900/50 text-white mt-1"
+                      className="bg-muted border-red-900/50 text-foreground mt-1"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Get notified when stock falls below this level
                     </p>
                   </div>
@@ -798,13 +798,13 @@ export const EnhancedProductForm = ({
             {/* Accordion: Advanced Details */}
             <Accordion
               type="multiple"
-              className="border border-gray-800 rounded-lg"
+              className="border border-border rounded-lg"
             >
               <AccordionItem
                 value="description"
-                className="border-b border-gray-800"
+                className="border-b border-border"
               >
-                <AccordionTrigger className="px-4 hover:bg-gray-800/50">
+                <AccordionTrigger className="px-4 hover:bg-muted/50">
                   <span className="text-sm font-medium">
                     Description & Notes
                   </span>
@@ -822,7 +822,7 @@ export const EnhancedProductForm = ({
                         id="description"
                         {...register("description")}
                         placeholder="Detailed product description..."
-                        className="bg-gray-800 border-gray-700 text-white mt-1 min-h-[80px]"
+                        className="bg-muted border-border text-foreground mt-1 min-h-[80px]"
                       />
                     </div>
                     <div>
@@ -836,7 +836,7 @@ export const EnhancedProductForm = ({
                         id="notes"
                         {...register("notes")}
                         placeholder="Private notes (not visible to customers)..."
-                        className="bg-gray-800 border-gray-700 text-white mt-1 min-h-[60px]"
+                        className="bg-muted border-border text-foreground mt-1 min-h-[60px]"
                       />
                     </div>
                   </div>
@@ -845,9 +845,9 @@ export const EnhancedProductForm = ({
 
               <AccordionItem
                 value="media"
-                className="border-b border-gray-800"
+                className="border-b border-border"
               >
-                <AccordionTrigger className="px-4 hover:bg-gray-800/50">
+                <AccordionTrigger className="px-4 hover:bg-muted/50">
                   <span className="text-sm font-medium">
                     Product Images
                   </span>
@@ -859,15 +859,15 @@ export const EnhancedProductForm = ({
                       "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors",
                       isDragActive
                         ? "border-blue-500 bg-blue-500/10"
-                        : "border-gray-700 hover:border-gray-500 bg-gray-800/50",
+                        : "border-border hover:border-gray-500 bg-muted/50",
                     )}
                   >
                     <input {...getInputProps()} />
                     <Upload
                       size={32}
-                      className="text-gray-500 mb-3"
+                      className="text-muted-foreground mb-3"
                     />
-                    <p className="text-gray-400 text-center">
+                    <p className="text-muted-foreground text-center">
                       Drag & drop images here, or{" "}
                       <span className="text-blue-500">browse</span>
                     </p>
@@ -878,7 +878,7 @@ export const EnhancedProductForm = ({
                       {images.map((file, idx) => (
                         <div
                           key={idx}
-                          className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700"
+                          className="relative group aspect-square bg-muted rounded-lg overflow-hidden border border-border"
                         >
                           <img
                             src={URL.createObjectURL(file)}
@@ -892,7 +892,7 @@ export const EnhancedProductForm = ({
                                 images.filter((_, i) => i !== idx),
                               );
                             }}
-                            className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-1 right-1 bg-red-500 text-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <X size={12} />
                           </button>
@@ -904,7 +904,7 @@ export const EnhancedProductForm = ({
               </AccordionItem>
 
               <AccordionItem value="supplier">
-                <AccordionTrigger className="px-4 hover:bg-gray-800/50">
+                <AccordionTrigger className="px-4 hover:bg-muted/50">
                   <span className="text-sm font-medium">
                     Supplier Information
                   </span>
@@ -923,10 +923,10 @@ export const EnhancedProductForm = ({
                             onValueChange={field.onChange}
                             defaultValue={field.value}
                           >
-                            <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                            <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                               <SelectValue placeholder="Select Supplier" />
                             </SelectTrigger>
-                            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                            <SelectContent className="bg-popover border-border text-popover-foreground">
                               <SelectItem value="bilal">
                                 Bilal Fabrics
                               </SelectItem>
@@ -948,7 +948,7 @@ export const EnhancedProductForm = ({
                       <Input
                         {...register("supplierCode")}
                         placeholder="Supplier's SKU"
-                        className="bg-gray-800 border-gray-700 text-white mt-1"
+                        className="bg-muted border-border text-foreground mt-1"
                       />
                     </div>
                   </div>
@@ -975,7 +975,7 @@ export const EnhancedProductForm = ({
                 Step 1: Define Variation Attributes
               </h3>
               
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Add New Attribute (e.g., Size, Color, Material)</Label>
                 <div className="flex items-center gap-2">
                   <Input
@@ -983,7 +983,7 @@ export const EnhancedProductForm = ({
                     onChange={(e) => setNewAttributeName(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addVariantAttribute())}
                     placeholder="Enter attribute name (e.g., Color)"
-                    className="bg-gray-900 border-gray-700 text-white"
+                    className="bg-card border-border text-foreground"
                   />
                   <button
                     type="button"
@@ -1000,11 +1000,11 @@ export const EnhancedProductForm = ({
               {variantAttributes.length > 0 && (
                 <div className="space-y-4">
                   {variantAttributes.map((attr, attrIndex) => (
-                    <div key={attr.name} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <div key={attr.name} className="bg-muted border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-md font-semibold text-white flex items-center gap-2">
+                        <h4 className="text-md font-semibold text-foreground flex items-center gap-2">
                           {attr.name}
-                          <span className="text-xs text-gray-400 font-normal">
+                          <span className="text-xs text-muted-foreground font-normal">
                             ({attr.values.length} values)
                           </span>
                         </h4>
@@ -1032,7 +1032,7 @@ export const EnhancedProductForm = ({
                               }
                             }}
                             placeholder={`Add ${attr.name} value (e.g., Red, Blue)`}
-                            className="bg-gray-900 border-gray-700 text-white text-sm"
+                            className="bg-card border-border text-foreground text-sm"
                           />
                           <button
                             type="button"
@@ -1040,7 +1040,7 @@ export const EnhancedProductForm = ({
                               setSelectedAttributeIndex(attrIndex);
                               addAttributeValue();
                             }}
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                            className="bg-green-600 hover:bg-green-700 text-foreground px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
                           >
                             Add Value
                           </button>
@@ -1052,7 +1052,7 @@ export const EnhancedProductForm = ({
                         {attr.values.map((value, valueIndex) => (
                           <div
                             key={value}
-                            className="bg-gray-900 border border-gray-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm"
+                            className="bg-card border border-border text-foreground px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm"
                           >
                             <span>{value}</span>
                             <button
@@ -1065,7 +1065,7 @@ export const EnhancedProductForm = ({
                           </div>
                         ))}
                         {attr.values.length === 0 && (
-                          <span className="text-gray-500 text-sm italic">No values added yet</span>
+                          <span className="text-muted-foreground text-sm italic">No values added yet</span>
                         )}
                       </div>
                     </div>
@@ -1081,7 +1081,7 @@ export const EnhancedProductForm = ({
                   Step 2: Generate & Configure Variations
                 </h3>
                 
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                <div className="bg-muted border border-border rounded-xl p-4">
                   <button
                     type="button"
                     onClick={generateVariations}
@@ -1090,37 +1090,37 @@ export const EnhancedProductForm = ({
                     <RefreshCcw size={18} />
                     Generate {variantAttributes.reduce((acc, attr) => acc * attr.values.length, 1)} Variations
                   </button>
-                  <p className="text-xs text-gray-400 mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     This will create all possible combinations of your attribute values
                   </p>
                 </div>
 
                 {/* Variations Table */}
                 {generatedVariations.length > 0 && (
-                  <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                  <div className="bg-muted border border-border rounded-xl overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-gray-900 border-b border-gray-700">
+                        <thead className="bg-card border-b border-border">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">#</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">#</th>
                             {variantAttributes.map(attr => (
-                              <th key={attr.name} className="px-4 py-3 text-left text-sm font-semibold text-gray-300">
+                              <th key={attr.name} className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">
                                 {attr.name}
                               </th>
                             ))}
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">SKU</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Price</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Stock</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Barcode</th>
-                            <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Action</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">SKU</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Stock</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-muted-foreground">Barcode</th>
+                            <th className="px-4 py-3 text-center text-sm font-semibold text-muted-foreground">Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {generatedVariations.map((variation, index) => (
-                            <tr key={index} className="border-b border-gray-700 hover:bg-gray-900/50 transition-colors">
-                              <td className="px-4 py-3 text-sm text-gray-400">{index + 1}</td>
+                            <tr key={index} className="border-b border-border hover:bg-muted/40 transition-colors">
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{index + 1}</td>
                               {variantAttributes.map(attr => (
-                                <td key={attr.name} className="px-4 py-3 text-sm text-white">
+                                <td key={attr.name} className="px-4 py-3 text-sm text-foreground">
                                   <span className="bg-blue-900/30 border border-blue-800 px-2 py-1 rounded text-xs">
                                     {variation.combination[attr.name]}
                                   </span>
@@ -1134,7 +1134,7 @@ export const EnhancedProductForm = ({
                                     updated[index].sku = e.target.value;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-32"
+                                  className="bg-card border-border text-foreground text-sm w-32"
                                   placeholder="SKU"
                                 />
                               </td>
@@ -1147,7 +1147,7 @@ export const EnhancedProductForm = ({
                                     updated[index].price = parseFloat(e.target.value) || 0;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  className="bg-card border-border text-foreground text-sm w-24"
                                   placeholder="0.00"
                                 />
                               </td>
@@ -1160,7 +1160,7 @@ export const EnhancedProductForm = ({
                                     updated[index].stock = parseInt(e.target.value) || 0;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-20"
+                                  className="bg-card border-border text-foreground text-sm w-20"
                                   placeholder="0"
                                 />
                               </td>
@@ -1172,7 +1172,7 @@ export const EnhancedProductForm = ({
                                     updated[index].barcode = e.target.value;
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-32"
+                                  className="bg-card border-border text-foreground text-sm w-32"
                                   placeholder="Barcode"
                                 />
                               </td>
@@ -1194,9 +1194,9 @@ export const EnhancedProductForm = ({
                       </table>
                     </div>
                     
-                    <div className="bg-gray-900 px-4 py-3 border-t border-gray-700">
-                      <p className="text-sm text-gray-400">
-                        Total Variations: <span className="text-white font-semibold">{generatedVariations.length}</span>
+                    <div className="bg-card px-4 py-3 border-t border-border">
+                      <p className="text-sm text-muted-foreground">
+                        Total Variations: <span className="text-foreground font-semibold">{generatedVariations.length}</span>
                       </p>
                     </div>
                   </div>
@@ -1206,10 +1206,10 @@ export const EnhancedProductForm = ({
 
             {/* Empty State */}
             {variantAttributes.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-                <Package size={48} className="text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">No variation attributes added yet</p>
-                <p className="text-sm text-gray-500">
+              <div className="bg-muted border border-border rounded-xl p-8 text-center">
+                <Package size={48} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-2">No variation attributes added yet</p>
+                <p className="text-sm text-muted-foreground">
                   Add attributes like Size, Color, or Material to create product variations
                 </p>
               </div>
@@ -1235,39 +1235,39 @@ export const EnhancedProductForm = ({
               </h3>
               
               {/* Combo Name */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="bg-muted border border-border rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Combo Name</Label>
                 <Input
                   value={comboName}
                   onChange={(e) => setComboName(e.target.value)}
                   placeholder="e.g., Wedding Package, Summer Bundle"
-                  className="bg-gray-900 border-gray-700 text-white"
+                  className="bg-card border-border text-foreground"
                 />
               </div>
 
               {/* Add Products to Combo */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+              <div className="bg-muted border border-border rounded-xl p-4 space-y-3">
                 <Label className="text-gray-200 block">Add Products to Combo</Label>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                   <Input
                     value={newComboProduct}
                     onChange={(e) => setNewComboProduct(e.target.value)}
                     placeholder="Product name"
-                    className="bg-gray-900 border-gray-700 text-white text-sm md:col-span-2"
+                    className="bg-card border-border text-foreground text-sm md:col-span-2"
                   />
                   <Input
                     type="number"
                     value={newComboQuantity || ''}
                     onChange={(e) => setNewComboQuantity(parseInt(e.target.value) || 1)}
                     placeholder="Qty"
-                    className="bg-gray-900 border-gray-700 text-white text-sm"
+                    className="bg-card border-border text-foreground text-sm"
                   />
                   <Input
                     type="number"
                     value={newComboPrice || ''}
                     onChange={(e) => setNewComboPrice(parseFloat(e.target.value) || 0)}
                     placeholder="Price"
-                    className="bg-gray-900 border-gray-700 text-white text-sm"
+                    className="bg-card border-border text-foreground text-sm"
                   />
                 </div>
                 <button
@@ -1282,19 +1282,19 @@ export const EnhancedProductForm = ({
 
               {/* Current Combo Products */}
               {currentCombo.length > 0 && (
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+                <div className="bg-muted border border-border rounded-xl p-4 space-y-3">
                   <Label className="text-gray-200 block">Products in This Combo</Label>
                   <div className="space-y-2">
                     {currentCombo.map((product, index) => (
                       <div
                         key={index}
-                        className="bg-gray-900 border border-gray-700 px-4 py-3 rounded-lg flex items-center justify-between"
+                        className="bg-card border border-border px-4 py-3 rounded-lg flex items-center justify-between"
                       >
                         <div className="flex items-center gap-4">
-                          <span className="text-white font-medium">{product.name}</span>
-                          <span className="text-gray-400 text-sm">Qty: {product.quantity}</span>
-                          <span className="text-green-400 text-sm font-medium">₨{product.price.toFixed(2)}</span>
-                          <span className="text-gray-500 text-sm">
+                          <span className="text-foreground font-medium">{product.name}</span>
+                          <span className="text-muted-foreground text-sm">Qty: {product.quantity}</span>
+                          <span className="text-[var(--erp-money-positive)] text-sm font-medium">₨{product.price.toFixed(2)}</span>
+                          <span className="text-muted-foreground text-sm">
                             Subtotal: ₨{(product.quantity * product.price).toFixed(2)}
                           </span>
                         </div>
@@ -1310,10 +1310,10 @@ export const EnhancedProductForm = ({
                   </div>
 
                   {/* Combo Pricing */}
-                  <div className="border-t border-gray-700 pt-4 space-y-3">
+                  <div className="border-t border-border pt-4 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Total Individual Price:</span>
-                      <span className="text-white font-semibold">
+                      <span className="text-muted-foreground">Total Individual Price:</span>
+                      <span className="text-foreground font-semibold">
                         ₨{currentCombo.reduce((sum, p) => sum + p.quantity * p.price, 0).toFixed(2)}
                       </span>
                     </div>
@@ -1324,13 +1324,13 @@ export const EnhancedProductForm = ({
                         value={comboFinalPrice || ''}
                         onChange={(e) => setComboFinalPrice(parseFloat(e.target.value) || 0)}
                         placeholder="Enter combo price"
-                        className="bg-gray-900 border-gray-700 text-white flex-1"
+                        className="bg-card border-border text-foreground flex-1"
                       />
                     </div>
                     {comboFinalPrice > 0 && (
                       <div className="flex justify-between items-center text-sm">
-                        <span className="text-green-400">Discount:</span>
-                        <span className="text-green-400 font-semibold">
+                        <span className="text-[var(--erp-money-positive)]">Discount:</span>
+                        <span className="text-[var(--erp-money-positive)] font-semibold">
                           ₨{(currentCombo.reduce((sum, p) => sum + p.quantity * p.price, 0) - comboFinalPrice).toFixed(2)}
                         </span>
                       </div>
@@ -1341,7 +1341,7 @@ export const EnhancedProductForm = ({
                     type="button"
                     onClick={saveCombo}
                     disabled={!comboName.trim() || comboFinalPrice <= 0}
-                    className="bg-green-500 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-green-500/20 w-full"
+                    className="bg-green-500 hover:bg-green-600 disabled:bg-muted disabled:cursor-not-allowed text-foreground px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-green-500/20 w-full"
                   >
                     Save Combo
                   </button>
@@ -1358,9 +1358,9 @@ export const EnhancedProductForm = ({
                 
                 <div className="space-y-3">
                   {combos.map((combo) => (
-                    <div key={combo.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <div key={combo.id} className="bg-muted border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-white">{combo.name}</h4>
+                        <h4 className="text-lg font-semibold text-foreground">{combo.name}</h4>
                         <button
                           type="button"
                           onClick={() => deleteCombo(combo.id)}
@@ -1372,25 +1372,25 @@ export const EnhancedProductForm = ({
                       
                       <div className="space-y-2 mb-3">
                         {combo.products.map((product, idx) => (
-                          <div key={idx} className="bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg flex items-center justify-between text-sm">
-                            <span className="text-white">{product.name}</span>
-                            <div className="flex items-center gap-4 text-gray-400">
+                          <div key={idx} className="bg-card border border-border px-3 py-2 rounded-lg flex items-center justify-between text-sm">
+                            <span className="text-foreground">{product.name}</span>
+                            <div className="flex items-center gap-4 text-muted-foreground">
                               <span>Qty: {product.quantity}</span>
                               <span>₨{product.price.toFixed(2)}</span>
-                              <span className="text-white">₨{(product.quantity * product.price).toFixed(2)}</span>
+                              <span className="text-foreground">₨{(product.quantity * product.price).toFixed(2)}</span>
                             </div>
                           </div>
                         ))}
                       </div>
 
-                      <div className="border-t border-gray-700 pt-3 space-y-1">
+                      <div className="border-t border-border pt-3 space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-400">Total Individual Price:</span>
-                          <span className="text-white">₨{combo.totalPrice.toFixed(2)}</span>
+                          <span className="text-muted-foreground">Total Individual Price:</span>
+                          <span className="text-foreground">₨{combo.totalPrice.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-green-400">Combo Price:</span>
-                          <span className="text-green-400 font-bold">₨{combo.comboPrice.toFixed(2)}</span>
+                          <span className="text-[var(--erp-money-positive)]">Combo Price:</span>
+                          <span className="text-[var(--erp-money-positive)] font-bold">₨{combo.comboPrice.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-blue-400">You Save:</span>
@@ -1405,10 +1405,10 @@ export const EnhancedProductForm = ({
 
             {/* Empty State */}
             {combos.length === 0 && currentCombo.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
-                <Package size={48} className="text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400 mb-2">No combos created yet</p>
-                <p className="text-sm text-gray-500">
+              <div className="bg-muted border border-border rounded-xl p-8 text-center">
+                <Package size={48} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground mb-2">No combos created yet</p>
+                <p className="text-sm text-muted-foreground">
                   Start adding products above to create your first combo package
                 </p>
               </div>
@@ -1417,11 +1417,11 @@ export const EnhancedProductForm = ({
         )}
       </div>
 
-      <div className="p-6 border-t border-gray-800 bg-gray-900 sticky bottom-0 z-10 flex gap-4">
+      <div className="p-6 border-t border-border bg-card sticky bottom-0 z-10 flex gap-4">
         <button
           onClick={onCancel}
           type="button"
-          className="px-6 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-colors border border-gray-700"
+          className="px-6 bg-muted hover:bg-muted text-foreground py-3 rounded-xl font-bold transition-colors border border-border"
         >
           Cancel
         </button>
@@ -1430,7 +1430,7 @@ export const EnhancedProductForm = ({
             onSubmit(data, "save"),
           )}
           type="button"
-          className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-bold transition-colors"
+          className="flex-1 bg-muted hover:bg-gray-600 text-foreground py-3 rounded-xl font-bold transition-colors"
         >
           Save Product
         </button>

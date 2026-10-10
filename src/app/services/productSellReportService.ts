@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { readSaleBillRef } from '@/app/utils/saleBillRef';
 
 const MAX_SALES = 4000;
 const CHUNK = 180;
@@ -124,6 +125,8 @@ export type ProductSellReportLine = {
   customerName: string;
   invoiceNo: string;
   billNo: string;
+  branchName: string;
+  salesmanName: string;
   sku: string;
   productName: string;
   quantity: number;
@@ -151,13 +154,69 @@ export type ProductSellReportResult = {
   saleCount: number;
 };
 
-function billNoFromSale(s: any): string {
-  const o = String(s?.order_no ?? '').trim();
-  if (o) return o;
-  const inv = String(s?.invoice_no ?? '').trim();
-  if (inv) return inv;
-  const id = String(s?.id ?? '');
-  return id.length >= 8 ? id.slice(0, 8) : id;
+/** Normalize raw Supabase row so readSaleBillRef sees camelCase aliases like SalesContext. */
+function normalizeSaleForBillRef(raw: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...raw,
+    customerBillRef: raw.customer_bill_ref ?? raw.customerBillRef,
+  };
+}
+
+/** Same bill ref logic as SalesPage notes/Bill column. */
+function billNoFromSale(s: Record<string, unknown>): string {
+  const normalized = normalizeSaleForBillRef(s);
+  const ref = readSaleBillRef(normalized, {
+    isStudio: !!(normalized.is_studio ?? normalized.is_studio_sale ?? normalized.isStudioSale),
+  });
+  if (ref) return ref;
+  const orderNo = String(normalized.order_no ?? '').trim();
+  if (orderNo) return orderNo;
+  return '—';
+}
+
+async function fetchSalesmanNameMap(ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return map;
+
+  for (const batch of chunk(unique, 120)) {
+    const { data: byId } = await supabase
+      .from('users')
+      .select('id, auth_user_id, full_name, email')
+      .in('id', batch);
+    for (const u of byId || []) {
+      const name = String((u as any).full_name || (u as any).email || '').trim();
+      if (!name) continue;
+      if ((u as any).id) map.set(String((u as any).id), name);
+      if ((u as any).auth_user_id) map.set(String((u as any).auth_user_id), name);
+    }
+    const missing = batch.filter((id) => !map.has(id));
+    if (missing.length === 0) continue;
+    const { data: byAuth } = await supabase
+      .from('users')
+      .select('id, auth_user_id, full_name, email')
+      .in('auth_user_id', missing);
+    for (const u of byAuth || []) {
+      const name = String((u as any).full_name || (u as any).email || '').trim();
+      if (!name) continue;
+      if ((u as any).id) map.set(String((u as any).id), name);
+      if ((u as any).auth_user_id) map.set(String((u as any).auth_user_id), name);
+    }
+  }
+  return map;
+}
+
+async function fetchBranchNameMap(ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return map;
+  for (const batch of chunk(unique, 120)) {
+    const { data } = await supabase.from('branches').select('id, name').in('id', batch);
+    for (const b of data || []) {
+      map.set(String((b as any).id), String((b as any).name || '—'));
+    }
+  }
+  return map;
 }
 
 function qtyDisplay(qty: number, unit?: string | null, row?: any): string {
@@ -176,25 +235,46 @@ export async function fetchProductSellReport(
   const start = startDate.slice(0, 10);
   const end = endDate.slice(0, 10);
 
-  let saleQuery = supabase
-    .from('sales')
-    .select(
-      'id, invoice_no, order_no, invoice_date, customer_id, customer_name, contact_number, payment_method, subtotal, discount_amount, tax_amount, total, paid_amount, branch_id'
-    )
-    .eq('company_id', companyId)
-    .eq('status', 'final')
-    .gte('invoice_date', start)
-    .lte('invoice_date', end)
-    .order('invoice_date', { ascending: false })
-    .limit(MAX_SALES + 1);
+  const baseSaleFields =
+    'id, invoice_no, order_no, invoice_date, customer_id, customer_name, contact_number, payment_method, subtotal, discount_amount, tax_amount, total, paid_amount, branch_id, salesman_id';
+  const selectAttempts = [
+    `${baseSaleFields}, customer_bill_ref, notes, reference, ref_no, bill_ref, is_studio, is_studio_sale`,
+    `${baseSaleFields}, customer_bill_ref, notes, is_studio, is_studio_sale`,
+    `${baseSaleFields}, customer_bill_ref, notes`,
+    `${baseSaleFields}, notes`,
+    '*',
+  ];
 
-  const uuid = /^[0-9a-f-]{36}$/i;
-  if (branchId && branchId !== 'all' && uuid.test(String(branchId).trim())) {
-    saleQuery = saleQuery.eq('branch_id', branchId.trim());
+  async function runSaleQuery(fields: string) {
+    let q = supabase
+      .from('sales')
+      .select(fields)
+      .eq('company_id', companyId)
+      .eq('status', 'final')
+      .gte('invoice_date', start)
+      .lte('invoice_date', end)
+      .order('invoice_date', { ascending: false })
+      .limit(MAX_SALES + 1);
+    const uuid = /^[0-9a-f-]{36}$/i;
+    if (branchId && branchId !== 'all' && uuid.test(String(branchId).trim())) {
+      q = q.eq('branch_id', branchId.trim());
+    }
+    return q;
   }
 
-  const { data: saleRowsRaw, error: saleErr } = await saleQuery;
-  if (saleErr) {
+  let saleRowsRaw: any[] | null = null;
+  let saleErr: { message?: string } | null = null;
+  for (const fields of selectAttempts) {
+    const result = await runSaleQuery(fields);
+    if (!result.error) {
+      saleRowsRaw = result.data;
+      saleErr = null;
+      break;
+    }
+    saleErr = result.error;
+    console.warn('[productSellReportService] sales select fallback:', fields, result.error.message || result.error);
+  }
+  if (saleErr || !saleRowsRaw) {
     console.error('[productSellReportService] sales:', saleErr);
     return { lines: [], truncated: false, saleCount: 0 };
   }
@@ -210,19 +290,32 @@ export async function fetchProductSellReport(
   const saleIds = saleRows.map((s: any) => s.id);
 
   const customerIds = [...new Set(saleRows.map((s: any) => s.customer_id).filter(Boolean))] as string[];
-  const contactById = new Map<string, { code?: string; email?: string; phone?: string; mobile?: string }>();
-  for (const ids of chunk(customerIds, 120)) {
-    if (ids.length === 0) continue;
-    const { data: contacts } = await supabase.from('contacts').select('id, code, email, phone, mobile').in('id', ids);
-    for (const c of contacts || []) {
-      contactById.set((c as any).id, {
-        code: (c as any).code,
-        email: (c as any).email,
-        phone: (c as any).phone,
-        mobile: (c as any).mobile,
-      });
-    }
-  }
+  const branchIds = saleRows.map((s: any) => s.branch_id).filter(Boolean) as string[];
+  const salesmanIds = saleRows.map((s: any) => s.salesman_id).filter(Boolean) as string[];
+
+  const [contactById, branchNameById, salesmanNameById] = await Promise.all([
+    (async () => {
+      const map = new Map<string, { code?: string; email?: string; phone?: string; mobile?: string }>();
+      for (const ids of chunk(customerIds, 120)) {
+        if (ids.length === 0) continue;
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('id, code, email, phone, mobile')
+          .in('id', ids);
+        for (const c of contacts || []) {
+          map.set((c as any).id, {
+            code: (c as any).code,
+            email: (c as any).email,
+            phone: (c as any).phone,
+            mobile: (c as any).mobile,
+          });
+        }
+      }
+      return map;
+    })(),
+    fetchBranchNameMap(branchIds),
+    fetchSalesmanNameMap(salesmanIds),
+  ]);
 
   const itemRows = await fetchItemsForSaleIds(saleIds);
   const lines: ProductSellReportLine[] = [];
@@ -265,7 +358,13 @@ export async function fetchProductSellReport(
       date: String(sale.invoice_date || '').slice(0, 10),
       customerName: String(sale.customer_name || '—'),
       invoiceNo: String(sale.invoice_no || '—'),
-      billNo: billNoFromSale(sale),
+      billNo: billNoFromSale(sale as Record<string, unknown>),
+      branchName: sale.branch_id
+        ? branchNameById.get(String(sale.branch_id)) || '—'
+        : '—',
+      salesmanName: sale.salesman_id
+        ? salesmanNameById.get(String(sale.salesman_id)) || '—'
+        : '—',
       sku: String(it.sku || prod?.sku || '—'),
       productName: String(it.product_name || it.name || prod?.name || '—'),
       quantity: qty,

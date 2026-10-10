@@ -1,0 +1,37 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "flag-state-verification",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "method": "production_readonly_sql_via_vps_docker_psql",
+  "sql_script": "scripts/single-core-ledger/query-unified-ledger-flags-readonly.sql",
+  "approved_companies": [
+    { "name": "DIN CHINA", "id": "30bd8592-3384-4f34-899a-f3907e336485" },
+    { "name": "DIN BRIDAL", "id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92" },
+    { "name": "DIN COUTURE", "id": "2ab65903-62a3-4bcf-bced-076b681e9b74" }
+  ],
+  "bs_pl_keys_required_true": [
+    "unified_ledger_loader_balance_sheet",
+    "unified_ledger_loader_profit_loss",
+    "unified_ledger_screen_balance_sheet",
+    "unified_ledger_screen_profit_loss"
+  ],
+  "bs_pl_per_company": {
+    "30bd8592-3384-4f34-899a-f3907e336485": { "all_four_true": true },
+    "597a5292-14c8-4cd8-96bd-c61b5a0d8c92": { "all_four_true": true },
+    "2ab65903-62a3-4bcf-bced-076b681e9b74": { "all_four_true": true }
+  },
+  "total_unified_ledger_rows": 54,
+  "expected_rows": 54,
+  "rows_per_company": 18,
+  "other_companies_with_unified_flags": 0,
+  "cash_flow_flags": {
+    "unified_ledger_loader_cash_flow": "enabled_unchanged",
+    "unified_ledger_screen_cash_flow": "enabled_unchanged"
+  },
+  "kill_switch": {
+    "unified_ledger_kill_switch": "not_present_or_unchanged",
+    "env_kill": "not_active_in_monitoring"
+  },
+  "unexpected_flags": [],
+  "status": "PASS"
+}

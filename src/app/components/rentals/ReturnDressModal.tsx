@@ -103,9 +103,9 @@ export const ReturnDressModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] bg-gray-950 text-white border-gray-800 animate-in fade-in zoom-in-95 duration-200">
+      <DialogContent className="sm:max-w-[600px] bg-input-background text-foreground border-border animate-in fade-in zoom-in-95 duration-200">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl font-semibold text-white">
+          <DialogTitle className="flex items-center gap-2 text-xl font-semibold text-foreground">
             <CheckCircle2 className="text-green-500" />
             Process Return & Release Security
           </DialogTitle>
@@ -113,13 +113,13 @@ export const ReturnDressModal = ({
 
         <div className="py-4 space-y-6">
           {/* Top Info Bar */}
-          <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg flex justify-between items-center">
+          <div className="bg-card border border-border p-4 rounded-lg flex justify-between items-center">
              <div>
-                <p className="text-gray-400 text-xs uppercase">Customer</p>
+                <p className="text-muted-foreground text-xs uppercase">Customer</p>
                 <p className="font-semibold">{customerName}</p>
              </div>
              <div className="text-right">
-                <p className="text-gray-400 text-xs uppercase">Security Held</p>
+                <p className="text-muted-foreground text-xs uppercase">Security Held</p>
                 <div className="flex items-center gap-2 justify-end">
                     <Badge variant="outline" className="bg-blue-900/20 text-blue-400 border-blue-800 capitalize">
                         {securityType.replace('_', ' ')}
@@ -132,18 +132,18 @@ export const ReturnDressModal = ({
           <div className="grid grid-cols-2 gap-6">
              {/* Left Col: Condition & Penalty Inputs */}
              <div className="space-y-4">
-                <h4 className="font-medium text-white border-b border-gray-800 pb-2 text-sm uppercase text-gray-400">Condition Check</h4>
+                <h4 className="font-medium text-foreground border-b border-border pb-2 text-sm uppercase text-muted-foreground">Condition Check</h4>
                 
                 <div className="space-y-3">
                     <Label>Dress Condition</Label>
                     <RadioGroup defaultValue="Good" value={returnCondition} onValueChange={(v: any) => setReturnCondition(v)} className="flex gap-4">
                         <div className="flex items-center space-x-2">
                             <RadioGroupItem value="Good" id="r1" className="border-gray-600 text-green-500" />
-                            <Label htmlFor="r1" className="text-white cursor-pointer">Good</Label>
+                            <Label htmlFor="r1" className="text-foreground cursor-pointer">Good</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                             <RadioGroupItem value="Damaged" id="r2" className="border-gray-600 text-red-500" />
-                            <Label htmlFor="r2" className="text-white cursor-pointer">Damaged</Label>
+                            <Label htmlFor="r2" className="text-foreground cursor-pointer">Damaged</Label>
                         </div>
                     </RadioGroup>
                 </div>
@@ -159,7 +159,7 @@ export const ReturnDressModal = ({
                         <Label htmlFor="accessories" className="text-sm font-medium leading-none">
                         Accessories Returned
                         </Label>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                         Check kit inventory.
                         </p>
                     </div>
@@ -173,27 +173,27 @@ export const ReturnDressModal = ({
                             placeholder="0.00"
                             value={penaltyAmount}
                             onChange={(e) => setPenaltyAmount(e.target.value)}
-                            className="bg-gray-900 border-red-900/50 focus:border-red-500 text-white"
+                            className="bg-card border-red-900/50 focus:border-red-500 text-foreground"
                         />
                         <Input 
                             placeholder="Reason (e.g. Tear on hem, missing belt)"
                             value={penaltyReason}
                             onChange={(e) => setPenaltyReason(e.target.value)}
-                            className="bg-gray-900 border-gray-800 text-xs h-8"
+                            className="bg-card border-border text-xs h-8"
                         />
                     </div>
                 )}
              </div>
 
              {/* Right Col: Financial Calculation */}
-             <div className="bg-gray-900/50 rounded-lg p-4 space-y-4 border border-gray-800">
-                <h4 className="font-medium text-white border-b border-gray-800 pb-2 text-sm uppercase text-gray-400">Refund / Settlement</h4>
+             <div className="bg-muted/40 rounded-lg p-4 space-y-4 border border-border">
+                <h4 className="font-medium text-foreground border-b border-border pb-2 text-sm uppercase text-muted-foreground">Refund / Settlement</h4>
                 
                 <div className="space-y-2 text-sm">
                     {isCashDeposit && (
-                        <div className="flex justify-between text-gray-400">
+                        <div className="flex justify-between text-muted-foreground">
                             <span>Security Deposit</span>
-                            <span className="text-white font-mono">${securityValue.toLocaleString()}</span>
+                            <span className="text-foreground font-mono">${securityValue.toLocaleString()}</span>
                         </div>
                     )}
                     
@@ -211,13 +211,13 @@ export const ReturnDressModal = ({
                         </div>
                     )}
                     
-                    <Separator className="bg-gray-700 my-2" />
+                    <Separator className="bg-muted my-2" />
 
                     {isCashDeposit ? (
                         <>
                              <div className="flex justify-between items-center">
                                 <span className="font-bold text-gray-200">Net Refund</span>
-                                <span className={cn("font-bold font-mono text-lg", refundAmount > 0 ? "text-green-500" : "text-gray-500")}>
+                                <span className={cn("font-bold font-mono text-lg", refundAmount > 0 ? "text-green-500" : "text-muted-foreground")}>
                                     ${refundAmount.toLocaleString()}
                                 </span>
                             </div>
@@ -240,7 +240,7 @@ export const ReturnDressModal = ({
                                  </span>
                              </div>
                              {balanceDue === 0 ? (
-                                 <div className="bg-green-900/20 border border-green-900/50 p-2 rounded text-xs text-green-400 flex items-center gap-2">
+                                 <div className="bg-green-900/20 border border-green-900/50 p-2 rounded text-xs text-[var(--erp-money-positive)] flex items-center gap-2">
                                      <FileCheck size={14} />
                                      Release Document (No Dues)
                                  </div>
@@ -260,7 +260,7 @@ export const ReturnDressModal = ({
          </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-3">
-           <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white">Cancel</Button>
+           <Button variant="ghost" onClick={onClose} className="text-muted-foreground hover:text-foreground">Cancel</Button>
            <Button 
              className={cn(
                  "font-bold w-full sm:w-auto shadow-lg",

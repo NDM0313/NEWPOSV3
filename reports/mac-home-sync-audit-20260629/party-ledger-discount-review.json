@@ -1,0 +1,28 @@
+{
+  "commit": "ae6c69d0",
+  "customerDiscount": {
+    "debitAccount": "5200 DISCOUNT_ALLOWED",
+    "creditAccount": "party AR via resolveReceivablePostingAccountId",
+    "pass": true
+  },
+  "supplierDiscount": {
+    "debitAccount": "party AP via resolvePayablePostingAccountId",
+    "creditAccount": "5210 DISCOUNT_RECEIVED",
+    "pass": true
+  },
+  "referenceType": "party_discount",
+  "referenceId": "contactId",
+  "idempotency": "action_fingerprint with duplicate skip",
+  "serviceRoleInFrontend": false,
+  "glMutationOnlyOnUserAction": true,
+  "ledgerDisplay": {
+    "transactionTypeLabel": "Discount",
+    "filterKey": "discount",
+    "reloadEvent": "ledgerUpdated"
+  },
+  "gaps": [
+    "Browser QA pending",
+    "No dedicated unit test for party_discount mapping"
+  ],
+  "verdict": "CODE_REVIEW_PASS"
+}

@@ -1,0 +1,27 @@
+{
+  "run": "POST_BASELINE_REMAINING_PHASES",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "baseline_commit": "0a818da2",
+  "summary": {
+    "COMPLETE": 18,
+    "SAFE_TO_EXECUTE_NOW": 2,
+    "SAFE_DOCS_ONLY": 4,
+    "SAFE_SOURCE_FIX": 1,
+    "BLOCKED_NEEDS_FINANCE_SIGNOFF": 2,
+    "BLOCKED_NEEDS_MIGRATION_APPROVAL": 2,
+    "BLOCKED_R8_RETIREMENT": 1,
+    "OPTIONAL_FUTURE": 8
+  },
+  "items": [
+    { "id": "P15", "name": "three-company-operational-monitoring", "classification": "SAFE_TO_EXECUTE_NOW" },
+    { "id": "P16", "name": "operational-monitoring-runbook", "classification": "SAFE_TO_EXECUTE_NOW" },
+    { "id": "P22", "name": "next-company-rollout", "classification": "BLOCKED_NEEDS_FINANCE_SIGNOFF" },
+    { "id": "P23", "name": "R7-roznamcha-payment-rpc", "classification": "BLOCKED_NEEDS_MIGRATION_APPROVAL" },
+    { "id": "P26", "name": "R8-legacy-retirement", "classification": "BLOCKED_R8_RETIREMENT" },
+    { "id": "P27", "name": "balance-sheet-unified-loader", "classification": "OPTIONAL_FUTURE" },
+    { "id": "P28", "name": "pl-unified-loader", "classification": "OPTIONAL_FUTURE" },
+    { "id": "P29", "name": "cash-flow-unified-loader", "classification": "OPTIONAL_FUTURE" },
+    { "id": "P33", "name": "mobile-parity", "classification": "OPTIONAL_FUTURE" }
+  ],
+  "verdict": "POST_BASELINE_SAFE_PHASES_EXECUTABLE"
+}

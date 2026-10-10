@@ -1,0 +1,12 @@
+{
+  "classification": "NEED_OPERATOR_EMAIL",
+  "user_created": false,
+  "planned_role": "manager",
+  "planned_company": "DIN BRIDAL",
+  "planned_company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "planned_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+  "planned_display_name": "Mobile QA Manager",
+  "email_provided": false,
+  "password_provided": false,
+  "blockers": ["NEED_OPERATOR_EMAIL", "NEED_SECURE_PASSWORD"]
+}

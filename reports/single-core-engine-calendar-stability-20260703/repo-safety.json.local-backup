@@ -1,0 +1,19 @@
+{
+  "run": "CALENDAR_STABILITY_REPO_SAFETY",
+  "run_local_datetime": "2026-07-02T18:45:16+05:00",
+  "branch": "main",
+  "head": "eabab4017cc8122edf98623696b9152fe791ae8d",
+  "origin_main": "eabab4017cc8122edf98623696b9152fe791ae8d",
+  "in_sync": true,
+  "calendar_day2_commit_present": true,
+  "staged_credentials": false,
+  "staged_apk_aab": false,
+  "graphify_out_unstaged": true,
+  "downloads_unstaged": true,
+  "calendar_gate": {
+    "required_local_date": "2026-07-03",
+    "actual_local_date": "2026-07-02",
+    "calendar_day3_runnable": false,
+    "reason": "Next real calendar day has not arrived; Day 2 PASS already recorded today"
+  }
+}

@@ -21,6 +21,25 @@ git push origin pwa-apk-ios-safe-point
 | **3** | Android APK | ✅ |
 | **4** | iOS App | ✅ |
 | **5** | PWA vs Native limits doc | ✅ |
+| **6** | Unified financial reports parity (Capacitor code) | ✅ **2026-07-01** — code complete |
+| **6b** | Internal QA debug APK (no Play Store) | ✅ **2026-07-01** — `BUILT_INTERNAL_QA` |
+| **6c** | On-device QA | **PARTIAL** — Admin PASS 21/21; Manager **N/A/waived**; Salesman **PASS** (login 2026-07-09) |
+| **6d** | Release gate | **SALESMAN_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED** — Play Store separate approval |
+
+## Home Mac mobile QA scope — 2026-07-03
+
+**Operator (Nadeem Khan):** Company uses Admin + Salesman only — Manager QA **N/A / waived**. No Manager user will be created.
+
+| Track | Status |
+|-------|--------|
+| Admin QA | **PASS 21/21** |
+| Manager QA | **N/A / waived** |
+| Salesman QA | **PASS** (login 2026-07-09, Pixel 6 Pro) |
+| Device | **Pixel 6 Pro connected** (office 2026-07-09) |
+| Play Store | **NOT RELEASED** |
+| R8 | **BLOCKED** |
+
+Evidence: [`reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/`](../reports/home-mac-mobile-qa-status-manager-waived-no-device-20260703/)
 
 ## Quick Commands
 

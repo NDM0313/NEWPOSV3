@@ -1,0 +1,24 @@
+{
+  "run": "THREE-COMPANY_UNIFIED_LEDGER_FINAL_ARCHIVE",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "r7": {
+    "id": "R7",
+    "name": "roznamcha_payment RPC",
+    "status": "DESIGN_ONLY",
+    "design_doc": "docs/accounting/SINGLE_CORE_LEDGER_R7_ROZNAMCHA_PAYMENT_RPC_DESIGN.md",
+    "migration_exists": false,
+    "migration_applied": false,
+    "requires_separate_approval": true
+  },
+  "r8": {
+    "id": "R8",
+    "name": "legacy_engine_retirement",
+    "status": "BLOCKED",
+    "blocker": "operational_stability_period_and_separate_approval",
+    "companies_live": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"]
+  },
+  "next_company_expansion": {
+    "status": "BLOCKED",
+    "requires": "separate_finance_sign_off"
+  }
+}

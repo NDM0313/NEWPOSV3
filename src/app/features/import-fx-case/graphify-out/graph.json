@@ -1,0 +1,374 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "label": "ImportFxCaseWorkspace.tsx",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L1",
+      "id": "importfxcaseworkspace_tsx",
+      "community": 0,
+      "norm_label": "importfxcaseworkspace.tsx"
+    },
+    {
+      "label": "toneClass()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L68",
+      "id": "import_fx_case_importfxcaseworkspace_toneclass",
+      "community": 0,
+      "norm_label": "toneclass()"
+    },
+    {
+      "label": "numOrNull()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L81",
+      "id": "import_fx_case_importfxcaseworkspace_numornull",
+      "community": 0,
+      "norm_label": "numornull()"
+    },
+    {
+      "label": "applyCaseToForm()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L255",
+      "id": "import_fx_case_importfxcaseworkspace_applycasetoform",
+      "community": 0,
+      "norm_label": "applycasetoform()"
+    },
+    {
+      "label": "resetNewDraftForm()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L290",
+      "id": "import_fx_case_importfxcaseworkspace_resetnewdraftform",
+      "community": 0,
+      "norm_label": "resetnewdraftform()"
+    },
+    {
+      "label": "draftPayload()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L370",
+      "id": "import_fx_case_importfxcaseworkspace_draftpayload",
+      "community": 0,
+      "norm_label": "draftpayload()"
+    },
+    {
+      "label": "runBusy()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L390",
+      "id": "import_fx_case_importfxcaseworkspace_runbusy",
+      "community": 1,
+      "norm_label": "runbusy()"
+    },
+    {
+      "label": "handleCreate()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L402",
+      "id": "import_fx_case_importfxcaseworkspace_handlecreate",
+      "community": 1,
+      "norm_label": "handlecreate()"
+    },
+    {
+      "label": "handleSaveDraft()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L431",
+      "id": "import_fx_case_importfxcaseworkspace_handlesavedraft",
+      "community": 1,
+      "norm_label": "handlesavedraft()"
+    },
+    {
+      "label": "handleConfirmArrangement()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L456",
+      "id": "import_fx_case_importfxcaseworkspace_handleconfirmarrangement",
+      "community": 0,
+      "norm_label": "handleconfirmarrangement()"
+    },
+    {
+      "label": "handleCancel()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L496",
+      "id": "import_fx_case_importfxcaseworkspace_handlecancel",
+      "community": 1,
+      "norm_label": "handlecancel()"
+    },
+    {
+      "label": "handleLinkSupplier()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L515",
+      "id": "import_fx_case_importfxcaseworkspace_handlelinksupplier",
+      "community": 1,
+      "norm_label": "handlelinksupplier()"
+    },
+    {
+      "label": "handleLinkPurchase()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L535",
+      "id": "import_fx_case_importfxcaseworkspace_handlelinkpurchase",
+      "community": 1,
+      "norm_label": "handlelinkpurchase()"
+    },
+    {
+      "label": "handleRegisterAttachment()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L555",
+      "id": "import_fx_case_importfxcaseworkspace_handleregisterattachment",
+      "community": 1,
+      "norm_label": "handleregisterattachment()"
+    },
+    {
+      "label": "linkLabel()",
+      "file_type": "code",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L589",
+      "id": "import_fx_case_importfxcaseworkspace_linklabel",
+      "community": 0,
+      "norm_label": "linklabel()"
+    }
+  ],
+  "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L68",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_toneclass",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_numornull",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L255",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_applycasetoform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L290",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_resetnewdraftform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L370",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_draftpayload",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L390",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L402",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handlecreate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L431",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handlesavedraft",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L456",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handleconfirmarrangement",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L496",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handlecancel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L515",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handlelinksupplier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L535",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handlelinkpurchase",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L555",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_handleregisterattachment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L589",
+      "weight": 1.0,
+      "source": "importfxcaseworkspace_tsx",
+      "target": "import_fx_case_importfxcaseworkspace_linklabel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L374",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_draftpayload",
+      "target": "import_fx_case_importfxcaseworkspace_numornull",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L404",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handlecreate",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L433",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handlesavedraft",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L462",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handleconfirmarrangement",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L498",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handlecancel",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L517",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handlelinksupplier",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L537",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handlelinkpurchase",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "ImportFxCaseWorkspace.tsx",
+      "source_location": "L562",
+      "weight": 1.0,
+      "source": "import_fx_case_importfxcaseworkspace_handleregisterattachment",
+      "target": "import_fx_case_importfxcaseworkspace_runbusy",
+      "confidence_score": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "built_at_commit": "a8799ab91c77e43e70574bc2895de823af7b1bcc"
+}

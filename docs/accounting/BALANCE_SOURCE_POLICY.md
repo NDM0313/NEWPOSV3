@@ -49,3 +49,5 @@
 ---
 
 *This policy overrides ad hoc docs that suggest dual truth without labels.*
+
+**Three-basis contract (2026):** See [`FINANCIAL_TRUTH_BASIS.md`](./FINANCIAL_TRUTH_BASIS.md) and `src/app/lib/financialTruthBasis.ts` for Official Posted GL vs Effective operational vs Audit full history.

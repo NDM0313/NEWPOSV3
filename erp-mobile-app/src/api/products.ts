@@ -8,9 +8,9 @@ import {
   listCacheRemoveByPrefix,
   listCacheSet,
 } from '../lib/listCache';
-import { fetchProductStockByKey } from '../utils/productStockFetch';
+import { fetchProductStockByKey, sumProductStockFromMovements } from '../utils/productStockFetch';
 import { fetchInBatches } from '../lib/chunkInQuery';
-import { applyBranchStockMovementFilter, isRealBranchUuid } from '../utils/branchId';
+import { isRealBranchUuid } from '../utils/branchId';
 
 import { getNextDocumentNumber } from './documentNumber';
 import {
@@ -110,7 +110,7 @@ async function filterProductRowsForBranch<T extends { id: string }>(
 
 /** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
 const PRODUCTS_SELECT =
-  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name, allow_decimal)';
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, is_dyeable, image_urls, product_categories(name), units(name, allow_decimal)';
 
 export interface ProductRow {
   id: string;
@@ -140,6 +140,7 @@ export interface Product {
   stock: number;
   unit: string;
   unitAllowDecimal?: boolean;
+  isDyeable?: boolean;
   status: 'active' | 'inactive';
   description?: string;
   barcode?: string;
@@ -164,15 +165,60 @@ async function getProductStockFromMovements(
   productId: string,
   branchId?: string | null
 ): Promise<number> {
-  let q = supabase
-    .from('stock_movements')
-    .select('quantity')
-    .eq('company_id', companyId)
-    .eq('product_id', productId);
-  q = applyBranchStockMovementFilter(q, branchId);
-  const { data } = await q;
-  const sum = (data || []).reduce((s, r) => s + Number((r as { quantity: number }).quantity) || 0, 0);
-  return sum;
+  return sumProductStockFromMovements(companyId, productId, branchId);
+}
+
+/** Variation sale price with parent retail fallback (web POS parity). */
+function resolveVariationPrice(
+  v: { price?: number | null; retail_price?: number | null },
+  parentRetailPrice: number,
+): number {
+  return Number(v.price) || Number(v.retail_price) || parentRetailPrice || 0;
+}
+
+type VariationFetchRow = {
+  product_id: string;
+  id: string;
+  sku: string;
+  attributes: Record<string, string>;
+  price?: number | null;
+  retail_price?: number | null;
+};
+
+async function fetchActiveVariationsForProducts(productIds: string[]): Promise<VariationFetchRow[]> {
+  if (productIds.length === 0) return [];
+  try {
+    return await fetchInBatches(productIds, async (chunk) => {
+      const { data, error } = await supabase
+        .from('product_variations')
+        .select('id, product_id, sku, attributes, price, retail_price')
+        .in('product_id', chunk)
+        .eq('is_active', true);
+      if (error) throw error;
+      return (data || []) as VariationFetchRow[];
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Older schemas may lack retail_price — retry without it.
+    if (/retail_price|column/i.test(msg)) {
+      try {
+        return await fetchInBatches(productIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('product_variations')
+            .select('id, product_id, sku, attributes, price')
+            .in('product_id', chunk)
+            .eq('is_active', true);
+          if (error) throw error;
+          return (data || []) as VariationFetchRow[];
+        });
+      } catch (e2: unknown) {
+        console.warn('[getProducts] product_variations:', e2 instanceof Error ? e2.message : String(e2));
+        return [];
+      }
+    }
+    console.warn('[getProducts] product_variations:', msg);
+    return [];
+  }
 }
 
 /** Get a single product by barcode or SKU (barcode first, then SKU). For POS barcode scan. Stock from stock_movements. */
@@ -245,6 +291,7 @@ export async function getProductByBarcodeOrSku(
       stock,
       unit: row.units?.name || 'Piece',
       unitAllowDecimal: row.units?.allow_decimal ?? false,
+      isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
       status: row.is_active !== false ? 'active' : 'inactive',
       description: row.description ?? undefined,
       barcode: row.barcode ?? undefined,
@@ -292,6 +339,7 @@ export async function getProductByBarcodeOrSku(
     stock,
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
+    isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
     status: row.is_active !== false ? 'active' : 'inactive',
     description: row.description ?? undefined,
     barcode: row.barcode ?? undefined,
@@ -340,29 +388,19 @@ async function getProductsInner(
   );
 
   if (varProductIds.length > 0) {
-    let varData: { product_id: string; id: string; sku: string; attributes: Record<string, string>; price: number }[] = [];
-    try {
-      varData = await fetchInBatches(varProductIds, async (chunk) => {
-        const { data, error } = await supabase
-          .from('product_variations')
-          .select('id, product_id, sku, attributes, price')
-          .in('product_id', chunk)
-          .eq('is_active', true);
-        if (error) throw error;
-        return (data || []) as typeof varData;
-      });
-    } catch (e: unknown) {
-      console.warn('[getProducts] product_variations:', e instanceof Error ? e.message : String(e));
+    const varData = await fetchActiveVariationsForProducts(varProductIds);
+    const parentRetailById: Record<string, number> = {};
+    for (const row of rows as ProductRow[]) {
+      parentRetailById[row.id] = Number(row.retail_price) || 0;
     }
-    for (const v of varData) {
-      const pv = v as { product_id: string } & { id: string; sku: string; attributes: Record<string, string>; price: number };
+    for (const pv of varData) {
       if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
       const varStock = stockByKey[`${pv.product_id}_${pv.id}`] ?? 0;
       varMap[pv.product_id].push({
         id: pv.id,
         sku: pv.sku,
         attributes: pv.attributes || {},
-        price: Number(pv.price) || 0,
+        price: resolveVariationPrice(pv, parentRetailById[pv.product_id] ?? 0),
         stock: varStock,
       });
     }
@@ -374,7 +412,8 @@ async function getProductsInner(
     const r = row as { product_categories?: { name: string }; unit_id?: string; units?: { name?: string; allow_decimal?: boolean } | null };
     const unitName = r.units?.name || 'Piece';
     const unitAllowDecimal = r.units?.allow_decimal ?? false;
-    const productStock = row.has_variations ? 0 : (stockByKey[row.id] ?? 0);
+    const orphanParent = stockByKey[row.id] ?? 0;
+    const productStock = orphanParent;
     list.push({
       id: row.id,
       sku: row.sku || '—',
@@ -388,6 +427,7 @@ async function getProductsInner(
       stock: productStock,
       unit: unitName,
       unitAllowDecimal,
+      isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
       status: row.is_active !== false ? 'active' : 'inactive',
       description: row.description ?? undefined,
       barcode: row.barcode ?? undefined,
@@ -430,37 +470,23 @@ async function buildProductFromRow(
   );
 
   let variations: ProductVariationRow[] | undefined;
+  const parentRetail = Number(row.retail_price) || 0;
   if (row.has_variations) {
-    const { data: varData, error: varErr } = await supabase
-      .from('product_variations')
-      .select('id, product_id, sku, attributes, price')
-      .eq('product_id', row.id)
-      .eq('is_active', true);
-    if (!varErr && varData?.length) {
-      variations = varData.map((v) => {
-        const pv = v as {
-          product_id: string;
-          id: string;
-          sku: string;
-          attributes: Record<string, string>;
-          price: number;
-        };
-        return {
-          id: pv.id,
-          sku: pv.sku,
-          attributes: pv.attributes || {},
-          price: Number(pv.price) || 0,
-          stock: stockByKey[`${pv.product_id}_${pv.id}`] ?? 0,
-        };
-      });
-    } else {
-      variations = [];
-    }
+    const varData = await fetchActiveVariationsForProducts([row.id]);
+    variations = varData.map((pv) => ({
+      id: pv.id,
+      sku: pv.sku,
+      attributes: pv.attributes || {},
+      price: resolveVariationPrice(pv, parentRetail),
+      stock: stockByKey[`${pv.product_id}_${pv.id}`] ?? 0,
+    }));
   }
 
   const categoryName = Array.isArray(row.product_categories)
     ? row.product_categories[0]?.name
     : row.product_categories?.name;
+
+  const orphanParent = stockByKey[row.id] ?? 0;
 
   return {
     id: row.id,
@@ -471,10 +497,11 @@ async function buildProductFromRow(
     brandId: row.brand_id ?? undefined,
     unitId: row.unit_id ?? undefined,
     costPrice: Number(row.cost_price) || 0,
-    retailPrice: Number(row.retail_price) || 0,
-    stock: row.has_variations ? 0 : (stockByKey[row.id] ?? 0),
+    retailPrice: parentRetail,
+    stock: orphanParent,
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
+    isDyeable: Boolean((row as { is_dyeable?: boolean }).is_dyeable),
     status: row.is_active !== false ? 'active' : 'inactive',
     description: row.description ?? undefined,
     barcode: row.barcode ?? undefined,
@@ -638,11 +665,7 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
     };
   };
 
-  const mapped = rows.map(toRentalProduct).filter((p) => p.isRentable || p.rentPricePerDay > 0);
-
-  if (mapped.length === 0 && rows.length > 0) {
-    return { data: rows.map((r) => ({ ...toRentalProduct(r), isRentable: true })), error: null };
-  }
+  const mapped = rows.map(toRentalProduct);
 
   return { data: mapped, error: null };
 }

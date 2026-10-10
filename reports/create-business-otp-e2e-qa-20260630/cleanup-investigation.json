@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-06-30T10:15:00.000Z",
+  "decision": "NO_CLEANUP_NEEDED",
+  "reason": "No E2E signup attempted; no auth user or company created in this run",
+  "test_email_masked": "(not configured)",
+  "auth_user_found": false,
+  "company_found": false,
+  "transaction_counts": null,
+  "din_china_bridal_couture_touched": false
+}

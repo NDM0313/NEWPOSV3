@@ -1,0 +1,19 @@
+{
+  "run": "PHASE_3B_POST_DEPLOY_MONITORING",
+  "generated_at": "2026-06-29T12:01:14.647Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "credential_policy": "per-company-preferred",
+  "generic_fallback_allowed": false,
+  "profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "flag_guard_ok": true,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence_ref": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T11-51-15-819Z.json",
+  "conclusion": "Five approved unified loaders unaffected; Phase 3B preview-only deploy safe"
+}

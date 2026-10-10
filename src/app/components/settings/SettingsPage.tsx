@@ -249,9 +249,9 @@ function SystemHealthTab() {
   }, []);
 
   const statusColor = (status: string) => {
-    if (status === 'OK') return 'text-green-400 bg-green-500/10';
+    if (status === 'OK') return 'text-[var(--erp-money-positive)] bg-green-500/10';
     if (status === 'FAIL') return 'text-red-400 bg-red-500/10';
-    return 'text-gray-400 bg-gray-500/10';
+    return 'text-muted-foreground bg-gray-500/10';
   };
 
   if (loading) {
@@ -259,9 +259,9 @@ function SystemHealthTab() {
       <div className="space-y-6">
         <div className="flex items-center gap-3 mb-6">
           <Activity className="text-emerald-400" size={24} />
-          <h2 className="text-xl font-bold text-white">System Health</h2>
+          <h2 className="text-xl font-bold text-foreground">System Health</h2>
         </div>
-        <p className="text-gray-400">Loading…</p>
+        <p className="text-muted-foreground">Loading…</p>
       </div>
     );
   }
@@ -271,7 +271,7 @@ function SystemHealthTab() {
       <div className="space-y-6">
         <div className="flex items-center gap-3 mb-6">
           <Activity className="text-emerald-400" size={24} />
-          <h2 className="text-xl font-bold text-white">System Health</h2>
+          <h2 className="text-xl font-bold text-foreground">System Health</h2>
         </div>
         <p className="text-red-400">{error}</p>
       </div>
@@ -288,27 +288,27 @@ function SystemHealthTab() {
     <div className="space-y-6">
       <div className="flex items-center gap-3 mb-6">
         <Activity className="text-emerald-400" size={24} />
-        <h2 className="text-xl font-bold text-white">System Health</h2>
+        <h2 className="text-xl font-bold text-foreground">System Health</h2>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full border border-gray-700 rounded-lg border-collapse">
+        <table className="w-full border border-border rounded-lg border-collapse">
           <thead>
-            <tr className="bg-gray-800">
-              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Component</th>
-              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Status</th>
-              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Details</th>
+            <tr className="bg-muted">
+              <th className="text-left text-muted-foreground font-medium p-3 border-b border-border">Component</th>
+              <th className="text-left text-muted-foreground font-medium p-3 border-b border-border">Status</th>
+              <th className="text-left text-muted-foreground font-medium p-3 border-b border-border">Details</th>
             </tr>
           </thead>
           <tbody>
             {displayRows.map((r, i) => (
-              <tr key={i} className="border-b border-gray-800">
-                <td className="p-3 text-white">{r.component}</td>
+              <tr key={i} className="border-b border-border">
+                <td className="p-3 text-foreground">{r.component}</td>
                 <td className="p-3">
                   <span className={`inline-block px-2 py-0.5 rounded text-sm font-medium ${statusColor(r.status)}`}>
                     {r.status}
                   </span>
                 </td>
-                <td className="p-3 text-gray-400">{r.details ?? '—'}</td>
+                <td className="p-3 text-muted-foreground">{r.details ?? '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -319,7 +319,7 @@ function SystemHealthTab() {
         type="button"
         variant="outline"
         onClick={load}
-        className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+        className="bg-muted border-border text-muted-foreground hover:bg-muted"
       >
         Refresh
       </Button>
@@ -626,17 +626,17 @@ export const SettingsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#111827] p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
                 <SettingsIcon className="text-purple-400" size={32} />
                 System Settings
               </h1>
-              <p className="text-gray-400 mt-2">
+              <p className="text-muted-foreground mt-2">
                 Configure every aspect of your ERP system - from modules to minute details
               </p>
             </div>
@@ -644,7 +644,7 @@ export const SettingsPage = () => {
               <Button
                 variant="outline"
                 onClick={handleReset}
-                className="bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800"
+                className="bg-card border-border text-muted-foreground hover:bg-muted"
               >
                 <RotateCcw size={16} className="mr-2" />
                 Reset All
@@ -652,7 +652,7 @@ export const SettingsPage = () => {
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges}
-                className="bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+                className="bg-purple-600 hover:bg-purple-500 text-foreground disabled:opacity-50"
               >
                 <Save size={16} className="mr-2" />
                 Save Changes
@@ -673,8 +673,8 @@ export const SettingsPage = () => {
                   onClick={() => setActiveTab(tab.id as SettingsTab)}
                   className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
                     isActive
-                      ? 'bg-purple-500/20 border-purple-500 text-white'
-                      : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                      ? 'bg-purple-500/20 border-purple-500 text-foreground'
+                      : 'bg-card border-border text-muted-foreground hover:border-border'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -688,72 +688,72 @@ export const SettingsPage = () => {
 
           {/* Settings Content */}
           <div className="col-span-3">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+            <div className="bg-card border border-border rounded-xl p-6">
               {/* General Settings */}
               {activeTab === 'general' && (
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Building2 className="text-blue-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">General Business Settings</h2>
+                    <h2 className="text-xl font-bold text-foreground">General Business Settings</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Business Name *</Label>
+                      <Label className="text-muted-foreground mb-2 block">Business Name *</Label>
                       <Input
                         value={settings.businessName}
                         onChange={(e) => handleChange('businessName', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Tax ID / NTN</Label>
+                      <Label className="text-muted-foreground mb-2 block">Tax ID / NTN</Label>
                       <Input
                         value={settings.taxId}
                         onChange={(e) => handleChange('taxId', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-gray-400 mb-2 block">Business Address</Label>
+                      <Label className="text-muted-foreground mb-2 block">Business Address</Label>
                       <Textarea
                         value={settings.businessAddress}
                         onChange={(e) => handleChange('businessAddress', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                         rows={2}
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Phone Number</Label>
+                      <Label className="text-muted-foreground mb-2 block">Phone Number</Label>
                       <Input
                         value={settings.businessPhone}
                         onChange={(e) => handleChange('businessPhone', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Email Address</Label>
+                      <Label className="text-muted-foreground mb-2 block">Email Address</Label>
                       <Input
                         type="email"
                         value={settings.businessEmail}
                         onChange={(e) => handleChange('businessEmail', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Website</Label>
+                      <Label className="text-muted-foreground mb-2 block">Website</Label>
                       <Input
                         value={settings.businessWebsite}
                         onChange={(e) => handleChange('businessWebsite', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Currency</Label>
+                      <Label className="text-muted-foreground mb-2 block">Currency</Label>
                       <select
                         value={settings.currency}
                         onChange={(e) => handleChange('currency', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="PKR">PKR - Pakistani Rupee</option>
                         <option value="USD">USD - US Dollar</option>
@@ -763,11 +763,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Timezone</Label>
+                      <Label className="text-muted-foreground mb-2 block">Timezone</Label>
                       <select
                         value={settings.timezone}
                         onChange={(e) => handleChange('timezone', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="Asia/Karachi">Asia/Karachi (PKT)</option>
                         <option value="Asia/Dubai">Asia/Dubai (GST)</option>
@@ -776,11 +776,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Language</Label>
+                      <Label className="text-muted-foreground mb-2 block">Language</Label>
                       <select
                         value={settings.language}
                         onChange={(e) => handleChange('language', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="en">English</option>
                         <option value="ur">Urdu</option>
@@ -788,31 +788,31 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Fiscal Year Start (MM-DD)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Fiscal Year Start (MM-DD)</Label>
                       <Input
                         value={settings.fiscalYearStart}
                         onChange={(e) => handleChange('fiscalYearStart', e.target.value)}
                         placeholder="01-01"
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">Start of financial year</div>
+                      <div className="text-xs text-muted-foreground mt-1">Start of financial year</div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Fiscal Year End (MM-DD)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Fiscal Year End (MM-DD)</Label>
                       <Input
                         value={settings.fiscalYearEnd}
                         onChange={(e) => handleChange('fiscalYearEnd', e.target.value)}
                         placeholder="12-31"
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">End of financial year</div>
+                      <div className="text-xs text-muted-foreground mt-1">End of financial year</div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Date Format</Label>
+                      <Label className="text-muted-foreground mb-2 block">Date Format</Label>
                       <select
                         value={settings.dateFormat}
                         onChange={(e) => handleChange('dateFormat', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                         <option value="MM/DD/YYYY">MM/DD/YYYY</option>
@@ -820,34 +820,34 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Time Format</Label>
+                      <Label className="text-muted-foreground mb-2 block">Time Format</Label>
                       <select
                         value={settings.timeFormat}
                         onChange={(e) => handleChange('timeFormat', e.target.value as '12h' | '24h')}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="12h">12 Hour (AM/PM)</option>
                         <option value="24h">24 Hour</option>
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Decimal Places</Label>
+                      <Label className="text-muted-foreground mb-2 block">Decimal Places</Label>
                       <Input
                         type="number"
                         min="0"
                         max="4"
                         value={settings.decimalPlaces}
                         onChange={(e) => handleChange('decimalPlaces', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">For amounts (0-4)</div>
+                      <div className="text-xs text-muted-foreground mt-1">For amounts (0-4)</div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Thousand Separator</Label>
+                      <Label className="text-muted-foreground mb-2 block">Thousand Separator</Label>
                       <select
                         value={settings.thousandSeparator}
                         onChange={(e) => handleChange('thousandSeparator', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value=",">, (Comma) - 1,000</option>
                         <option value=".">. (Period) - 1.000</option>
@@ -863,7 +863,7 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Layers className="text-emerald-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Module Management</h2>
+                    <h2 className="text-xl font-bold text-foreground">Module Management</h2>
                   </div>
 
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
@@ -885,27 +885,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enablePOSModule
                           ? 'bg-purple-500/10 border-purple-500 shadow-lg shadow-purple-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enablePOSModule ? 'bg-purple-500/20' : 'bg-gray-700/50'
+                          settings.enablePOSModule ? 'bg-purple-500/20' : 'bg-muted/50'
                         }`}>
-                          <ShoppingCart className={settings.enablePOSModule ? 'text-purple-400' : 'text-gray-500'} size={24} />
+                          <ShoppingCart className={settings.enablePOSModule ? 'text-purple-400' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enablePOSModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enablePOSModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enablePOSModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enablePOSModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         POS System
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Point of Sale module for quick transactions
                       </div>
                     </div>
@@ -916,27 +916,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enableInventoryModule
                           ? 'bg-blue-500/10 border-blue-500 shadow-lg shadow-blue-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enableInventoryModule ? 'bg-blue-500/20' : 'bg-gray-700/50'
+                          settings.enableInventoryModule ? 'bg-blue-500/20' : 'bg-muted/50'
                         }`}>
-                          <Package className={settings.enableInventoryModule ? 'text-blue-400' : 'text-gray-500'} size={24} />
+                          <Package className={settings.enableInventoryModule ? 'text-blue-400' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enableInventoryModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enableInventoryModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enableInventoryModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enableInventoryModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Inventory Management
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Complete stock and warehouse management
                       </div>
                     </div>
@@ -947,27 +947,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enableRentalModule
                           ? 'bg-teal-500/10 border-teal-500 shadow-lg shadow-teal-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enableRentalModule ? 'bg-teal-500/20' : 'bg-gray-700/50'
+                          settings.enableRentalModule ? 'bg-teal-500/20' : 'bg-muted/50'
                         }`}>
-                          <Archive className={settings.enableRentalModule ? 'text-teal-400' : 'text-gray-500'} size={24} />
+                          <Archive className={settings.enableRentalModule ? 'text-teal-400' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enableRentalModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enableRentalModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enableRentalModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enableRentalModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Rental Management
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Manage rental items and bookings
                       </div>
                     </div>
@@ -978,27 +978,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enableStudioModule
                           ? 'bg-orange-500/10 border-orange-500 shadow-lg shadow-orange-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enableStudioModule ? 'bg-orange-500/20' : 'bg-gray-700/50'
+                          settings.enableStudioModule ? 'bg-orange-500/20' : 'bg-muted/50'
                         }`}>
-                          <Building2 className={settings.enableStudioModule ? 'text-orange-400' : 'text-gray-500'} size={24} />
+                          <Building2 className={settings.enableStudioModule ? 'text-orange-400' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enableStudioModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enableStudioModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enableStudioModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enableStudioModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Studio Production
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Full production workflow with departments
                       </div>
                     </div>
@@ -1009,27 +1009,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enableAccountingModule
                           ? 'bg-green-500/10 border-green-500 shadow-lg shadow-green-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enableAccountingModule ? 'bg-green-500/20' : 'bg-gray-700/50'
+                          settings.enableAccountingModule ? 'bg-green-500/20' : 'bg-muted/50'
                         }`}>
-                          <DollarSign className={settings.enableAccountingModule ? 'text-green-400' : 'text-gray-500'} size={24} />
+                          <DollarSign className={settings.enableAccountingModule ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enableAccountingModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enableAccountingModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enableAccountingModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enableAccountingModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Accounting
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Financial accounts and ledgers
                       </div>
                     </div>
@@ -1040,27 +1040,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enableExpensesModule
                           ? 'bg-red-500/10 border-red-500 shadow-lg shadow-red-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enableExpensesModule ? 'bg-red-500/20' : 'bg-gray-700/50'
+                          settings.enableExpensesModule ? 'bg-red-500/20' : 'bg-muted/50'
                         }`}>
-                          <Receipt className={settings.enableExpensesModule ? 'text-red-400' : 'text-gray-500'} size={24} />
+                          <Receipt className={settings.enableExpensesModule ? 'text-red-400' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enableExpensesModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enableExpensesModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enableExpensesModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enableExpensesModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Expenses Management
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Track and manage business expenses
                       </div>
                     </div>
@@ -1071,27 +1071,27 @@ export const SettingsPage = () => {
                       className={`p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
                         settings.enableReportsModule
                           ? 'bg-yellow-500/10 border-yellow-500 shadow-lg shadow-yellow-500/20'
-                          : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                          : 'bg-muted/50 border-border hover:border-gray-600'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          settings.enableReportsModule ? 'bg-yellow-500/20' : 'bg-gray-700/50'
+                          settings.enableReportsModule ? 'bg-yellow-500/20' : 'bg-muted/50'
                         }`}>
-                          <PieChart className={settings.enableReportsModule ? 'text-yellow-400' : 'text-gray-500'} size={24} />
+                          <PieChart className={settings.enableReportsModule ? 'text-yellow-400' : 'text-muted-foreground'} size={24} />
                         </div>
                         <Badge className={`${
                           settings.enableReportsModule 
                             ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
+                            : 'bg-muted text-muted-foreground border-gray-600'
                         }`}>
                           {settings.enableReportsModule ? 'Active' : 'Inactive'}
                         </Badge>
                       </div>
-                      <div className={`font-semibold text-lg mb-1 ${settings.enableReportsModule ? 'text-white' : 'text-gray-400'}`}>
+                      <div className={`font-semibold text-lg mb-1 ${settings.enableReportsModule ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Reports & Analytics
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Business insights and reports
                       </div>
                     </div>
@@ -1124,70 +1124,70 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Palette className="text-purple-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Theme & Appearance</h2>
+                    <h2 className="text-xl font-bold text-foreground">Theme & Appearance</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-6">
                     <div>
-                      <Label className="text-gray-400 mb-3 block">Primary Color</Label>
+                      <Label className="text-muted-foreground mb-3 block">Primary Color</Label>
                       <div className="flex items-center gap-3">
                         <input
                           type="color"
                           value={settings.primaryColor}
                           onChange={(e) => handleChange('primaryColor', e.target.value)}
-                          className="w-16 h-16 rounded-lg border-2 border-gray-700 cursor-pointer"
+                          className="w-16 h-16 rounded-lg border-2 border-border cursor-pointer"
                         />
                         <div>
-                          <div className="text-white font-semibold">{settings.primaryColor}</div>
-                          <div className="text-xs text-gray-500">Main accent color</div>
+                          <div className="text-foreground font-semibold">{settings.primaryColor}</div>
+                          <div className="text-xs text-muted-foreground">Main accent color</div>
                         </div>
                       </div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-3 block">Secondary Color</Label>
+                      <Label className="text-muted-foreground mb-3 block">Secondary Color</Label>
                       <div className="flex items-center gap-3">
                         <input
                           type="color"
                           value={settings.secondaryColor}
                           onChange={(e) => handleChange('secondaryColor', e.target.value)}
-                          className="w-16 h-16 rounded-lg border-2 border-gray-700 cursor-pointer"
+                          className="w-16 h-16 rounded-lg border-2 border-border cursor-pointer"
                         />
                         <div>
-                          <div className="text-white font-semibold">{settings.secondaryColor}</div>
-                          <div className="text-xs text-gray-500">Supporting color</div>
+                          <div className="text-foreground font-semibold">{settings.secondaryColor}</div>
+                          <div className="text-xs text-muted-foreground">Supporting color</div>
                         </div>
                       </div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-3 block">Accent Color</Label>
+                      <Label className="text-muted-foreground mb-3 block">Accent Color</Label>
                       <div className="flex items-center gap-3">
                         <input
                           type="color"
                           value={settings.accentColor}
                           onChange={(e) => handleChange('accentColor', e.target.value)}
-                          className="w-16 h-16 rounded-lg border-2 border-gray-700 cursor-pointer"
+                          className="w-16 h-16 rounded-lg border-2 border-border cursor-pointer"
                         />
                         <div>
-                          <div className="text-white font-semibold">{settings.accentColor}</div>
-                          <div className="text-xs text-gray-500">Highlight color</div>
+                          <div className="text-foreground font-semibold">{settings.accentColor}</div>
+                          <div className="text-xs text-muted-foreground">Highlight color</div>
                         </div>
                       </div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-3 block">Logo URL</Label>
+                      <Label className="text-muted-foreground mb-3 block">Logo URL</Label>
                       <Input
                         placeholder="https://example.com/logo.png"
                         value={settings.logoUrl}
                         onChange={(e) => handleChange('logoUrl', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-3 block">Sidebar Position</Label>
+                      <Label className="text-muted-foreground mb-3 block">Sidebar Position</Label>
                       <select
                         value={settings.sidebarPosition}
                         onChange={(e) => handleChange('sidebarPosition', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="left">Left</option>
                         <option value="right">Right</option>
@@ -1195,53 +1195,53 @@ export const SettingsPage = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div className="flex items-center gap-3">
-                        <div className="text-white font-medium">Dark Mode</div>
+                        <div className="text-foreground font-medium">Dark Mode</div>
                         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Recommended</Badge>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.darkMode}
                         onChange={(e) => handleChange('darkMode', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div className="flex items-center gap-3">
-                        <div className="text-white font-medium">Compact Mode</div>
-                        <div className="text-xs text-gray-500">Reduce spacing for more content</div>
+                        <div className="text-foreground font-medium">Compact Mode</div>
+                        <div className="text-xs text-muted-foreground">Reduce spacing for more content</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.compactMode}
                         onChange={(e) => handleChange('compactMode', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div className="flex items-center gap-3">
-                        <div className="text-white font-medium">Show Breadcrumbs</div>
-                        <div className="text-xs text-gray-500">Navigation path at top</div>
+                        <div className="text-foreground font-medium">Show Breadcrumbs</div>
+                        <div className="text-xs text-muted-foreground">Navigation path at top</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.showBreadcrumbs}
                         onChange={(e) => handleChange('showBreadcrumbs', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div className="flex items-center gap-3">
-                        <div className="text-white font-medium">Enable Animations</div>
-                        <div className="text-xs text-gray-500">Smooth transitions & effects</div>
+                        <div className="text-foreground font-medium">Enable Animations</div>
+                        <div className="text-xs text-muted-foreground">Smooth transitions & effects</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.animationsEnabled}
                         onChange={(e) => handleChange('animationsEnabled', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -1252,27 +1252,27 @@ export const SettingsPage = () => {
               {activeTab === 'invoice' && (
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
-                    <FileText className="text-green-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Invoice Configuration</h2>
+                    <FileText className="text-[var(--erp-money-positive)]" size={24} />
+                    <h2 className="text-xl font-bold text-foreground">Invoice Configuration</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Invoice Prefix</Label>
+                      <Label className="text-muted-foreground mb-2 block">Invoice Prefix</Label>
                       <Input
                         placeholder="INV"
                         value={settings.invoicePrefix}
                         onChange={(e) => handleChange('invoicePrefix', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">Example: INV-2026-0001</div>
+                      <div className="text-xs text-muted-foreground mt-1">Example: INV-2026-0001</div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Number Format</Label>
+                      <Label className="text-muted-foreground mb-2 block">Number Format</Label>
                       <select
                         value={settings.invoiceNumberFormat}
                         onChange={(e) => handleChange('invoiceNumberFormat', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="YYYY-NNNN">YYYY-NNNN (2026-0001)</option>
                         <option value="NNNN">NNNN (0001)</option>
@@ -1281,20 +1281,20 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Starting Number</Label>
+                      <Label className="text-muted-foreground mb-2 block">Starting Number</Label>
                       <Input
                         type="number"
                         value={settings.invoiceStartNumber}
                         onChange={(e) => handleChange('invoiceStartNumber', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Template Style</Label>
+                      <Label className="text-muted-foreground mb-2 block">Template Style</Label>
                       <select
                         value={settings.invoiceTemplate}
                         onChange={(e) => handleChange('invoiceTemplate', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="modern">Modern</option>
                         <option value="classic">Classic</option>
@@ -1302,11 +1302,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Logo Position</Label>
+                      <Label className="text-muted-foreground mb-2 block">Logo Position</Label>
                       <select
                         value={settings.invoiceLogoPosition}
                         onChange={(e) => handleChange('invoiceLogoPosition', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="left">Left</option>
                         <option value="center">Center</option>
@@ -1314,59 +1314,59 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Payment Due (Days)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Payment Due (Days)</Label>
                       <Input
                         type="number"
                         value={settings.invoiceDueDays}
                         onChange={(e) => handleChange('invoiceDueDays', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-gray-400 mb-2 block">Watermark Text (Optional)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Watermark Text (Optional)</Label>
                       <Input
                         placeholder="PAID, DRAFT, etc."
                         value={settings.invoiceWatermark}
                         onChange={(e) => handleChange('invoiceWatermark', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-gray-400 mb-2 block">Invoice Terms & Conditions</Label>
+                      <Label className="text-muted-foreground mb-2 block">Invoice Terms & Conditions</Label>
                       <Textarea
                         value={settings.invoiceTerms}
                         onChange={(e) => handleChange('invoiceTerms', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                         rows={2}
                       />
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-gray-400 mb-2 block">Invoice Footer Text</Label>
+                      <Label className="text-muted-foreground mb-2 block">Invoice Footer Text</Label>
                       <Input
                         value={settings.invoiceFooter}
                         onChange={(e) => handleChange('invoiceFooter', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Show Tax on Invoice</span>
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Show Tax on Invoice</span>
                       <input
                         type="checkbox"
                         checked={settings.showTaxOnInvoice}
                         onChange={(e) => handleChange('showTaxOnInvoice', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Show Discount on Invoice</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Show Discount on Invoice</span>
                       <input
                         type="checkbox"
                         checked={settings.showDiscountOnInvoice}
                         onChange={(e) => handleChange('showDiscountOnInvoice', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -1378,44 +1378,44 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Package className="text-orange-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Product Configuration</h2>
+                    <h2 className="text-xl font-bold text-foreground">Product Configuration</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">SKU Format</Label>
+                      <Label className="text-muted-foreground mb-2 block">SKU Format</Label>
                       <Input
                         placeholder="PRD-NNNN"
                         value={settings.skuFormat}
                         onChange={(e) => handleChange('skuFormat', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">Use NNNN for numbers</div>
+                      <div className="text-xs text-muted-foreground mt-1">Use NNNN for numbers</div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Product Code Prefix</Label>
+                      <Label className="text-muted-foreground mb-2 block">Product Code Prefix</Label>
                       <Input
                         placeholder="PRD"
                         value={settings.productCodePrefix}
                         onChange={(e) => handleChange('productCodePrefix', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Low Stock Threshold</Label>
+                      <Label className="text-muted-foreground mb-2 block">Low Stock Threshold</Label>
                       <Input
                         type="number"
                         value={settings.lowStockThreshold}
                         onChange={(e) => handleChange('lowStockThreshold', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Barcode Format</Label>
+                      <Label className="text-muted-foreground mb-2 block">Barcode Format</Label>
                       <select
                         value={settings.barcodeFormat}
                         onChange={(e) => handleChange('barcodeFormat', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="CODE128">CODE128</option>
                         <option value="EAN13">EAN13</option>
@@ -1423,11 +1423,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Product Unit</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Product Unit</Label>
                       <select
                         value={settings.defaultProductUnit}
                         onChange={(e) => handleChange('defaultProductUnit', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="piece">Piece</option>
                         <option value="meter">Meter</option>
@@ -1438,89 +1438,89 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Max Product Images</Label>
+                      <Label className="text-muted-foreground mb-2 block">Max Product Images</Label>
                       <Input
                         type="number"
                         min="1"
                         max="10"
                         value={settings.maxProductImages}
                         onChange={(e) => handleChange('maxProductImages', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Auto-Generate SKU</span>
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Auto-Generate SKU</span>
                       <input
                         type="checkbox"
                         checked={settings.skuAutoGenerate}
                         onChange={(e) => handleChange('skuAutoGenerate', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Barcode System</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Barcode System</span>
                       <input
                         type="checkbox"
                         checked={settings.enableBarcode}
                         onChange={(e) => handleChange('enableBarcode', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Product Variants</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Product Variants</span>
                       <input
                         type="checkbox"
                         checked={settings.enableProductVariants}
                         onChange={(e) => handleChange('enableProductVariants', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Product Expiry Tracking</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Product Expiry Tracking</span>
                       <input
                         type="checkbox"
                         checked={settings.enableProductExpiry}
                         onChange={(e) => handleChange('enableProductExpiry', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Product Images</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Product Images</span>
                       <input
                         type="checkbox"
                         checked={settings.enableProductImages}
                         onChange={(e) => handleChange('enableProductImages', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Track Serial Numbers</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Track Serial Numbers</span>
                       <input
                         type="checkbox"
                         checked={settings.trackSerialNumbers}
                         onChange={(e) => handleChange('trackSerialNumbers', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Batch Tracking</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Batch Tracking</span>
                       <input
                         type="checkbox"
                         checked={settings.enableBatchTracking}
                         onChange={(e) => handleChange('enableBatchTracking', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
 
                   {/* Inventory Settings Section */}
-                  <div className="pt-6 border-t border-gray-800 mt-6">
+                  <div className="pt-6 border-t border-border mt-6">
                     <div className="flex items-center gap-3 mb-4">
                       <Package className="text-orange-400" size={20} />
-                      <h3 className="text-lg font-bold text-white">Inventory Settings</h3>
+                      <h3 className="text-lg font-bold text-foreground">Inventory Settings</h3>
                     </div>
                     
                     <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
@@ -1537,15 +1537,15 @@ export const SettingsPage = () => {
                       </div>
                     </div>
 
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer border-2 border-blue-500/30">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer border-2 border-blue-500/30">
                       <div className="flex items-center gap-3">
                         <div>
-                          <div className="text-white font-semibold">Enable Packing System</div>
-                          <div className="text-xs text-gray-400 mt-1">
+                          <div className="text-foreground font-semibold">Enable Packing System</div>
+                          <div className="text-xs text-muted-foreground mt-1">
                             Global toggle: Controls boxes/pieces visibility everywhere
                           </div>
                         </div>
-                        <Badge className={settingsContext.inventorySettings.enablePacking ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
+                        <Badge className={settingsContext.inventorySettings.enablePacking ? "bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30" : "bg-gray-500/20 text-muted-foreground border-gray-500/30"}>
                           {settingsContext.inventorySettings.enablePacking ? "ON" : "OFF"}
                         </Badge>
                       </div>
@@ -1556,7 +1556,7 @@ export const SettingsPage = () => {
                           await settingsContext.updateInventorySettings({ enablePacking: e.target.checked });
                           setHasChanges(true);
                         }}
-                        className="w-6 h-6 rounded border-gray-700"
+                        className="w-6 h-6 rounded border-border"
                       />
                     </label>
                   </div>
@@ -1568,7 +1568,7 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <ShoppingCart className="text-pink-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Sales Configuration</h2>
+                    <h2 className="text-xl font-bold text-foreground">Sales Configuration</h2>
                   </div>
 
                   <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 mb-4">
@@ -1585,29 +1585,29 @@ export const SettingsPage = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Tax Rate (%)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Tax Rate (%)</Label>
                       <Input
                         type="number"
                         value={settings.defaultTaxRate}
                         onChange={(e) => handleChange('defaultTaxRate', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Max Discount Allowed (%)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Max Discount Allowed (%)</Label>
                       <Input
                         type="number"
                         value={settings.maxDiscountPercent}
                         onChange={(e) => handleChange('maxDiscountPercent', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Payment Method</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Payment Method</Label>
                       <select
                         value={settings.defaultPaymentMethod}
                         onChange={(e) => handleChange('defaultPaymentMethod', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="cash">Cash</option>
                         <option value="card">Card</option>
@@ -1616,11 +1616,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Duplicate Item Behavior ⭐</Label>
+                      <Label className="text-muted-foreground mb-2 block">Duplicate Item Behavior ⭐</Label>
                       <select
                         value={settings.duplicateItemBehavior}
                         onChange={(e) => handleChange('duplicateItemBehavior', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-purple-600 rounded-lg text-white ring-2 ring-purple-500/30"
+                        className="w-full px-3 py-2 bg-muted border border-purple-600 rounded-lg text-foreground ring-2 ring-purple-500/30"
                       >
                         <option value="increase_quantity">Increase Quantity (Merge)</option>
                         <option value="add_new_row">Add New Row (Separate)</option>
@@ -1632,157 +1632,157 @@ export const SettingsPage = () => {
                       </div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Auto-Save Interval (seconds)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Auto-Save Interval (seconds)</Label>
                       <Input
                         type="number"
                         min="10"
                         max="300"
                         value={settings.autoSaveInterval}
                         onChange={(e) => handleChange('autoSaveInterval', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Minimum Sale Amount</Label>
+                      <Label className="text-muted-foreground mb-2 block">Minimum Sale Amount</Label>
                       <Input
                         type="number"
                         min="0"
                         value={settings.minimumSaleAmount}
                         onChange={(e) => handleChange('minimumSaleAmount', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Customer Credit Limit</Label>
+                      <Label className="text-muted-foreground mb-2 block">Customer Credit Limit</Label>
                       <Input
                         type="number"
                         value={settings.creditLimit}
                         onChange={(e) => handleChange('creditLimit', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Loyalty Points Per Currency</Label>
+                      <Label className="text-muted-foreground mb-2 block">Loyalty Points Per Currency</Label>
                       <Input
                         type="number"
                         min="0"
                         step="0.1"
                         value={settings.pointsPerCurrency}
                         onChange={(e) => handleChange('pointsPerCurrency', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Return Days Limit</Label>
+                      <Label className="text-muted-foreground mb-2 block">Return Days Limit</Label>
                       <Input
                         type="number"
                         min="1"
                         max="90"
                         value={settings.returnDaysLimit}
                         onChange={(e) => handleChange('returnDaysLimit', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Multiple Tax Rates</span>
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Multiple Tax Rates</span>
                       <input
                         type="checkbox"
                         checked={settings.enableMultipleTax}
                         onChange={(e) => handleChange('enableMultipleTax', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Require Customer for Sale</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Require Customer for Sale</span>
                       <input
                         type="checkbox"
                         checked={settings.requireCustomerForSale}
                         onChange={(e) => handleChange('requireCustomerForSale', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Layaway/Installment</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Layaway/Installment</span>
                       <input
                         type="checkbox"
                         checked={settings.enableLayaway}
                         onChange={(e) => handleChange('enableLayaway', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Allow Negative Stock</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Allow Negative Stock</span>
                       <input
                         type="checkbox"
                         checked={settings.allowNegativeStock}
                         onChange={(e) => handleChange('allowNegativeStock', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Auto-Print Receipt</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Auto-Print Receipt</span>
                       <input
                         type="checkbox"
                         checked={settings.printReceiptAutomatically}
                         onChange={(e) => handleChange('printReceiptAutomatically', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Quick Sale Mode</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Quick Sale Mode</span>
                       <input
                         type="checkbox"
                         checked={settings.enableQuickSale}
                         onChange={(e) => handleChange('enableQuickSale', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Show Stock in Sale</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Show Stock in Sale</span>
                       <input
                         type="checkbox"
                         checked={settings.showStockInSale}
                         onChange={(e) => handleChange('showStockInSale', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Require Sale Approval</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Require Sale Approval</span>
                       <input
                         type="checkbox"
                         checked={settings.requireSaleApproval}
                         onChange={(e) => handleChange('requireSaleApproval', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Customer Credit</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Customer Credit</span>
                       <input
                         type="checkbox"
                         checked={settings.enableCustomerCredit}
                         onChange={(e) => handleChange('enableCustomerCredit', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Loyalty Points System</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Loyalty Points System</span>
                       <input
                         type="checkbox"
                         checked={settings.enableLoyaltyPoints}
                         onChange={(e) => handleChange('enableLoyaltyPoints', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Sale Returns</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Sale Returns</span>
                       <input
                         type="checkbox"
                         checked={settings.enableSaleReturns}
                         onChange={(e) => handleChange('enableSaleReturns', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -1794,92 +1794,92 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Truck className="text-indigo-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Purchase Configuration</h2>
+                    <h2 className="text-xl font-bold text-foreground">Purchase Configuration</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Purchase Order Prefix</Label>
+                      <Label className="text-muted-foreground mb-2 block">Purchase Order Prefix</Label>
                       <Input
                         value={settings.purchaseOrderPrefix}
                         onChange={(e) => handleChange('purchaseOrderPrefix', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Purchase Tax (%)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Purchase Tax (%)</Label>
                       <Input
                         type="number"
                         value={settings.defaultPurchaseTax}
                         onChange={(e) => handleChange('defaultPurchaseTax', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Approval Required Amount</Label>
+                      <Label className="text-muted-foreground mb-2 block">Approval Required Amount</Label>
                       <Input
                         type="number"
                         value={settings.purchaseApprovalAmount}
                         onChange={(e) => handleChange('purchaseApprovalAmount', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">Purchases above this need approval</div>
+                      <div className="text-xs text-muted-foreground mt-1">Purchases above this need approval</div>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">GRN Prefix</Label>
+                      <Label className="text-muted-foreground mb-2 block">GRN Prefix</Label>
                       <Input
                         value={settings.grnPrefix}
                         onChange={(e) => handleChange('grnPrefix', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">Goods Received Note</div>
+                      <div className="text-xs text-muted-foreground mt-1">Goods Received Note</div>
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Require Purchase Approval</span>
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Require Purchase Approval</span>
                       <input
                         type="checkbox"
                         checked={settings.requirePurchaseApproval}
                         onChange={(e) => handleChange('requirePurchaseApproval', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Purchase Returns</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Purchase Returns</span>
                       <input
                         type="checkbox"
                         checked={settings.enablePurchaseReturn}
                         onChange={(e) => handleChange('enablePurchaseReturn', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Vendor Rating System</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Vendor Rating System</span>
                       <input
                         type="checkbox"
                         checked={settings.enableVendorRating}
                         onChange={(e) => handleChange('enableVendorRating', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable GRN (Goods Received Note)</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable GRN (Goods Received Note)</span>
                       <input
                         type="checkbox"
                         checked={settings.enableGRN}
                         onChange={(e) => handleChange('enableGRN', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Quality Check</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Quality Check</span>
                       <input
                         type="checkbox"
                         checked={settings.enableQualityCheck}
                         onChange={(e) => handleChange('enableQualityCheck', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -1891,93 +1891,93 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Archive className="text-teal-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Rental Configuration</h2>
+                    <h2 className="text-xl font-bold text-foreground">Rental Configuration</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Rental Prefix</Label>
+                      <Label className="text-muted-foreground mb-2 block">Rental Prefix</Label>
                       <Input
                         value={settings.rentalPrefix}
                         onChange={(e) => handleChange('rentalPrefix', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Duration (days)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Duration (days)</Label>
                       <Input
                         type="number"
                         value={settings.defaultRentalDuration}
                         onChange={(e) => handleChange('defaultRentalDuration', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Late Fee per Day</Label>
+                      <Label className="text-muted-foreground mb-2 block">Late Fee per Day</Label>
                       <Input
                         type="number"
                         value={settings.lateFeePerDay}
                         onChange={(e) => handleChange('lateFeePerDay', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Security Deposit (%)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Security Deposit (%)</Label>
                       <Input
                         type="number"
                         value={settings.securityDepositPercent}
                         onChange={(e) => handleChange('securityDepositPercent', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Reminder Days Before</Label>
+                      <Label className="text-muted-foreground mb-2 block">Reminder Days Before</Label>
                       <Input
                         type="number"
                         min="1"
                         max="7"
                         value={settings.reminderDaysBefore}
                         onChange={(e) => handleChange('reminderDaysBefore', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Return Reminders</span>
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Return Reminders</span>
                       <input
                         type="checkbox"
                         checked={settings.enableRentalReminders}
                         onChange={(e) => handleChange('enableRentalReminders', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Damage Charges</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Damage Charges</span>
                       <input
                         type="checkbox"
                         checked={settings.enableDamageCharges}
                         onChange={(e) => handleChange('enableDamageCharges', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Damage Assessment Required</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Damage Assessment Required</span>
                       <input
                         type="checkbox"
                         checked={settings.damageAssessmentRequired}
                         onChange={(e) => handleChange('damageAssessmentRequired', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Auto-Calculate Late Fee</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Auto-Calculate Late Fee</span>
                       <input
                         type="checkbox"
                         checked={settings.autoCalculateLateFee}
                         onChange={(e) => handleChange('autoCalculateLateFee', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -1989,16 +1989,16 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <PieChart className="text-yellow-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Reports Configuration</h2>
+                    <h2 className="text-xl font-bold text-foreground">Reports Configuration</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Date Format</Label>
+                      <Label className="text-muted-foreground mb-2 block">Date Format</Label>
                       <select
                         value={settings.reportDateFormat}
                         onChange={(e) => handleChange('reportDateFormat', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                         <option value="MM/DD/YYYY">MM/DD/YYYY</option>
@@ -2006,11 +2006,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Report Currency</Label>
+                      <Label className="text-muted-foreground mb-2 block">Report Currency</Label>
                       <select
                         value={settings.reportCurrency}
                         onChange={(e) => handleChange('reportCurrency', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="PKR">PKR</option>
                         <option value="USD">USD</option>
@@ -2018,11 +2018,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Email Frequency</Label>
+                      <Label className="text-muted-foreground mb-2 block">Email Frequency</Label>
                       <select
                         value={settings.reportEmailFrequency}
                         onChange={(e) => handleChange('reportEmailFrequency', e.target.value as any)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
@@ -2030,11 +2030,11 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Report Period</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Report Period</Label>
                       <select
                         value={settings.defaultReportPeriod}
                         onChange={(e) => handleChange('defaultReportPeriod', e.target.value as any)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="week">This Week</option>
                         <option value="month">This Month</option>
@@ -2044,50 +2044,50 @@ export const SettingsPage = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Auto Reports</span>
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Auto Reports</span>
                       <input
                         type="checkbox"
                         checked={settings.enableAutoReports}
                         onChange={(e) => handleChange('enableAutoReports', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Include Graphs in Reports</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Include Graphs in Reports</span>
                       <input
                         type="checkbox"
                         checked={settings.includeGraphsInReports}
                         onChange={(e) => handleChange('includeGraphsInReports', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Export to PDF</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Export to PDF</span>
                       <input
                         type="checkbox"
                         checked={settings.enableExportPDF}
                         onChange={(e) => handleChange('enableExportPDF', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Export to Excel</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Export to Excel</span>
                       <input
                         type="checkbox"
                         checked={settings.enableExportExcel}
                         onChange={(e) => handleChange('enableExportExcel', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-3 bg-gray-800 rounded-lg cursor-pointer">
-                      <span className="text-white">Enable Export to CSV</span>
+                    <label className="flex items-center justify-between p-3 bg-muted rounded-lg cursor-pointer">
+                      <span className="text-foreground">Enable Export to CSV</span>
                       <input
                         type="checkbox"
                         checked={settings.enableExportCSV}
                         onChange={(e) => handleChange('enableExportCSV', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -2099,119 +2099,119 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Bell className="text-red-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Notification Settings</h2>
+                    <h2 className="text-xl font-bold text-foreground">Notification Settings</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Expiry Alert Days</Label>
+                      <Label className="text-muted-foreground mb-2 block">Expiry Alert Days</Label>
                       <Input
                         type="number"
                         min="1"
                         max="90"
                         value={settings.expiryAlertDays}
                         onChange={(e) => handleChange('expiryAlertDays', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
-                      <div className="text-xs text-gray-500 mt-1">Alert before product expires</div>
+                      <div className="text-xs text-muted-foreground mt-1">Alert before product expires</div>
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Email Notifications</div>
-                        <div className="text-xs text-gray-500">Receive updates via email</div>
+                        <div className="text-foreground font-medium">Email Notifications</div>
+                        <div className="text-xs text-muted-foreground">Receive updates via email</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.emailNotifications}
                         onChange={(e) => handleChange('emailNotifications', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">SMS Notifications</div>
-                        <div className="text-xs text-gray-500">Receive updates via SMS</div>
+                        <div className="text-foreground font-medium">SMS Notifications</div>
+                        <div className="text-xs text-muted-foreground">Receive updates via SMS</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.smsNotifications}
                         onChange={(e) => handleChange('smsNotifications', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Low Stock Alerts</div>
-                        <div className="text-xs text-gray-500">Get notified when stock is low</div>
+                        <div className="text-foreground font-medium">Low Stock Alerts</div>
+                        <div className="text-xs text-muted-foreground">Get notified when stock is low</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.lowStockAlert}
                         onChange={(e) => handleChange('lowStockAlert', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Payment Due Alerts</div>
-                        <div className="text-xs text-gray-500">Reminders for pending payments</div>
+                        <div className="text-foreground font-medium">Payment Due Alerts</div>
+                        <div className="text-xs text-muted-foreground">Reminders for pending payments</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.paymentDueAlert}
                         onChange={(e) => handleChange('paymentDueAlert', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Rental Return Alerts</div>
-                        <div className="text-xs text-gray-500">Reminders for rental returns</div>
+                        <div className="text-foreground font-medium">Rental Return Alerts</div>
+                        <div className="text-xs text-muted-foreground">Reminders for rental returns</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.rentalReturnAlert}
                         onChange={(e) => handleChange('rentalReturnAlert', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Product Expiry Alerts</div>
-                        <div className="text-xs text-gray-500">Before product expiration</div>
+                        <div className="text-foreground font-medium">Product Expiry Alerts</div>
+                        <div className="text-xs text-muted-foreground">Before product expiration</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.expiryAlert}
                         onChange={(e) => handleChange('expiryAlert', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Order Status Notifications</div>
-                        <div className="text-xs text-gray-500">When order status changes</div>
+                        <div className="text-foreground font-medium">Order Status Notifications</div>
+                        <div className="text-xs text-muted-foreground">When order status changes</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.orderStatusNotification}
                         onChange={(e) => handleChange('orderStatusNotification', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Daily Sales Summary</div>
-                        <div className="text-xs text-gray-500">End of day sales report</div>
+                        <div className="text-foreground font-medium">Daily Sales Summary</div>
+                        <div className="text-xs text-muted-foreground">End of day sales report</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.dailySalesSummary}
                         onChange={(e) => handleChange('dailySalesSummary', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -2223,25 +2223,25 @@ export const SettingsPage = () => {
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
                     <Shield className="text-cyan-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Security Configuration</h2>
+                    <h2 className="text-xl font-bold text-foreground">Security Configuration</h2>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Session Timeout (minutes)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Session Timeout (minutes)</Label>
                       <Input
                         type="number"
                         value={settings.sessionTimeout}
                         onChange={(e) => handleChange('sessionTimeout', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Password Policy</Label>
+                      <Label className="text-muted-foreground mb-2 block">Password Policy</Label>
                       <select
                         value={settings.passwordPolicy}
                         onChange={(e) => handleChange('passwordPolicy', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="weak">Weak (6+ characters)</option>
                         <option value="medium">Medium (8+ chars, mixed case)</option>
@@ -2249,86 +2249,86 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Max Login Attempts</Label>
+                      <Label className="text-muted-foreground mb-2 block">Max Login Attempts</Label>
                       <Input
                         type="number"
                         min="3"
                         max="10"
                         value={settings.maxLoginAttempts}
                         onChange={(e) => handleChange('maxLoginAttempts', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Lockout Duration (minutes)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Lockout Duration (minutes)</Label>
                       <Input
                         type="number"
                         min="5"
                         max="60"
                         value={settings.lockoutDuration}
                         onChange={(e) => handleChange('lockoutDuration', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-gray-400 mb-2 block">IP Whitelist (comma-separated)</Label>
+                      <Label className="text-muted-foreground mb-2 block">IP Whitelist (comma-separated)</Label>
                       <Textarea
                         placeholder="192.168.1.1, 192.168.1.2"
                         value={settings.ipWhitelist}
                         onChange={(e) => handleChange('ipWhitelist', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                         rows={2}
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Two-Factor Authentication</div>
-                        <div className="text-xs text-gray-500">Extra layer of security</div>
+                        <div className="text-foreground font-medium">Two-Factor Authentication</div>
+                        <div className="text-xs text-muted-foreground">Extra layer of security</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.twoFactorAuth}
                         onChange={(e) => handleChange('twoFactorAuth', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Enable Audit Log</div>
-                        <div className="text-xs text-gray-500">Track all user actions</div>
+                        <div className="text-foreground font-medium">Enable Audit Log</div>
+                        <div className="text-xs text-muted-foreground">Track all user actions</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableAuditLog}
                         onChange={(e) => handleChange('enableAuditLog', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Require Email Verification</div>
-                        <div className="text-xs text-gray-500">For new user accounts</div>
+                        <div className="text-foreground font-medium">Require Email Verification</div>
+                        <div className="text-xs text-muted-foreground">For new user accounts</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.requireEmailVerification}
                         onChange={(e) => handleChange('requireEmailVerification', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Role-Based Access Control</div>
-                        <div className="text-xs text-gray-500">Restrict features by user role</div>
+                        <div className="text-foreground font-medium">Role-Based Access Control</div>
+                        <div className="text-xs text-muted-foreground">Restrict features by user role</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableRoleBasedAccess}
                         onChange={(e) => handleChange('enableRoleBasedAccess', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -2344,8 +2344,8 @@ export const SettingsPage = () => {
               {activeTab === 'advanced' && (
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 mb-6">
-                    <Database className="text-gray-400" size={24} />
-                    <h2 className="text-xl font-bold text-white">Advanced Configuration</h2>
+                    <Database className="text-muted-foreground" size={24} />
+                    <h2 className="text-xl font-bold text-foreground">Advanced Configuration</h2>
                   </div>
 
                   <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 mb-4">
@@ -2364,32 +2364,32 @@ export const SettingsPage = () => {
                     {showTechnicalDeveloperSettings && (
                       <>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">API Key</Label>
+                      <Label className="text-muted-foreground mb-2 block">API Key</Label>
                       <Input
                         type="password"
                         placeholder="Enter API key"
                         value={settings.apiKey}
                         onChange={(e) => handleChange('apiKey', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Webhook URL</Label>
+                      <Label className="text-muted-foreground mb-2 block">Webhook URL</Label>
                       <Input
                         placeholder="https://example.com/webhook"
                         value={settings.webhookUrl}
                         onChange={(e) => handleChange('webhookUrl', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                       </>
                     )}
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Backup Frequency</Label>
+                      <Label className="text-muted-foreground mb-2 block">Backup Frequency</Label>
                       <select
                         value={settings.backupFrequency}
                         onChange={(e) => handleChange('backupFrequency', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                        className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-foreground"
                       >
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
@@ -2397,114 +2397,114 @@ export const SettingsPage = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Default Location</Label>
+                      <Label className="text-muted-foreground mb-2 block">Default Location</Label>
                       <Input
                         placeholder="Main Store"
                         value={settings.defaultLocation}
                         onChange={(e) => handleChange('defaultLocation', e.target.value)}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                     <div>
-                      <Label className="text-gray-400 mb-2 block">Cache Duration (minutes)</Label>
+                      <Label className="text-muted-foreground mb-2 block">Cache Duration (minutes)</Label>
                       <Input
                         type="number"
                         min="0"
                         max="1440"
                         value={settings.cacheDuration}
                         onChange={(e) => handleChange('cacheDuration', Number(e.target.value))}
-                        className="bg-gray-800 border-gray-700 text-white"
+                        className="bg-muted border-border text-foreground"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800">
+                  <div className="space-y-3 pt-4 border-t border-border">
                     {showTechnicalDeveloperSettings && (
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Enable API Access</div>
-                        <div className="text-xs text-gray-500">Allow external API integrations</div>
+                        <div className="text-foreground font-medium">Enable API Access</div>
+                        <div className="text-xs text-muted-foreground">Allow external API integrations</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableAPI}
                         onChange={(e) => handleChange('enableAPI', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                     )}
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Automatic Backup</div>
-                        <div className="text-xs text-gray-500">Auto-backup database</div>
+                        <div className="text-foreground font-medium">Automatic Backup</div>
+                        <div className="text-xs text-muted-foreground">Auto-backup database</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableBackup}
                         onChange={(e) => handleChange('enableBackup', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                     {showTechnicalDeveloperSettings && (
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Debug Mode</div>
-                        <div className="text-xs text-gray-500">Show detailed error messages</div>
+                        <div className="text-foreground font-medium">Debug Mode</div>
+                        <div className="text-xs text-muted-foreground">Show detailed error messages</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.debugMode}
                         onChange={(e) => handleChange('debugMode', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                     )}
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Multi-Location Support</div>
-                        <div className="text-xs text-gray-500">Multiple branches/warehouses</div>
+                        <div className="text-foreground font-medium">Multi-Location Support</div>
+                        <div className="text-xs text-muted-foreground">Multiple branches/warehouses</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableMultiLocation}
                         onChange={(e) => handleChange('enableMultiLocation', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Multi-Currency Support</div>
-                        <div className="text-xs text-gray-500">Handle multiple currencies</div>
+                        <div className="text-foreground font-medium">Multi-Currency Support</div>
+                        <div className="text-xs text-muted-foreground">Handle multiple currencies</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableMultiCurrency}
                         onChange={(e) => handleChange('enableMultiCurrency', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Auto-Update Exchange Rate</div>
-                        <div className="text-xs text-gray-500">Fetch latest currency rates</div>
+                        <div className="text-foreground font-medium">Auto-Update Exchange Rate</div>
+                        <div className="text-xs text-muted-foreground">Fetch latest currency rates</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.autoUpdateExchangeRate}
                         onChange={(e) => handleChange('autoUpdateExchangeRate', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
-                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
+                    <label className="flex items-center justify-between p-4 bg-muted rounded-lg cursor-pointer">
                       <div>
-                        <div className="text-white font-medium">Enable Data Encryption</div>
-                        <div className="text-xs text-gray-500">Encrypt sensitive data</div>
+                        <div className="text-foreground font-medium">Enable Data Encryption</div>
+                        <div className="text-xs text-muted-foreground">Encrypt sensitive data</div>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.enableDataEncryption}
                         onChange={(e) => handleChange('enableDataEncryption', e.target.checked)}
-                        className="w-5 h-5 rounded border-gray-700"
+                        className="w-5 h-5 rounded border-border"
                       />
                     </label>
                   </div>
@@ -2519,14 +2519,14 @@ export const SettingsPage = () => {
           <div className="fixed bottom-6 right-6 bg-purple-600 border-2 border-purple-500 rounded-xl p-4 shadow-2xl shadow-purple-500/20 z-50">
             <div className="flex items-center gap-4">
               <div>
-                <div className="text-white font-semibold">Unsaved Changes</div>
+                <div className="text-foreground font-semibold">Unsaved Changes</div>
                 <div className="text-xs text-purple-200">You have modified settings</div>
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={() => window.location.reload()}
-                  className="bg-purple-700 border-purple-600 text-white hover:bg-purple-800"
+                  className="bg-purple-700 border-purple-600 text-foreground hover:bg-purple-800"
                 >
                   Discard
                 </Button>

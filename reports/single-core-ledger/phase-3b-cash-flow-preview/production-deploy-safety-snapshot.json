@@ -1,0 +1,16 @@
+{
+  "run": "PHASE_3B_PROD_DEPLOY_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "branch": "main",
+  "head_commit": "99f2e3b3",
+  "phase_3b_commit": "99f2e3b3",
+  "origin_main_includes_99f2e3b3": true,
+  "staged_files_count": 0,
+  "deploy_scope": "frontend_only",
+  "constraints": {
+    "migrations_run": false,
+    "flags_toggled": false,
+    "gl_mutations": false,
+    "cash_flow_loader_swap": false
+  }
+}

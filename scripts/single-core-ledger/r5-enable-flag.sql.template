@@ -1,0 +1,14 @@
+-- R5 generic enable template — DO NOT RUN until finance sign-off
+-- Substitute: COMPANY_ID, FEATURE_KEY, DESCRIPTION
+INSERT INTO feature_flags (company_id, feature_key, enabled, description)
+VALUES (
+  'COMPANY_ID',
+  'FEATURE_KEY',
+  true,
+  'DESCRIPTION'
+)
+ON CONFLICT (company_id, feature_key)
+DO UPDATE SET
+  enabled = true,
+  description = EXCLUDED.description,
+  updated_at = now();

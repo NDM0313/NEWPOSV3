@@ -1,0 +1,12 @@
+﻿# Deployment
+
+Method: ssh dincouture-vps bash deploy/vps-build-erp-only.sh
+(first recreate hit Docker race; retried compose up -d --force-recreate erp — success)
+
+Previous VPS HEAD: d0b64b67
+Deployed HEAD: a5149971
+VITE_BUILD_COMMIT: a5149971
+Rollback: d0b64b67 + rebuild erp-only
+Production HTTP: 200
+erp-frontend: healthy
+DB migrations applied this session: none

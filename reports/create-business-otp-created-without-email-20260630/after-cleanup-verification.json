@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-06-30T11:05:00.000Z",
+  "auth_users_test_email": 0,
+  "test_company": 0,
+  "din_china": 1,
+  "din_bridal": 1,
+  "din_couture": 1,
+  "transaction_tables_touched": false,
+  "migrations_run": false,
+  "feature_flags_changed": false
+}

@@ -1,0 +1,55 @@
+{
+  "description": "Phase 1.6.1 clone operator branch decisions (finance sign-off for Gate A clone validation). Production requires fresh manifest review.",
+  "approved_by": "clone_validation_operator",
+  "approved_at": "2026-06-23",
+  "decisions": [
+    {
+      "journal_entry_id": "0a573122-9cd1-4192-a61c-b948fd14abe8",
+      "entry_no": "JE-0204",
+      "company_name": "DIN BRIDAL",
+      "approved_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "approved_branch_label": "HQ — Main Branch",
+      "operator_note": "Finance: walk-in manual_receipt assigned to Main Branch HQ (DIN BRIDAL operational default)"
+    },
+    {
+      "journal_entry_id": "21401d60-1e89-422d-bcdb-59310556d600",
+      "entry_no": "JE-0170",
+      "company_name": "DIN BRIDAL",
+      "approved_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "approved_branch_label": "HQ — Main Branch",
+      "operator_note": "Finance: walk-in manual_receipt assigned to Main Branch HQ (DIN BRIDAL operational default)"
+    },
+    {
+      "journal_entry_id": "1dd932ff-8798-46b4-8e47-b55832611515",
+      "entry_no": "JE-0309",
+      "company_name": "DIN CHINA",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "approved_branch_label": "BL0002 — DIN CHINA",
+      "operator_note": "Finance: sole active branch BL0002 for DIN CHINA manual_receipt"
+    },
+    {
+      "journal_entry_id": "653e66d2-6c38-41fc-b396-306488ae52e7",
+      "entry_no": "JE-0287",
+      "company_name": "DIN CHINA",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "approved_branch_label": "BL0002 — DIN CHINA",
+      "operator_note": "Finance: sole active branch BL0002 for DIN CHINA manual_receipt"
+    },
+    {
+      "journal_entry_id": "a1e0faf5-30ca-499b-9ba2-cc1bd8e25a67",
+      "entry_no": "FT-000287",
+      "company_name": "DIN CHINA",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "approved_branch_label": "BL0002 — DIN CHINA",
+      "operator_note": "Finance: company-level bank transfer attributed to sole active branch BL0002 (metadata only; GL unchanged)"
+    },
+    {
+      "journal_entry_id": "a1cc92d7-443f-465d-9473-9d6b526fdb99",
+      "entry_no": "FT-000309",
+      "company_name": "DIN CHINA",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "approved_branch_label": "BL0002 — DIN CHINA",
+      "operator_note": "Finance: company-level bank transfer attributed to sole active branch BL0002 (metadata only; GL unchanged)"
+    }
+  ]
+}

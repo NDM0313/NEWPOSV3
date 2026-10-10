@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-30T14:05:00.000Z",
+  "status": "PASS",
+  "git": {
+    "branch": "main",
+    "head": "68ec8e882b75a3ecfd6ee582be403325da4b04e7",
+    "phase_a_commit_present": true,
+    "staged_files": false,
+    "credentials_staged": false
+  },
+  "env": {
+    "email": "khan5955+1@gmail.com",
+    "email_ok": true,
+    "password_set": true,
+    "otp_code_set": true
+  },
+  "retained_auth_user": {
+    "id": "23cf3957-6d21-411e-8595-3084cf665c9e",
+    "had_company_before_phase_b": false,
+    "email_confirmed_at_preflight": "2026-06-30T13:51:10Z"
+  }
+}

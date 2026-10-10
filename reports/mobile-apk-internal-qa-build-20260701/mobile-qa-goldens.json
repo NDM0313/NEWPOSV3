@@ -1,0 +1,26 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "mobile-qa-goldens",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "companies": {
+    "din_china": {
+      "balance_sheet_assets": 89754087.52,
+      "profit_loss_net": 8465730.87
+    },
+    "din_bridal": {
+      "balance_sheet_assets": 13521792,
+      "profit_loss_net": 119992
+    },
+    "din_couture": {
+      "balance_sheet_assets": 22667273,
+      "profit_loss_net": -16750
+    }
+  },
+  "other_expectations": {
+    "cash_flow": "loads with unified source when flags on",
+    "trial_balance": "loads",
+    "ledger_v2": "loads",
+    "account_ledger": "loads",
+    "salesman_balances": "hidden where required by role"
+  }
+}

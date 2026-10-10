@@ -1,0 +1,116 @@
+{
+  "run": "PHASE_3B_E_FINANCE_RULE_CONFIRMATION",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "defaultStatus": "PENDING",
+  "loaderSwapApproved": false,
+  "bsPlFinanceStatus": "PENDING",
+  "questions": [
+    {
+      "id": "Q1",
+      "question": "Should Cash Flow follow current legacy getCashFlowReport exactly?",
+      "defaultRecommendation": "YES — remain official until finance approves change",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q2",
+      "question": "Should Cash Flow follow unified Roznamcha/effective_party basis?",
+      "defaultRecommendation": "NOT without explicit finance sign-off",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q3",
+      "question": "Should correction/reversal/void rows be hidden in normal mode and shown only in audit?",
+      "defaultRecommendation": "YES — matches reportVisibilityContract",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q4",
+      "question": "Should opening balances be calculated from all prior activity or only period rows?",
+      "defaultRecommendation": "Finance confirm — DIN BRIDAL opening_balance_account rows drove delta",
+      "status": "APPROVED",
+      "selectedOption": "A",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Preview alignment only — opening summary-only"
+    },
+    {
+      "id": "Q5",
+      "question": "Should internal transfers be shown gross, net, or excluded?",
+      "defaultRecommendation": "CRITICAL for DIN CHINA — preview gross legs vs legacy transfer presentation",
+      "status": "APPROVED",
+      "selectedOption": "C",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Preview alignment only — excluded from normal totals"
+    },
+    {
+      "id": "Q6",
+      "question": "Which source modules should be included in normal Cash Flow?",
+      "defaultRecommendation": "Current all-modules filter for both sides",
+      "status": "PENDING",
+      "reviewer": "",
+      "reviewDate": "",
+      "notes": ""
+    },
+    {
+      "id": "Q7",
+      "question": "Should DIN CHINA and DIN BRIDAL deltas be accepted as rule differences or fixed?",
+      "defaultRecommendation": "Rule confirmation first — do not accept as official without review",
+      "status": "APPROVED_FOR_PREVIEW_ALIGNMENT_ONLY",
+      "selectedOption": "B",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Phase 3B-H preview alignment; legacy official; loader swap NOT APPROVED"
+    }
+  ],
+  "companySummary": [
+    { "company": "DIN CHINA", "closingDelta": 45675273, "financeStatus": "NEEDS_RULE_CONFIRMATION" },
+    { "company": "DIN BRIDAL", "closingDelta": -55000, "financeStatus": "NEEDS_RULE_CONFIRMATION" },
+    { "company": "DIN COUTURE", "closingDelta": 0, "financeStatus": "PENDING" }
+  ],
+  "phase3bFProductionEvidence": {
+    "deployedCommit": "5433ac2c",
+    "capturedAt": "2026-06-29T13:40:31.324Z",
+    "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/production-row-export-capture.json",
+    "dinChina": {
+      "matchCounts": { "exact": 89, "strong": 0, "weak": 11, "legacyOnly": 223, "previewOnly": 305 },
+      "transferLegBucketNetImpact": -56889891,
+      "ruleQuestions": ["Q5", "Q7"]
+    },
+    "dinBridal": {
+      "matchCounts": { "exact": 2, "strong": 48, "weak": 0, "legacyOnly": 1, "previewOnly": 3 },
+      "legacyOnlyNetImpact": 25000,
+      "previewOnlyNetImpact": 80000,
+      "ruleQuestions": ["Q4", "Q7"]
+    }
+  },
+  "phase3bGFinanceDecisionPack": {
+    "status": "RECORDED",
+    "preparedAt": "2026-06-29",
+    "recordedAt": "2026-06-29",
+    "reviewer": "Nadeem Khan",
+    "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
+    "loaderSwapApproved": false,
+    "decisionForm": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/cash-flow-finance-decision-form.json",
+    "outcomeMatrix": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/decision-outcome-matrix.json"
+  },
+  "phase3bHPreviewAlignment": {
+    "status": "IMPLEMENTED",
+    "completedAt": "2026-06-29",
+    "previewAlignmentOnly": true,
+    "officialLegacyUnchanged": true,
+    "deployedToProduction": false,
+    "captureStatus": "PENDING_DEPLOY",
+    "loaderSwapApproved": false,
+    "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
+  }
+}

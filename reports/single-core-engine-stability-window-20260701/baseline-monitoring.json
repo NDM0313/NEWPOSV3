@@ -1,0 +1,23 @@
+{
+  "run": "SINGLE_CORE_ENGINE_STABILITY_WINDOW_START",
+  "task": "baseline-monitoring",
+  "generated_at": "2026-07-01T15:13:38.873Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T15-03-08-265Z.json",
+  "overall": "PASS",
+  "profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "admin_compare_din_china": "9/9 PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags": {
+    "din_china_loaders_on": 8,
+    "din_bridal_loaders_on": 8,
+    "din_couture_loaders_on": 8,
+    "other_company_loaders_on": 0,
+    "flag_guard_ok": true
+  }
+}

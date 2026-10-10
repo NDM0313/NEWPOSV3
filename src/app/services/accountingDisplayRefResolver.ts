@@ -3,6 +3,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { resolveGlCorrectionDisplayRef, type SourceJeMeta } from '@/app/lib/glCorrectionDisplayRef';
 import {
   type AccountingUiRef,
   buildTechnicalRef,
@@ -20,6 +21,8 @@ type JeMeta = {
   reference_type: string | null;
   reference_id: string | null;
   payment_id: string | null;
+  action_fingerprint?: string | null;
+  description?: string | null;
 };
 
 function extractBankTraceId(notes?: string | null): string {
@@ -50,6 +53,8 @@ function buildUiForJournal(
     payments: Map<string, { reference_number?: string | null; contact_id?: string | null; notes?: string | null }>;
     expenses: Map<string, { expense_no?: string | null; description?: string | null }>;
     contacts: Map<string, { name?: string | null }>;
+    sourceJournals: Map<string, SourceJeMeta>;
+    rentals: Map<string, { booking_no?: string | null }>;
   }
 ): AccountingUiRef {
   const technicalRef = buildTechnicalRef(j.reference_type, j.reference_id, j.id);
@@ -65,6 +70,14 @@ function buildUiForJournal(
     entryNoBadge,
     documentResolved: false,
   });
+
+  if (rt === 'gl_correction') {
+    return resolveGlCorrectionDisplayRef(j, {
+      sales: ctx.sales,
+      sourceJournals: ctx.sourceJournals,
+      rentals: ctx.rentals,
+    });
+  }
 
   if (!rid) {
     return {
@@ -186,6 +199,7 @@ function buildUiForJournal(
   if (rt === 'manual_receipt') {
     const pay = j.payment_id ? ctx.payments.get(j.payment_id) : undefined;
     const ref = String(pay?.reference_number || '').trim();
+    const trace = extractBankTraceId(pay?.notes);
     const cust = rid ? ctx.contacts.get(rid) : undefined;
     const cname = String(cust?.name || '').trim();
     const bits: string[] = [];
@@ -241,7 +255,7 @@ export async function resolveJournalUiRefsByJournalIds(
   const jeRows = await fetchInChunks(jeIds, async (chunk) => {
     const { data, error } = await supabase
       .from('journal_entries')
-      .select('id, entry_no, reference_type, reference_id, payment_id')
+      .select('id, entry_no, reference_type, reference_id, payment_id, action_fingerprint, description')
       .eq('company_id', companyId)
       .in('id', chunk);
     if (error) {
@@ -262,12 +276,17 @@ export async function resolveJournalUiRefsByJournalIds(
   const expenseIds = new Set<string>();
   const paymentIdsFromJe = new Set<string>();
   const contactIdsForLabels = new Set<string>();
+  const sourceJeIds = new Set<string>();
 
   for (const j of jeById.values()) {
     const rt = (j.reference_type || '').toLowerCase().trim();
     const rid = (j.reference_id || '').trim();
     if (j.payment_id) paymentIdsFromJe.add(j.payment_id);
     if (rt === 'manual_receipt' && rid) contactIdsForLabels.add(rid);
+    if (rt === 'gl_correction' && rid) {
+      saleIds.add(rid);
+      sourceJeIds.add(rid);
+    }
     if (!rid) continue;
     if (rt === 'sale' || rt === 'sale_extra_expense') saleIds.add(rid);
     else if (rt === 'purchase') purchaseIds.add(rid);
@@ -369,6 +388,38 @@ export async function resolveJournalUiRefsByJournalIds(
     for (const e of rows) expenses.set(e.id, e);
   }
 
+  const sourceJournals = new Map<string, SourceJeMeta>();
+  const rentalIds = new Set<string>();
+  if (sourceJeIds.size) {
+    const rows = await fetchInChunks([...sourceJeIds], async (chunk) => {
+      const { data } = await supabase
+        .from('journal_entries')
+        .select('id, entry_no, reference_type, reference_id')
+        .eq('company_id', companyId)
+        .in('id', chunk);
+      return (data || []) as SourceJeMeta[];
+    });
+    for (const row of rows) {
+      sourceJournals.set(row.id, row);
+      if ((row.reference_type || '').toLowerCase() === 'rental' && row.reference_id) {
+        rentalIds.add(String(row.reference_id));
+      }
+    }
+  }
+
+  const rentals = new Map<string, { booking_no?: string | null }>();
+  if (rentalIds.size) {
+    const rows = await fetchInChunks([...rentalIds], async (chunk) => {
+      const { data } = await supabase
+        .from('rentals')
+        .select('id, booking_no')
+        .eq('company_id', companyId)
+        .in('id', chunk);
+      return (data || []) as { id: string; booking_no?: string | null }[];
+    });
+    for (const r of rows) rentals.set(r.id, r);
+  }
+
   const contacts = new Map<string, { name?: string | null }>();
   if (contactIdsForLabels.size) {
     const rows = await fetchInChunks([...contactIdsForLabels], async (chunk) => {
@@ -382,7 +433,7 @@ export async function resolveJournalUiRefsByJournalIds(
     for (const c of rows) contacts.set(c.id, c);
   }
 
-  const ctx = { sales, purchases, stages, productions, workers, payments, expenses, contacts };
+  const ctx = { sales, purchases, stages, productions, workers, payments, expenses, contacts, sourceJournals, rentals };
 
   const resolvedByJe = new Map<string, AccountingUiRef>();
   for (const jid of jeIds) {

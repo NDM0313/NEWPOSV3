@@ -1,0 +1,57 @@
+{
+  "run": "OFFICE_PC_LOCAL_CHANGE_INVENTORY",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "branch": "main",
+  "latest_main_commit": "fdb68235",
+  "action": "INVENTORY_ONLY",
+  "files_modified": false,
+  "categories": {
+    "intended_current_task": { "count": 0, "staged": false, "paths": [] },
+    "unrelated_monitoring_timestamps": {
+      "count": 12,
+      "staged": false,
+      "modified": [
+        "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+        "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md"
+      ],
+      "untracked": [
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.md",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.md",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.md",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.md",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.md"
+      ]
+    },
+    "graphify": {
+      "count": 1,
+      "staged": false,
+      "paths": ["graphify-out/GRAPH_REPORT.md"]
+    },
+    "din_bridal_couture_reports": {
+      "count": 12,
+      "staged": false,
+      "paths": [
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-raw.json",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-report.md",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/party-ledger.png",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/roznamcha.png",
+        "reports/single-core-ledger/din-bridal-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-day1.md",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+        "reports/single-core-ledger/din-couture-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/din-couture-monitoring/production-monitoring-day1.md",
+        "reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md"
+      ]
+    },
+    "unsafe_unknown": { "count": 0, "staged": false, "paths": [] }
+  },
+  "total_unstaged_untracked": 23,
+  "recommended_next_prompt": "OFFICE PC LOCAL CLEANUP REVIEW — DRY RUN ONLY"
+}

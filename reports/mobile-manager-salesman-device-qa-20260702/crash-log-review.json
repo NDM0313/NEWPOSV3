@@ -1,0 +1,8 @@
+{
+  "run": "MOBILE_CRASH_LOG_REVIEW",
+  "run_local_datetime": "2026-07-02T19:22:36+05:00",
+  "logcat_collected": false,
+  "reason": "NO_ADB_DEVICE",
+  "fatal_crashes": null,
+  "prior_admin_qa_crashes": false
+}

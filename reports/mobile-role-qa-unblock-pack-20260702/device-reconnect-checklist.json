@@ -1,0 +1,17 @@
+{
+  "target_device": "Pixel 6 Pro",
+  "expected_package": "com.dincouture.erp",
+  "expected_version_name": "1.0.5",
+  "expected_version_code": 39,
+  "steps": [
+    "USB connect",
+    "Unlock phone",
+    "File transfer USB mode",
+    "Developer options on",
+    "USB debugging on",
+    "Revoke authorizations if unauthorized",
+    "Accept RSA prompt",
+    "adb kill-server && adb start-server && adb devices"
+  ],
+  "expected_adb_state": "device"
+}

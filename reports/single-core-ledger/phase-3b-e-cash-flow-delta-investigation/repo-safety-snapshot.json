@@ -1,0 +1,16 @@
+{
+  "run": "PHASE_3B_E_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "branch": "main",
+  "head_commit": "07b82ccb",
+  "origin_main_includes_07b82ccb": true,
+  "staged_files_count": 0,
+  "investigation_scope": "read_only",
+  "deploy": false,
+  "constraints": {
+    "migrations_run": false,
+    "flags_toggled": false,
+    "gl_mutations": false,
+    "runtime_changes": false
+  }
+}

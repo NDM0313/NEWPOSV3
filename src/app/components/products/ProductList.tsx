@@ -169,7 +169,7 @@ export const ProductList = () => {
   const TabButton = ({ value, icon: Icon, label, count }: any) => (
     <TabsTrigger 
       value={value}
-      className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg shadow-blue-900/20 px-6 py-3 h-auto gap-2 rounded-xl border border-transparent data-[state=active]:border-blue-500/50 transition-all duration-300"
+      className="data-[state=active]:bg-blue-600 data-[state=active]:text-foreground data-[state=active]:shadow-lg shadow-blue-900/20 px-6 py-3 h-auto gap-2 rounded-xl border border-transparent data-[state=active]:border-blue-500/50 transition-all duration-300"
     >
       <Icon size={16} />
       <span>{label}</span>
@@ -178,21 +178,21 @@ export const ProductList = () => {
   );
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-white p-6 gap-6">
+    <div className="flex flex-col h-full bg-input-background text-foreground p-6 gap-6">
       {/* Modern Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
              <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-900/20">
-               <Package className="text-white" size={24} />
+               <Package className="text-foreground" size={24} />
              </div>
              Inventory Management
           </h1>
-          <p className="text-gray-400 mt-2 text-sm ml-1">Manage products, stocks, categories, and attributes across all stores.</p>
+          <p className="text-muted-foreground mt-2 text-sm ml-1">Manage products, stocks, categories, and attributes across all stores.</p>
         </div>
         
         <div className="flex items-center gap-3">
-           <Button variant="outline" className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-900 h-10">
+           <Button variant="outline" className="border-border text-muted-foreground hover:text-foreground hover:bg-card h-10">
              <Filter size={16} className="mr-2" /> Filters
            </Button>
            <Button 
@@ -206,39 +206,39 @@ export const ProductList = () => {
 
       {/* Quick Stats Header (New) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5 flex items-center gap-4 hover:border-blue-500/30 transition-colors group">
-           <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+         <div className="bg-card border border-border rounded-xl p-5 flex items-center gap-4 hover:border-blue-500/30 transition-colors group">
+           <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500 group-hover:text-foreground transition-all">
              <TrendingUp size={24} />
            </div>
            <div>
-             <p className="text-sm text-gray-500 font-medium">Total Valuation</p>
-             <h3 className="text-2xl font-bold text-white font-mono">${totalValuation.toLocaleString()}</h3>
+             <p className="text-sm text-muted-foreground font-medium">Total Valuation</p>
+             <h3 className="text-2xl font-bold text-foreground font-mono">${totalValuation.toLocaleString()}</h3>
            </div>
          </div>
          
-         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5 flex items-center gap-4 hover:border-red-500/30 transition-colors group">
-           <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all">
+         <div className="bg-card border border-border rounded-xl p-5 flex items-center gap-4 hover:border-red-500/30 transition-colors group">
+           <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-foreground transition-all">
              <AlertTriangle size={24} />
            </div>
            <div>
-             <p className="text-sm text-gray-500 font-medium">Low Stock Items</p>
-             <h3 className="text-2xl font-bold text-white font-mono">{lowStockCount}</h3>
+             <p className="text-sm text-muted-foreground font-medium">Low Stock Items</p>
+             <h3 className="text-2xl font-bold text-foreground font-mono">{lowStockCount}</h3>
            </div>
          </div>
 
-         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5 flex items-center gap-4 hover:border-purple-500/30 transition-colors group">
-           <div className="h-12 w-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-all">
+         <div className="bg-card border border-border rounded-xl p-5 flex items-center gap-4 hover:border-purple-500/30 transition-colors group">
+           <div className="h-12 w-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500 group-hover:bg-purple-500 group-hover:text-foreground transition-all">
              <Layers size={24} />
            </div>
            <div>
-             <p className="text-sm text-gray-500 font-medium">Active Categories</p>
-             <h3 className="text-2xl font-bold text-white font-mono">{mockCategories.length}</h3>
+             <p className="text-sm text-muted-foreground font-medium">Active Categories</p>
+             <h3 className="text-2xl font-bold text-foreground font-mono">{mockCategories.length}</h3>
            </div>
          </div>
       </div>
 
       <Tabs defaultValue="products" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col gap-6">
-        <TabsList className="bg-gray-900/50 border border-gray-800 p-1 h-auto rounded-2xl w-full justify-start gap-2">
+        <TabsList className="bg-card border border-border p-1 h-auto rounded-2xl w-full justify-start gap-2">
           <TabButton value="products" icon={Package} label="Products" count={mockProducts.length} />
           <TabButton value="categories" icon={FolderTree} label="Categories" count={mockCategories.length} />
           <TabButton value="brands" icon={Tags} label="Brands" count={mockBrands.length} />
@@ -262,33 +262,33 @@ export const ProductList = () => {
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 text-gray-500 hover:text-white"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
                       >
                         <MoreVertical size={16} />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
-                      <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                    <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
+                      <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                         <Eye size={14} className="mr-2" />
                         View Details
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                      <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                         <Edit2 size={14} className="mr-2" />
                         Edit Product
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                      <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                         <Copy size={14} className="mr-2" />
                         Duplicate
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                      <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                         <Printer size={14} className="mr-2" />
                         Print Barcode
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                      <DropdownMenuItem className="hover:bg-muted cursor-pointer">
                         <History size={14} className="mr-2" />
                         View History
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400">
+                      <DropdownMenuItem className="hover:bg-muted cursor-pointer text-red-400">
                         <Trash2 size={14} className="mr-2" />
                         Delete
                       </DropdownMenuItem>
@@ -299,23 +299,23 @@ export const ProductList = () => {
               { 
                 key: 'business', 
                 header: 'Business', 
-                render: (item) => <span className="text-sm text-gray-300">{item.business}</span> 
+                render: (item) => <span className="text-sm text-muted-foreground">{item.business}</span> 
               },
               { 
                 key: 'location', 
                 header: 'Location', 
-                render: (item) => <span className="text-sm text-gray-300">{item.location}</span> 
+                render: (item) => <span className="text-sm text-muted-foreground">{item.location}</span> 
               },
               { 
                 key: 'name', 
                 header: 'Product', 
                 render: (item) => (
                   <div className="flex items-center gap-3 py-2">
-                    <div className="w-10 h-10 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-600">
+                    <div className="w-10 h-10 rounded-lg bg-card border border-border flex items-center justify-center text-muted-foreground">
                       <Package size={18} />
                     </div>
                     <div>
-                      <div className="font-medium text-white text-sm">{item.name}</div>
+                      <div className="font-medium text-foreground text-sm">{item.name}</div>
                     </div>
                   </div>
                 )
@@ -323,12 +323,12 @@ export const ProductList = () => {
               { 
                 key: 'unit', 
                 header: 'Unit', 
-                render: (item) => <span className="text-sm text-gray-300">{item.unit}</span> 
+                render: (item) => <span className="text-sm text-muted-foreground">{item.unit}</span> 
               },
               { 
                 key: 'purchasePrice', 
                 header: 'Purchase Price', 
-                render: (item) => <span className="font-mono font-medium text-white text-sm">${item.purchasePrice}</span> 
+                render: (item) => <span className="font-mono font-medium text-foreground text-sm">${item.purchasePrice}</span> 
               },
               { 
                 key: 'sellingPrice', 
@@ -366,25 +366,25 @@ export const ProductList = () => {
                 header: 'Category',
                 render: (item) => (
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium text-gray-300">{item.category}</span>
-                    <span className="text-xs text-gray-500">{item.subCategory}</span>
+                    <span className="text-sm font-medium text-muted-foreground">{item.category}</span>
+                    <span className="text-xs text-muted-foreground">{item.subCategory}</span>
                   </div>
                 )
               },
               { 
                 key: 'brand', 
                 header: 'Brand', 
-                render: (item) => <span className="text-sm text-gray-300">{item.brand}</span> 
+                render: (item) => <span className="text-sm text-muted-foreground">{item.brand}</span> 
               },
               { 
                 key: 'tax', 
                 header: 'Tax', 
-                render: (item) => <span className="text-sm text-gray-400">{item.tax}</span> 
+                render: (item) => <span className="text-sm text-muted-foreground">{item.tax}</span> 
               },
               { 
                 key: 'sku', 
                 header: 'SKU', 
-                render: (item) => <span className="text-xs text-gray-500 font-mono">{item.sku}</span> 
+                render: (item) => <span className="text-xs text-muted-foreground font-mono">{item.sku}</span> 
               },
             ]}
           />
@@ -395,38 +395,38 @@ export const ProductList = () => {
         <TabsContent value="categories" className="flex-1 mt-0">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
              {mockCategories.map((cat) => (
-               <div key={cat.id} className="group bg-gray-900/50 border border-gray-800 hover:border-blue-500/50 hover:bg-gray-900 transition-all rounded-xl overflow-hidden p-5 flex flex-col gap-4 relative">
+               <div key={cat.id} className="group bg-card border border-border hover:border-blue-500/50 hover:bg-card transition-all rounded-xl overflow-hidden p-5 flex flex-col gap-4 relative">
                  <div className="flex justify-between items-start">
-                   <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                   <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-foreground transition-colors">
                      <FolderTree size={20} />
                    </div>
                    <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-white">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                           <MoreVertical size={16} />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-gray-950 border-gray-800 text-white">
-                        <DropdownMenuItem className="hover:bg-gray-900"><Edit2 size={14} className="mr-2"/> Edit</DropdownMenuItem>
-                        <DropdownMenuItem className="hover:bg-gray-900 text-red-400"><Trash2 size={14} className="mr-2"/> Delete</DropdownMenuItem>
+                      <DropdownMenuContent align="end" className="bg-input-background border-border text-foreground">
+                        <DropdownMenuItem className="hover:bg-card"><Edit2 size={14} className="mr-2"/> Edit</DropdownMenuItem>
+                        <DropdownMenuItem className="hover:bg-card text-red-400"><Trash2 size={14} className="mr-2"/> Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                    </DropdownMenu>
                  </div>
                  
                  <div>
-                   <h3 className="text-lg font-bold text-white mb-1">{cat.name}</h3>
-                   <p className="text-sm text-gray-400">{cat.count} Products</p>
+                   <h3 className="text-lg font-bold text-foreground mb-1">{cat.name}</h3>
+                   <p className="text-sm text-muted-foreground">{cat.count} Products</p>
                  </div>
                  
-                 <div className="pt-4 border-t border-gray-800">
-                   <p className="text-xs font-semibold text-gray-500 uppercase mb-3 tracking-wider">Sub-Categories</p>
+                 <div className="pt-4 border-t border-border">
+                   <p className="text-xs font-semibold text-muted-foreground uppercase mb-3 tracking-wider">Sub-Categories</p>
                    <div className="flex flex-wrap gap-2">
                      {cat.subCategories.map((sub, idx) => (
-                       <Badge key={idx} variant="secondary" className="bg-gray-800 text-gray-300 hover:bg-gray-700 border-0 font-normal">
+                       <Badge key={idx} variant="secondary" className="bg-muted text-muted-foreground hover:bg-muted border-0 font-normal">
                          {sub}
                        </Badge>
                      ))}
-                     <button className="h-5 w-5 rounded-full bg-gray-800 flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-700 transition-colors">
+                     <button className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                        <Plus size={12} />
                      </button>
                    </div>
@@ -435,8 +435,8 @@ export const ProductList = () => {
              ))}
              
              {/* Add New Category Card */}
-             <button className="border border-dashed border-gray-800 rounded-xl p-5 flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-blue-500 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all min-h-[200px]">
-                <div className="h-12 w-12 rounded-full bg-gray-900 flex items-center justify-center border border-gray-800">
+             <button className="border border-dashed border-border rounded-xl p-5 flex flex-col items-center justify-center gap-3 text-muted-foreground hover:text-blue-500 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all min-h-[200px]">
+                <div className="h-12 w-12 rounded-full bg-card flex items-center justify-center border border-border">
                   <Plus size={24} />
                 </div>
                 <span className="font-medium">Add New Category</span>
@@ -448,28 +448,28 @@ export const ProductList = () => {
         <TabsContent value="brands" className="flex-1 mt-0">
            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {mockBrands.map((brand) => (
-                <div key={brand.id} className="bg-gray-900 border border-gray-800 rounded-xl p-6 flex flex-col items-center text-center gap-4 hover:border-purple-500/50 transition-all group relative">
+                <div key={brand.id} className="bg-card border border-border rounded-xl p-6 flex flex-col items-center text-center gap-4 hover:border-purple-500/50 transition-all group relative">
                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                     <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-500 hover:text-white"><MoreVertical size={14} /></Button>
+                     <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground"><MoreVertical size={14} /></Button>
                    </div>
                    
-                   <div className="h-16 w-16 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-gray-800 group-hover:border-purple-500 transition-colors">
+                   <div className="h-16 w-16 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-border group-hover:border-purple-500 transition-colors">
                      {/* Placeholder for Brand Logo */}
                      <span className="text-black font-bold text-xl">{brand.name.substring(0, 2).toUpperCase()}</span>
                    </div>
                    
                    <div>
-                     <h3 className="font-bold text-white text-lg">{brand.name}</h3>
-                     <p className="text-sm text-gray-500">{brand.country}</p>
+                     <h3 className="font-bold text-foreground text-lg">{brand.name}</h3>
+                     <p className="text-sm text-muted-foreground">{brand.country}</p>
                    </div>
                    
-                   <Badge variant="outline" className="mt-auto border-gray-800 bg-gray-950 text-gray-400 group-hover:border-purple-500/30 group-hover:text-purple-400">
+                   <Badge variant="outline" className="mt-auto border-border bg-input-background text-muted-foreground group-hover:border-purple-500/30 group-hover:text-purple-400">
                      {brand.products} Products
                    </Badge>
                 </div>
               ))}
               
-              <button className="border border-dashed border-gray-800 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-purple-500 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all min-h-[200px]">
+              <button className="border border-dashed border-border rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground hover:text-purple-500 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all min-h-[200px]">
                 <Plus size={24} />
                 <span className="font-medium">Add Brand</span>
              </button>
@@ -478,33 +478,33 @@ export const ProductList = () => {
 
         {/* Tab Content Area - Units */}
         <TabsContent value="units" className="flex-1 mt-0">
-           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden max-w-3xl">
-              <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
-                <h3 className="font-semibold text-white">Measurement Units</h3>
-                <p className="text-sm text-gray-500">Manage base units for products</p>
+           <div className="bg-card border border-border rounded-xl overflow-hidden max-w-3xl">
+              <div className="p-4 border-b border-border flex justify-between items-center bg-card">
+                <h3 className="font-semibold text-foreground">Measurement Units</h3>
+                <p className="text-sm text-muted-foreground">Manage base units for products</p>
               </div>
-              <div className="divide-y divide-gray-800">
+              <div className="divide-y divide-border">
                 {mockUnits.map((unit) => (
-                  <div key={unit.id} className="p-4 flex items-center justify-between hover:bg-gray-900 transition-colors group">
+                  <div key={unit.id} className="p-4 flex items-center justify-between hover:bg-card transition-colors group">
                     <div className="flex items-center gap-4">
-                       <div className="h-10 w-10 rounded-lg bg-gray-800 flex items-center justify-center text-gray-400 font-mono text-sm border border-gray-700">
+                       <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground font-mono text-sm border border-border">
                          {unit.short}
                        </div>
                        <div>
-                         <p className="font-medium text-white">{unit.name}</p>
-                         <p className="text-xs text-gray-500">{unit.type}</p>
+                         <p className="font-medium text-foreground">{unit.name}</p>
+                         <p className="text-xs text-muted-foreground">{unit.type}</p>
                        </div>
                     </div>
                     
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                       <Button variant="ghost" size="sm" className="h-8 text-gray-400 hover:text-white">Edit</Button>
+                       <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-foreground">Edit</Button>
                        <Button variant="ghost" size="sm" className="h-8 text-red-400 hover:text-red-300 hover:bg-red-900/20">Delete</Button>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="p-4 bg-gray-900/30 border-t border-gray-800">
-                 <Button variant="outline" className="w-full border-dashed border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 hover:bg-gray-800">
+              <div className="p-4 bg-muted/30 border-t border-border">
+                 <Button variant="outline" className="w-full border-dashed border-border text-muted-foreground hover:text-foreground hover:border-gray-500 hover:bg-muted">
                    <Plus size={16} className="mr-2" /> Add New Unit
                  </Button>
               </div>

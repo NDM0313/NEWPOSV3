@@ -84,7 +84,7 @@ export const RolesDashboard = () => {
       red: 'bg-red-500/10 text-red-400 border-red-500/20',
       purple: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
       blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      green: 'bg-green-500/10 text-green-400 border-green-500/20',
+      green: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20',
     };
     return colors[color] || colors.blue;
   };
@@ -94,8 +94,8 @@ export const RolesDashboard = () => {
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Roles & Permissions</h2>
-          <p className="text-gray-400 text-sm">Define user roles and their access levels.</p>
+          <h2 className="text-2xl font-bold text-foreground">Roles & Permissions</h2>
+          <p className="text-muted-foreground text-sm">Define user roles and their access levels.</p>
         </div>
         <Dialog open={isAddRoleOpen} onOpenChange={setIsAddRoleOpen}>
           <DialogTrigger asChild>
@@ -104,10 +104,10 @@ export const RolesDashboard = () => {
               Create New Role
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="bg-card border-border text-white max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl">Create New Role</DialogTitle>
-              <DialogDescription className="text-gray-400">
+              <DialogDescription className="text-muted-foreground">
                 Define a new role and assign permissions.
               </DialogDescription>
             </DialogHeader>
@@ -118,7 +118,7 @@ export const RolesDashboard = () => {
                 <Input 
                   id="role-name" 
                   placeholder="e.g., Senior Manager" 
-                  className="bg-gray-950 border-gray-800 text-white" 
+                  className="bg-input-background border-border text-white" 
                 />
               </div>
 
@@ -127,7 +127,7 @@ export const RolesDashboard = () => {
                 <Input 
                   id="description" 
                   placeholder="Brief description of this role" 
-                  className="bg-gray-950 border-gray-800 text-white" 
+                  className="bg-input-background border-border text-white" 
                 />
               </div>
 
@@ -139,19 +139,19 @@ export const RolesDashboard = () => {
                   const someSelected = permissions.some(p => selectedPermissions.includes(p));
                   
                   return (
-                    <div key={category} className="border border-gray-800 rounded-lg p-4 space-y-3">
+                    <div key={category} className="border border-border rounded-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <Checkbox 
                             checked={allSelected}
                             onCheckedChange={() => toggleCategory(category)}
-                            className="border-gray-700"
+                            className="border-border"
                           />
                           <Label className="text-white font-semibold cursor-pointer">
                             {category}
                           </Label>
                         </div>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted-foreground">
                           {permissions.filter(p => selectedPermissions.includes(p)).length} / {permissions.length} selected
                         </span>
                       </div>
@@ -162,9 +162,9 @@ export const RolesDashboard = () => {
                             <Checkbox 
                               checked={selectedPermissions.includes(permission)}
                               onCheckedChange={() => togglePermission(permission)}
-                              className="border-gray-700"
+                              className="border-border"
                             />
-                            <Label className="text-gray-400 text-sm cursor-pointer">
+                            <Label className="text-muted-foreground text-sm cursor-pointer">
                               {permission}
                             </Label>
                           </div>
@@ -180,7 +180,7 @@ export const RolesDashboard = () => {
                   type="button" 
                   variant="outline" 
                   onClick={() => setIsAddRoleOpen(false)}
-                  className="flex-1 border-gray-700 text-gray-300"
+                  className="flex-1 border-border text-muted-foreground"
                 >
                   Cancel
                 </Button>
@@ -201,9 +201,9 @@ export const RolesDashboard = () => {
       <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-xl">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-400 text-sm font-medium">Total Roles</p>
+            <p className="text-muted-foreground text-sm font-medium">Total Roles</p>
             <h3 className="text-3xl font-bold text-white mt-1">{mockRoles.length}</h3>
-            <p className="text-gray-500 text-xs mt-1">Managing {mockRoles.reduce((acc, r) => acc + r.users, 0)} users</p>
+            <p className="text-muted-foreground text-xs mt-1">Managing {mockRoles.reduce((acc, r) => acc + r.users, 0)} users</p>
           </div>
           <Shield size={48} className="text-blue-500 opacity-50" />
         </div>
@@ -214,7 +214,7 @@ export const RolesDashboard = () => {
         {mockRoles.map((role) => (
           <div 
             key={role.id}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition-all group"
+            className="bg-card border border-border rounded-xl p-6 hover:border-border transition-all group"
           >
             <div className="flex items-start justify-between mb-4">
               <div className={cn(
@@ -225,20 +225,20 @@ export const RolesDashboard = () => {
               </div>
               
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-white">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                   <Edit size={14} />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-red-400">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-400">
                   <Trash2 size={14} />
                 </Button>
               </div>
             </div>
 
             <h3 className="text-xl font-bold text-white mb-2">{role.name}</h3>
-            <p className="text-gray-400 text-sm mb-4">{role.description}</p>
+            <p className="text-muted-foreground text-sm mb-4">{role.description}</p>
 
-            <div className="flex items-center justify-between pt-4 border-t border-gray-800">
-              <div className="flex items-center gap-2 text-gray-400">
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <Users size={16} />
                 <span className="text-sm">{role.users} users</span>
               </div>

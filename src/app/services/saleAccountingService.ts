@@ -1,9 +1,10 @@
-import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString, toLocalDateString } from '@/app/utils/localDate';
+import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 /**
  * Sale Accounting Service (Phase 4: one contract)
  *
  * Source lock: journal_entries + journal_entry_lines + accounts only.
- * COA: 1100 AR, 4000 Sales Revenue, 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
+ * COA: 1100 AR, 4000 Sales Revenue (canonical; 4100 import fallback), 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
  * 5200 Discount Allowed, 5300 Extra Expense (shop tailor payout — not customer invoice extra),
  * 5010 COGS–Inventory (physical goods COGS), 5000 Cost of Production (studio stage labor / worker accruals only), 1200 Inventory, 2000 AP.
  * Payment isolation: document JEs never touch payment_id; payment has its own flow.
@@ -18,9 +19,25 @@ import { supabase } from '@/lib/supabase';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { dispatchAccountingInvalidated } from '@/app/lib/dataInvalidationBus';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
+import {
+  CANONICAL_SALES_REVENUE_CODE,
+  FALLBACK_SALES_REVENUE_CODE,
+  getCanonicalSalesRevenueAccount,
+} from '@/app/lib/canonicalSalesRevenueAccount';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { resolveReceivablePostingAccountId } from './partySubledgerAccountService';
+import {
+  assertJournalLinesBalanced,
+  computeSaleDocumentRevenueAmounts,
+  type SaleDocumentRevenueSnapshot,
+} from './saleDocumentRevenueAmounts';
+
+export {
+  assertJournalLinesBalanced,
+  computeSaleDocumentRevenueAmounts,
+  type SaleDocumentRevenueSnapshot,
+} from './saleDocumentRevenueAmounts';
 
 /**
  * Canonical sale **document** JE (Dr AR / Cr Revenue / COGS — Phase 4):
@@ -163,12 +180,14 @@ async function resolveArLineAccountForSale(companyId: string, saleId: string): P
   return ensureARAccount(companyId);
 }
 
-/** Ensure Sales Revenue (4000) exists for the company; create if missing. */
+/** Ensure canonical Sales Revenue (4000, else 4100) exists; auto-create 4000 if both missing. */
 async function ensureRevenueAccount(companyId: string): Promise<{ id: string } | null> {
-  let account = await accountHelperService.getAccountByCode('4000', companyId);
-  if (account?.id) return account;
+  try {
+    return await getCanonicalSalesRevenueAccount(companyId);
+  } catch {
+    // Neither 4000 nor 4100 — auto-create canonical 4000 (live/native standard)
+  }
 
-  // Fallback: look by name
   const { data: byName } = await supabase
     .from('accounts')
     .select('id')
@@ -180,13 +199,12 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
 
   if (byName?.id) return byName;
 
-  // Auto-create if missing
   try {
     const { data: created, error } = await supabase
       .from('accounts')
       .insert({
         company_id: companyId,
-        code: '4000',
+        code: CANONICAL_SALES_REVENUE_CODE,
         name: 'Sales Revenue',
         type: 'Sales Revenue',
         balance: 0,
@@ -196,16 +214,20 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
       .single();
 
     if (!error && created?.id) {
-      console.log('[saleAccountingService] Created Sales Revenue (4000) account');
+      console.log(`[saleAccountingService] Created Sales Revenue (${CANONICAL_SALES_REVENUE_CODE}) account`);
       return created;
     }
   } catch (e) {
     console.warn('[saleAccountingService] Could not auto-create Sales Revenue account:', e);
   }
+
+  const legacy = await accountHelperService.getAccountByCode(FALLBACK_SALES_REVENUE_CODE, companyId);
+  if (legacy?.id) return legacy;
+
   return null;
 }
 
-/** Studio invoice lines credit here; merchandise stays on 4000. Auto-created if missing. */
+/** Studio invoice lines credit here; merchandise stays on canonical Sales Revenue (4000). Auto-created if missing. */
 async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ id: string } | null> {
   let account = await accountHelperService.getAccountByCode('4010', companyId);
   if (account?.id) return account;
@@ -235,7 +257,7 @@ async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ i
 }
 
 /**
- * Split product revenue credit between merchandise (4000) and studio service (4010) using sales_items line totals as weights.
+ * Split product revenue credit between merchandise (4000 canonical; 4100 fallback) and studio service (4010) using sales_items line totals as weights.
  * Studio line = is_studio_product OR linked product product_type production (RPC parity when flag missing).
  * Exported for PF-14 sale-edit in-place JE updates (must match createSaleJournalEntry).
  */
@@ -629,7 +651,7 @@ export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000), Extra Service Income (4120),
+   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000 canonical), Extra Service Income (4120),
    * Shipping Income (4110), Dr Discount (5200) if any.
    * COGS: Dr COGS - Inventory (5010), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.
@@ -644,8 +666,20 @@ export const saleAccountingService = {
     shipmentCharges?: number;
     invoiceNo: string;
     performedBy?: string | null;
+    /** Document calendar date (invoice_date); defaults to today only if missing. */
+    entryDate?: string;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy } = params;
+    const {
+      saleId,
+      companyId,
+      branchId,
+      total,
+      discountAmount = 0,
+      shipmentCharges = 0,
+      invoiceNo,
+      performedBy,
+      entryDate: requestedEntryDate,
+    } = params;
 
     if (!saleId || !companyId) {
       console.warn('[saleAccountingService] createSaleJournalEntry: missing saleId or companyId');
@@ -660,12 +694,22 @@ export const saleAccountingService = {
     const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
     if (!eligible) return null;
 
+    const entryDate = requestedEntryDate
+      ? toLocalDateString(requestedEntryDate)
+      : localNowDateString();
+
     // Idempotency: exactly one active canonical document JE; payment-linked rows must not block creation.
     const existingDocId = await findActiveCanonicalSaleDocumentJournalEntryId(saleId);
     if (existingDocId) {
       console.log(
         `[saleAccountingService] Canonical sale document JE already exists for ${invoiceNo}, reusing ${existingDocId}`
       );
+      await syncJournalEntryDateByDocumentRefs({
+        companyId,
+        referenceTypes: ['sale', 'sale_adjustment'],
+        referenceId: saleId,
+        entryDate,
+      });
       return existingDocId;
     }
 
@@ -678,7 +722,6 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -693,14 +736,14 @@ export const saleAccountingService = {
       action_fingerprint: saleDocumentJournalFingerprint(companyId, saleId),
     };
 
+    const amounts = computeSaleDocumentRevenueAmounts({
+      total,
+      discount: discountAmount,
+      extraExpense: await loadSaleExtraServiceIncomeAmount(saleId),
+      shippingCharges: shipmentCharges,
+    });
+    const { arDebit, merchandisePool, extraAmount, shippingAmount } = amounts;
     const hasDiscount = discountAmount > 0;
-    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
-    // AR = the FULL amount the customer owes: product total + shipping.
-    // sales.total may exclude shipping (PF-03: product-only total when shipping exists),
-    // so we always add shippingAmount to ensure AR reflects the complete receivable.
-    const arDebit = Math.round((total + shippingAmount) * 100) / 100;
-    // grossTotal = items subtotal (before discount) + shipping, used to split revenue vs shipping credits.
-    const grossTotal = (hasDiscount ? total + discountAmount : total) + shippingAmount;
 
     const lines: JournalEntryLine[] = [
       {
@@ -727,9 +770,6 @@ export const saleAccountingService = {
       }
     }
 
-    const revenueCredit = Math.round((grossTotal - shippingAmount) * 100) / 100;
-    const extraAmount = await loadSaleExtraServiceIncomeAmount(saleId);
-    const merchandisePool = Math.round((revenueCredit - extraAmount) * 100) / 100;
     if (merchandisePool > 0) {
       const split = await computeProductRevenueCreditSplit(saleId, merchandisePool);
       const studioRevAccount = await ensureStudioServiceRevenueAccount(companyId);
@@ -843,6 +883,7 @@ export const saleAccountingService = {
     }
 
     try {
+      assertJournalLinesBalanced(lines, `createSaleJournalEntry ${invoiceNo}`);
       const result = await accountingService.createEntry(entry, lines);
       const journalEntryId = (result as any)?.id ?? null;
       console.log(`[saleAccountingService] Journal entry created for sale ${invoiceNo}: ${journalEntryId}`);
@@ -983,6 +1024,7 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    // Cancellation / reversal stamps the day of cancel (not original invoice date).
     const entryDate = localNowDateString();
 
     const entry: JournalEntry = {
@@ -1299,8 +1341,9 @@ export const saleAccountingService = {
     totalCostAmount: number;
     returnNo: string;
     performedBy?: string | null;
+    entryDate?: string;
   }): Promise<string | null> {
-    const { returnId, companyId, branchId, totalCostAmount, returnNo, performedBy } = params;
+    const { returnId, companyId, branchId, totalCostAmount, returnNo, performedBy, entryDate: requestedEntryDate } = params;
 
     if (!returnId || !companyId || totalCostAmount <= 0) {
       console.log('[saleAccountingService] createSaleReturnInventoryReversalJE: skipping (no cost or missing ids)');
@@ -1337,7 +1380,7 @@ export const saleAccountingService = {
 
     const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
     const entryNo = `JE-RTN-INV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = localNowDateString();
+    const entryDate = requestedEntryDate?.slice(0, 10) || localNowDateString();
 
     const entry: JournalEntry = {
       id: '',

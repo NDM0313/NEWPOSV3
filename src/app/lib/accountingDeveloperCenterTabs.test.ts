@@ -10,6 +10,9 @@ import {
 
 test('parseDeveloperCenterTab maps roznamcha and trace slugs', () => {
   assert.equal(parseDeveloperCenterTab('?tab=roznamcha'), 'roznamcha');
+  assert.equal(parseDeveloperCenterTab('?tab=repair'), 'repair');
+  assert.equal(parseDeveloperCenterTab('?tab=opening'), 'opening');
+  assert.equal(parseDeveloperCenterTab('?tab=audit'), 'audit');
   assert.equal(parseDeveloperCenterTab('tab=trace'), 'trace');
   assert.equal(parseDeveloperCenterTab(''), 'coa');
   assert.equal(parseDeveloperCenterTab('?tab=unknown'), 'coa');
@@ -39,5 +42,8 @@ test('buildDeveloperCenterUrl uses pathname', () => {
 test('tabAcceptsQueryParam includes trace and phase C shells', () => {
   assert.equal(tabAcceptsQueryParam('trace'), true);
   assert.equal(tabAcceptsQueryParam('roznamcha'), true);
+  assert.equal(tabAcceptsQueryParam('opening'), true);
+  assert.equal(tabAcceptsQueryParam('repair'), false);
+  assert.equal(tabAcceptsQueryParam('audit'), false);
   assert.equal(tabAcceptsQueryParam('coa'), false);
 });

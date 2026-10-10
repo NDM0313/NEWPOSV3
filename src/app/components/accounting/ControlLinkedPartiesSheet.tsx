@@ -13,8 +13,26 @@ import {
   nearestPartyControlAncestorId,
   officialPartyControlTitle,
 } from '@/app/lib/partyControlAccounts';
+import { isCanonicalPartySubledgerCode } from '@/app/lib/preferCanonicalPartySubledgerAccounts';
 
 const SHEET_CONTROL_CODES = new Set(['1100', '2000', '2010', '1180']);
+
+function pickLinkedAccountForContact(
+  allAccounts: Account[],
+  contactId: string,
+): Account | undefined {
+  const linked = allAccounts.filter(
+    (x) => String(x.linked_contact_id || '').trim() === contactId,
+  );
+  if (linked.length === 0) return undefined;
+  const canonical = linked.find((x) => isCanonicalPartySubledgerCode(x.code));
+  if (canonical) return canonical;
+  return [...linked].sort(
+    (a, b) =>
+      String(a.code || '').localeCompare(String(b.code || '')) ||
+      String(a.id).localeCompare(String(b.id)),
+  )[0];
+}
 
 function partyRoleLabel(type: string | null | undefined): string {
   const t = String(type || '').toLowerCase();
@@ -95,7 +113,7 @@ export function ControlLinkedPartiesSheet({
         const bal = balanceForControl(code, slice);
         if (Math.abs(bal) < 1e-6) return;
         seen.add(contactId);
-        const linkedAcc = allAccounts.find((x) => String(x.linked_contact_id || '').trim() === contactId);
+        const linkedAcc = pickLinkedAccountForContact(allAccounts, contactId);
         const name =
           String(linkedAcc?.linked_contact_name || linkedAcc?.name || '').trim() ||
           `Contact ${contactId.slice(0, 8)}…`;
@@ -118,28 +136,28 @@ export function ControlLinkedPartiesSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="bg-gray-950 border-gray-800 text-gray-100 w-full sm:max-w-md">
+      <SheetContent side="right" className="bg-input-background border-border text-gray-100 w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle className="text-white pr-8">{title}</SheetTitle>
-          <SheetDescription className="text-gray-400 text-sm">
+          <SheetTitle className="text-foreground pr-8">{title}</SheetTitle>
+          <SheetDescription className="text-muted-foreground text-sm">
             GL sub-ledger lines linked to this control. Amounts match the Accounts list and Contacts GL.
           </SheetDescription>
         </SheetHeader>
         <div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
           {rows.length === 0 ? (
-            <p className="text-sm text-gray-500 py-4">No linked parties found for this control.</p>
+            <p className="text-sm text-muted-foreground py-4">No linked parties found for this control.</p>
           ) : (
-            <ul className="divide-y divide-gray-800/90 border border-gray-800 rounded-lg overflow-hidden">
+            <ul className="divide-y divide-border/90 border border-border rounded-lg overflow-hidden">
               {rows.map((r) => (
-                <li key={r.contactId} className="px-3 py-3 bg-gray-900/40">
+                <li key={r.contactId} className="px-3 py-3 bg-card/40">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-white text-sm truncate">{r.name}</p>
+                      <p className="font-medium text-foreground text-sm truncate">{r.name}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge className="border-violet-500/35 bg-violet-500/15 text-[10px] text-violet-200">
                           {r.partyType}
                         </Badge>
-                        <span className="text-[10px] text-gray-500">
+                        <span className="text-[10px] text-muted-foreground">
                           Linked to {officialPartyControlTitle(code)} ({code})
                         </span>
                       </div>

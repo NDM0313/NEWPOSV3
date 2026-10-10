@@ -64,34 +64,34 @@ export const StudioProductionV2Pipeline = () => {
           variant="ghost"
           size="icon"
           onClick={() => setCurrentView('studio-dashboard-new')}
-          className="text-gray-400 hover:text-white"
+          className="text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-white">Studio Production V2 Pipeline</h1>
-          <p className="text-sm text-gray-400">Advanced workflow (Safe Zone)</p>
+          <h1 className="text-2xl font-bold text-foreground">Studio Production V2 Pipeline</h1>
+          <p className="text-sm text-muted-foreground">Advanced workflow (Safe Zone)</p>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
         <div className="space-y-3">
           {orders.map((o) => (
-            <div key={o.id} className="rounded-lg border border-gray-700/50 bg-gray-800/30 overflow-hidden">
+            <div key={o.id} className="rounded-lg border border-border bg-accent/30 overflow-hidden">
               <button
                 type="button"
-                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-800/50 transition-colors"
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/50 transition-colors"
                 onClick={() => setExpandedOrderId(expandedOrderId === o.id ? null : o.id)}
               >
                 <div className="flex items-center gap-3">
                   <Package className="h-5 w-5 text-amber-500 shrink-0" />
                   <div>
-                    <p className="font-medium text-white">{o.production_no}</p>
-                    <p className="text-sm text-gray-400">
+                    <p className="font-medium text-foreground">{o.production_no}</p>
+                    <p className="text-sm text-muted-foreground">
                       Stages: {o.stages?.length ?? 0} — {o.stages?.every((s) => s.status === 'completed') ? 'Completed' : 'In progress'}
                       {o.customer_invoice_generated && ' · Invoice generated'}
                     </p>
@@ -101,11 +101,11 @@ export const StudioProductionV2Pipeline = () => {
                   <Badge variant={o.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
                     {o.status}
                   </Badge>
-                  {expandedOrderId === o.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                  {expandedOrderId === o.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                 </div>
               </button>
               {expandedOrderId === o.id && (
-                <div className="px-4 pb-4 pt-0 border-t border-gray-700/50">
+                <div className="px-4 pb-4 pt-0 border-t border-border">
                   {showCustomerBilling ? (
                     <CustomerBillingCard
                       orderId={o.id}
@@ -122,7 +122,7 @@ export const StudioProductionV2Pipeline = () => {
                       <p className="text-sm text-amber-200/90 mb-2">
                         <strong>Customer Invoice</strong> — Generate sale invoice from this production after completion.
                       </p>
-                      <p className="text-xs text-gray-400 mb-3">
+                      <p className="text-xs text-muted-foreground mb-3">
                         Enable <strong>Studio Customer Invoice</strong> in Settings → Modules → Developer to see Production Cost, Customer Price, and &quot;Generate Sale Invoice&quot; here.
                       </p>
                       <Button
@@ -140,7 +140,7 @@ export const StudioProductionV2Pipeline = () => {
             </div>
           ))}
           {orders.length === 0 && (
-            <p className="text-gray-500 py-8 text-center">No V2 production orders. Enable from dashboard or studio sales.</p>
+            <p className="text-muted-foreground py-8 text-center">No V2 production orders. Enable from dashboard or studio sales.</p>
           )}
         </div>
       )}

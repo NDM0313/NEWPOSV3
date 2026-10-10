@@ -1,0 +1,53 @@
+{
+  "run": "PHASE_3D_BS_PL_LOADER_SWAP_GATE",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "overall_status": "BLOCKED",
+  "gates": [
+    {
+      "id": 1,
+      "gate": "Finance approval manifest APPROVED",
+      "status": "BLOCKED",
+      "current": "PENDING",
+      "evidence": "finance-approval-manifest-template.json"
+    },
+    {
+      "id": 2,
+      "gate": "Accounting rule confirmations accepted",
+      "status": "BLOCKED",
+      "rules": [
+        "NEEDS_ACCOUNTING_RULE_CONFIRMATION — BS net income in equity",
+        "NEEDS_RULE_CONFIRMATION — P&L COGS heuristic"
+      ]
+    },
+    {
+      "id": 3,
+      "gate": "Optional additional monitoring/soak passes",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": 4,
+      "gate": "Separate operator approval for loader flags / swap plan",
+      "status": "BLOCKED",
+      "note": "No BS/P&L loader flags exist"
+    },
+    {
+      "id": 5,
+      "gate": "Rollback plan created",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": 6,
+      "gate": "Tests/build pass",
+      "status": "PASS",
+      "baseline": "265/265 test:unified-ledger"
+    },
+    {
+      "id": 7,
+      "gate": "Deploy plan approved",
+      "status": "NOT_STARTED"
+    }
+  ],
+  "also_blocked": ["R7", "R8", "next-company"],
+  "current_main_loaders": ["getBalanceSheet", "getProfitLoss"],
+  "loader_swap_approved": false
+}

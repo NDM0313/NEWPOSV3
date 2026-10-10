@@ -34,8 +34,12 @@ let dbInstance: IDBDatabase | null = null;
 function getDb(): Promise<IDBDatabase> {
   if (dbInstance) return Promise.resolve(dbInstance);
   return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
     req.onsuccess = () => {
       dbInstance = req.result;
       resolve(dbInstance);
@@ -47,6 +51,15 @@ function getDb(): Promise<IDBDatabase> {
       }
     };
   });
+}
+
+function isIdbPermissionError(err: unknown): boolean {
+  const msg = String(
+    err && typeof err === 'object' && 'message' in err
+      ? (err as { message?: string }).message
+      : err ?? '',
+  ).toLowerCase();
+  return msg.includes('denied permission') || msg.includes('user denied');
 }
 
 function hasWebCrypto(): boolean {
@@ -173,7 +186,16 @@ export async function getLockedUntil(): Promise<number> {
 }
 
 export async function saveSecurePayload(pin: string, payload: SecurePayload): Promise<void> {
-  const db = await getDb();
+  let db: IDBDatabase;
+  try {
+    db = await getDb();
+  } catch (err) {
+    if (isIdbPermissionError(err)) {
+      console.warn('[ERP Mobile] Secure vault unavailable (storage permission denied). PIN not saved.');
+      return;
+    }
+    throw err;
+  }
   const pinHash = await hashPin(pin);
   const key = await deriveKey(pin);
   const json = JSON.stringify(payload);
@@ -196,7 +218,15 @@ export type VerifyResult =
   | { success: false; locked: true; lockedUntil: number };
 
 export async function verifyPinAndUnlock(pin: string): Promise<VerifyResult> {
-  const db = await getDb();
+  let db: IDBDatabase;
+  try {
+    db = await getDb();
+  } catch (err) {
+    if (isIdbPermissionError(err)) {
+      return { success: false, locked: false, message: 'Browser blocked local vault storage. Allow cookies/storage or use a normal window.' };
+    }
+    return { success: false, locked: false, message: 'Could not open local vault.' };
+  }
 
   const meta: { pinAttempts?: number; pinLockedUntil?: number } = await new Promise((resolve) => {
     const tx = db.transaction(STORE_NAME, 'readonly');
@@ -271,11 +301,21 @@ export async function verifyPinAndUnlock(pin: string): Promise<VerifyResult> {
 }
 
 export async function clearSecure(): Promise<void> {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+  let db: IDBDatabase;
+  try {
+    db = await getDb();
+  } catch {
+    dbInstance = null;
+    return;
+  }
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
   });
 }

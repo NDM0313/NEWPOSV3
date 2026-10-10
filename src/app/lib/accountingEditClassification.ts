@@ -532,6 +532,7 @@ export function classifyPaidExpenseEdit(
   const accountingChangedFields = [...diff.postingChangedFields];
 
   if (structural) {
+    const paymentsTouch = amountChanged || payAccChanged;
     const base = mergeGenericBase({
       changedFields: diff.changedFields,
       postingChangedFields: diff.postingChangedFields,
@@ -540,7 +541,7 @@ export function classifyPaidExpenseEdit(
       headerChangedFields: [...diff.headerOnlyChangedFields, ...diff.nonPostingChangedFields],
       accountingChangedFields,
       inventoryChangedFields: [],
-      paymentsTouch: false,
+      paymentsTouch,
       reasons: [
         amountChanged && 'amount',
         payAccChanged && 'payment_account_id',

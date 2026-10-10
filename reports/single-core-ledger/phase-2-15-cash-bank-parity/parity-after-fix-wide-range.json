@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-06-26T19:30:00Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "range": { "from": "2000-01-01", "to": "2026-06-26" },
+  "legacyGolden": { "cashIn": 136158012, "cashOut": 67042426, "closing": 69115586 },
+  "parityEngine": { "cashIn": 136158012, "cashOut": 67042426, "closing": 69115586 },
+  "rawUnifiedRpcBeforeFix": { "cashIn": 135736321, "cashOut": 126854008, "closing": 8882313 },
+  "parityPass": true,
+  "fix": "roznamchaUnifiedParityAssembler uses getRoznamcha composite",
+  "migrationRequired": false
+}

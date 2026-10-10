@@ -1,0 +1,13 @@
+{
+  "generated": "2026-06-29",
+  "monitorScript": "BLOCKED_MISSING_CREDENTIALS",
+  "loaderGuard": {
+    "dinChina": { "loadersOn": 6, "pass": true },
+    "dinBridal": { "loadersOn": 6, "pass": true },
+    "dinCouture": { "loadersOn": 6, "pass": true },
+    "otherCompanyLoaders": 0
+  },
+  "migrationsRun": false,
+  "glMutations": false,
+  "result": "PARTIAL"
+}

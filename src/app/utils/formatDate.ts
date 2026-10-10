@@ -7,14 +7,41 @@
  * @param timezone - IANA timezone (default from company)
  * @returns Formatted date string
  */
+function datePartsInTimezone(d: Date, timezone: string): { day: string; month: string; year: string } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).formatToParts(d);
+  const pick = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return { day: pick('day'), month: pick('month'), year: pick('year') };
+}
+
+/** DD/MM/YYYY and DD-MM-YYYY both render with dash separators (Pakistan statement style). */
+function isDayFirstDashedFormat(dateFormat: string): boolean {
+  const f = String(dateFormat || '').toUpperCase().replace(/\s/g, '');
+  return f === 'DD/MM/YYYY' || f === 'DD-MM-YYYY';
+}
+
 export const formatDate = (
   date: Date | string | number,
   dateFormat: string = 'DD/MM/YYYY',
   timezone: string = 'Asia/Karachi'
 ): string => {
-  const d = typeof date === 'object' && date instanceof Date ? date : new Date(date);
+  const raw = String(date || '').trim();
+  const d =
+    typeof date === 'object' && date instanceof Date
+      ? date
+      : /^\d{4}-\d{2}-\d{2}/.test(raw)
+        ? new Date(`${raw.slice(0, 10)}T12:00:00`)
+        : new Date(date);
   if (Number.isNaN(d.getTime())) return '—';
   try {
+    if (isDayFirstDashedFormat(dateFormat)) {
+      const { day, month, year } = datePartsInTimezone(d, timezone);
+      return `${day}-${month}-${year}`;
+    }
     const opts: Intl.DateTimeFormatOptions = { timeZone: timezone };
     switch (dateFormat) {
       case 'MM/DD/YYYY':
@@ -26,8 +53,7 @@ export const formatDate = (
         opts.year = 'numeric';
         opts.month = '2-digit';
         opts.day = '2-digit';
-        return d.toLocaleDateString('en-CA', opts); // en-CA gives YYYY-MM-DD
-      case 'DD/MM/YYYY':
+        return d.toLocaleDateString('en-CA', opts);
       default:
         opts.day = '2-digit';
         opts.month = '2-digit';

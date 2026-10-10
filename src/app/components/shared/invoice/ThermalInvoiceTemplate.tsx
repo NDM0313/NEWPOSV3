@@ -1,24 +1,32 @@
 /**
- * Phase A: Thermal (58mm/80mm) invoice layout. Same document engine as A4; compact layout.
+ * Thermal (58mm/80mm) invoice — uses shared ThermalReceiptLayout (not ClassicPrintBase).
  */
 import React from 'react';
-import { ClassicPrintBase } from '@/app/components/shared/ClassicPrintBase';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import type { InvoiceDocument, InvoiceTemplate } from '@/app/types/invoiceDocument';
-import type { PaperSize } from '@/app/components/shared/ClassicPrintBase';
+import type { ThermalSettings } from '@/app/types/printingSettings';
+import { DEFAULT_THERMAL } from '@/app/types/printingSettings';
+import {
+  ThermalReceiptLayout,
+  type ThermalPaperSize,
+  type ThermalReceiptLineItem,
+  type ThermalReceiptTotalRow,
+} from './ThermalReceiptLayout';
 import { formatPackingFromItem } from './formatPackingFromDocument';
 import { BespokeInstructionBullets } from '@/app/components/bespoke/BespokeInstructionBullets';
+
+export type PaperSize = ThermalPaperSize;
 
 export interface ThermalInvoiceTemplateProps {
   document: InvoiceDocument;
   template: InvoiceTemplate;
   formatCurrency: (n: number) => string;
   paperSize?: PaperSize;
+  thermal?: ThermalSettings;
   onPrint?: () => void;
   onClose?: () => void;
   actionChildren?: React.ReactNode;
-  /** Ref for PDF export (attached to root printable element). */
   contentRef?: React.RefObject<HTMLDivElement | null>;
   showLogo?: boolean;
 }
@@ -27,125 +35,99 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
   document: doc,
   template,
   formatCurrency,
-  paperSize = '80mm',
-  onPrint,
-  onClose,
+  paperSize = '58mm',
+  thermal = DEFAULT_THERMAL,
   actionChildren,
   contentRef,
   showLogo = true,
 }) => {
-  const { inventorySettings, businessSettings } = useSettings();
-  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? template.logo_url : undefined);
+  const { inventorySettings, businessSettings, company } = useSettings();
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo && thermal.showLogo ? template.logo_url : undefined);
   const enableBespoke = businessSettings.enableBespokeOrders;
   const enablePacking = inventorySettings.enablePacking ?? false;
 
-  const headerMeta = [
-    { label: 'Invoice No', value: doc.meta.invoice_no },
-    { label: 'Date', value: new Date(doc.meta.invoice_date).toLocaleDateString() },
-  ];
+  const lineItems: ThermalReceiptLineItem[] = doc.items.map((item, index) => ({
+    key: item.id || String(index),
+    name: item.product_name,
+    sku: template.show_sku && item.sku ? item.sku : null,
+    qty: Number(item.quantity).toFixed(2),
+    amount: formatCurrency(item.total),
+    subLines: (
+      <>
+        {enablePacking ? (
+          <div style={{ fontSize: '8px', color: '#6b7280' }}>{formatPackingFromItem(item)}</div>
+        ) : null}
+        {enableBespoke && !item.bespoke_parent_item_id ? (
+          <BespokeInstructionBullets variant="print" customizationDetails={item.customization_details} />
+        ) : null}
+      </>
+    ),
+  }));
+
+  const totalRows: ThermalReceiptTotalRow[] = [];
+
+  if (template.show_studio && doc.totals.studio_charges > 0) {
+    totalRows.push({
+      label: 'Production Cost:',
+      value: formatCurrency(doc.totals.studio_charges),
+    });
+  }
+  totalRows.push({ label: 'Subtotal:', value: formatCurrency(doc.totals.subtotal) });
+  if (template.show_discount && doc.totals.discount > 0) {
+    totalRows.push({ label: 'Discount:', value: `- ${formatCurrency(doc.totals.discount)}` });
+  }
+  if (template.show_studio && doc.totals.studio_charges > 0) {
+    totalRows.push({
+      label: 'Grand Total:',
+      value: formatCurrency(doc.totals.grand_total),
+      bold: true,
+    });
+  } else {
+    totalRows.push({
+      label: 'Total:',
+      value: formatCurrency(doc.totals.total),
+      bold: true,
+    });
+  }
+  totalRows.push({
+    label: 'Paid:',
+    value: formatCurrency(doc.totals.paid),
+    valueColor: '#059669',
+  });
+  if (doc.totals.due > 0) {
+    totalRows.push({
+      label: 'Due:',
+      value: formatCurrency(doc.totals.due),
+      valueColor: '#dc2626',
+      bold: true,
+    });
+  }
+
+  const statusLabel =
+    doc.meta.payment_status === 'paid'
+      ? 'Paid'
+      : doc.meta.payment_status === 'partial'
+        ? 'Partial'
+        : 'Unpaid';
 
   return (
-    <ClassicPrintBase
-      documentTitle="INVOICE"
-      companyName={doc.company.name}
-      logoUrl={logoDisplay || undefined}
-      headerMeta={headerMeta}
-      onPrint={onPrint}
-      onClose={onClose}
-      printerMode="thermal"
-      paperSize={paperSize}
-      showActions={true}
-      actionChildren={actionChildren}
+    <ThermalReceiptLayout
       contentRef={contentRef}
-    >
-      <div className="classic-print-section" style={{ marginBottom: '12px' }}>
-        <p style={{ fontSize: '10px', fontWeight: 600, marginBottom: '4px' }}>Bill To:</p>
-        <p style={{ fontSize: '10px', marginBottom: '2px' }}>{doc.customer.name}</p>
-        {doc.customer.contact_number && <p style={{ fontSize: '9px', color: '#6b7280' }}>{doc.customer.contact_number}</p>}
-      </div>
-
-      <table className="classic-print-table" style={{ fontSize: '10px' }}>
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th className="text-right">Qty</th>
-            <th className="text-right">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {doc.items.map((item, index) => (
-            <tr key={item.id || index}>
-              <td style={{ minWidth: '120px' }}>
-                <span>{item.product_name}</span>
-                {template.show_sku && item.sku && (
-                  <span className="classic-print-sku" style={{ marginLeft: '5px' }}>{item.sku}</span>
-                )}
-                {enablePacking && <div style={{ fontSize: '9px', color: '#6b7280' }}>{formatPackingFromItem(item)}</div>}
-                {enableBespoke && !item.bespoke_parent_item_id && (
-                  <BespokeInstructionBullets
-                    variant="print"
-                    customizationDetails={item.customization_details}
-                  />
-                )}
-              </td>
-              <td className="text-right">{Number(item.quantity).toFixed(2)}</td>
-              <td className="text-right classic-print-currency">{formatCurrency(item.total)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="classic-print-totals" style={{ marginTop: '12px' }}>
-        <div className="classic-print-totals-inner" style={{ width: '100%' }}>
-          {template.show_studio && doc.totals.studio_charges > 0 && (
-            <div className="classic-print-totals-row">
-              <span className="classic-print-totals-label">Production Cost:</span>
-              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.studio_charges)}</span>
-            </div>
-          )}
-          <div className="classic-print-totals-row">
-            <span className="classic-print-totals-label">Subtotal:</span>
-            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.subtotal)}</span>
-          </div>
-          {template.show_discount && doc.totals.discount > 0 && (
-            <div className="classic-print-totals-row">
-              <span className="classic-print-totals-label">Discount:</span>
-              <span className="classic-print-totals-value">- {formatCurrency(doc.totals.discount)}</span>
-            </div>
-          )}
-          {template.show_studio && doc.totals.studio_charges > 0 ? (
-            <div className="classic-print-totals-row total">
-              <span className="classic-print-totals-label">Grand Total:</span>
-              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.grand_total)}</span>
-            </div>
-          ) : (
-            <div className="classic-print-totals-row total">
-              <span className="classic-print-totals-label">Total:</span>
-              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.total)}</span>
-            </div>
-          )}
-          <div className="classic-print-totals-row">
-            <span className="classic-print-totals-label">Paid:</span>
-            <span className="classic-print-totals-value" style={{ color: '#059669' }}>{formatCurrency(doc.totals.paid)}</span>
-          </div>
-          {doc.totals.due > 0 && (
-            <div className="classic-print-totals-row">
-              <span className="classic-print-totals-label">Due:</span>
-              <span className="classic-print-totals-value" style={{ color: '#dc2626', fontWeight: 600 }}>{formatCurrency(doc.totals.due)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="classic-print-section" style={{ marginTop: '8px', fontSize: '10px' }}>
-        <p><strong>Status:</strong> {doc.meta.payment_status === 'paid' ? 'Paid' : doc.meta.payment_status === 'partial' ? 'Partial' : 'Unpaid'}</p>
-      </div>
-
-      {template.footer_note && (
-        <div className="classic-print-section" style={{ marginTop: '8px', fontSize: '9px', color: '#6b7280' }}>
-          <p>{template.footer_note}</p>
-        </div>
-      )}
-    </ClassicPrintBase>
+      paperSize={paperSize}
+      thermal={{ ...thermal, showLogo: showLogo && thermal.showLogo }}
+      companyName={doc.company.name || company.name || 'Company'}
+      companyAddress={doc.company.address ?? company.address}
+      companyPhone={company.phone}
+      logoUrl={logoDisplay || undefined}
+      invoiceNo={doc.meta.invoice_no}
+      invoiceDate={new Date(doc.meta.invoice_date).toLocaleDateString()}
+      customerName={doc.customer.name}
+      customerPhone={doc.customer.contact_number}
+      lineItems={lineItems}
+      totalRows={totalRows}
+      statusLabel={statusLabel}
+      footerNote={template.footer_note}
+      actions={actionChildren}
+    />
   );
 };

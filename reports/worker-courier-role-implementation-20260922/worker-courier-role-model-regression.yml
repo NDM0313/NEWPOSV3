@@ -1,0 +1,37 @@
+name: Worker courier role-model regression
+on:
+  push:
+    branches: [feat/worker-courier-role-model-implementation]
+    paths:
+      - 'migrations/20260922120000_worker_courier_role_model_account_domain.sql'
+      - 'migrations/20260922130000_record_payment_worker_role_leaf_debit.sql'
+      - 'migrations/20260922140000_record_payment_company_auth_and_acl.sql'
+      - 'reports/worker-courier-role-implementation-20260921/postgres_regression.sql'
+      - 'reports/worker-courier-role-implementation-20260922/**'
+      - '.github/workflows/worker-courier-role-model-regression.yml'
+  workflow_dispatch:
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run isolated PostgreSQL 15 regression
+        run: |
+          chmod +x reports/worker-courier-role-implementation-20260922/verification/run_isolated_pg.sh
+          bash -x reports/worker-courier-role-implementation-20260922/verification/run_isolated_pg.sh
+      - name: Show evidence
+        if: always()
+        run: |
+          test ! -f reports/worker-courier-role-implementation-20260922/verification/EVIDENCE.md || cat reports/worker-courier-role-implementation-20260922/verification/EVIDENCE.md
+      - name: Publish evidence in job summary
+        if: always()
+        run: |
+          test ! -f reports/worker-courier-role-implementation-20260922/verification/EVIDENCE.md || cat reports/worker-courier-role-implementation-20260922/verification/EVIDENCE.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-courier-role-model-regression-evidence
+          path: reports/worker-courier-role-implementation-20260922/verification/EVIDENCE.md
+          if-no-files-found: error

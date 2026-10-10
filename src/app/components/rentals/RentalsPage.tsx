@@ -4,10 +4,10 @@
  * Actions: View, Edit (draft), Receive Return (rented/overdue), Add Payment, Print, Delete (draft)
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Plus, Package, DollarSign, Calendar, MoreVertical, Eye, Edit, Trash2, FileText,
-  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2,
+  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -35,6 +35,9 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { userService } from '@/app/services/userService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { ViewPaymentsModal } from '@/app/components/sales/ViewPaymentsModal';
 import { ViewRentalDetailsDrawer } from '@/app/components/rentals/ViewRentalDetailsDrawer';
@@ -42,6 +45,7 @@ import { PickupModal } from '@/app/components/rentals/PickupModal';
 import { ReturnModal } from '@/app/components/rentals/ReturnModal';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 
 const STATUS_LABELS: Record<RentalStatus, string> = {
   draft: 'Draft',
@@ -59,32 +63,90 @@ interface RentalsPageProps {
   embedded?: boolean;
 }
 
+/** List toolbar quick filters (All + operational views). */
+type RentalListFilter =
+  | 'all'
+  | 'pickup_today'
+  | 'return_today'
+  | 'booked'
+  | 'rented'
+  | 'returned'
+  | 'overdue'
+  | 'draft'
+  | 'cancelled';
+
+const LIST_FILTER_TABS: { value: RentalListFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'pickup_today', label: 'Pickup Today' },
+  { value: 'return_today', label: 'Return Today' },
+  { value: 'booked', label: 'Booked' },
+  { value: 'rented', label: 'Rented' },
+  { value: 'returned', label: 'Returned' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+function matchesRentalListFilter(r: RentalUI, filter: RentalListFilter, today: string): boolean {
+  switch (filter) {
+    case 'all':
+      return true;
+    case 'pickup_today':
+      return r.startDate === today && r.status === 'booked';
+    case 'return_today':
+      return r.expectedReturnDate === today && ['booked', 'rented', 'overdue'].includes(r.status);
+    case 'booked':
+      return r.status === 'booked';
+    case 'rented':
+      return r.status === 'rented';
+    case 'returned':
+      return r.status === 'returned';
+    case 'overdue':
+      return r.status === 'overdue' || (r.status === 'rented' && !!r.expectedReturnDate && r.expectedReturnDate < today);
+    case 'draft':
+      return r.status === 'draft';
+    case 'cancelled':
+      return r.status === 'cancelled';
+    default:
+      return true;
+  }
+}
+
 const STATUS_CLASS: Record<RentalStatus, string> = {
-  draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  draft: 'bg-gray-500/20 text-muted-foreground border-gray-500/30',
   booked: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   rented: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  returned: 'bg-green-500/20 text-green-400 border-green-500/30',
+  returned: 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30',
   overdue: 'bg-red-500/20 text-red-400 border-red-500/30',
-  cancelled: 'bg-gray-600/20 text-gray-500 border-gray-600/30',
+  cancelled: 'bg-gray-600/20 text-muted-foreground border-gray-600/30',
 };
 
 export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPageProps = {}) => {
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const globalFilter = useGlobalFilter();
-  const { startDate, endDate, setCurrentModule } = globalFilter;
+  const { startDate, endDate, dateRangeType, setCurrentModule } = globalFilter;
 
   useEffect(() => {
     setCurrentModule('rentals');
   }, [setCurrentModule]);
 
-  const { rentals, loading, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
+  useEffect(() => {
+    if (!companyId) return;
+    userService.getSalesmen(companyId).then((list) => setSalesmen(list || [])).catch(() => setSalesmen([]));
+  }, [companyId]);
+
+  const { rentals, loading, loadFailed, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | RentalStatus>('all');
+  const [listFilter, setListFilter] = useState<RentalListFilter>('all');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [salesmanFilter, setSalesmanFilter] = useState('all');
+  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created'>('created');
+  const [salesmen, setSalesmen] = useState<Array<{ id: string; full_name?: string; name?: string }>>([]);
+  const [viewDetailsPrintMode, setViewDetailsPrintMode] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRental, setSelectedRental] = useState<RentalUI | null>(null);
@@ -99,10 +161,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const [visibleColumns, setVisibleColumns] = useState({
     rentalNo: true,
+    billRef: true,
     customer: true,
-    product: true,
+    product: false,
     item: true,
     branch: true,
+    createdAt: true,
+    salesman: true,
     startDate: true,
     expectedReturn: true,
     actualReturn: true,
@@ -114,15 +179,18 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   });
 
   const [columnOrder, setColumnOrder] = useState([
-    'rentalNo', 'customer', 'product', 'item', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
+    'createdAt', 'rentalNo', 'billRef', 'customer', 'item', 'branch', 'salesman', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
   ]);
 
   const columnLabels: Record<string, string> = {
     rentalNo: 'Rental No',
+    billRef: 'Bill #',
     customer: 'Customer',
     product: 'Product',
     item: 'Item',
     branch: 'Branch',
+    createdAt: 'Created',
+    salesman: 'Salesman',
     startDate: 'Start Date',
     expectedReturn: 'Expected Return',
     actualReturn: 'Actual Return',
@@ -157,7 +225,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const getColumnWidth = (key: string): string => {
     const w: Record<string, string> = {
-      rentalNo: '110px', customer: '160px', product: '170px', item: '150px', branch: '120px',
+      rentalNo: '110px', billRef: '90px', customer: '160px', product: '170px', item: '150px', branch: '120px',
+      createdAt: '110px', salesman: '130px',
       startDate: '100px', expectedReturn: '110px', actualReturn: '100px', status: '100px',
       action: '120px',
       total: '100px', paid: '90px', due: '90px',
@@ -169,24 +238,37 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     const parts = columnOrder
       .filter((k) => visibleColumns[k as keyof typeof visibleColumns])
       .map(getColumnWidth);
-    return `${parts.join(' ')} 60px`.trim();
+    return `60px ${parts.join(' ')}`.trim();
   }, [columnOrder, visibleColumns]);
 
+  const today = new Date().toISOString().slice(0, 10);
+
+  const rentalDateKey = useCallback((r: RentalUI) => {
+    const raw = dateFilterMode === 'created' ? r.createdAt : r.startDate;
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return String(raw).slice(0, 10);
+    return formatLocalDateYYYYMMDD(parsed);
+  }, [dateFilterMode]);
+
   const filterByDate = useCallback(
-    (dateStr: string | undefined) => {
+    (r: RentalUI) => {
       if (!startDate && !endDate) return true;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (startDate && d < new Date(startDate)) return false;
-      if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+      const d = rentalDateKey(r);
+      if (!d) return dateRangeType === 'fromStart';
+      if (startDate && d < startDate) return false;
+      if (endDate && d > endDate) return false;
       return true;
     },
-    [startDate, endDate]
+    [startDate, endDate, rentalDateKey, dateRangeType]
   );
+
+  const hasNonDateFilters = listFilter !== 'all' || !!searchTerm || branchFilter !== 'all' || salesmanFilter !== 'all';
 
   const filteredRentals = useMemo(() => {
     return rentals.filter((r) => {
-      if (!filterByDate(r.startDate)) return false;
+      if (!filterByDate(r)) return false;
+      if (!matchesRentalListFilter(r, listFilter, today)) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
         const itemTextMatch = (r.items ?? []).some(
@@ -196,17 +278,60 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         );
         if (
           !r.rentalNo.toLowerCase().includes(q) &&
+          !(r.documentNumber || '').toLowerCase().includes(q) &&
           !r.customerName.toLowerCase().includes(q) &&
           !r.location.toLowerCase().includes(q) &&
           !itemTextMatch
         )
           return false;
       }
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (branchFilter !== 'all' && r.branchId !== branchFilter) return false;
+      if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
       return true;
     });
-  }, [rentals, searchTerm, statusFilter, branchFilter, filterByDate]);
+  }, [rentals, searchTerm, listFilter, branchFilter, salesmanFilter, filterByDate, today]);
+
+  const emptyListMessage = useMemo(() => {
+    if (loading && rentals.length === 0) return null;
+    if (rentals.length === 0) {
+      return loadFailed ? 'Could not load rentals' : 'No rentals yet';
+    }
+    if (filteredRentals.length > 0) return null;
+    if (hasNonDateFilters) return 'No rentals match this filter';
+    const matchesWithoutDate = rentals.some((r) => {
+      if (!matchesRentalListFilter(r, listFilter, today)) return false;
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        const itemTextMatch = (r.items ?? []).some(
+          (it) =>
+            (it.productName || '').toLowerCase().includes(q) ||
+            (it.sku || '').toLowerCase().includes(q)
+        );
+        if (
+          !r.rentalNo.toLowerCase().includes(q) &&
+          !(r.documentNumber || '').toLowerCase().includes(q) &&
+          !r.customerName.toLowerCase().includes(q) &&
+          !r.location.toLowerCase().includes(q) &&
+          !itemTextMatch
+        )
+          return false;
+      }
+      if (branchFilter !== 'all' && r.branchId !== branchFilter) return false;
+      if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
+      return true;
+    });
+    if (matchesWithoutDate && (startDate || endDate)) {
+      if (dateFilterMode === 'pickup') {
+        return 'No rentals in selected date range by pickup date. Use Filters → Booking / created date to list recent bookings (including future pickups).';
+      }
+      return 'No rentals in selected date range';
+    }
+    return 'No rentals found';
+  }, [loading, rentals, filteredRentals.length, loadFailed, hasNonDateFilters, listFilter, searchTerm, branchFilter, salesmanFilter, startDate, endDate, today, dateFilterMode]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, listFilter, branchFilter, salesmanFilter, startDate, endDate]);
 
   const paginatedRentals = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -214,8 +339,6 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   }, [filteredRentals, currentPage, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRentals.length / pageSize));
-
-  const today = new Date().toISOString().slice(0, 10);
 
   const summary = useMemo(() => {
     const thisMonth = new Date().toISOString().slice(0, 7);
@@ -254,16 +377,16 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0B0F19]">
+    <div className="h-full flex flex-col bg-secondary">
       {!embedded && (
-        <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+        <div className="shrink-0 px-6 py-4 border-b border-border">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-white">Rentals</h1>
-              <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and returns</p>
+              <h1 className="text-2xl font-bold text-foreground">Rentals</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">Manage rental orders and returns</p>
             </div>
             <Button
-              className="bg-pink-600 hover:bg-pink-500 text-white h-10 gap-2"
+              className="bg-pink-600 hover:bg-pink-500 text-foreground h-10 gap-2"
               onClick={() => (onAddRental ? onAddRental() : toast.info('Add Rental – open from Rental list view'))}
             >
               <Plus size={16} />
@@ -273,41 +396,59 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         </div>
       )}
 
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 space-y-3">
-        <p className="text-[11px] text-gray-500 leading-relaxed max-w-4xl">
-          <strong className="text-gray-400">Basis:</strong> Rental document totals and due —{' '}
+      <div className="shrink-0 px-6 py-4 bg-muted/40 border-b border-border space-y-3">
+        <p className="text-[11px] text-muted-foreground leading-relaxed max-w-4xl">
+          <strong className="text-muted-foreground">Basis:</strong> Rental document totals and due —{' '}
           <span className="text-pink-300/90">operational</span> (rental orders). Not GL AR 1100 or canonical P&amp;L unless posted to those accounts.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
-            <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalAmount)}</p>
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Rental (Month)</p>
+            <AdaptiveCurrencyValue value={summary.totalAmount} className="text-2xl font-bold text-foreground mt-1" as="p" />
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-            <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
+          <div className="bg-card border border-border rounded-xl p-4 min-w-0">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Amount Due</p>
+            <AdaptiveCurrencyValue value={summary.totalDue} className="text-2xl font-bold text-red-400 mt-1" as="p" />
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Today Pickups</p>
             <p className="text-2xl font-bold text-pink-400 mt-1">{summary.todayPickups}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Returns</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Today Returns</p>
             <p className="text-2xl font-bold text-amber-400 mt-1">{summary.todayReturns}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Active Rentals</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Active Rentals</p>
             <p className="text-2xl font-bold text-blue-400 mt-1">{summary.active}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Overdue</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Overdue</p>
             <p className="text-2xl font-bold text-red-500 mt-1">{summary.overdue}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Utilization %</p>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Utilization %</p>
             <p className="text-2xl font-bold text-cyan-400 mt-1">{summary.utilization}%</p>
           </div>
         </div>
+      </div>
+
+      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-border overflow-x-auto">
+        {LIST_FILTER_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setListFilter(tab.value)}
+            className={cn(
+              'px-3 py-2 rounded-t-md text-sm font-medium transition-all whitespace-nowrap',
+              listFilter === tab.value
+                ? 'bg-muted text-foreground border-t border-x border-border -mb-px'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <ListToolbar
@@ -339,33 +480,47 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         filter={{
           isOpen: filterOpen,
           onToggle: () => setFilterOpen(!filterOpen),
-          activeCount: [statusFilter, branchFilter].filter((f) => f !== 'all').length,
+          activeCount: [
+            listFilter !== 'all' ? listFilter : null,
+            branchFilter !== 'all' ? branchFilter : null,
+            salesmanFilter !== 'all' ? salesmanFilter : null,
+            dateFilterMode !== 'created' ? dateFilterMode : null,
+          ].filter(Boolean).length,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
-              <p className="text-sm font-semibold text-white mb-2">Filters</p>
-              <label className="text-xs text-gray-400">Status</label>
+            <div className="absolute right-0 top-12 w-64 max-h-[min(70vh,22rem)] overflow-y-auto bg-card border border-border rounded-lg shadow-xl p-4 z-50">
+              <p className="text-sm font-semibold text-foreground mb-2">Filters</p>
+              <label className="text-xs text-muted-foreground">Date filter basis</label>
               <select
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
+                value={dateFilterMode}
+                onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created')}
               >
-                <option value="all">All</option>
-                {(Object.keys(STATUS_LABELS) as RentalStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
+                <option value="pickup">Pickup / start date</option>
+                <option value="created">Booking / created date</option>
               </select>
-              <label className="text-xs text-gray-400 mt-2 block">Branch</label>
+              <label className="text-xs text-muted-foreground mt-2 block">Branch</label>
               <select
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
                 value={branchFilter}
                 onChange={(e) => setBranchFilter(e.target.value)}
               >
-                <option value="all">All</option>
+                <option value="all">All branches</option>
                 {Array.from(new Set(rentals.map((r) => r.branchId))).map((bid) => (
                   <option key={bid} value={bid}>
                     {rentals.find((r) => r.branchId === bid)?.location || bid}
+                  </option>
+                ))}
+              </select>
+              <label className="text-xs text-muted-foreground mt-2 block">Salesman</label>
+              <select
+                className="w-full mt-1 bg-muted border border-border rounded px-2 py-1.5 text-foreground text-sm"
+                value={salesmanFilter}
+                onChange={(e) => setSalesmanFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {salesmen.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.full_name || s.name || s.id}
                   </option>
                 ))}
               </select>
@@ -373,57 +528,159 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           ),
         }}
       />
-      {(startDate || endDate) && (
-        <div className="px-6 pb-2">
-          <p className="text-xs text-amber-300/80">
-            Active date filter is hiding older rentals. Availability checks still include overlapping booked/active rentals outside current date window.
-          </p>
-        </div>
-      )}
 
       <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[1320px]">
-              <div className="sticky top-0 z-10 min-w-[1320px] w-max bg-gray-900 border-b border-gray-800">
+            <div className="min-w-[1560px]">
+              <div className="sticky top-0 z-[1] min-w-[1560px] w-max bg-card border-b border-border">
                 <div
-                  className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                  className="grid gap-3 px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
                 >
-                      {columnOrder.map((key) => {
-                        if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        const align =
-                          key === 'total' || key === 'paid' || key === 'due' ? 'text-right' : key === 'status' || key === 'action' ? 'text-center' : 'text-left';
+                  <div className="text-center">Actions</div>
+                  {columnOrder.map((key) => {
+                    if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                    const align =
+                      key === 'total' || key === 'paid' || key === 'due' ? 'text-right' : key === 'status' || key === 'action' ? 'text-center' : 'text-left';
                     return (
                       <div key={key} className={align}>
                         {columnLabels[key]}
                       </div>
                     );
                   })}
-                  <div className="text-center">Actions</div>
                 </div>
               </div>
 
-              <div className="min-w-[1320px] w-max">
-                {loading ? (
+              <div className="min-w-[1560px] w-max">
+                {loading && rentals.length === 0 ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-pink-500 mb-3 animate-spin" />
-                    <p className="text-gray-400 text-sm">Loading rentals…</p>
+                    <p className="text-muted-foreground text-sm">Loading rentals…</p>
                   </div>
                 ) : paginatedRentals.length === 0 ? (
                   <div className="py-12 text-center">
-                    <ShoppingBag size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No rentals found</p>
+                    <ShoppingBag size={48} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">{emptyListMessage ?? 'No rentals found'}</p>
+                    {loadFailed && rentals.length === 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4 border-border text-muted-foreground"
+                        onClick={() => void refreshRentals()}
+                      >
+                        <RefreshCw size={14} className="mr-2" />
+                        Retry
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   paginatedRentals.map((r) => (
                     <div
                       key={r.id}
+                      role="button"
+                      tabIndex={0}
                       onMouseEnter={() => setHoveredRow(r.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-14 min-w-[1320px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
+                      onClick={() => {
+                        setSelectedRental(r);
+                        setViewDetailsOpen(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedRental(r);
+                          setViewDetailsOpen(true);
+                        }
+                      }}
+                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-accent/30 items-center border-b border-border last:border-b-0 cursor-pointer"
                       style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="bg-card border-border text-foreground w-52">
+                            <DropdownMenuItem
+                              className="hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewDetailsOpen(true);
+                              }}
+                            >
+                              <Eye size={14} className="mr-2 text-blue-400" />
+                              View
+                            </DropdownMenuItem>
+                            {(r.status === 'draft' || r.status === 'booked') && (
+                              <DropdownMenuItem
+                                className="hover:bg-muted cursor-pointer"
+                                onClick={() => onEditRental?.(r)}
+                              >
+                                <Edit size={14} className="mr-2 text-[var(--erp-money-positive)]" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
+                            {(r.status === 'rented' || r.status === 'overdue') && (
+                              <DropdownMenuItem
+                                className="hover:bg-muted cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRental(r);
+                                  setPaymentDialogOpen(true);
+                                }}
+                              >
+                                <DollarSign size={14} className="mr-2 text-[var(--erp-money-positive)]" />
+                                Add Payment
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewPaymentsOpen(true);
+                              }}
+                            >
+                              <Receipt size={14} className="mr-2 text-blue-400" />
+                              View Payments
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="hover:bg-muted cursor-pointer"
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewDetailsPrintMode(true);
+                                setViewDetailsOpen(true);
+                              }}
+                            >
+                              <FileText size={14} className="mr-2 text-purple-400" />
+                              Print
+                            </DropdownMenuItem>
+                            {(r.status === 'draft' || r.status === 'booked') && (
+                              <>
+                                <DropdownMenuSeparator className="bg-muted" />
+                                <DropdownMenuItem
+                                  className="hover:bg-muted cursor-pointer text-red-400"
+                                  onClick={() => {
+                                    setSelectedRental(r);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 size={14} className="mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                       {columnOrder.map((key) => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                         let cell: React.ReactNode = null;
@@ -431,12 +688,19 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           case 'rentalNo':
                             cell = <span className="text-sm font-mono text-pink-400">{r.rentalNo}</span>;
                             break;
+                          case 'billRef':
+                            cell = (
+                              <span className="text-sm text-violet-300 truncate" title={r.documentNumber || ''}>
+                                {r.documentNumber || '—'}
+                              </span>
+                            );
+                            break;
                           case 'customer':
-                            cell = <span className="text-sm text-white truncate">{r.customerName}</span>;
+                            cell = <span className="text-sm text-foreground truncate">{r.customerName}</span>;
                             break;
                           case 'product':
                             cell = (
-                              <span className="text-sm text-gray-300 truncate" title={r.items?.[0]?.productName || ''}>
+                              <span className="text-sm text-muted-foreground truncate" title={r.items?.[0]?.productName || ''}>
                                 {r.items?.[0]?.productName || '—'}
                               </span>
                             );
@@ -445,7 +709,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const lines = r.items ?? [];
                             const it = lines[0];
                             if (!it) {
-                              cell = <span className="text-xs text-gray-500">—</span>;
+                              cell = <span className="text-xs text-muted-foreground">—</span>;
                               break;
                             }
                             const sku = (it.sku || '').trim();
@@ -462,7 +726,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const extra = lines.length > 1 ? ` +${lines.length - 1}` : '';
                             const full = (detail || '—') + extra;
                             cell = (
-                              <span className="text-xs text-gray-400 truncate block" title={full}>
+                              <span className="text-xs text-muted-foreground truncate block" title={full}>
                                 {detail || '—'}
                                 {extra ? <span className="text-pink-400/90">{extra}</span> : null}
                               </span>
@@ -470,17 +734,31 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             break;
                           }
                           case 'branch':
-                            cell = <span className="text-xs text-gray-400 truncate">{r.location || '—'}</span>;
+                            cell = <span className="text-xs text-muted-foreground truncate">{r.location || '—'}</span>;
+                            break;
+                          case 'createdAt':
+                            cell = r.createdAt ? (
+                              <DateTimeDisplay date={r.createdAt} dateOnly className="text-sm text-muted-foreground" />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">—</span>
+                            );
+                            break;
+                          case 'salesman':
+                            cell = (
+                              <span className="text-sm text-muted-foreground truncate" title={r.salesmanName || ''}>
+                                {r.salesmanName || '—'}
+                              </span>
+                            );
                             break;
                           case 'startDate':
-                            cell = <span className="text-sm text-gray-400">{formatLongDate(r.startDate)}</span>;
+                            cell = <span className="text-sm text-muted-foreground">{formatLongDate(r.startDate)}</span>;
                             break;
                           case 'expectedReturn':
-                            cell = <span className="text-sm text-gray-400">{formatLongDate(r.expectedReturnDate)}</span>;
+                            cell = <span className="text-sm text-muted-foreground">{formatLongDate(r.expectedReturnDate)}</span>;
                             break;
                           case 'actualReturn':
                             cell = (
-                              <span className="text-sm text-gray-400">
+                              <span className="text-sm text-muted-foreground">
                                 {r.actualReturnDate ? formatLongDate(r.actualReturnDate) : '—'}
                               </span>
                             );
@@ -494,13 +772,17 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             break;
                           case 'action':
                             cell = (
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                 {r.status === 'booked' && (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-8 text-amber-400 border-amber-500/50 hover:bg-amber-500/20 hover:border-amber-500"
-                                    onClick={() => { setSelectedRental(r); setPickupModalOpen(true); }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedRental(r);
+                                      setPickupModalOpen(true);
+                                    }}
                                   >
                                     <Truck size={14} className="mr-1" />
                                     Pick Up
@@ -513,9 +795,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                       variant="outline"
                                       className={cn(
                                         "h-8 border-green-500/50 hover:bg-green-500/20 hover:border-green-500",
-                                        r.status === 'overdue' ? "text-red-400" : "text-green-400"
+                                        r.status === 'overdue' ? "text-red-400" : "text-[var(--erp-money-positive)]"
                                       )}
-                                      onClick={() => handleReturn(r)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleReturn(r);
+                                      }}
                                     >
                                       <CornerDownLeft size={14} className="mr-1" />
                                       Return
@@ -526,7 +811,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                   </div>
                                 )}
                                 {['draft', 'returned', 'cancelled'].includes(r.status) && (
-                                  <span className="text-xs text-gray-500">—</span>
+                                  <span className="text-xs text-muted-foreground">—</span>
                                 )}
                               </div>
                             );
@@ -536,7 +821,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const displayTotal = r.totalAmount + dmg;
                             cell = (
                               <span
-                                className="text-sm font-semibold text-white tabular-nums"
+                                className="text-sm font-semibold text-foreground tabular-nums"
                                 title={dmg > 0 ? `Booking ${formatCurrency(r.totalAmount)} + damage/penalty ${formatCurrency(dmg)}` : undefined}
                               >
                                 {formatCurrency(displayTotal)}
@@ -546,7 +831,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           }
                           case 'paid': {
                             const canAddPayment = r.status === 'rented' || r.status === 'overdue';
-                            const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
+                            const openPayment = (e?: React.SyntheticEvent) => {
+                              e?.stopPropagation();
+                              if (canAddPayment) {
+                                setSelectedRental(r);
+                                setPaymentDialogOpen(true);
+                              }
+                            };
                             const dmg = Number(r.damageCharges ?? 0) || 0;
                             const penaltyReceived = r.penaltyPaid === true && dmg > 0;
                             const displayPaid = r.paidAmount + (penaltyReceived ? dmg : 0);
@@ -555,10 +846,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 role={canAddPayment ? 'button' : undefined}
                                 tabIndex={canAddPayment ? 0 : undefined}
                                 onClick={openPayment}
-                                onKeyDown={(e) => canAddPayment && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPayment())}
+                                onKeyDown={(e) => canAddPayment && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPayment(e))}
                                 className={cn(
-                                  'text-sm text-gray-300 tabular-nums w-full text-right',
-                                  canAddPayment && 'cursor-pointer hover:text-white hover:underline'
+                                  'text-sm text-muted-foreground tabular-nums w-full text-right',
+                                  canAddPayment && 'cursor-pointer hover:text-foreground hover:underline'
                                 )}
                                 title={penaltyReceived ? `Booking paid ${formatCurrency(r.paidAmount)} + penalty received ${formatCurrency(dmg)}` : undefined}
                               >
@@ -569,8 +860,18 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           }
                           case 'due': {
                             const canAddPayment = r.status === 'rented' || r.status === 'overdue';
-                            const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
-                            const openPaymentHistory = () => { setSelectedRental(r); setViewPaymentsOpen(true); };
+                            const openPayment = (e?: React.SyntheticEvent) => {
+                              e?.stopPropagation();
+                              if (canAddPayment) {
+                                setSelectedRental(r);
+                                setPaymentDialogOpen(true);
+                              }
+                            };
+                            const openPaymentHistory = (e?: React.SyntheticEvent) => {
+                              e?.stopPropagation();
+                              setSelectedRental(r);
+                              setViewPaymentsOpen(true);
+                            };
                             const dmgDue = Number(r.damageCharges ?? 0) || 0;
                             const penaltyStillOwed =
                               dmgDue > 0 && r.penaltyPaid !== true && (r.status === 'returned' || r.status === 'overdue' || r.status === 'rented');
@@ -582,12 +883,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 role="button"
                                 tabIndex={0}
                                 onClick={openPaymentHistory}
-                                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPaymentHistory())}
+                                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPaymentHistory(e))}
                                 className="w-full text-right cursor-pointer hover:opacity-90"
                                 title={penaltyStillOwed ? `Booking due ${formatCurrency(r.dueAmount)} + penalty on account ${formatCurrency(dmgDue)}` : undefined}
                               >
                                 {paymentStatus === 'paid' ? (
-                                  <Badge className="text-[10px] bg-green-500/20 text-green-400 border-green-500/30 gap-1 inline-flex">
+                                  <Badge className="text-[10px] bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30 gap-1 inline-flex">
                                     <CheckCircle2 size={10} />
                                     Paid
                                   </Badge>
@@ -601,7 +902,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                   </Badge>
                                 )}
                                 {displayDue > 0 && (
-                                  <span className="ml-1 text-xs text-gray-400 tabular-nums">{formatCurrency(displayDue)}</span>
+                                  <span className="ml-1 text-xs text-muted-foreground tabular-nums">{formatCurrency(displayDue)}</span>
                                 )}
                               </div>
                             );
@@ -612,86 +913,6 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                         }
                         return <div key={key}>{cell}</div>;
                       })}
-
-                      <div className="flex items-center justify-center gap-1">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
-                            <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => {
-                                setSelectedRental(r);
-                                setViewDetailsOpen(true);
-                              }}
-                            >
-                              <Eye size={14} className="mr-2 text-blue-400" />
-                              View
-                            </DropdownMenuItem>
-                            {(r.status === 'draft' || r.status === 'booked') && (
-                              <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => onEditRental?.(r)}
-                              >
-                                <Edit size={14} className="mr-2 text-green-400" />
-                                Edit
-                              </DropdownMenuItem>
-                            )}
-                            {(r.status === 'rented' || r.status === 'overdue') && (
-                              <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => {
-                                  setSelectedRental(r);
-                                  setPaymentDialogOpen(true);
-                                }}
-                              >
-                                <DollarSign size={14} className="mr-2 text-green-400" />
-                                Add Payment
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => {
-                                setSelectedRental(r);
-                                setViewPaymentsOpen(true);
-                              }}
-                            >
-                              <Receipt size={14} className="mr-2 text-blue-400" />
-                              View Payments
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => {
-                                setSelectedRental(r);
-                                setViewDetailsOpen(true);
-                              }}
-                            >
-                              <FileText size={14} className="mr-2 text-purple-400" />
-                              Print
-                            </DropdownMenuItem>
-                            {(r.status === 'draft' || r.status === 'booked') && (
-                              <>
-                                <DropdownMenuSeparator className="bg-gray-700" />
-                                <DropdownMenuItem
-                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
-                                  onClick={() => {
-                                    setSelectedRental(r);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 size={14} className="mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
                     </div>
                   ))
                 )}
@@ -782,6 +1003,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                   method: rentalPaymentToEdit.method,
                   accountId: rentalPaymentToEdit.accountId,
                   date: rentalPaymentToEdit.date,
+                  createdAt: rentalPaymentToEdit.createdAt,
                   referenceNumber: rentalPaymentToEdit.referenceNo,
                   notes: rentalPaymentToEdit.notes,
                 }
@@ -806,8 +1028,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
       <ViewRentalDetailsDrawer
         isOpen={viewDetailsOpen}
+        openPrintOnMount={viewDetailsPrintMode}
         onClose={() => {
           setViewDetailsOpen(false);
+          setViewDetailsPrintMode(false);
           setSelectedRental(null);
         }}
         rental={selectedRental}
@@ -845,15 +1069,15 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Delete Rental</AlertDialogTitle>
+            <AlertDialogTitle className="text-foreground">Delete Rental</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete rental <strong>{selectedRental?.rentalNo}</strong>? Only draft or booked rentals can be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 text-white border-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-muted text-foreground border-border">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-500">
               Delete
             </AlertDialogAction>
@@ -881,7 +1105,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           if (!open) setSelectedRental(null);
         }}
         rental={selectedRental}
-        documentInfo={selectedRental ? { documentType: selectedRental.documentType, documentNumber: selectedRental.documentNumber } : undefined}
+        documentInfo={selectedRental ? { documentType: selectedRental.pickupDocumentType || selectedRental.documentType, documentNumber: selectedRental.pickupDocumentNumber || undefined } : undefined}
         onConfirm={async (id, payload) => await receiveReturn(id, payload)}
       />
     </div>

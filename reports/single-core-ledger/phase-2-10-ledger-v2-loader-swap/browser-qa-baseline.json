@@ -1,0 +1,122 @@
+{
+  "timestamp": "2026-06-26T10:17:19.066Z",
+  "mode": "baseline",
+  "pass": true,
+  "checks": [
+    {
+      "check": "admin login",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "admin preview toggle visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle default OFF",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "no unified RPC with toggle OFF",
+      "result": "PASS",
+      "notes": "0 calls"
+    },
+    {
+      "check": "main loader attr (baseline)",
+      "result": "PASS",
+      "notes": "expected=legacy actual=legacy"
+    },
+    {
+      "check": "MR JALIL closing 216300",
+      "result": "PASS",
+      "notes": "closing=216300"
+    },
+    {
+      "check": "preview toggle ON — MR JALIL golden PASS",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "export PDF closing 216300",
+      "result": "PASS",
+      "notes": "pdf=216300"
+    },
+    {
+      "check": "export Excel closing 216300",
+      "result": "PASS",
+      "notes": "excel=216300"
+    },
+    {
+      "check": "export CSV closing 216300",
+      "result": "PASS",
+      "notes": "csv=216300"
+    },
+    {
+      "check": "export matches on-screen main table",
+      "result": "PASS",
+      "notes": "screen=216300"
+    },
+    {
+      "check": "export spot-check signed",
+      "result": "PASS",
+      "notes": "legacy result.rows authority"
+    },
+    {
+      "check": "admin compare center loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "admin Pilot ON",
+      "result": "PASS",
+      "notes": "Pilot: ON"
+    },
+    {
+      "check": "admin company engine ON",
+      "result": "PASS",
+      "notes": "Company engine: ON"
+    },
+    {
+      "check": "party MR JALIL compare",
+      "result": "PASS",
+      "notes": "old=216300 new=216300"
+    },
+    {
+      "check": "pilot batch 9/9",
+      "result": "PASS",
+      "notes": "compared=9 pass=9 fail=0"
+    },
+    {
+      "check": "staff preview toggles hidden",
+      "result": "WAIVED",
+      "notes": "No staff credentials"
+    }
+  ],
+  "regressions": [],
+  "ledger": {
+    "mainLoader": "legacy",
+    "closingOk": true,
+    "toggleVisible": true,
+    "offCalls": 0,
+    "previewGoldenPass": true,
+    "onScreenClosing": 216300
+  },
+  "admin": {
+    "pilotOn": true,
+    "engineOn": true,
+    "partyOk": true,
+    "batchOk": true
+  },
+  "exports": {
+    "pdfClosing": 216300,
+    "excelClosing": 216300,
+    "csvClosing": 216300,
+    "signed": true
+  },
+  "staff": {
+    "waived": true,
+    "togglesVisible": null
+  }
+}

@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowLeft, Plus, BookOpen, Loader2, RefreshCw, ChevronRight } from 'lucide-react';
 import * as accountsApi from '../../api/accounts';
+import { getAccountBalancesFromJournal } from '../../api/accountBalancesFromJournal';
 import { ensureDefaultAccounts } from '../../api/defaultAccounts';
+import {
+  buildBalanceRollupById,
+  getCoaDisplayBalance,
+  getParentIdsWithAnyDescendant,
+} from '../../lib/coaDisplayBalance';
 import {
   buildOperationalCoaDisplayRows,
   filterCoaRowsByCollapse,
@@ -17,20 +23,35 @@ interface ChartOfAccountsViewProps {
 
 export function ChartOfAccountsView({ onBack, onAddAccount, companyId, reportRefreshEpoch = 0 }: ChartOfAccountsViewProps) {
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
+  const [glBalancesById, setGlBalancesById] = useState<Map<string, number>>(() => new Map());
   const [loading, setLoading] = useState(!!companyId);
   const [collapsedParentIds, setCollapsedParentIds] = useState<Set<string>>(() => new Set());
 
   const load = useCallback(async () => {
     if (!companyId) {
       setAccounts([]);
+      setGlBalancesById(new Map());
       setLoading(false);
       return;
     }
     setLoading(true);
     await ensureDefaultAccounts(companyId);
     const { data, error } = await accountsApi.getAccounts(companyId);
+    if (error || !data?.length) {
+      setAccounts([]);
+      setGlBalancesById(new Map());
+      setLoading(false);
+      return;
+    }
+    const { map: journalBalances, error: jbErr } = await getAccountBalancesFromJournal(companyId);
+    const balances = jbErr ? new Map<string, number>() : journalBalances;
+    const merged = data.map((acc) => ({
+      ...acc,
+      balance: balances.get(acc.id) ?? 0,
+    }));
+    setAccounts(merged);
+    setGlBalancesById(balances);
     setLoading(false);
-    setAccounts(error ? [] : data);
   }, [companyId]);
 
   useEffect(() => {
@@ -64,6 +85,16 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId, reportRef
   const visibleRows = useMemo(
     () => filterCoaRowsByCollapse(displayRows, collapsedParentIds, accounts),
     [displayRows, collapsedParentIds, accounts]
+  );
+
+  const balanceRollupById = useMemo(
+    () => buildBalanceRollupById(accounts, glBalancesById),
+    [accounts, glBalancesById]
+  );
+
+  const parentIdsWithAnyDescendant = useMemo(
+    () => getParentIdsWithAnyDescendant(accounts),
+    [accounts]
   );
 
   const toggleCollapse = (accountId: string) => {
@@ -129,6 +160,12 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId, reportRef
             {visibleRows.map(({ account: acc, depth }) => {
               const hasChildren = parentIdsWithChildren.has(acc.id);
               const isCollapsed = collapsedParentIds.has(acc.id);
+              const displayBalance = getCoaDisplayBalance(
+                acc,
+                glBalancesById,
+                balanceRollupById,
+                parentIdsWithAnyDescendant
+              );
               return (
                 <div
                   key={acc.id}
@@ -170,8 +207,12 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId, reportRef
                     </div>
                   </div>
                   {!acc.isGroup ? (
-                    <p className="text-sm font-semibold text-white shrink-0 ml-2">
-                      Rs. {(acc.balance || 0).toLocaleString()}
+                    <p
+                      className={`text-sm font-semibold shrink-0 ml-2 tabular-nums ${
+                        displayBalance >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      }`}
+                    >
+                      Rs. {displayBalance.toLocaleString()}
                     </p>
                   ) : null}
                 </div>

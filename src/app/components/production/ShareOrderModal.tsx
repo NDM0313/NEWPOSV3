@@ -32,13 +32,13 @@ export const ShareOrderModal = ({ isOpen, onClose, orderId }: ShareOrderModalPro
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md bg-gray-900 border-gray-800 text-white shadow-2xl">
+      <DialogContent className="sm:max-w-md bg-card border-border text-white shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Share2 className="text-blue-400" size={20} />
             Share Order Status
           </DialogTitle>
-          <DialogDescription className="text-gray-400">
+          <DialogDescription className="text-muted-foreground">
             Share this QR code or link with the customer to track their order.
           </DialogDescription>
         </DialogHeader>
@@ -57,18 +57,18 @@ export const ShareOrderModal = ({ isOpen, onClose, orderId }: ShareOrderModalPro
 
           <div className="w-full space-y-4">
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 font-medium uppercase tracking-wider">Tracking Link</Label>
+              <Label className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Tracking Link</Label>
               <div className="flex gap-2">
                 <Input 
                   value={trackingLink} 
                   readOnly 
-                  className="bg-gray-950 border-gray-700 text-gray-300 font-mono text-xs h-10"
+                  className="bg-input-background border-border text-muted-foreground font-mono text-xs h-10"
                 />
                 <Button 
                   size="icon" 
                   variant="outline" 
                   onClick={handleCopy}
-                  className="shrink-0 border-gray-700 hover:bg-gray-800 hover:text-white"
+                  className="shrink-0 border-border hover:bg-muted hover:text-foreground"
                 >
                   {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
                 </Button>

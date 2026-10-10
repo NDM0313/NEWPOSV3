@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-06-30T12:01:30.000Z",
+  "backup_paths": {
+    "env": "/root/supabase/docker/.env.bak.auth-hostinger-smtp-20260630T114645Z",
+    "compose": "/root/supabase/docker/docker-compose.yml.bak.auth-hostinger-smtp-20260630T114645Z"
+  },
+  "restore_commands": [
+    "cp /root/supabase/docker/.env.bak.auth-hostinger-smtp-20260630T114645Z /root/supabase/docker/.env",
+    "cd /root/supabase/docker && docker compose up -d auth"
+  ],
+  "rollback_masked_target": {
+    "ENABLE_EMAIL_AUTOCONFIRM": "true",
+    "SMTP_HOST": "supabase-mail",
+    "SMTP_PORT": "2500",
+    "SMTP_USER": "fake_mail_user",
+    "SMTP_ADMIN_EMAIL": "admin@example.com",
+    "SMTP_SENDER_NAME": "fake_sender"
+  },
+  "validation_after_rollback": [
+    "GOTRUE_MAILER_AUTOCONFIRM=true",
+    "GOTRUE_SMTP_HOST=supabase-mail",
+    "npm run monitor:three-company-unified-ledger => PASS"
+  ],
+  "note": "Rollback restores autoconfirm=true and fake internal SMTP — signup auto-confirms again without Gmail delivery"
+}

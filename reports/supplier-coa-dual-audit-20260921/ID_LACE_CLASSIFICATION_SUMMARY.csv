@@ -1,0 +1,9 @@
+bucket,classification,count,notes
+A_official_AP,NOT_ELIGIBLE,89,Already on AP-SUPZHD0027; no move
+B_legacy_210027,NOT_ELIGIBLE,0,Legacy inactive empty; no candidates
+C_informational_counterparty,NOT_ELIGIBLE,55,Bank/cash/AR legs mentioning ID LACE in narrative
+D_other_supplier_payable_narration_RESOLVED,LEGIT_OTHER_SUPPLIER,5,See ID_LACE_AMBIGUOUS_5_RESOLUTION.md; HS LACE / SR BUTTON / GALAXY
+remap_candidates_eligible,ELIGIBLE,0,Strict gates; none qualify
+genuine_misattribution,GENUINE_MISATTRIBUTION,0,None after ambiguous-5 resolution
+unresolved_ownership,UNRESOLVED,0,None after ambiguous-5 resolution
+final_verdict,ID_LACE_FINAL_NO_REPAIR_REQUIRED,1,No Class-C line repair required

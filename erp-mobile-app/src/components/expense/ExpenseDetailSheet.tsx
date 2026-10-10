@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { X, Pencil, Trash2, Loader2, Paperclip } from 'lucide-react';
 import * as expensesApi from '../../api/expenses';
 import { displayLabelForCategoryId } from '../../lib/expenseCategoryTreeUtils';
 import type { ExpenseCategoryTreeItem } from '../../api/expenses';
@@ -87,9 +87,21 @@ export function ExpenseDetailSheet({
           <div className="p-4 space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-xs text-[#6B7280] uppercase">Reference</p>
-                  <p className="text-sm font-mono text-white mt-0.5">{expense.expense_no || expense.id.slice(0, 8)}</p>
+                <div className="flex items-start gap-2 min-w-0">
+                  <div>
+                    <p className="text-xs text-[#6B7280] uppercase">Reference</p>
+                    <p className="text-sm font-mono text-white mt-0.5">{expense.expense_no || expense.id.slice(0, 8)}</p>
+                  </div>
+                  {expense.receipt_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowReceipt(true)}
+                      className="mt-3 p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
+                      aria-label="View attachment"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                    </button>
+                  ) : null}
                 </div>
                 <span className="text-xs px-2 py-1 rounded-full bg-[#374151] text-[#D1D5DB] capitalize">
                   {formatStatus(expense.status)}

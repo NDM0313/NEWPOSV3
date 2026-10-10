@@ -1,0 +1,13 @@
+﻿OLD ERP AR/AP PHASE 2B OFFICIAL GL PARITY — BASELINE
+Date: 2026-07-15
+Approval: APPROVE_AR_AP_PHASE2B_PARITY_BASELINE_OFFICIAL_GL
+
+Starting HEAD: d0b64b67
+Runtime commit: a5149971
+Previous VPS HEAD: d0b64b67
+Deployed VPS HEAD: a5149971
+VITE_BUILD_COMMIT: a5149971
+Rollback candidate: d0b64b67
+
+Unrelated WIP excluded (cashbook/import-gap/graphify/tmp).
+Unsafe staged: none at runtime commit.

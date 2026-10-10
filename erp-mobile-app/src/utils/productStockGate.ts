@@ -5,8 +5,10 @@ export interface StockableProduct {
 }
 
 export function getTotalProductStock(product: StockableProduct): number {
-  if (product.hasVariations && product.variations?.length) {
-    return product.variations.reduce((sum, v) => sum + (v.stock ?? 0), 0);
+  if (product.hasVariations) {
+    const variationSum = (product.variations ?? []).reduce((sum, v) => sum + (v.stock ?? 0), 0);
+    // product.stock holds orphan parent movements (variation_id IS NULL), not forced to 0.
+    return variationSum + (product.stock ?? 0);
   }
   return product.stock ?? 0;
 }

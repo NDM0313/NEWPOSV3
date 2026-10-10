@@ -9,12 +9,19 @@ import * as contactsApi from '../../api/contacts';
 import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
 
+export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final';
+
+export interface SelectCustomerExtras {
+  documentStatus?: SaleDocumentStatus;
+  deadlineDate?: string;
+}
+
 interface SelectCustomerProps {
   companyId: string | null;
   branchId?: string | null;
   sessionUserId?: string | null;
   onBack: () => void;
-  onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
+  onSelect: (customer: Customer, saleType: 'regular' | 'studio', extras?: SelectCustomerExtras) => void;
   initialSaleType?: 'regular' | 'studio';
   onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
 }
@@ -23,24 +30,40 @@ function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
 }
 
-export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
-  const { canViewBalances } = usePermissions();
+export function SelectCustomer({
+  companyId,
+  branchId,
+  sessionUserId,
+  onBack,
+  onSelect,
+  initialSaleType = 'regular',
+  onSaleTypeChange,
+}: SelectCustomerProps) {
+  const { canViewBalances, isModuleEnabled } = usePermissions();
+  const studioModuleEnabled = isModuleEnabled('studio');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<Customer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const walkingInitRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+  const [saleType, setSaleType] = useState<'regular' | 'studio'>(
+    studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular'
+  );
   const [view, setView] = useState<'pick' | 'addContact'>('pick');
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   useEffect(() => {
-    setSaleType(initialSaleType);
-  }, [initialSaleType]);
+    const next = studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular';
+    setSaleType(next);
+    if (!studioModuleEnabled && initialSaleType === 'studio') {
+      onSaleTypeChange?.('regular');
+    }
+  }, [initialSaleType, studioModuleEnabled, onSaleTypeChange]);
 
   const handleSaleTypeChange = (type: 'regular' | 'studio') => {
+    if (type === 'studio' && !studioModuleEnabled) return;
     setSaleType(type);
     onSaleTypeChange?.(type);
   };
@@ -168,15 +191,17 @@ export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onS
               <ShoppingCart className="w-4 h-4" />
               Regular Sale
             </button>
-            <button
-              onClick={() => handleSaleTypeChange('studio')}
-              className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                saleType === 'studio' ? 'bg-[#8B5CF6] text-white shadow-lg shadow-[#8B5CF6]/20' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151] hover:border-[#8B5CF6]/50'
-              }`}
-            >
-              <Palette className="w-4 h-4" />
-              Studio Sale
-            </button>
+            {studioModuleEnabled && (
+              <button
+                onClick={() => handleSaleTypeChange('studio')}
+                className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                  saleType === 'studio' ? 'bg-[#8B5CF6] text-white shadow-lg shadow-[#8B5CF6]/20' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151] hover:border-[#8B5CF6]/50'
+                }`}
+              >
+                <Palette className="w-4 h-4" />
+                Studio Sale
+              </button>
+            )}
           </div>
         </div>
         <div className="relative">

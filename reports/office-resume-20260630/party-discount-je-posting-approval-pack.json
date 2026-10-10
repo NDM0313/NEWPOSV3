@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-06-30T06:50:00.000Z",
+  "posting_approved": false,
+  "status": "AWAITING_OPERATOR_APPROVAL",
+  "proposed": {
+    "company": "DIN CHINA",
+    "company_login_email_default": "din@yahoo.com",
+    "party_type": "customer",
+    "party_name": "MR JALIL",
+    "party_alternate": "Operator-selected customer or supplier",
+    "amount_pkr": 1,
+    "entry_date": "2026-06-30",
+    "notes": "Controlled office QA test discount — do not post without explicit approval"
+  },
+  "expected_je": {
+    "direction_customer": "Dr 5200 Discount Allowed / Cr AR (customer receivable posting account)",
+    "direction_supplier_if_used": "Dr AP (supplier payable) / Cr 5210 Discount Received",
+    "reference_type": "party_discount",
+    "reference_id": "contact_id of selected party",
+    "action_fingerprint_pattern": "party_discount:{companyId}:{partyType}:{contactId}:{date}:{amount}"
+  },
+  "post_posting_checks": [
+    "Statement reloads via ledgerUpdated event",
+    "Discount transaction filter shows new row",
+    "Ledger V2 / Account Statement closing balance reflects PKR 1 discount",
+    "Journal entry lines verified in GL (Dr 5200 / Cr AR)",
+    "reference_type = party_discount on journal_entries row",
+    "No duplicate JE if re-submitted same fingerprint"
+  ],
+  "rollback_reversal_plan": {
+    "auto_reverse": false,
+    "operator_decides": "Keep as test JE or reverse/cancel per accounting policy",
+    "document_after_posting": [
+      "journal_entries.id",
+      "entry_no",
+      "entry_date",
+      "action_fingerprint",
+      "journal_entry_lines account_ids and amounts"
+    ],
+    "reversal_method": "Use existing void/reversal workflow per operator policy — do not auto-reverse in this QA run"
+  },
+  "constraints": [
+    "Do not post until operator approves exact company, party, amount, date, and rollback plan",
+    "No deploy, migrations, or feature flags with this posting"
+  ]
+}

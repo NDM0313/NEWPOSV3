@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-06-30T11:47:00.000Z",
+  "file_edited": "/root/supabase/docker/.env",
+  "compose_edited": false,
+  "changes": {
+    "ENABLE_EMAIL_AUTOCONFIRM": { "old": "true", "new": "false" },
+    "SMTP_HOST": { "old": "supabase-mail", "new": "smtp.hostinger.com" },
+    "SMTP_PORT": { "old": "2500", "new": "587" },
+    "SMTP_USER": { "old": "fake_mail_user", "new": "noreply@dincouture.pk" },
+    "SMTP_PASS": { "old": "***MASKED***", "new": "***MASKED***" },
+    "SMTP_ADMIN_EMAIL": { "old": "admin@example.com", "new": "noreply@dincouture.pk" },
+    "SMTP_SENDER_NAME": { "old": "fake_sender", "new": "DIN Collection ERP" }
+  },
+  "unchanged": {
+    "SITE_URL": "https://erp.dincouture.pk",
+    "API_EXTERNAL_URL": "https://supabase.dincouture.pk",
+    "ADDITIONAL_REDIRECT_URLS": "https://erp.dincouture.pk,https://erp.dincouture.pk/,https://erp.dincouture.pk/**"
+  },
+  "running_container_after_restart": {
+    "GOTRUE_MAILER_AUTOCONFIRM": "false",
+    "GOTRUE_SMTP_HOST": "smtp.hostinger.com",
+    "GOTRUE_SMTP_PORT": "587",
+    "GOTRUE_SMTP_USER": "noreply@dincouture.pk",
+    "GOTRUE_SMTP_ADMIN_EMAIL": "noreply@dincouture.pk",
+    "GOTRUE_SMTP_SENDER_NAME": "DIN Collection ERP"
+  }
+}

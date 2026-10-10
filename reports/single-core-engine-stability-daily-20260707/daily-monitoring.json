@@ -1,0 +1,16 @@
+{
+  "run": "STABILITY_DAY7_DAILY_MONITORING",
+  "classification": "STABILITY_DAY_PASS",
+  "run_local_datetime": "2026-07-02T16:43:12+05:00",
+  "monitoring_completed_at": "2026-07-02T11:54:56.063Z",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T11-43-45-042Z.json",
+  "overall": "PASS",
+  "din_china": "PASS",
+  "din_china_admin_compare_9_9": "PASS",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "production_mutation": false
+}

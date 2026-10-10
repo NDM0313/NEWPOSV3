@@ -1,0 +1,26 @@
+{
+  "run_name": "OFFICE RESUME — PULL HANDOFF, FULL MONITORING, PARTY DISCOUNT / OTP QA",
+  "generated_at": "2026-06-30T06:50:00.000Z",
+  "branch": "main",
+  "head": "a836f83a0218042f3a4eb19a45c3a1d501c9cb9f",
+  "expected_origin_main": "a836f83a",
+  "head_includes_expected": true,
+  "pull_result": "fast-forward",
+  "pull_from": "e49800a1",
+  "pull_to": "a836f83a",
+  "conflicts": false,
+  "staged_files": [],
+  "credentials_staged": false,
+  "forbidden_paths_staged": {
+    "graphify_out": false,
+    "downloads": false,
+    "erp_flutter_app_releases": false
+  },
+  "local_dirty_unstaged": {
+    "graphify_out": true,
+    "single_core_ledger_reports": true,
+    "scripts_single_core_ledger_untracked": true,
+    "final_office_pc_local_status_untracked": true
+  },
+  "status": "PASS"
+}

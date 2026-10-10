@@ -16,9 +16,9 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className={cn('flex flex-col items-center justify-center p-12 text-center', className)}>
-      {icon || <FileX className="w-16 h-16 text-gray-400 mb-4" />}
+      {icon || <FileX className="w-16 h-16 text-muted-foreground mb-4" />}
       <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-sm text-gray-600 max-w-md">{message}</p>
+      <p className="text-sm text-muted-foreground max-w-md">{message}</p>
     </div>
   );
 }

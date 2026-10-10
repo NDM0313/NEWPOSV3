@@ -26,7 +26,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function PurchaseReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: PurchaseReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<PurchaseReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRow, setSelectedRow] = useState<PurchaseReportRow | null>(null);
@@ -74,7 +74,7 @@ export function PurchaseReport({ onBack, companyId, branchId, user, reportRefres
         sharing={preview.loading}
         gradient="amber"
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} branchId={branchId} />
       </ReportHeader>
 
       <ReportShell loading={loading} empty={!loading && rows.length === 0} emptyLabel="No purchases in this range.">

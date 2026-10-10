@@ -1,0 +1,12 @@
+{
+  "run_at": "2026-06-20T13:25:24.462Z",
+  "status": "BLOCKED",
+  "reason": "Missing Supabase URL or service role key",
+  "companies_count": 0,
+  "summary": {
+    "pass_count": 0,
+    "fail_count": 0,
+    "contacts_compared": 0
+  },
+  "comparisons": []
+}

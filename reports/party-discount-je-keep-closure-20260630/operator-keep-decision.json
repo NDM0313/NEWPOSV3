@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-30T08:00:00.000Z",
+  "operator_decision": "KEEP",
+  "journal_entry_no": "JE-0003",
+  "journal_entry_id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+  "company": "DIN CHINA",
+  "party": "MR JALIL",
+  "party_type": "customer",
+  "amount_pkr": 1,
+  "entry_date": "2026-06-30",
+  "reference_type": "party_discount",
+  "reason": "Controlled production QA entry proves party_discount flow; retained per operator decision",
+  "reversal_approved": false,
+  "further_gl_mutation_approved": false,
+  "posting_evidence": "reports/party-discount-je-posting-qa-20260630/"
+}

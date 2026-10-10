@@ -1,0 +1,8 @@
+{
+  "status": "NOT_APPLIED",
+  "user_created": false,
+  "auth_user_created": false,
+  "gl_mutations": false,
+  "migrations_run": false,
+  "feature_flags_changed": false
+}

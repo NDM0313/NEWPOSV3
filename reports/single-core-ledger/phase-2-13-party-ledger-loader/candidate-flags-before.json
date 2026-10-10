@@ -1,0 +1,7 @@
+{
+  "capturedAt": "2026-06-26T17:49:00Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "note": "Before enabling Party Ledger screen + loader",
+  "partyLedgerLoader": false,
+  "partyLedgerScreen": false
+}

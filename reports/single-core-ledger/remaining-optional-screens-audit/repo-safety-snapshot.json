@@ -1,0 +1,49 @@
+{
+  "run": "PHASE_3_REMAINING_OPTIONAL_SCREEN_AUDIT",
+  "capturedAt": "2026-06-29T12:00:00Z",
+  "branch": "main",
+  "head": "3f4d50a0",
+  "headMessage": "docs(accounting): record office pc local cleanup execution",
+  "originMainAligned": true,
+  "stagedAtStart": false,
+  "runtimeChanges": false,
+  "migrationsRun": false,
+  "deploy": "SKIPPED",
+  "excludedDirty": {
+    "FINANCE_SENSITIVE_DO_NOT_TOUCH": [
+      "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+      "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+      "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-raw.json",
+      "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-report.md",
+      "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/party-ledger.png",
+      "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/roznamcha.png",
+      "reports/single-core-ledger/din-bridal-monitoring/production-flags-day1.json",
+      "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-day1.md"
+    ],
+    "DAILY_MONITORING_LOCAL_ONLY": [
+      "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+      "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md",
+      "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T09-06-51-058Z.json",
+      "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T09-06-51-058Z.md"
+    ],
+    "TIMESTAMP_REFRESH_LOW_RISK": [
+      "reports/single-core-ledger/din-couture-monitoring/production-flags-day1.json",
+      "reports/single-core-ledger/din-couture-monitoring/production-monitoring-day1.md",
+      "reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json",
+      "reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md"
+    ],
+    "OTHER_UNCOMMITTED": [
+      "reports/single-core-ledger/final-production-ops-handoff/final-office-pc-local-status.json",
+      "reports/single-core-ledger/final-production-ops-handoff/final-office-pc-local-status.md"
+    ]
+  },
+  "productionTruth": {
+    "dinChina": { "flags": "12/12 ON", "loaders": "5/5 ON" },
+    "dinBridal": { "flags": "12/12 ON", "loaders": "5/5 ON" },
+    "dinCouture": { "flags": "12/12 ON", "loaders": "5/5 ON" },
+    "otherCompanyLoaders": 0,
+    "r7": "DESIGN_ONLY",
+    "r8": "BLOCKED",
+    "nextCompany": "BLOCKED"
+  }
+}

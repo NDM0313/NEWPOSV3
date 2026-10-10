@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { CustomSelect } from '../common';
+import { DateInputField } from '../shared/DateTimePicker';
 import type { RentalDetail } from '../../api/rentals';
 import { localNowDateString } from '../../utils/localDate';
 import * as accountsApi from '../../api/accounts';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 
 interface RentalReturnModalProps {
   rental: RentalDetail;
   companyId: string | null;
+  branchId?: string | null;
   onClose: () => void;
   onConfirm: (payload: {
     actualReturnDate: string;
@@ -22,7 +27,7 @@ interface RentalReturnModalProps {
   loading: boolean;
 }
 
-export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loading }: RentalReturnModalProps) {
+export function RentalReturnModal({ rental, companyId, branchId = null, onClose, onConfirm, loading }: RentalReturnModalProps) {
   const today = localNowDateString();
   const [actualReturnDate, setActualReturnDate] = useState(today);
   const [conditionType, setConditionType] = useState('good');
@@ -36,11 +41,36 @@ export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loadi
 
   useEffect(() => {
     if (!companyId) return;
-    accountsApi.getPaymentAccounts(companyId).then(({ data }) => {
-      setPaymentAccounts(data || []);
-      if (data?.length === 1) setPenaltyPaymentAccountId(data[0].id);
-    });
-  }, [companyId]);
+    let cancelled = false;
+    void (async () => {
+      const [{ data }, defaultsRes, branchDefs] = await Promise.all([
+        accountsApi.getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+        branchId ? getBranchPaymentDefaults(branchId) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      const list = data || [];
+      setPaymentAccounts(list);
+      if (list.length > 0) {
+        const picks = list.map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          balance: a.balance ?? 0,
+          code: a.code ?? '',
+          isDefaultCash: a.isDefaultCash,
+          isDefaultBank: a.isDefaultBank,
+        }));
+        const resolved =
+          resolveDefaultPaymentAccountId('cash', picks, defaultsRes.data, branchDefs) ??
+          resolveDefaultPaymentAccountId('bank', picks, defaultsRes.data, branchDefs);
+        if (resolved) setPenaltyPaymentAccountId(resolved);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId]);
 
   const penalty = parseFloat(penaltyAmount) || 0;
   const hasPenalty = conditionType !== 'good';
@@ -105,15 +135,13 @@ export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loadi
             <p className="text-xs text-[#9CA3AF] mt-2">Final payable (rent + penalty)</p>
             <p className="font-bold text-[#F59E0B]">Rs. {finalPayable.toLocaleString()}</p>
           </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-1">Actual return date</label>
-            <input
-              type="date"
-              value={actualReturnDate}
-              onChange={(e) => setActualReturnDate(e.target.value)}
-              className="w-full max-w-full min-w-0 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white box-border"
-            />
-          </div>
+          <DateInputField
+            label="Actual return date"
+            value={actualReturnDate}
+            onChange={setActualReturnDate}
+            accent="rental"
+            required
+          />
           <div>
             <CustomSelect
               label="Condition"

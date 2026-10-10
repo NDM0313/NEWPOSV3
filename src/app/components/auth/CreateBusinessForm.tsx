@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { DatePicker } from '../ui/DatePicker';
 import { Building2, User, Mail, Lock, AlertCircle, Loader2, DollarSign, Calendar } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
@@ -108,7 +109,7 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
   };
 
   return (
-    <div className="min-h-screen bg-[#111827] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
@@ -236,19 +237,15 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
                 <Calendar size={16} />
                 Financial Year Start
               </Label>
-              <Input
-                id="fiscalYearStart"
-                type="date"
+              <DatePicker
                 value={formData.fiscalYearStart}
-                onChange={(e) => {
-                  const start = e.target.value;
+                onChange={(start) => {
                   setFormData((prev) => ({
                     ...prev,
                     fiscalYearStart: start,
                     fiscalYearEnd: suggestFiscalYearEnd(start),
                   }));
                 }}
-                className="bg-gray-800 border-gray-700 text-white"
                 disabled={loading}
               />
               <p className="text-xs text-gray-500 mt-1">Default: July 1 of current fiscal year</p>
@@ -259,12 +256,9 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
                 <Calendar size={16} />
                 Financial Year End
               </Label>
-              <Input
-                id="fiscalYearEnd"
-                type="date"
+              <DatePicker
                 value={formData.fiscalYearEnd}
-                onChange={(e) => setFormData({ ...formData, fiscalYearEnd: e.target.value })}
-                className="bg-gray-800 border-gray-700 text-white"
+                onChange={(v) => setFormData({ ...formData, fiscalYearEnd: v })}
                 disabled={loading}
               />
             </div>

@@ -69,19 +69,19 @@ export const VirtualNumpad = ({
       {/* Numpad Sheet */}
       <div 
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-[70] bg-[#1F2937] border-t border-gray-700 shadow-2xl rounded-t-2xl transition-transform duration-300 ease-out transform",
+          "fixed bottom-0 left-0 right-0 z-[70] bg-card border-t border-border shadow-2xl rounded-t-2xl transition-transform duration-300 ease-out transform",
           isVisible ? "translate-y-0" : "translate-y-full"
         )}
       >
         {/* Header */}
-        <div className="p-4 border-b border-gray-700 bg-[#111827] rounded-t-2xl flex flex-col items-center justify-center relative">
+        <div className="p-4 border-b border-border bg-background rounded-t-2xl flex flex-col items-center justify-center relative">
            <button 
              onClick={onClose}
-             className="absolute right-4 top-4 text-gray-500 hover:text-white"
+             className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
            >
              <X size={20} />
            </button>
-           <span className="text-gray-400 text-sm uppercase tracking-wider font-semibold mb-1">{label}</span>
+           <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold mb-1">{label}</span>
            <div className="text-4xl font-bold text-blue-400 font-mono tracking-tight drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]">
              {value ? Number(value).toLocaleString() : '0'}
              {value.endsWith('.') ? '.' : ''}
@@ -112,7 +112,7 @@ export const VirtualNumpad = ({
            <div className="row-span-2">
               <button 
                 onClick={handleSubmit}
-                className="w-full h-full bg-blue-600 active:bg-blue-700 text-white rounded-xl flex flex-col items-center justify-center transition-all shadow-lg shadow-blue-600/20"
+                className="w-full h-full bg-blue-600 active:bg-blue-700 text-foreground rounded-xl flex flex-col items-center justify-center transition-all shadow-lg shadow-blue-600/20"
               >
                  <Check size={32} />
                  <span className="text-xs font-bold mt-1">DONE</span>
@@ -131,7 +131,7 @@ export const VirtualNumpad = ({
 const NumpadButton = ({ children, onClick }: { children: React.ReactNode, onClick: () => void }) => (
   <button 
     onClick={onClick}
-    className="h-16 w-full bg-[#374151] active:bg-[#4B5563] text-white text-2xl font-semibold rounded-xl transition-colors shadow-lg shadow-black/20 border border-gray-600/30"
+    className="h-16 w-full bg-[#374151] active:bg-[#4B5563] text-foreground text-2xl font-semibold rounded-xl transition-colors shadow-lg shadow-black/20 border border-gray-600/30"
   >
     {children}
   </button>

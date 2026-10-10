@@ -49,11 +49,34 @@ export function composeJournalEntryDescription(params: {
   auto: string;
   userNotes?: string | null;
   reference?: string | null;
+  /** When false, auto text is omitted from the saved description. Default true. */
+  includeAuto?: boolean;
 }): string {
-  const auto = String(params.auto ?? '').trim();
+  const includeAuto = params.includeAuto !== false;
+  const auto = includeAuto ? String(params.auto ?? '').trim() : '';
   const notes = String(params.userNotes ?? '').trim();
   const ref = String(params.reference ?? '').trim();
   const refPart = ref ? (ref.startsWith('Ref:') || ref.startsWith('Reference') ? ref : `Ref: ${ref}`) : '';
   const chunks = [auto, notes, refPart].filter(Boolean);
   return chunks.join(' | ') || 'Journal entry';
+}
+
+export const JOURNAL_AUTO_DESCRIPTION_STORAGE_KEY = 'erp.mobile.journalAutoDescription';
+
+export function readJournalAutoDescriptionEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(JOURNAL_AUTO_DESCRIPTION_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw !== '0' && raw !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function writeJournalAutoDescriptionEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(JOURNAL_AUTO_DESCRIPTION_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
 }

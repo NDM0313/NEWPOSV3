@@ -28,7 +28,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function StudioReport({ onBack, companyId, user, reportRefreshEpoch = 0 }: StudioReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
   const [rows, setRows] = useState<StudioProductionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +80,7 @@ export function StudioReport({ onBack, companyId, user, reportRefreshEpoch = 0 }
         sharing={preview.loading}
         gradient="indigo"
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar value={range} onChange={setRange} companyId={companyId} />
       </ReportHeader>
 
       <ReportShell

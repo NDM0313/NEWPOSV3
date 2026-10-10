@@ -117,6 +117,8 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
     inSettingsToggles: true,
     sidebarGated: true,
     dbEffect: 'modules_config',
+    notes:
+      'Sidebar also requires ledger view permission (Roles & Permissions). Module toggle alone is not enough. Default Accounts settings do not control this nav item.',
   },
   {
     moduleName: 'expenses',

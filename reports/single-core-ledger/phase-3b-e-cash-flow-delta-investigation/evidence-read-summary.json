@@ -1,0 +1,34 @@
+{
+  "run": "PHASE_3B_E_EVIDENCE_READ",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "phase_3b_d_commit": "07b82ccb",
+  "candidate_status": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "companies": {
+    "din-china": {
+      "zeroDiff": false,
+      "closingDelta": 45675273,
+      "rowCountDelta": -82,
+      "financeStatus": "NEEDS_RULE_CONFIRMATION",
+      "branchScope": "Selected branch"
+    },
+    "din-bridal": {
+      "zeroDiff": false,
+      "closingDelta": -55000,
+      "rowCountDelta": -2,
+      "financeStatus": "NEEDS_RULE_CONFIRMATION",
+      "branchScope": "All branches"
+    },
+    "din-couture": {
+      "zeroDiff": true,
+      "closingDelta": 0,
+      "financeStatus": "PENDING"
+    }
+  },
+  "implementation_map": {
+    "legacy": "getCashFlowReport → roznamchaService.getRoznamcha",
+    "preview": "loadRoznamchaUnifiedPreview → get_unified_cash_bank_ledger → cashFlowUnifiedPreviewMapper",
+    "unified_main_wired": false
+  },
+  "parity_contract": "preview_only; loader_swap not approved",
+  "post_capture_monitoring": "PASS (Phase 3B-D)"
+}

@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-06-26T17:47:31.642Z",
+  "mode": "baseline",
+  "baseUrl": "https://erp.dincouture.pk",
+  "party": "MR JALIL",
+  "closingBalance": 216300,
+  "mainLoader": "legacy",
+  "filters": {
+    "dateFrom": "2000-01-01",
+    "dateTo": "2026-06-26",
+    "branchId": "all"
+  }
+}

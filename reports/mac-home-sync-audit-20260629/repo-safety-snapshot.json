@@ -1,0 +1,38 @@
+{
+  "run": "MAC HOME SYNC AUDIT — POST OFFICE MERGE TASK CLASSIFICATION",
+  "generated": "2026-06-29",
+  "branch": "main",
+  "head": "ae6c69d0",
+  "headMessage": "wip: party ledger discount + signup OTP + ledger v2 filters",
+  "originMain": "e49800a1",
+  "commitsAheadOfOrigin": 1,
+  "commitsBehindOrigin": 0,
+  "expectedMergeCommit": "ae6c69d0",
+  "mergeCommitMatchesExpected": true,
+  "stagedFiles": [],
+  "uncommittedModified": [
+    "graphify-out/.graphify_root",
+    "graphify-out/GRAPH_REPORT.md"
+  ],
+  "uncommittedUntrackedExcluded": [
+    "downloads/",
+    "erp-flutter-app/releases/"
+  ],
+  "wipBranch": {
+    "name": "wip/mac-ledger-discount-signup-20260629",
+    "preRebaseCommit": "6ce1bd90",
+    "note": "Rebased onto main; content merged into main at ae6c69d0"
+  },
+  "diffFromOrigin": {
+    "filesChanged": 16,
+    "insertions": 1422,
+    "deletions": 498
+  },
+  "safetyChecks": {
+    "noStagedFiles": true,
+    "noCredentialsStaged": true,
+    "graphifyOutUncommitted": true,
+    "downloadsExcluded": true,
+    "apkReleasesExcluded": true
+  }
+}

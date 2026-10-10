@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-06-30T14:00:00.000Z",
+  "status": "OTP_E2E_BLOCKED_PRODUCTION_EMAIL",
+  "test_email_masked": "d***@yahoo.com",
+  "business_name_planned": "OTP QA Business 2026-06-30",
+  "url": "https://erp.dincouture.pk",
+  "signup_attempted": false,
+  "otp_received": false,
+  "otp_verified": false,
+  "business_created": false,
+  "auth_user_id": null,
+  "company_id": null,
+  "branch_id": null,
+  "blocked_reason": "QA_CREATE_BUSINESS_OTP_EMAIL matches DIN CHINA production monitoring account; constraints forbid production company emails for Create Business signup QA",
+  "admin_test_email_reused": false,
+  "service_role_in_frontend": false
+}

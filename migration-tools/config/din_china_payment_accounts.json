@@ -1,0 +1,16 @@
+{
+  "methodMap": {
+    "cash": { "rpcMethod": "cash", "defaultLegacyAccountId": 115 },
+    "custom_pay_1": { "rpcMethod": "bank", "defaultLegacyAccountId": 159 },
+    "custom_pay_2": { "rpcMethod": "bank", "defaultLegacyAccountId": 108 },
+    "custom_pay_3": { "rpcMethod": "bank", "defaultLegacyAccountId": 106 }
+  },
+  "legacyAccounts": [
+    { "legacyId": 115, "legacyName": "DIN CASH TR G140", "newName": "DIN CHINA Cash", "suggestedType": "cash" },
+    { "legacyId": 106, "legacyName": "MCB", "newName": "MCB", "suggestedType": "bank" },
+    { "legacyId": 108, "legacyName": "DIN FHD MZ", "newName": "DIN FHD MZ", "suggestedType": "bank" },
+    { "legacyId": 159, "legacyName": "DIN NDM MZ", "newName": "DIN NDM MZ", "suggestedType": "bank" },
+    { "legacyId": 133, "legacyName": "WALI DIN T/T", "newName": "WALI DIN T/T", "suggestedType": "bank" },
+    { "legacyId": 157, "legacyName": "YAQOOB", "newName": "YAQOOB", "suggestedType": "other" }
+  ]
+}

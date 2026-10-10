@@ -1,0 +1,10 @@
+{
+  "initialClassification": "MONITORING_GUARD_HARNESS_BUG",
+  "initialError": "spawnSync powershell.exe ENOENT",
+  "failedArtifact": "three-company-monitoring-2026-07-03T19-14-05-255Z",
+  "fix": "cross_platform_node_stdin_ssh_sql",
+  "modulesAdded": ["monitoringSshSql.mjs", "threeCompanyLoaderGuard.mjs"],
+  "finalGuardOk": true,
+  "loadersPerCompany": 8,
+  "realRegression": false
+}

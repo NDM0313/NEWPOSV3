@@ -40,37 +40,37 @@ export const StudioProductionV2Dashboard = () => {
           variant="ghost"
           size="icon"
           onClick={() => setCurrentView('studio-sales-list-new')}
-          className="text-gray-400 hover:text-white"
+          className="text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-white">Studio Production V2</h1>
-          <p className="text-sm text-gray-400">Advanced workflow (Safe Zone)</p>
+          <h1 className="text-2xl font-bold text-foreground">Studio Production V2</h1>
+          <p className="text-sm text-muted-foreground">Advanced workflow (Safe Zone)</p>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4">
-          <p className="text-gray-400 mb-2">
-            Production orders (V2): <span className="font-medium text-white">{orders.length}</span>
+        <div className="rounded-lg border border-border bg-accent/30 p-4">
+          <p className="text-muted-foreground mb-2">
+            Production orders (V2): <span className="font-medium text-foreground">{orders.length}</span>
           </p>
           <ul className="space-y-2">
             {orders.slice(0, 10).map((o) => (
               <li
                 key={o.id}
-                className="flex items-center gap-2 text-sm text-gray-300"
+                className="flex items-center gap-2 text-sm text-muted-foreground"
               >
                 <Package className="h-4 w-4 text-amber-500" />
-                {o.production_no} — <span className="text-gray-500">{o.status}</span>
+                {o.production_no} — <span className="text-muted-foreground">{o.status}</span>
               </li>
             ))}
             {orders.length === 0 && (
-              <li className="text-gray-500">No V2 orders yet. Create from a studio sale when ready.</li>
+              <li className="text-muted-foreground">No V2 orders yet. Create from a studio sale when ready.</li>
             )}
           </ul>
           <Button

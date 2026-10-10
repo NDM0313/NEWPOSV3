@@ -1,0 +1,11 @@
+{
+  "run": "BS_PL_RUNTIME_WIRING_SWAP",
+  "phase": "frontend-deploy",
+  "status": "COMPLETE",
+  "deployedCommit": "db499995",
+  "script": "deploy/vps-build-erp-only.sh",
+  "erpFrontend": "healthy",
+  "httpStatus": 200,
+  "migrations": false,
+  "flagsChangedDuringDeploy": false
+}

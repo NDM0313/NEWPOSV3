@@ -5,7 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
-import { contactService } from '@/app/services/contactService';
+import { contactService, type ContactPartyGlBalancesSlice } from '@/app/services/contactService';
 
 export type BreakdownSourceKind = 'gl' | 'operational' | 'reconciliation' | 'hybrid';
 
@@ -22,6 +22,8 @@ export interface BreakdownMetricRow {
 export interface PartyGlRow {
   contactId: string;
   name: string;
+  contactCode: string | null;
+  subledgerAccountCode: string | null;
   /** AR Dr−Cr, AP Cr−Dr, or worker net from RPC */
   glAmount: number;
   kind: 'ar' | 'ap' | 'worker_net';
@@ -61,17 +63,87 @@ function safeBranchUuid(branchId: string | null | undefined): string | null {
   return /^[0-9a-f-]{36}$/i.test(u) ? u : null;
 }
 
-async function loadContactNames(companyId: string, ids: string[]): Promise<Map<string, string>> {
+type ContactMeta = { name: string; code: string | null };
+
+async function loadContactMeta(companyId: string, ids: string[]): Promise<Map<string, ContactMeta>> {
   const uniq = [...new Set(ids.filter(Boolean))];
-  const map = new Map<string, string>();
+  const map = new Map<string, ContactMeta>();
   if (uniq.length === 0) return map;
   const chunk = 80;
   for (let i = 0; i < uniq.length; i += chunk) {
     const slice = uniq.slice(i, i + chunk);
-    const { data } = await supabase.from('contacts').select('id, name').eq('company_id', companyId).in('id', slice);
-    (data || []).forEach((r: { id: string; name?: string }) => map.set(r.id, r.name || r.id));
+    const { data } = await supabase.from('contacts').select('id, name, code').eq('company_id', companyId).in('id', slice);
+    (data || []).forEach((r: { id: string; name?: string; code?: string | null }) =>
+      map.set(r.id, { name: r.name || r.id, code: r.code ?? null })
+    );
   }
   return map;
+}
+
+async function loadSubledgerAccountCodes(companyId: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data } = await supabase
+    .from('accounts')
+    .select('code, linked_contact_id')
+    .eq('company_id', companyId)
+    .not('linked_contact_id', 'is', null);
+  for (const acc of data || []) {
+    const cid = String((acc as { linked_contact_id?: string }).linked_contact_id || '');
+    const code = String((acc as { code?: string }).code || '').trim();
+    if (cid && code && !map.has(cid)) {
+      map.set(cid, code);
+    }
+  }
+  return map;
+}
+
+/** Build party drill-down rows from contactService map (always uses 3-arg RPC — avoids overload ambiguity). */
+async function buildPartyRowsFromMap(
+  companyId: string,
+  partyMap: Map<string, ContactPartyGlBalancesSlice>,
+  kind: PartyGlRow['kind'],
+  subledgerByContact: Map<string, string>
+): Promise<PartyGlRow[]> {
+  const entries: { contactId: string; glAmount: number }[] = [];
+  partyMap.forEach((slice, contactId) => {
+    const glAmount =
+      kind === 'ar'
+        ? slice.glArReceivable
+        : kind === 'ap'
+          ? slice.glApPayable
+          : slice.glWorkerPayable;
+    if (Math.abs(glAmount) > 0.0001) {
+      entries.push({ contactId, glAmount });
+    }
+  });
+  const meta = await loadContactMeta(
+    companyId,
+    entries.map((e) => e.contactId)
+  );
+  return entries
+    .map((e) => {
+      const m = meta.get(e.contactId);
+      return {
+        contactId: e.contactId,
+        name: m?.name || e.contactId,
+        contactCode: m?.code ?? null,
+        subledgerAccountCode: subledgerByContact.get(e.contactId) ?? null,
+        glAmount: e.glAmount,
+        kind,
+      };
+    })
+    .sort((a, b) => Math.abs(b.glAmount) - Math.abs(a.glAmount));
+}
+
+function sumPartyGlField(
+  partyMap: Map<string, ContactPartyGlBalancesSlice>,
+  field: 'glArReceivable' | 'glApPayable' | 'glWorkerPayable'
+): number {
+  let sum = 0;
+  partyMap.forEach((slice) => {
+    sum += Number(slice[field]) || 0;
+  });
+  return sum;
 }
 
 /** Studio heuristic: invoice_no prefix (aligns with customer ledger labels). */
@@ -187,9 +259,10 @@ export async function fetchControlAccountBreakdown(params: {
   accountCode: string;
   accountName: string;
   controlKind: ControlAccountBreakdownResult['controlKind'];
+  asOfDate?: string;
 }): Promise<ControlAccountBreakdownResult> {
   const { companyId, branchId, accountId, accountCode, accountName, controlKind } = params;
-  const asOf = new Date().toISOString().slice(0, 10);
+  const asOf = (params.asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
   const b = safeBranchUuid(branchId);
 
   const subcategories: BreakdownMetricRow[] = [];
@@ -234,31 +307,27 @@ export async function fetchControlAccountBreakdown(params: {
     glBalanceNote = 'Could not load journal balance.';
   }
 
-  const { map: opMap, error: opMapError } = await contactService.getContactBalancesSummary(companyId, branchId ?? null);
+  const { map: opMap, error: opMapError } = await contactService.getContactBalancesSummary(
+    companyId,
+    branchId ?? null,
+    asOf
+  );
+
+  const needsPartyMap = controlKind === 'ar' || controlKind === 'ap' || controlKind === 'worker_payable' || controlKind === 'worker_advance';
+  const partyGlMap = needsPartyMap
+    ? await contactService.getContactPartyGlBalancesMap(companyId, branchId, asOf)
+    : null;
+  const subledgerByContact = needsPartyMap ? await loadSubledgerAccountCodes(companyId) : new Map<string, string>();
+  if (needsPartyMap && !partyGlMap) {
+    partySectionNote = 'Party GL slice unavailable (RPC error).';
+  }
 
   if (controlKind === 'ar') {
     let sumPartyAr = 0;
-    const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
-      p_company_id: companyId,
-      p_branch_id: b,
-    });
-    if (!glRpc.error && Array.isArray(glRpc.data)) {
-      const rows = glRpc.data as { contact_id: string; gl_ar_receivable?: number | string }[];
-      sumPartyAr = rows.reduce((s, r) => s + (Number(r.gl_ar_receivable ?? 0) || 0), 0);
+    if (partyGlMap) {
+      sumPartyAr = sumPartyGlField(partyGlMap, 'glArReceivable');
       partyAttributedGlSum = roundMoney(sumPartyAr);
-      const ids = rows.filter((r) => Number(r.gl_ar_receivable ?? 0) !== 0).map((r) => r.contact_id);
-      const names = await loadContactNames(companyId, ids);
-      partyRows = rows
-        .map((r) => ({
-          contactId: r.contact_id,
-          name: names.get(r.contact_id) || r.contact_id,
-          glAmount: Number(r.gl_ar_receivable ?? 0) || 0,
-          kind: 'ar' as const,
-        }))
-        .filter((r) => Math.abs(r.glAmount) > 0.0001)
-        .sort((a, b) => Math.abs(b.glAmount) - Math.abs(a.glAmount));
-    } else {
-      partySectionNote = 'Party GL slice unavailable (RPC error).';
+      partyRows = await buildPartyRowsFromMap(companyId, partyGlMap, 'ar', subledgerByContact);
     }
 
     unmappedGlByReference = await fetchUnmappedPartyGlBuckets(companyId, b, accountCode || '1100');
@@ -395,27 +464,10 @@ export async function fetchControlAccountBreakdown(params: {
 
   if (controlKind === 'ap') {
     let sumPartyAp = 0;
-    const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
-      p_company_id: companyId,
-      p_branch_id: b,
-    });
-    if (!glRpc.error && Array.isArray(glRpc.data)) {
-      const rows = glRpc.data as { contact_id: string; gl_ap_payable?: number | string }[];
-      sumPartyAp = rows.reduce((s, r) => s + (Number(r.gl_ap_payable ?? 0) || 0), 0);
+    if (partyGlMap) {
+      sumPartyAp = sumPartyGlField(partyGlMap, 'glApPayable');
       partyAttributedGlSum = roundMoney(sumPartyAp);
-      const ids = rows.filter((r) => Number(r.gl_ap_payable ?? 0) !== 0).map((r) => r.contact_id);
-      const names = await loadContactNames(companyId, ids);
-      partyRows = rows
-        .map((r) => ({
-          contactId: r.contact_id,
-          name: names.get(r.contact_id) || r.contact_id,
-          glAmount: Number(r.gl_ap_payable ?? 0) || 0,
-          kind: 'ap' as const,
-        }))
-        .filter((r) => Math.abs(r.glAmount) > 0.0001)
-        .sort((a, b) => Math.abs(b.glAmount) - Math.abs(a.glAmount));
-    } else {
-      partySectionNote = 'Party GL slice unavailable (RPC error).';
+      partyRows = await buildPartyRowsFromMap(companyId, partyGlMap, 'ap', subledgerByContact);
     }
 
     unmappedGlByReference = await fetchUnmappedPartyGlBuckets(companyId, b, accountCode || '2000');
@@ -531,23 +583,9 @@ export async function fetchControlAccountBreakdown(params: {
         ? 'Per-party amount = GL worker net (WP−WA) from journal resolver — not 2010-only.'
         : 'Party rows show **net worker GL** (WP−WA), not 1180 advance-only; per-party advance split is pending_mapping.';
 
-    const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
-      p_company_id: companyId,
-      p_branch_id: b,
-    });
-    if (!glRpc.error && Array.isArray(glRpc.data)) {
-      const rows = glRpc.data as { contact_id: string; gl_worker_payable?: number | string }[];
-      const ids = rows.filter((r) => Number(r.gl_worker_payable ?? 0) !== 0).map((r) => r.contact_id);
-      const names = await loadContactNames(companyId, ids);
-      partyRows = rows
-        .map((r) => ({
-          contactId: r.contact_id,
-          name: names.get(r.contact_id) || r.contact_id,
-          glAmount: Number(r.gl_worker_payable ?? 0) || 0,
-          kind: 'worker_net' as const,
-        }))
-        .filter((r) => Math.abs(r.glAmount) > 0.0001)
-        .sort((a, b) => Math.abs(b.glAmount) - Math.abs(a.glAmount));
+    const glRpc = partyGlMap;
+    if (glRpc) {
+      partyRows = await buildPartyRowsFromMap(companyId, glRpc, 'worker_net', subledgerByContact);
       if (partyRows.length > 0) {
         const { data: ctype } = await supabase
           .from('contacts')

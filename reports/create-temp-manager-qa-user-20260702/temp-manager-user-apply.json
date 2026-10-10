@@ -1,0 +1,11 @@
+{
+  "status": "NOT_APPLIED",
+  "classification": "BLOCKED_NEEDS_OPERATOR_EMAIL",
+  "user_created": false,
+  "auth_user_created": false,
+  "public_user_created": false,
+  "user_branches_assigned": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "feature_flags_changed": false
+}

@@ -5,19 +5,32 @@ import { getContactSubAccountId, getAccountLedgerLines, type LedgerLine } from '
 import {
   getSupplierApGlLedgerLinesForContact,
   getCustomerArGlLedgerLinesForContact,
+  isPartyGlLedgerEmptySuccess,
 } from '../../../api/partyGlLedger';
+import {
+  loadSupplierBusinessHistory,
+  type SupplierStatementViewMode,
+} from '../../../api/supplierBusinessGl';
 import { getContacts, getContactWhatsAppPhone, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable } from '../../../api/accounts';
 import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
 import { getWorkerOperationalLedgerLines } from '../../../api/workerOperationalLedger';
 import {
+  balanceRowFromMap,
   fetchContactPartyGlBalancesMap,
-  partyGlDueForListRole,
+  fetchOperationalContactBalancesSummary,
   partyGlSliceFromMap,
+  resolveContactListBalance,
 } from '../../../api/contactBalancesRpc';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
+import {
+  LedgerPeriodEmptyCard,
+  allTimeDateRange,
+  isOpeningOnlyPeriod,
+  isTrulyEmptyLedger,
+} from './_shared/LedgerPeriodEmptyCard';
 import { formatAmount, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
@@ -25,7 +38,13 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
 import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
 import { LedgerActivityListRow } from './_shared/LedgerActivityListRow';
+import { isEasyReportHubMode, useReportHubMode } from './_shared/ReportHubModeContext';
 import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
+import { toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
+import {
+  effectiveNetLedgerPresentation,
+  formatPartyLedgerLoadError,
+} from '../../../lib/ledgerEffectiveNet';
 
 export type PartyLedgerKind = 'customer' | 'supplier' | 'worker';
 
@@ -62,12 +81,14 @@ const displayEntryNo = (value: string, fallbackType?: string) => {
 
 export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, reportRefreshEpoch = 0 }: PartyLedgerReportProps) {
   const cfg = KIND_LABELS[kind];
+  const hubMode = useReportHubMode();
+  const easyMode = isEasyReportHubMode(hubMode);
   const [parties, setParties] = useState<LocalParty[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<LocalParty | null>(null);
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
 
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
@@ -76,7 +97,11 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
   const [listRefreshNonce, setListRefreshNonce] = useState(0);
   const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
   const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
+  /** Display order only — balances stay chronological. Default newest-first. */
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
   const [ledgerSourceHint, setLedgerSourceHint] = useState<string | null>(null);
+  /** Supplier detail only — default Business History (web parity). */
+  const [supplierViewMode, setSupplierViewMode] = useState<SupplierStatementViewMode>('business_history');
   const preview = usePdfPreview(companyId);
   const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
@@ -104,18 +129,23 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     (async () => {
       try {
         if (kind === 'worker') {
-          const [{ data }, partyGl] = await Promise.all([
+          const [{ data }, partyGl, opSummary] = await Promise.all([
             getWorkersWithPayable(companyId),
             fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
+            fetchOperationalContactBalancesSummary(companyId, branchId ?? null),
           ]);
           if (cancelled) return;
+          const glOk = partyGl.error == null;
           setParties(
             (data || []).map((w) => {
-              const slice = partyGlSliceFromMap(partyGl.map, w.id);
-              const balance =
-                !partyGl.error && slice
-                  ? partyGlDueForListRole(slice, 'worker')
-                  : Number(w.totalPayable || 0);
+              const balance = resolveContactListBalance({
+                opening: Number(w.totalPayable || 0),
+                contactType: 'worker',
+                listRole: 'worker',
+                glOk,
+                glSlice: partyGlSliceFromMap(partyGl.map, w.id),
+                opRow: balanceRowFromMap(opSummary.map, w.id),
+              });
               return {
                 id: w.id,
                 name: w.name,
@@ -125,15 +155,18 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
               };
             }),
           );
-        } else {
-          const role = kind as ContactRole;
-          const { data, error } = await getContacts(companyId, role, branchId ?? null);
+        } else if (kind === 'supplier') {
+          // Single Business GL source: getContacts already overlays Business balances once.
+          // Do NOT re-run Official AP resolve or a second batch map (silent-zero risk).
+          const { data, error } = await getContacts(companyId, 'supplier', branchId ?? null);
           if (cancelled) return;
-          if (error) {
+          if (error && !(data || []).length) {
             setParties([]);
             setListError(error);
             return;
           }
+          if (error) setListError(error);
+          else setListError(null);
           setParties(
             (data || []).map((c) => ({
               id: c.id,
@@ -142,6 +175,39 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
               balance: Number(c.balance || 0),
               sharePhone: getContactWhatsAppPhone(c) || undefined,
             })),
+          );
+        } else {
+          const role = kind as ContactRole;
+          const [{ data, error }, partyGl, opSummary] = await Promise.all([
+            getContacts(companyId, role, branchId ?? null),
+            fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
+            fetchOperationalContactBalancesSummary(companyId, branchId ?? null),
+          ]);
+          if (cancelled) return;
+          if (error) {
+            setParties([]);
+            setListError(error);
+            return;
+          }
+          const glOk = partyGl.error == null;
+          setParties(
+            (data || []).map((c) => {
+              const balance = resolveContactListBalance({
+                opening: Number(c.balance || 0),
+                contactType: role,
+                listRole: role,
+                glOk,
+                glSlice: partyGlSliceFromMap(partyGl.map, c.id),
+                opRow: balanceRowFromMap(opSummary.map, c.id),
+              });
+              return {
+                id: c.id,
+                name: c.name,
+                meta: [c.phone, c.email].filter(Boolean).join(' · ') || undefined,
+                balance,
+                sharePhone: getContactWhatsAppPhone(c) || undefined,
+              };
+            }),
           );
         }
       } finally {
@@ -205,40 +271,69 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
           setLines(sortLedgerLinesAndRebuildRunningBalance(glRes.lines, glRes.openingBalance));
           setDetailError(glRes.error ?? opRes.error);
           setLedgerSourceHint(glRes.lines.length > 0 ? 'GL journal (2010 / 1180)' : null);
+        } else if (kind === 'supplier') {
+          const start = range.from || '2016-01-01';
+          const end = range.to || new Date().toISOString().slice(0, 10);
+          if (supplierViewMode === 'business_history') {
+            const biz = await loadSupplierBusinessHistory({
+              companyId,
+              contactId: selected.id,
+              contactType: 'supplier',
+              branchId: branchId ?? null,
+              startDate: start,
+              endDate: end,
+            });
+            if (cancelled) return;
+            if (!biz) {
+              setOpening(0);
+              setLines([]);
+              setDetailError('Supplier Business History unavailable for this contact role.');
+              setLedgerSourceHint(null);
+              return;
+            }
+            setOpening(biz.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(biz.lines, biz.openingBalance));
+            setDetailError(null);
+            setLedgerSourceHint(
+              `Business History (AP + legacy) · closing ${biz.totals.closing.toLocaleString('en-PK')} · ${biz.periodRows.length} line(s)`,
+            );
+          } else {
+            const rpcRes = await getSupplierApGlLedgerLinesForContact(
+              companyId,
+              selected.id,
+              branchId ?? null,
+              range.from || undefined,
+              range.to || undefined,
+            );
+            if (cancelled) return;
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setDetailError(rpcRes.error);
+            setLedgerSourceHint('Official AP (control 2000 / AP-SUP only)');
+          }
         } else {
-          const rpcLoad =
-            kind === 'supplier'
-              ? getSupplierApGlLedgerLinesForContact(
-                  companyId,
-                  selected.id,
-                  branchId ?? null,
-                  range.from || undefined,
-                  range.to || undefined,
-                )
-              : getCustomerArGlLedgerLinesForContact(
-                  companyId,
-                  selected.id,
-                  branchId ?? null,
-                  range.from || undefined,
-                  range.to || undefined,
-                );
-
-          const rpcRes = await rpcLoad;
+          const rpcRes = await getCustomerArGlLedgerLinesForContact(
+            companyId,
+            selected.id,
+            branchId ?? null,
+            range.from || undefined,
+            range.to || undefined,
+          );
           if (cancelled) return;
 
-          if (!rpcRes.error) {
+          const needFallback = !!rpcRes.error || isPartyGlLedgerEmptySuccess(rpcRes);
+          if (!needFallback) {
             setOpening(rpcRes.openingBalance);
             setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
             setDetailError(null);
+            setLedgerSourceHint(null);
           } else {
             const subId = await getContactSubAccountId(companyId, selected.id);
             if (cancelled) return;
             if (!subId) {
               setOpening(0);
               setLines([]);
-              setDetailError(
-                `${rpcRes.error} · No linked sub-account for legacy fallback.`,
-              );
+              setDetailError(formatPartyLedgerLoadError(rpcRes.error));
               return;
             }
             const { openingBalance, lines: rows, error } = await getAccountLedgerLines(
@@ -249,13 +344,22 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
               branchId ?? null,
             );
             if (cancelled) return;
-            setOpening(openingBalance);
-            setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
-            setDetailError(
-              error
-                ? `${rpcRes.error} · Fallback: ${error}`
-                : `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`,
-            );
+            const fbHasData = rows.length > 0 || Math.abs(openingBalance) >= 0.005;
+            if (fbHasData) {
+              setOpening(openingBalance);
+              setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
+              setDetailError(
+                error
+                  ? `${rpcRes.error ?? 'Party GL empty'} · Fallback: ${error}`
+                  : rpcRes.error
+                    ? `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`
+                    : 'Party GL empty for this contact — showing lines posted to linked sub-account.',
+              );
+            } else {
+              setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+              setLines([]);
+              setDetailError(rpcRes.error);
+            }
           }
         }
       } catch (err) {
@@ -274,7 +378,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     return () => {
       cancelled = true;
     };
-  }, [companyId, selected, kind, range.from, range.to, branchId, ledgerRefreshNonce]);
+  }, [companyId, selected, kind, range.from, range.to, branchId, ledgerRefreshNonce, supplierViewMode]);
 
   useEffect(() => {
     if (!selected) return;
@@ -294,12 +398,23 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [selected]);
 
+  const presentedLedger = useMemo(
+    () => effectiveNetLedgerPresentation(lines, opening, kind === 'supplier'),
+    [lines, opening, kind],
+  );
+
+  const orderedLedgerLines = useMemo(() => {
+    const chronologic = presentedLedger.lines;
+    return dateSort === 'desc' ? [...chronologic].reverse() : chronologic;
+  }, [presentedLedger.lines, dateSort]);
+
   const totals = useMemo(() => {
-    const debit = lines.reduce((s, l) => s + l.debit, 0);
-    const credit = lines.reduce((s, l) => s + l.credit, 0);
-    const closing = lines.length ? lines[lines.length - 1].runningBalance : opening;
+    const displayLines = presentedLedger.lines;
+    const debit = displayLines.reduce((s, l) => s + l.debit, 0);
+    const credit = displayLines.reduce((s, l) => s + l.credit, 0);
+    const closing = presentedLedger.closingBalance;
     return { debit, credit, closing };
-  }, [lines, opening]);
+  }, [presentedLedger]);
 
   const filteredParties = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -402,7 +517,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
     branchId && branchId !== 'all' && branchId !== 'default'
       ? `${selected.meta || cfg.title} · GL: this branch + company-wide`
       : selected.meta || cfg.title,
-    kind === 'worker' && ledgerSourceHint ? ledgerSourceHint : null,
+    (kind === 'worker' || kind === 'supplier') && ledgerSourceHint ? ledgerSourceHint : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -413,11 +528,12 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         onBack={() => {
           setSelected(null);
           setLedgerSourceHint(null);
+          setSupplierViewMode('business_history');
         }}
         title={selected.name}
         subtitle={detailPartySubtitle}
         stats={stats}
-        onShare={preview.openPreview}
+        onShare={easyMode ? undefined : preview.openPreview}
         sharing={preview.loading}
         gradient={cfg.gradient}
         onRefresh={() => {
@@ -426,32 +542,109 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
         }}
         refreshing={manualLedgerRefresh && detailLoading}
       >
-        <DateRangeBar value={range} onChange={setRange} />
+        <DateRangeBar
+          value={range}
+          onChange={setRange}
+          companyId={companyId}
+          branchId={branchId}
+          pinPresets={['all']}
+        />
+        {kind === 'supplier' ? (
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSupplierViewMode('business_history')}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium ${
+                supplierViewMode === 'business_history'
+                  ? 'bg-[#F59E0B] text-black'
+                  : 'bg-white/10 text-white/80'
+              }`}
+            >
+              Business History
+            </button>
+            <button
+              type="button"
+              onClick={() => setSupplierViewMode('official_ap')}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium ${
+                supplierViewMode === 'official_ap'
+                  ? 'bg-[#F59E0B] text-black'
+                  : 'bg-white/10 text-white/80'
+              }`}
+            >
+              Official AP
+            </button>
+          </div>
+        ) : null}
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80">
+          <span>Date order</span>
+          <button
+            type="button"
+            onClick={() => setDateSort('desc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'desc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Newest
+          </button>
+          <button
+            type="button"
+            onClick={() => setDateSort('asc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'asc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Oldest
+          </button>
+        </div>
+        {range.preset !== 'all' ? (
+          <button
+            type="button"
+            onClick={() => setRange(allTimeDateRange())}
+            className="mt-1.5 text-[11px] font-medium text-white/80 underline underline-offset-2 hover:text-white"
+          >
+            Show full history (All time)
+          </button>
+        ) : null}
       </ReportHeader>
+
+      {detailError && (lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening)) && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            {detailError}
+          </div>
+        </div>
+      )}
 
       <ReportShell
         loading={detailLoading}
-        error={detailError}
-        empty={!detailLoading && lines.length === 0}
+        error={
+          lines.length > 0 || isOpeningOnlyPeriod(lines.length, opening) ? null : detailError
+        }
+        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening) && !detailError}
         emptyLabel="No ledger activity for this period."
       >
+        {isOpeningOnlyPeriod(lines.length, opening) ? (
+          <LedgerPeriodEmptyCard
+            opening={opening}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            onShowAllTime={() => setRange(allTimeDateRange())}
+          />
+        ) : (
         <ReportCard>
           <ReportSectionTitle
             title="Ledger activity"
             subtitle={dateRangeLabel(range.from, range.to)}
-            right={`${lines.length} entries`}
+            right={`${presentedLedger.lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
-            {lines.map((l) => (
+            {orderedLedgerLines.map((l) => (
               <LedgerActivityListRow
                 key={l.id}
                 line={l}
                 displayReference={displayEntryNo}
+                presentationOpts={{ viewedPartyName: selected.name }}
                 onAttachmentClick={() => void handleLineAttachmentPreview(l)}
               />
             ))}
           </ul>
         </ReportCard>
+        )}
       </ReportShell>
 
       {preview.brand && (
@@ -472,15 +665,11 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, rep
             openingBalance={opening}
             closingBalance={totals.closing}
             totals={{ debit: totals.debit, credit: totals.credit }}
-            rows={lines.map((l) => ({
-              date: l.date,
-              reference: displayEntryNo(l.entryNo, l.referenceType),
-              description: l.description,
-              debit: l.debit,
-              credit: l.credit,
-              balance: l.runningBalance,
-              hasAttachment: l.hasAttachments,
-            }))}
+            rows={presentedLedger.lines.map((l) =>
+              toLedgerPreviewRow(l, displayEntryNo(l.entryNo, l.referenceType), {
+                viewedPartyName: selected.name,
+              }),
+            )}
             generatedBy={user.name || user.email || 'User'}
             generatedAt={new Date().toLocaleString('en-PK')}
           />

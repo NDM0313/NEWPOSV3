@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package, Calendar } from 'lucide-react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package } from 'lucide-react';
+import { DateTimeInputField } from '../shared/DateTimePicker';
 import { ProductImage } from '../products/ProductImage';
 import type { User } from '../../types';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
@@ -12,7 +13,7 @@ import { addPending } from '../../lib/offlineStore';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString } from '../../utils/localDate';
 import { maybeAutoPrintAfterTransaction } from '../../services/printAfterTransaction';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
@@ -24,6 +25,7 @@ import {
   isVariationSaleBlocked,
   stockLabelClassName,
 } from '../../utils/productStockGate';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -71,9 +73,10 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
+  const [printHint, setPrintHint] = useState<string | null>(null);
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
-  const [invoiceDate, setInvoiceDate] = useState(() => localNowDateString());
+  const [invoiceDate, setInvoiceDate] = useState(() => localNowDateTimeString());
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [scannerInput, setScannerInput] = useState(''); // keyboard wedge (Speed-X, Sunmi, CS60)
   const [showSwitchUser, setShowSwitchUser] = useState(false);
@@ -135,7 +138,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     setCheckoutError(null);
     setShowCart(false);
     setShowPaymentStep(false);
-    setInvoiceDate(localNowDateString());
+    setInvoiceDate(localNowDateTimeString());
   }, [effectiveUserId]);
 
   useEffect(() => {
@@ -214,11 +217,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
   }, [branchId, companyId, loadProducts]);
 
   const list = products;
-  const filtered = list.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = filterAndRankProducts(list, searchQuery, productMatchesSearch);
 
   const addToCart = (product: POSProduct, variation?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }) => {
     const cartId = variation ? `${product.id}_${variation.id}` : product.id;
@@ -331,6 +330,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
 
   const openPaymentStep = () => {
     setCheckoutError(null);
+    setPrintHint(null);
     if (!branchReady || !effectiveBranchId) {
       setCheckoutError(branchSelectionError ?? 'Select a branch for this POS sale.');
       return;
@@ -415,13 +415,17 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     setLastInvoiceNo(data?.invoiceNo ?? null);
     setCart([]);
     setShowPaymentStep(false);
-    void maybeAutoPrintAfterTransaction(companyId, {
+    setPrintHint(null);
+    const printRes = await maybeAutoPrintAfterTransaction(companyId, {
       title: 'POS RECEIPT',
       transactionNo: data?.invoiceNo ?? null,
       partyName: walkingCustomerName,
       amount: total,
       date: invoiceDate,
     });
+    if (printRes && !printRes.ok && printRes.hint) {
+      setPrintHint(printRes.hint);
+    }
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : 'Checkout failed.');
     } finally {
@@ -480,6 +484,11 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
             </div>
           </div>
         )}
+        {printHint ? (
+          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-sm text-amber-200">
+            {printHint}
+          </div>
+        ) : null}
         <div className="flex items-center gap-2 text-sm text-[#9CA3AF] mb-4">
           <UserIcon size={16} />
           <span>Customer:</span>
@@ -669,19 +678,13 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
                     zIndexClass="z-[70]"
                   />
                 )}
-                <div className="bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
-                  <label className="text-xs text-[#9CA3AF] mb-1.5 block">Invoice date</label>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-[#6B7280] shrink-0" />
-                    <input
-                      type="date"
-                      max={localNowDateString()}
-                      value={invoiceDate}
-                      onChange={(e) => setInvoiceDate(e.target.value)}
-                      className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none"
-                    />
-                  </div>
-                </div>
+                <DateTimeInputField
+                  label="Invoice date & time"
+                  required
+                  value={invoiceDate}
+                  onChange={setInvoiceDate}
+                  max={localNowDateTimeString().slice(0, 10)}
+                />
                 <div className="flex justify-between text-sm">
                   <span className="text-[#9CA3AF]">Subtotal</span>
                   <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
@@ -712,6 +715,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
               onBack={() => { setShowPaymentStep(false); setShowCart(true); }}
               totalAmount={total}
               companyId={companyId}
+              branchId={effectiveBranchId}
               onComplete={handlePaymentComplete}
               saving={checkoutLoading}
               saveError={checkoutError}

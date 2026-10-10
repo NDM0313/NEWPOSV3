@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-30T13:50:00.000Z",
+  "status": "PASS",
+  "git": {
+    "branch": "main",
+    "head": "cf3849a4c3524fa9a712cf9587a33db3a0e05cbd",
+    "origin_main": "cf3849a4c3524fa9a712cf9587a33db3a0e05cbd",
+    "staged_files": false,
+    "credentials_staged": false
+  },
+  "env": {
+    "email": "khan5955+1@gmail.com",
+    "email_ok": true,
+    "legacy_typo_line_ignored": true,
+    "password_set": true,
+    "otp_code_set": false,
+    "otp_code_required_in_phase_a": false
+  },
+  "gmail_alias_note": "khan5955+1@gmail.com delivers to khan5955@gmail.com inbox"
+}

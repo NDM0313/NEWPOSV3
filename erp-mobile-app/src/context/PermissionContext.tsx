@@ -44,7 +44,7 @@ interface PermissionContextValue extends PermissionState {
 
 const defaultModuleToggles: ModuleToggles = {
   rentalModuleEnabled: true,
-  studioModuleEnabled: true,
+  studioModuleEnabled: false,
   accountingModuleEnabled: true,
   posModuleEnabled: true,
 };

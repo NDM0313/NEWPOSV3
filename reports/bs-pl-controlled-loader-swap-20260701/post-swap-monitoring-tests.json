@@ -1,0 +1,18 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "phase": "post-swap-monitoring-tests",
+  "status": "IDENTICAL_TO_PRE_SWAP",
+  "reason": "No swap executed; baseline re-confirmed",
+  "monitoring": {
+    "result": "PASS",
+    "report": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T07-58-12-791Z.json"
+  },
+  "tests": {
+    "unifiedLedger": "303/303 PASS",
+    "unit": "122/122 PASS",
+    "build": "PASS"
+  },
+  "migrations_run": false,
+  "gl_mutations": false,
+  "fixtureUpdatesRequired": false
+}

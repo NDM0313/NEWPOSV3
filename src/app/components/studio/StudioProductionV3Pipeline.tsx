@@ -58,13 +58,13 @@ export const StudioProductionV3Pipeline = () => {
           variant="ghost"
           size="icon"
           onClick={() => setCurrentView('studio-dashboard-new')}
-          className="text-gray-400 hover:text-white"
+          className="text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-white">Studio Production V3 Pipeline</h1>
-          <p className="text-sm text-gray-400">Stages, workers, cost summary</p>
+          <h1 className="text-2xl font-bold text-foreground">Studio Production V3 Pipeline</h1>
+          <p className="text-sm text-muted-foreground">Stages, workers, cost summary</p>
         </div>
       </div>
 
@@ -82,20 +82,20 @@ export const StudioProductionV3Pipeline = () => {
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
         <div className="space-y-3">
           {orders.map((o) => {
             const allCompleted = o.stages?.length ? o.stages.every((s) => s.status === 'completed') : false;
             return (
-              <div key={o.id} className="rounded-lg border border-gray-700/50 bg-gray-800/30 overflow-hidden">
+              <div key={o.id} className="rounded-lg border border-border bg-accent/30 overflow-hidden">
                 <div className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Package className="h-5 w-5 text-emerald-500 shrink-0" />
                     <div>
-                      <p className="font-medium text-white">{o.production_no}</p>
-                      <p className="text-sm text-gray-400">
+                      <p className="font-medium text-foreground">{o.production_no}</p>
+                      <p className="text-sm text-muted-foreground">
                         Stages: {o.stages?.length ?? 0} — {allCompleted ? 'All completed' : 'In progress'}
                         {o.generated_invoice_id && ' · Invoice generated'}
                       </p>
@@ -119,7 +119,7 @@ export const StudioProductionV3Pipeline = () => {
             );
           })}
           {orders.length === 0 && (
-            <p className="text-gray-500 py-8 text-center">No V3 production orders. Studio sales (STD-*) create orders here.</p>
+            <p className="text-muted-foreground py-8 text-center">No V3 production orders. Studio sales (STD-*) create orders here.</p>
           )}
         </div>
       )}

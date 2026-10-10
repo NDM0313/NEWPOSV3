@@ -7,6 +7,8 @@ import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
 import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
+import type { SelectCustomerExtras } from './SelectCustomer';
+
 function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
 }
@@ -15,29 +17,44 @@ interface SelectCustomerTabletProps {
   companyId: string | null;
   branchId?: string | null;
   onBack: () => void;
-  onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
+  onSelect: (customer: Customer, saleType: 'regular' | 'studio', extras?: SelectCustomerExtras) => void;
   initialSaleType?: 'regular' | 'studio';
   onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
 }
 
-export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerTabletProps) {
-  const { canViewBalances } = usePermissions();
+export function SelectCustomerTablet({
+  companyId,
+  branchId,
+  onBack,
+  onSelect,
+  initialSaleType = 'regular',
+  onSaleTypeChange,
+}: SelectCustomerTabletProps) {
+  const { canViewBalances, isModuleEnabled } = usePermissions();
+  const studioModuleEnabled = isModuleEnabled('studio');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<Customer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
-  const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+  const [saleType, setSaleType] = useState<'regular' | 'studio'>(
+    studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular'
+  );
   const [view, setView] = useState<'pick' | 'addContact'>('pick');
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
   const walkingInitRef = useRef(false);
 
   useEffect(() => {
-    setSaleType(initialSaleType);
-  }, [initialSaleType]);
+    const next = studioModuleEnabled && initialSaleType === 'studio' ? 'studio' : 'regular';
+    setSaleType(next);
+    if (!studioModuleEnabled && initialSaleType === 'studio') {
+      onSaleTypeChange?.('regular');
+    }
+  }, [initialSaleType, studioModuleEnabled, onSaleTypeChange]);
 
   const handleSaleTypeChange = (type: 'regular' | 'studio') => {
+    if (type === 'studio' && !studioModuleEnabled) return;
     setSaleType(type);
     onSaleTypeChange?.(type);
   };
@@ -180,15 +197,17 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
               <ShoppingCart className="w-4 h-4" />
               Regular Sale
             </button>
-            <button
-              onClick={() => handleSaleTypeChange('studio')}
-              className={`flex-1 h-10 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
-                saleType === 'studio' ? 'bg-[#EC4899] text-white' : 'bg-[#111827] border border-[#374151] text-[#9CA3AF]'
-              }`}
-            >
-              <Palette className="w-4 h-4" />
-              Studio Sale
-            </button>
+            {studioModuleEnabled && (
+              <button
+                onClick={() => handleSaleTypeChange('studio')}
+                className={`flex-1 h-10 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
+                  saleType === 'studio' ? 'bg-[#EC4899] text-white' : 'bg-[#111827] border border-[#374151] text-[#9CA3AF]'
+                }`}
+              >
+                <Palette className="w-4 h-4" />
+                Studio Sale
+              </button>
+            )}
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />

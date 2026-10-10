@@ -16,3 +16,14 @@ export function getThisBusinessWeekRange(anchorDate: Date = new Date()): { start
   endDate.setHours(23, 59, 59, 999);
   return { startDate, endDate };
 }
+
+/** Previous full business week: Saturday through Friday immediately before this week's Saturday. */
+export function getLastBusinessWeekRange(anchorDate: Date = new Date()): { startDate: Date; endDate: Date } {
+  const { startDate: thisWeekStart } = getThisBusinessWeekRange(anchorDate);
+  const startDate = new Date(thisWeekStart);
+  startDate.setDate(startDate.getDate() - 7);
+  const endDate = new Date(thisWeekStart);
+  endDate.setDate(endDate.getDate() - 1);
+  endDate.setHours(23, 59, 59, 999);
+  return { startDate, endDate };
+}

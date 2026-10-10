@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-06-30T09:45:00.000Z",
+  "deploy_type": "frontend-only",
+  "deployed_commit": "49ac971158a3a55f0faffc4b35787cdd889547f2",
+  "container_health": "healthy",
+  "deploy_exit_code": 1,
+  "deploy_note": "Docker recreate race; erp-frontend healthy at 49ac9711",
+  "url": "https://erp.dincouture.pk",
+  "migrations_run": false,
+  "feature_flags_changed": false,
+  "gl_mutations": false
+}

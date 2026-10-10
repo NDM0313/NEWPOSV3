@@ -1,0 +1,1 @@
+{"run":"MOBILE_REPORTS_PARITY_IMPLEMENTATION","task":"mobile-screens-implementation","status":"PASS","screens":["balance-sheet","profit-loss","trial-balance","cash-flow","ledger-v2","account-ledger-unified-upgrade"],"salesman_restrictions":"canViewBalances masks totals","loader_badge":"LoaderSourceBadge unified/legacy"}

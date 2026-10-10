@@ -55,15 +55,15 @@ export function DeveloperToolsPanel() {
     <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-4 space-y-4">
       <div>
         <h4 className="text-sm font-semibold text-amber-200">Developer Tools</h4>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Local debugging only. Does not change server data. Web ERP has no mobile-style offline sync queue.
         </p>
       </div>
 
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Label className="text-gray-300 text-sm">Show raw API errors</Label>
-          <p className="text-xs text-gray-500">Toasts include PostgREST code, details, and hints when available.</p>
+          <Label className="text-muted-foreground text-sm">Show raw API errors</Label>
+          <p className="text-xs text-muted-foreground">Toasts include PostgREST code, details, and hints when available.</p>
         </div>
         <Switch checked={verbose} onCheckedChange={onVerboseChange} />
       </div>
@@ -72,13 +72,13 @@ export function DeveloperToolsPanel() {
         <Button type="button" variant="outline" size="sm" className="border-gray-600 text-gray-200" onClick={onClearCache}>
           Clear local cache
         </Button>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           Clears localStorage (except session and developer flags) and sessionStorage, then clears the permission engine cache. You stay signed in.
         </p>
       </div>
 
-      <div className="pt-2 border-t border-gray-800">
-        <Button type="button" variant="ghost" size="sm" className="text-gray-400" onClick={onHide}>
+      <div className="pt-2 border-t border-border">
+        <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onHide}>
           Hide Developer Tools
         </Button>
       </div>

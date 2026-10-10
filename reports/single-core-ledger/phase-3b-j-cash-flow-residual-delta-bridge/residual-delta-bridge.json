@@ -1,0 +1,152 @@
+{
+  "phase": "3B-J",
+  "run": "residual-delta-bridge",
+  "generated_at": "2026-06-29T15:30:00.000Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "loaderSwapApproved": false,
+  "officialLegacyUnchanged": true,
+  "approvedRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "companies": {
+    "din-china": {
+      "legacyOfficial": {
+        "cashIn": 104176812,
+        "cashOut": 67042426,
+        "closing": 37134386,
+        "rowCount": 323
+      },
+      "alignedPreview": {
+        "cashIn": 35460880,
+        "cashOut": 67964117,
+        "closing": -32503237,
+        "rowCount": 236
+      },
+      "deltas": {
+        "cashInDelta": 68715932,
+        "cashOutDelta": -921691,
+        "closingDelta": 69637623,
+        "rowCountDelta": 87
+      },
+      "zeroDiff": false,
+      "deltaExpectedFromApprovedRules": true,
+      "indicatesMapperBug": false,
+      "financeBasisClean": true,
+      "legacyMismatchExpected": true,
+      "legacyShouldRemainOfficial": true,
+      "canApproveAlignedAsCandidateBasis": "PENDING — requires Option B from basis decision pack",
+      "bridgeFactors": [
+        {
+          "factor": "Q5=C internal transfer exclusion",
+          "rowsExcluded": 169,
+          "effect": "Legacy roznamcha still gross-presents internal transfer legs as period cash-in/out. Aligned preview excludes 169 transfer rows from normal totals. Cash-in delta PKR 68,715,932 is dominated by transfer legs no longer counted in preview period cash-in.",
+          "expected": true
+        },
+        {
+          "factor": "Dual data engines",
+          "legacyOnlyRows": 223,
+          "previewOnlyRows": 305,
+          "effect": "Legacy path (getCashFlowReport → roznamchaService) vs unified ledger preview (get_unified_cash_bank_ledger) produce different row sets beyond transfers. 3B-F legacy-only net PKR -42,779,869; preview-only net PKR -88,455,142.",
+          "expected": true,
+          "questionsRemaining": ["Q1", "Q2", "Q6", "Q7"]
+        },
+        {
+          "factor": "Source module buckets",
+          "effect": "3B-F transfer_leg bucket: 80 rows, net PKR -56,889,891 (pre-alignment thematic). Post-alignment 169 rows excluded under Q5=C. Remaining sales_receipts and other modules still contribute unmatched legacy/preview-only rows.",
+          "expected": true
+        }
+      ],
+      "conclusion": "Closing Δ PKR 69,637,623 is expected when finance-approved preview basis (Q5=C) is compared to legacy that still includes transfers. Aligned preview is finance-basis clean; legacy mismatch is intentional until Option D or loader swap with finance sign-off."
+    },
+    "din-bridal": {
+      "legacyOfficial": {
+        "cashIn": 1836350,
+        "cashOut": 917780,
+        "closing": 918570,
+        "rowCount": 51
+      },
+      "alignedPreview": {
+        "cashIn": 1003500,
+        "cashOut": 942780,
+        "closing": 60720,
+        "rowCount": 51
+      },
+      "deltas": {
+        "cashInDelta": 832850,
+        "cashOutDelta": -25000,
+        "closingDelta": 857850,
+        "rowCountDelta": 0
+      },
+      "zeroDiff": false,
+      "deltaExpectedFromApprovedRules": true,
+      "indicatesMapperBug": false,
+      "financeBasisClean": true,
+      "legacyMismatchExpected": true,
+      "legacyShouldRemainOfficial": true,
+      "canApproveAlignedAsCandidateBasis": "PENDING — requires Option B from basis decision pack",
+      "bridgeFactors": [
+        {
+          "factor": "Q4=A opening balance summary-only",
+          "rowsExcluded": 2,
+          "effect": "Two opening-balance rows excluded from normal period cash-in under Q4=A. Legacy still shows Jun 2026 opening/JE row as period cash-in (PKR 25,000 legacy-only row). Preview maps opening_balance_account rows differently.",
+          "expected": true
+        },
+        {
+          "factor": "Row count match with amount mismatch",
+          "effect": "51 legacy rows = 51 preview rows, but cash-in differs PKR 832,850 because same transactions are classified differently (opening summary vs period cash-in, JE leg mapping). 48 strong matches; 1 legacy-only; 3 preview-only.",
+          "expected": true
+        },
+        {
+          "factor": "JE/payment mapping",
+          "legacyOnlyRows": 1,
+          "previewOnlyRows": 3,
+          "effect": "3B-F: legacy-only 1 row PKR 25,000 cash-in (2026-06-06); preview-only 3 rows net PKR 80,000. Opening_balance_account and payment allocation mapping drives residual without row-count change.",
+          "expected": true,
+          "questionsRemaining": ["Q4", "Q2"]
+        }
+      ],
+      "conclusion": "Closing Δ PKR 857,850 is expected when Q4=A excludes opening rows from period totals while legacy counts them as cash-in. Row-count parity confirms this is classification/totals logic, not missing rows. Aligned preview is finance-basis clean; legacy mismatch expected."
+    },
+    "din-couture": {
+      "legacyOfficial": {
+        "cashIn": 85000,
+        "cashOut": 34500,
+        "closing": 50500,
+        "rowCount": 6
+      },
+      "alignedPreview": {
+        "cashIn": 85000,
+        "cashOut": 34500,
+        "closing": 50500,
+        "rowCount": 6
+      },
+      "deltas": {
+        "closingDelta": 0,
+        "rowCountDelta": 0
+      },
+      "zeroDiff": true,
+      "deltaExpectedFromApprovedRules": true,
+      "indicatesMapperBug": false,
+      "financeBasisClean": true,
+      "legacyMismatchExpected": false,
+      "legacyShouldRemainOfficial": true,
+      "canApproveAlignedAsCandidateBasis": "PENDING — zero-diff supports review but does not authorize loader swap alone",
+      "bridgeFactors": [
+        {
+          "factor": "No transfers or opening exclusions triggered",
+          "rowsExcluded": 0,
+          "effect": "Small dataset with no internal transfers or opening-balance reclassifications in period. Both engines agree.",
+          "expected": true
+        },
+        {
+          "factor": "Row matches",
+          "exact": 2,
+          "strong": 4,
+          "legacyOnly": 0,
+          "previewOnly": 0,
+          "effect": "Full row-level agreement at summary and row counts.",
+          "expected": true
+        }
+      ],
+      "conclusion": "ZERO-DIFF at summary. Candidate ready for finance review, but loader swap still requires separate operator approval and explicit finance sign-off. Official legacy unchanged."
+    }
+  }
+}

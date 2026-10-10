@@ -1,0 +1,106 @@
+{
+  "run": "PHASE_3D_FINANCE_SIGNOFF_PACK",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "finance_status": "PENDING",
+  "reviewer": null,
+  "review_date": null,
+  "source_capture_commit": "edcd075c",
+  "loader_swap_approved": false,
+  "scope": {
+    "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+    "reports": ["Balance Sheet", "Profit & Loss"],
+    "production_url": "https://erp.dincouture.pk",
+    "basis": "official_gl",
+    "branch_scope": "All branches",
+    "capture_method": "Phase 3A preview-only compare",
+    "value_marking": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+  },
+  "candidate_values": {
+    "din-china": {
+      "balance_sheet": {
+        "as_of": "2026-06-29",
+        "total_assets_pkr": 89754088.52,
+        "liabilities_and_equity_pkr": 89754088.52,
+        "difference": 0,
+        "zero_diff": true
+      },
+      "profit_loss": {
+        "period": "2000-01-01 to 2026-06-29",
+        "revenue_pkr": 49040015,
+        "cogs_pkr": 39299479.13,
+        "net_profit_pkr": 8465731.87,
+        "zero_diff": true
+      }
+    },
+    "din-bridal": {
+      "balance_sheet": {
+        "as_of": "2026-06-29",
+        "total_assets_pkr": 13521792,
+        "liabilities_and_equity_pkr": 13521792,
+        "difference": 0,
+        "zero_diff": true
+      },
+      "profit_loss": {
+        "period": "2000-01-01 to 2026-06-29",
+        "revenue_pkr": 354500,
+        "cogs_pkr": 49028,
+        "net_profit_pkr": 119992,
+        "zero_diff": true
+      }
+    },
+    "din-couture": {
+      "balance_sheet": {
+        "as_of": "2026-06-29",
+        "total_assets_pkr": 22667273,
+        "liabilities_and_equity_pkr": 22667273,
+        "difference": 0,
+        "zero_diff": true
+      },
+      "profit_loss": {
+        "period": "2000-01-01 to 2026-06-29",
+        "revenue_pkr": 26250,
+        "cogs_pkr": 35000,
+        "net_profit_pkr": -16750,
+        "zero_diff": true
+      }
+    }
+  },
+  "zero_diff_summary": {
+    "total_captures": 6,
+    "zero_diff_count": 6,
+    "all_zero_diff": true
+  },
+  "evidence": {
+    "screenshots": "screenshots/",
+    "exports": "exports/",
+    "balance_sheet_goldens": "balance-sheet-candidate-goldens.md",
+    "profit_loss_goldens": "profit-loss-candidate-goldens.md",
+    "diff_analysis": "diff-analysis.md",
+    "post_capture_monitoring": "post-capture-monitoring.md"
+  },
+  "rule_confirmations_needed": {
+    "balance_sheet": {
+      "code": "NEEDS_ACCOUNTING_RULE_CONFIRMATION",
+      "description": "Net income folded into equity per BS-FIX / PF-04 rules"
+    },
+    "profit_loss": {
+      "code": "NEEDS_RULE_CONFIRMATION",
+      "description": "COGS split uses COST_OF_PRODUCTION_CODES + type heuristics"
+    }
+  },
+  "approval_checklist": [
+    "Reviewed BS candidate values for DIN CHINA / DIN BRIDAL / DIN COUTURE",
+    "Reviewed P&L candidate values for DIN CHINA / DIN BRIDAL / DIN COUTURE",
+    "Understand values are from preview-only compare",
+    "Confirm zero-diff status",
+    "Confirm/accept net income folded into equity rule for BS",
+    "Confirm/accept COGS heuristic for P&L",
+    "Approve as finance goldens for future BS/P&L loader-swap planning only"
+  ],
+  "explicit_limitations": [
+    "NOT a loader swap approval",
+    "NOT production adoption of unified totals",
+    "NOT approval to create BS/P&L loader flags",
+    "R7/R8/next company remain BLOCKED"
+  ]
+}

@@ -32,7 +32,7 @@ export const PackingInputButton = ({
           "gap-2 h-9 transition-all",
           hasDetails 
             ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-500" 
-            : "border-gray-700 text-gray-400 hover:text-white hover:border-blue-500/50 hover:bg-blue-500/10",
+            : "border-border text-muted-foreground hover:text-foreground hover:border-blue-500/50 hover:bg-blue-500/10",
           className
         )}
       >

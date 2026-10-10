@@ -3,12 +3,23 @@ import { ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
 import { usePermissions } from '../../context/PermissionContext';
 import { AccountsDashboard, type AccountEntry } from './AccountsDashboard';
-import { GeneralEntryFlow } from './GeneralEntryFlow';
+import { GeneralEntryFlow, type GeneralEntrySeed } from './GeneralEntryFlow';
 import { AccountTransferFlow } from './AccountTransferFlow';
 import { SupplierPaymentFlow } from './SupplierPaymentFlow';
 import { CustomerPaymentFlow } from './CustomerPaymentFlow';
 import { WorkerPaymentFlow } from './WorkerPaymentFlow';
+import { CourierPaymentFlow } from './CourierPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
+import { ReceiptScanFlow } from './ReceiptScanFlow';
+import { getJournalEntryById } from '../../api/accounts';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
+import { supabase } from '../../lib/supabase';
+import {
+  buildGeneralEntrySeedFromJournalLines,
+  buildTransferSeedFromJournalLines,
+  duplicateViewForSourceKind,
+} from '../../lib/duplicateEntryRouting';
+import type { CopyTransactionPrefill } from '../../lib/copyTransactionPrefill';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
 import { ReportsHub, type LegacyReportKey } from './reports/ReportsHub';
@@ -26,11 +37,17 @@ import { InventoryReport } from './reports/InventoryReport';
 import { JournalEntryDetailPanel } from './JournalEntryDetailPanel';
 import { MyFinancialActivity } from './MyFinancialActivity';
 import { CourierShipmentsReport } from './reports/CourierShipmentsReport';
+import { BalanceSheetReport } from './reports/BalanceSheetReport';
+import { ProfitLossReport } from './reports/ProfitLossReport';
+import { TrialBalanceReport } from './reports/TrialBalanceReport';
+import { CashFlowReport } from './reports/CashFlowReport';
+import { LedgerV2Report } from './reports/LedgerV2Report';
 import {
   MOBILE_DATA_INVALIDATED_EVENT,
   shouldAcceptMobileInvalidation,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
+import { localNowDateTimeString } from '../../utils/localDate';
 
 interface AccountsModuleProps {
   onBack: () => void;
@@ -49,11 +66,13 @@ interface AccountsModuleProps {
 
 type View =
   | 'dashboard'
+  | 'scan-receipt'
   | 'general-entry'
   | 'account-transfer'
   | 'supplier-payment'
   | 'client-payment'
   | 'worker-payment'
+  | 'courier-payment'
   | 'expense-entry'
   | 'reports'
   | 'chart'
@@ -77,7 +96,12 @@ type View =
   | 'rental-report'
   | 'inventory-report'
   | 'my-activity'
-  | 'courier-shipments';
+  | 'courier-shipments'
+  | 'balance-sheet'
+  | 'profit-loss'
+  | 'trial-balance'
+  | 'cash-flow'
+  | 'ledger-v2';
 
 const PARTY_VIEWS: View[] = ['dashboard', 'my-activity'];
 
@@ -117,6 +141,103 @@ export function AccountsModule({
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
   const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
   const [reportRefreshEpoch, setReportRefreshEpoch] = useState(0);
+  const [generalEntrySeed, setGeneralEntrySeed] = useState<GeneralEntrySeed | null>(null);
+  const [transferSeed, setTransferSeed] = useState<{
+    fromAccountId?: string;
+    fromAccountName?: string;
+    toAccountId?: string;
+    toAccountName?: string;
+    amount?: number;
+    date?: string;
+    reference?: string;
+    notes?: string;
+    attachmentFiles?: File[];
+  } | null>(null);
+  const [duplicateContactId, setDuplicateContactId] = useState<string | null>(null);
+  const [duplicateWorkerId, setDuplicateWorkerId] = useState<string | null>(null);
+  const [ocrRouteSeed, setOcrRouteSeed] = useState<ReceiptOcrRouteSeed | null>(null);
+
+  const clearDuplicateSeeds = useCallback(() => {
+    setGeneralEntrySeed(null);
+    setTransferSeed(null);
+    setDuplicateContactId(null);
+    setDuplicateWorkerId(null);
+    setOcrRouteSeed(null);
+  }, []);
+
+  const backToDashboardFromFlow = useCallback(() => {
+    clearDuplicateSeeds();
+    setView('dashboard');
+  }, [clearDuplicateSeeds]);
+
+  const handleDuplicateEntry = useCallback(
+    async (entry: AccountEntry) => {
+      const target = duplicateViewForSourceKind(entry.sourceKind);
+      if (!target || !companyId) return;
+
+      clearDuplicateSeeds();
+
+      if (target === 'general-entry' || target === 'account-transfer') {
+        const { data } = await getJournalEntryById(companyId, entry.id);
+        const lines = data?.lines;
+        if (target === 'general-entry') {
+          const seed = buildGeneralEntrySeedFromJournalLines(lines, {
+            amount: entry.amount,
+            date: localNowDateTimeString(),
+          });
+          setGeneralEntrySeed(seed);
+          setView('general-entry');
+          return;
+        }
+        const tSeed = buildTransferSeedFromJournalLines(lines, {
+          amount: entry.amount,
+          date: localNowDateTimeString(),
+        });
+        setTransferSeed(tSeed);
+        setView('account-transfer');
+        return;
+      }
+
+      let contactId = entry.referenceId?.trim() || null;
+      let workerId: string | null = null;
+      if (entry.paymentId) {
+        const { data: pay } = await supabase
+          .from('payments')
+          .select('contact_id, worker_id')
+          .eq('id', entry.paymentId)
+          .maybeSingle();
+        const row = pay as { contact_id?: string | null; worker_id?: string | null } | null;
+        if (!contactId) contactId = row?.contact_id?.trim() || null;
+        workerId = row?.worker_id?.trim() || null;
+      }
+
+      if (target === 'client-payment' || target === 'supplier-payment') {
+        setDuplicateContactId(contactId);
+        setView(target);
+        return;
+      }
+      if (target === 'worker-payment') {
+        setDuplicateWorkerId(workerId || contactId);
+        setView(target);
+        return;
+      }
+      setView(target);
+    },
+    [companyId, clearDuplicateSeeds],
+  );
+
+  const openCopyTransaction = useCallback(
+    (prefill: CopyTransactionPrefill) => {
+      clearDuplicateSeeds();
+      setGeneralEntrySeed({
+        debitAccountId: prefill.debitAccountId,
+        creditAccountId: prefill.creditAccountId,
+        startAtDetails: true,
+      });
+      setView('general-entry');
+    },
+    [clearDuplicateSeeds],
+  );
 
   useEffect(() => {
     if (canUseFullAccounting) return;
@@ -218,7 +339,9 @@ export function AccountsModule({
             onSupplierPayment={() => setView('supplier-payment')}
             onClientPayment={() => setView('client-payment')}
             onWorkerPayment={() => setView('worker-payment')}
+            onCourierPayment={() => setView('courier-payment')}
             onExpenseEntry={() => setView('expense-entry')}
+            onScanReceipt={() => setView('scan-receipt')}
             onViewReports={() => setView('reports')}
             onChartOfAccounts={() => setView('chart')}
             onEntryClick={(entry) => {
@@ -226,40 +349,132 @@ export function AccountsModule({
               setView('entry-detail');
             }}
             onMyActivity={() => setView('my-activity')}
+            onDuplicateEntry={(entry) => void handleDuplicateEntry(entry)}
           />
         </div>
       </div>
     );
   }
 
+  if (view === 'scan-receipt') {
+    return (
+      <ReceiptScanFlow
+        onBack={backToDashboardFromFlow}
+        onRouted={({ kind, seed }) => {
+          setOcrRouteSeed(seed);
+          if (kind === 'general-entry') {
+            setGeneralEntrySeed({
+              amount: seed.amount,
+              date: seed.date,
+              reference: seed.reference,
+              userNotes: seed.notes,
+              attachmentFiles: seed.attachmentFiles,
+            });
+            setView('general-entry');
+            return;
+          }
+          if (kind === 'account-transfer') {
+            setTransferSeed({
+              amount: seed.amount,
+              date: seed.date,
+              reference: seed.reference,
+              notes: seed.notes,
+              attachmentFiles: seed.attachmentFiles,
+            });
+            setView('account-transfer');
+            return;
+          }
+          setView(kind);
+        }}
+      />
+    );
+  }
+
   if (view === 'general-entry') {
     return (
-      <GeneralEntryFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <GeneralEntryFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        seed={generalEntrySeed}
+      />
     );
   }
   if (view === 'account-transfer') {
     return (
-      <AccountTransferFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <AccountTransferFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        seed={transferSeed}
+      />
     );
   }
   if (view === 'supplier-payment') {
     return (
-      <SupplierPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <SupplierPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        initialContactId={duplicateContactId}
+        ocrSeed={ocrRouteSeed}
+      />
     );
   }
   if (view === 'client-payment') {
     return (
-      <CustomerPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id ?? null} />
+      <CustomerPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+        initialContactId={duplicateContactId}
+        ocrSeed={ocrRouteSeed}
+      />
     );
   }
   if (view === 'worker-payment') {
     return (
-      <WorkerPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id ?? null} />
+      <WorkerPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+        initialWorkerId={duplicateWorkerId}
+        ocrSeed={ocrRouteSeed}
+      />
+    );
+  }
+  if (view === 'courier-payment') {
+    return (
+      <CourierPaymentFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+        ocrSeed={ocrRouteSeed}
+      />
     );
   }
   if (view === 'expense-entry') {
     return (
-      <ExpenseEntryFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+      <ExpenseEntryFlow
+        onBack={backToDashboardFromFlow}
+        onComplete={backToDashboardFromFlow}
+        user={user}
+        companyId={companyId}
+        branchId={branch?.id}
+        ocrSeed={ocrRouteSeed}
+      />
     );
   }
   if (view === 'chart') {
@@ -284,6 +499,7 @@ export function AccountsModule({
         user={user}
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
+        onCopyTransaction={openCopyTransaction}
       />
     );
   }
@@ -300,6 +516,7 @@ export function AccountsModule({
         fullAccounting={canUseFullAccounting}
         canViewCustomerLedger={canViewCustomerLedger}
         canViewSupplierLedger={canViewSupplierLedger}
+        onCopyTransaction={openCopyTransaction}
       />
     );
   }
@@ -497,6 +714,58 @@ export function AccountsModule({
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
         onOpenSale={(saleId) => onNavigateToDocumentEdit?.('sale', saleId)}
+      />
+    );
+  }
+  if (view === 'balance-sheet') {
+    return (
+      <BalanceSheetReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
+  }
+  if (view === 'profit-loss') {
+    return (
+      <ProfitLossReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
+  }
+  if (view === 'trial-balance') {
+    return (
+      <TrialBalanceReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+  if (view === 'cash-flow') {
+    return (
+      <CashFlowReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+  if (view === 'ledger-v2') {
+    return (
+      <LedgerV2Report
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
       />
     );
   }

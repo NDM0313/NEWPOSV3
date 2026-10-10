@@ -45,6 +45,8 @@ interface TransactionSuccessModalProps {
   onBackToList?: () => void;
   /** Product: just OK */
   onOk?: () => void;
+  /** Shown when auto-print failed (non-blocking). */
+  printHint?: string | null;
 }
 
 const formatAmount = (n: number) => `Rs. ${Number(n).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -67,6 +69,7 @@ export function TransactionSuccessModal({
   onPrint,
   onBackToList,
   onOk,
+  printHint,
 }: TransactionSuccessModalProps) {
   if (!isOpen || !data) return null;
 
@@ -165,6 +168,12 @@ export function TransactionSuccessModal({
               <span className="text-white">{data.dateDisplay ?? formatDate(data.date)}</span>
             </div>
           </div>
+
+          {printHint ? (
+            <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-sm text-amber-200">
+              {printHint}
+            </div>
+          ) : null}
 
           {/* Action buttons by type */}
           <div className="space-y-3">

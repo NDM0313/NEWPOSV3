@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-06-30T14:30:00.000Z",
+  "root_cause_classification": "SALES_AR_MISPOST",
+  "secondary_classification": "WRONG_ACCOUNT_1100_CONTROL_USED",
+  "residual_amount_pkr": 136500,
+  "residual_sign": "credit_on_control_ar",
+  "source_lines": [
+    {
+      "entry_no": "JE-0155",
+      "entry_date": "2026-05-31",
+      "reference_type": "sale_reversal",
+      "reference_id": "74f728e7-eb47-4419-b352-05f010df127f",
+      "invoice_no": "HQ-SL-0001",
+      "customer": "Miss NAGHMANA RAJA",
+      "customer_id": "305478e7-1f5c-4a41-8f23-b2d0903da444",
+      "correct_ar_account": "AR-CUS0056",
+      "line_id": "4dfdc6ba-f895-4efd-89c5-253a4429322f",
+      "debit": 0,
+      "credit": 78750,
+      "net_on_1100": -78750,
+      "classification": "SALES_AR_MISPOST"
+    },
+    {
+      "entry_no": "JE-0157",
+      "entry_date": "2026-05-31",
+      "reference_type": "sale_reversal",
+      "reference_id": "796989e1-edec-4b58-85df-e8d848251cf7",
+      "invoice_no": "HQ-SL-0002",
+      "customer": "ASIM",
+      "customer_id": "8fd04bdb-85e5-4191-b2ad-0769bc740a0a",
+      "correct_ar_account": "AR-CUS0012",
+      "line_id": "428ae1a5-2aea-4953-afc8-d93e372fc479",
+      "debit": 0,
+      "credit": 57750,
+      "net_on_1100": -57750,
+      "classification": "SALES_AR_MISPOST"
+    }
+  ],
+  "other_1100_activity": {
+    "rental_leakage_lines": "JE-0001..0004 partially corrected by JV-000203..207",
+    "net_after_corrections": 0,
+    "note": "Rental 1100 leakage already has gl_correction pairs; sale reversals do not"
+  },
+  "exact_source": "JE-0155 Cr 78,750 + JE-0157 Cr 57,750 = -136,500 control 1100 credit"
+}

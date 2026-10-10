@@ -1,0 +1,15 @@
+{
+  "capturedAt": "2026-06-26T16:13:18.740Z",
+  "mode": "baseline",
+  "baseUrl": "https://erp.dincouture.pk",
+  "totalDebit": 407957271.02,
+  "totalCredit": 407957271.02,
+  "difference": 0,
+  "mainLoader": "legacy",
+  "filters": {
+    "startDate": "2000-01-01",
+    "endDate": "2026-06-26",
+    "branchId": null,
+    "arApMode": "flat"
+  }
+}

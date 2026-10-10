@@ -405,11 +405,11 @@ export const StudioSalesListNew = () => {
   // Status badge color
   const getStatusBadge = (status: ProductionStatus) => {
     switch (status) {
-      case 'Not Started': return 'bg-gray-500/20 text-gray-400 border-gray-700';
+      case 'Not Started': return 'bg-gray-500/20 text-muted-foreground border-border';
       case 'In Progress': return 'bg-blue-500/20 text-blue-400 border-blue-700';
-      case 'Completed': return 'bg-green-500/20 text-green-400 border-green-700';
+      case 'Completed': return 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-700';
       case 'Cancelled': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-700';
+      default: return 'bg-gray-500/20 text-muted-foreground border-border';
     }
   };
 
@@ -476,13 +476,13 @@ export const StudioSalesListNew = () => {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Studio Sales</h1>
-          <p className="text-sm text-gray-400 mt-1">Manage fabric processing & production workflow</p>
+          <h1 className="text-2xl font-bold text-foreground">Studio Sales</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage fabric processing & production workflow</p>
         </div>
         <Button
           variant="outline"
           size="sm"
-          className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white shrink-0"
+          className="border-border text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
           onClick={() => setCurrentView('studio-pipeline')}
         >
           <Package size={16} className="mr-2" />
@@ -507,9 +507,9 @@ export const StudioSalesListNew = () => {
           onToggle: () => setFilterOpen(!filterOpen),
           activeCount: hasActiveFilters ? 1 : 0,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-96 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+            <div className="absolute right-0 top-12 w-96 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-white">Filters</h3>
+                <h3 className="text-sm font-semibold text-foreground">Filters</h3>
                 <button
                   onClick={clearFilters}
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -521,13 +521,13 @@ export const StudioSalesListNew = () => {
               <div className="space-y-4">
                 {/* Production Status */}
                 <div>
-                  <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                  <label className="text-xs text-muted-foreground uppercase font-medium mb-2 block">
                     Production Status
                   </label>
                   <select
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value as any)}
-                    className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                    className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
                   >
                     <option value="all">All Status</option>
                     <option value="Not Started">Not Started</option>
@@ -549,15 +549,15 @@ export const StudioSalesListNew = () => {
       />
 
       {/* TABLE */}
-      <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/50">
+      <div className="border border-border rounded-xl overflow-hidden bg-muted/40">
         {/* Results Header */}
-        <div className="bg-gray-900/70 px-4 py-2 border-b border-gray-800 flex items-center justify-between">
-          <p className="text-xs text-gray-400">
+        <div className="bg-card/70 px-4 py-2 border-b border-border flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
             Showing{' '}
-            <span className="text-white font-medium">
+            <span className="text-foreground font-medium">
               {totalCount === 0 ? 0 : (currentPage - 1) * serverPageSize + 1}-{Math.min(currentPage * serverPageSize, totalCount)}
             </span>
-            {' '}of <span className="text-white font-medium">{totalCount}</span> sales
+            {' '}of <span className="text-foreground font-medium">{totalCount}</span> sales
           </p>
           {hasActiveFilters && (
             <span className="text-xs text-pink-400 flex items-center gap-1">
@@ -570,7 +570,7 @@ export const StudioSalesListNew = () => {
         {/* Table */}
         <div className="overflow-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-gray-900 text-gray-400 font-medium border-b border-gray-800 sticky top-0 z-10">
+            <thead className="bg-card text-muted-foreground font-medium border-b border-border sticky top-0 z-10">
               <tr>
                 <th className="p-4 font-medium min-w-[140px]">Sale / Invoice No</th>
                 <th className="p-4 font-medium min-w-[180px]">Customer</th>
@@ -586,10 +586,10 @@ export const StudioSalesListNew = () => {
                 <th className="p-4 font-medium text-right min-w-[80px]">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {displayedSales.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-8 text-center text-gray-500">
+                  <td colSpan={12} className="p-8 text-center text-muted-foreground">
                     No studio sales found
                   </td>
                 </tr>
@@ -600,7 +600,7 @@ export const StudioSalesListNew = () => {
                   <tr 
                     key={sale.id} 
                     className={cn(
-                      "group hover:bg-gray-800/50 transition-colors cursor-pointer",
+                      "group hover:bg-muted/50 transition-colors cursor-pointer",
                       alert === 'overdue' && "bg-red-900/10",
                       alert === 'near' && "bg-yellow-900/10"
                     )}
@@ -609,7 +609,7 @@ export const StudioSalesListNew = () => {
                     {/* Invoice No */}
                     <td className="p-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-mono font-bold text-white hover:text-blue-400 transition-colors">
+                        <p className="font-mono font-bold text-foreground hover:text-blue-400 transition-colors">
                           {sale.invoiceNo}
                         </p>
                         {(sale.saleStatus === 'cancelled' || sale.productionStatus === 'Cancelled') && (
@@ -617,25 +617,25 @@ export const StudioSalesListNew = () => {
                             Cancelled
                           </Badge>
                         )}
-                        <ExternalLink size={14} className="text-gray-500" />
+                        <ExternalLink size={14} className="text-muted-foreground" />
                       </div>
                     </td>
 
                     {/* Customer */}
                     <td className="p-4">
-                      <p className="text-white font-medium">{sale.customerName}</p>
-                      <p className="text-xs text-gray-500">{sale.customerPhone}</p>
+                      <p className="text-foreground font-medium">{sale.customerName}</p>
+                      <p className="text-xs text-muted-foreground">{sale.customerPhone}</p>
                     </td>
 
                     {/* Product / Fabric */}
                     <td className="p-4">
-                      <p className="text-white">{sale.fabricSummary}</p>
-                      <p className="text-xs text-gray-500">{sale.meters} meters</p>
+                      <p className="text-foreground">{sale.fabricSummary}</p>
+                      <p className="text-xs text-muted-foreground">{sale.meters} meters</p>
                     </td>
 
                     {/* Sale Date */}
                     <td className="p-4">
-                      <p className="text-gray-300">{formatDateSafe(sale.saleDate, 'dd MMM yyyy')}</p>
+                      <p className="text-muted-foreground">{formatDateSafe(sale.saleDate, 'dd MMM yyyy')}</p>
                     </td>
 
                     {/* Deadline */}
@@ -644,7 +644,7 @@ export const StudioSalesListNew = () => {
                         "font-medium",
                         alert === 'overdue' && "text-red-400",
                         alert === 'near' && "text-yellow-400",
-                        !alert && "text-gray-300"
+                        !alert && "text-muted-foreground"
                       )}>
                         {formatDateSafe(sale.deliveryDeadline, 'dd MMM yyyy')}
                       </p>
@@ -653,7 +653,7 @@ export const StudioSalesListNew = () => {
                     {/* Notes: first 40 chars, full text on hover */}
                     <td className="p-4 max-w-[200px]">
                       <p
-                        className="text-gray-300 text-sm truncate flex items-center gap-1.5"
+                        className="text-muted-foreground text-sm truncate flex items-center gap-1.5"
                         title={sale.notes || undefined}
                       >
                         {sale.notes ? (
@@ -669,19 +669,19 @@ export const StudioSalesListNew = () => {
 
                     {/* Total Amount */}
                     <td className="p-4 text-right">
-                      <p className="text-white font-semibold">{formatCurrency(sale.totalAmount)}</p>
+                      <p className="text-foreground font-semibold">{formatCurrency(sale.totalAmount)}</p>
                     </td>
 
                     {/* Paid Amount */}
                     <td className="p-4 text-right">
-                      <p className="text-green-400 font-semibold">{formatCurrency(sale.paidAmount)}</p>
+                      <p className="text-[var(--erp-money-positive)] font-semibold">{formatCurrency(sale.paidAmount)}</p>
                     </td>
 
                     {/* Balance Due */}
                     <td className="p-4 text-right">
                       <p className={cn(
                         "font-semibold",
-                        sale.balanceDue > 0 ? "text-orange-400" : "text-gray-500"
+                        sale.balanceDue > 0 ? "text-orange-400" : "text-muted-foreground"
                       )}>
                         {formatCurrency(sale.balanceDue)}
                       </p>
@@ -716,7 +716,7 @@ export const StudioSalesListNew = () => {
                         {alert === 'overdue' && (
                           <div className="relative group">
                             <AlertTriangle size={18} className="text-red-400" />
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-950 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-input-background text-foreground text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                               Overdue!
                             </div>
                           </div>
@@ -724,7 +724,7 @@ export const StudioSalesListNew = () => {
                         {alert === 'near' && (
                           <div className="relative group">
                             <Clock size={18} className="text-yellow-400" />
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-950 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-input-background text-foreground text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
                               Deadline Near
                             </div>
                           </div>
@@ -739,19 +739,19 @@ export const StudioSalesListNew = () => {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-white opacity-70 group-hover:opacity-100 transition-opacity"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground opacity-70 group-hover:opacity-100 transition-opacity"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical size={16} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 min-w-[200px]">
+                        <DropdownMenuContent align="end" className="bg-card border-border min-w-[200px]">
                           <DropdownMenuItem 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewDetail(sale);
                             }}
-                            className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                            className="text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
                           >
                             <Eye size={14} className="mr-2" />
                             View Detail / Production
@@ -764,7 +764,7 @@ export const StudioSalesListNew = () => {
                                   handleEdit(sale);
                                 }}
                                 disabled={!!editLoading}
-                                className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                className="text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
                               >
                                 {editLoading === sale.id ? (
                                   <Loader2 size={14} className="mr-2 animate-spin" />
@@ -778,7 +778,7 @@ export const StudioSalesListNew = () => {
                                   e.stopPropagation();
                                   setPrintDrawerSaleId(sale.id);
                                 }}
-                                className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                className="text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
                               >
                                 <Printer size={14} className="mr-2" />
                                 Print Invoice
@@ -812,15 +812,15 @@ export const StudioSalesListNew = () => {
 
         {/* Pagination */}
         {totalCount > 0 && totalPages > 1 && (
-          <div className="bg-gray-900/70 px-4 py-3 border-t border-gray-800 flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              Page <span className="text-white font-medium">{currentPage}</span> of <span className="text-white font-medium">{totalPages}</span>
+          <div className="bg-card/70 px-4 py-3 border-t border-border flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Page <span className="text-foreground font-medium">{currentPage}</span> of <span className="text-foreground font-medium">{totalPages}</span>
             </p>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="h-8 border-border text-muted-foreground hover:bg-muted"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
               >
@@ -830,7 +830,7 @@ export const StudioSalesListNew = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="h-8 border-border text-muted-foreground hover:bg-muted"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
               >

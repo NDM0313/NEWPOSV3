@@ -5,6 +5,16 @@
 **Settings → Numbering Rules** is the single source of truth.  
 All modules (Web, Mobile, API, POS) use the **same** backend engine. No separate or hardcoded numbering.
 
+## Sequence continuity (prefix change never resets counter)
+
+Numeric sequence belongs to **company + document_type + year**.  
+Prefix, branch code (`HQ-RCV-0011`), and template are **display formatting only**.
+
+- If `RCV-0010` exists and admin enables branch prefix `HQ`, the next receipt is `HQ-RCV-0011`, not `HQ-RCV-0001`.
+- Voucher types `CUSTOMER_RECEIPT`, `PAYMENT`, `EXPENSE`, `MANUAL_JOURNAL`, `FUND_TRANSFER` use one company-wide counter; `branch_id` affects display only.
+- `generate_document_number` uses `erp_effective_sequence_max()` (max of all counter rows + observed voucher suffixs).
+- Settings save must **preserve** `last_number` when changing prefix/template.
+
 ```
 Settings → Numbering Rules (prefix, digits, year reset, branch based)
         ↓

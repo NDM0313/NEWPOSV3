@@ -1,0 +1,11 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "phase": "git-push",
+  "commitMessage": "docs(accounting): execute bs pl controlled loader swap",
+  "headBefore": "f06a7ed7f539ac04f26bd4dc852551cb77478b64",
+  "headAfter": "186c828f8a58ce03fb34aac0e7ad575fe1f5b943",
+  "originMainAfter": "186c828f8a58ce03fb34aac0e7ad575fe1f5b943",
+  "pushSuccess": true,
+  "stagedOnlyApprovedPaths": true,
+  "unrelatedDirtyLeftUnstaged": true
+}

@@ -1,0 +1,14 @@
+{
+  "status": "DOCUMENTED_NOT_EXECUTED",
+  "requiresSeparateApproval": true,
+  "correctionJes": [
+    { "entryNo": "JV-000209", "id": "97b8c7d0-8fa5-4c21-859f-781647c5097e" },
+    { "entryNo": "JV-000210", "id": "374d57ad-a1b7-4f3c-8d23-6d7b70060ee3" }
+  ],
+  "reversalMethod": "void correction JEs or additive reversal JEs with rollback fingerprints",
+  "expectedAfterRollback": {
+    "control1100JeNet": -136500,
+    "AR-CUS0056": 113750,
+    "AR-CUS0012": 72750
+  }
+}

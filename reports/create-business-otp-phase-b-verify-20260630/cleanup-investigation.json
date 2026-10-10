@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-30T14:05:00.000Z",
+  "decision": "CLEANUP_ALLOWED_BOOTSTRAP_ONLY",
+  "auth_user_id": "23cf3957-6d21-411e-8595-3084cf665c9e",
+  "company_id": "fbde1878-53e1-4d17-bd92-9b8f6c489ef5",
+  "branch_id": "acee487c-638f-4422-9271-3c9f4644ef29",
+  "transaction_counts": {
+    "sales": 0,
+    "purchases": 0,
+    "payments": 0,
+    "journal_entries": 0,
+    "journal_entry_lines": 0,
+    "expenses": 0,
+    "rentals": 0
+  },
+  "bootstrap": {
+    "accounts": 6,
+    "contacts": 1,
+    "products": 4,
+    "modules_config": 10
+  }
+}

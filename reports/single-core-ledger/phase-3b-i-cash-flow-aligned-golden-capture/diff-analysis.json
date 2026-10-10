@@ -1,0 +1,137 @@
+{
+  "phase": "3B-I",
+  "capturedAt": "2026-06-29T14:39:12.832Z",
+  "allZeroDiff": false,
+  "zeroDiffCompanies": [
+    "DIN COUTURE"
+  ],
+  "nonZeroDiffCompanies": [
+    "DIN CHINA",
+    "DIN BRIDAL"
+  ],
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "report": "Cash Flow aligned preview",
+      "zeroDiff": false,
+      "compareLabel": "NON-ZERO-DIFF",
+      "legacySummary": "Cash In 104176812; Cash Out 67042426; Closing 37134386",
+      "alignedPreviewSummary": "Cash In 35460880; Cash Out 67964117; Closing -32503237",
+      "closingDelta": 69637623,
+      "cashInDelta": 68715932,
+      "cashOutDelta": -921691,
+      "netMovementDelta": 69637623,
+      "maxDelta": 69637623,
+      "rowCountDelta": 87,
+      "rowKeyedCounts": {
+        "exact": 89,
+        "strong": 0,
+        "weak": 11,
+        "legacyOnly": 223,
+        "previewOnly": 305,
+        "transferBucket": 0,
+        "openingBucket": 0,
+        "financeExcludedTransfer": 0,
+        "financeExcludedOpening": 0
+      },
+      "transferBucketEffect": {
+        "excludedFromNormalTotals": {
+          "internalTransferRows": 169,
+          "openingBalanceRows": 0,
+          "auditDetailRows": 169
+        },
+        "thematicTransferBucket": 0,
+        "financeExcludedTransfer": 0
+      },
+      "openingBucketEffect": {
+        "excludedFromNormalTotals": 0,
+        "thematicOpeningBucket": 0,
+        "financeExcludedOpening": 0
+      },
+      "financeCanReviewNow": true,
+      "loaderSwapApproved": false
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Cash Flow aligned preview",
+      "zeroDiff": false,
+      "compareLabel": "NON-ZERO-DIFF",
+      "legacySummary": "Cash In 1836350; Cash Out 917780; Closing 918570",
+      "alignedPreviewSummary": "Cash In 1003500; Cash Out 942780; Closing 60720",
+      "closingDelta": 857850,
+      "cashInDelta": 832850,
+      "cashOutDelta": -25000,
+      "netMovementDelta": 857850,
+      "maxDelta": 857850,
+      "rowCountDelta": 0,
+      "rowKeyedCounts": {
+        "exact": 2,
+        "strong": 48,
+        "weak": 0,
+        "legacyOnly": 1,
+        "previewOnly": 3,
+        "transferBucket": 0,
+        "openingBucket": 0,
+        "financeExcludedTransfer": 0,
+        "financeExcludedOpening": 0
+      },
+      "transferBucketEffect": {
+        "excludedFromNormalTotals": {
+          "internalTransferRows": 0,
+          "openingBalanceRows": 2,
+          "auditDetailRows": 2
+        },
+        "thematicTransferBucket": 0,
+        "financeExcludedTransfer": 0
+      },
+      "openingBucketEffect": {
+        "excludedFromNormalTotals": 2,
+        "thematicOpeningBucket": 0,
+        "financeExcludedOpening": 0
+      },
+      "financeCanReviewNow": true,
+      "loaderSwapApproved": false
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Cash Flow aligned preview",
+      "zeroDiff": true,
+      "compareLabel": "ZERO-DIFF",
+      "legacySummary": "Cash In 85000; Cash Out 34500; Closing 50500",
+      "alignedPreviewSummary": "Cash In 85000; Cash Out 34500; Closing 50500",
+      "closingDelta": 0,
+      "cashInDelta": 0,
+      "cashOutDelta": 0,
+      "netMovementDelta": 0,
+      "maxDelta": 0,
+      "rowCountDelta": 0,
+      "rowKeyedCounts": {
+        "exact": 2,
+        "strong": 4,
+        "weak": 0,
+        "legacyOnly": 0,
+        "previewOnly": 0,
+        "transferBucket": 0,
+        "openingBucket": 0,
+        "financeExcludedTransfer": 0,
+        "financeExcludedOpening": 0
+      },
+      "transferBucketEffect": {
+        "excludedFromNormalTotals": {
+          "internalTransferRows": 0,
+          "openingBalanceRows": 0,
+          "auditDetailRows": 0
+        },
+        "thematicTransferBucket": 0,
+        "financeExcludedTransfer": 0
+      },
+      "openingBucketEffect": {
+        "excludedFromNormalTotals": 0,
+        "thematicOpeningBucket": 0,
+        "financeExcludedOpening": 0
+      },
+      "financeCanReviewNow": true,
+      "loaderSwapApproved": false
+    }
+  ]
+}

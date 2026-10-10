@@ -64,6 +64,46 @@ export function safeLocalStorageRemoveItem(key: string): void {
   }
 }
 
+export function safeSessionStorageGetItem(key: string): string | null {
+  const storage = getBrowserStorage('session');
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function safeSessionStorageSetItem(key: string, value: string): void {
+  const storage = getBrowserStorage('session');
+  if (!storage) return;
+  try {
+    storage.setItem(key, value);
+  } catch {
+    /* quota / denied */
+  }
+}
+
+export function safeSessionStorageRemoveItem(key: string): void {
+  const storage = getBrowserStorage('session');
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function safeSessionStorageClear(): void {
+  const storage = getBrowserStorage('session');
+  if (!storage) return;
+  try {
+    storage.clear();
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Keys from localStorage matching a predicate; empty if storage unavailable. */
 export function safeLocalStorageKeys(match: (key: string) => boolean): string[] {
   const storage = getBrowserStorage('local');

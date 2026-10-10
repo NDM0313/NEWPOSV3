@@ -1,0 +1,22 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "tb-drift-contributors",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "golden_tb_pkr": 22056075,
+  "actual_tb_at_12_43_pkr": 22257400,
+  "delta_pkr": 201325,
+  "debit_equals_credit": true,
+  "contributors_at_12_43": [
+    { "entry_no": "RCV-0075", "created_at": "2026-07-01T11:56:02Z", "tb_debit_add_pkr": 80000, "roznamcha_cash_in_pkr": 80000 },
+    { "entry_no": "JE-0205", "created_at": "2026-07-01T12:32:12Z", "tb_debit_add_pkr": 79325, "roznamcha_cash_in_pkr": 0 },
+    { "entry_no": "RCV-0076", "created_at": "2026-07-01T12:42:24Z", "tb_debit_add_pkr": 42000, "roznamcha_cash_in_pkr": 42000 }
+  ],
+  "sum_tb_debit_add_pkr": 201325,
+  "unmatched_delta_pkr": 0,
+  "post_12_43_additional": {
+    "entry_no": "RCV-0077",
+    "tb_debit_add_pkr": 20000,
+    "note": "Would push TB to 22,277,400 if no other activity"
+  },
+  "assessment": "LEGITIMATE_LIVE_BUSINESS_ACTIVITY — sale finalize + customer receipts"
+}

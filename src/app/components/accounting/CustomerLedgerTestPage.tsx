@@ -351,15 +351,15 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0B0F17] text-white flex flex-col">
+    <div className="fixed inset-0 z-50 bg-background text-foreground flex flex-col">
       {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
+      <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between flex-shrink-0">
         <h1 className="text-2xl font-bold">Customer Ledger (Test)</h1>
         <div className="flex items-center gap-2">
           {selectedCustomer && (
             <>
-              <div className="flex items-center gap-2 border-r border-gray-700 pr-4 mr-4">
-                <span className="text-xs text-gray-400">Print:</span>
+              <div className="flex items-center gap-2 border-r border-border pr-4 mr-4">
+                <span className="text-xs text-muted-foreground">Print:</span>
                 <Button
                   variant={printOrientation === 'portrait' ? 'default' : 'outline'}
                   size="sm"
@@ -381,7 +381,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
                 variant="outline"
                 size="sm"
                 onClick={handlePrint}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <Printer size={14} className="mr-2" />
                 Print
@@ -390,7 +390,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
                 variant="outline"
                 size="sm"
                 onClick={handleExportPDF}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <Download size={14} className="mr-2" />
                 PDF
@@ -399,7 +399,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
                 variant="outline"
                 size="sm"
                 onClick={handleExportExcel}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <FileSpreadsheet size={14} className="mr-2" />
                 Excel
@@ -410,7 +410,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             <X size={20} />
           </Button>
@@ -418,7 +418,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
       </div>
 
       {/* Top Bar - Customer Search & Date Range */}
-      <div className="bg-gray-950 border-b border-gray-800 px-6 py-4 flex-shrink-0">
+      <div className="bg-input-background border-b border-border px-6 py-4 flex-shrink-0">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex-1 min-w-[300px]">
             <CustomerSelector
@@ -448,14 +448,14 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
             <span className="font-semibold">{selectedCustomer.name}</span>
             {selectedCustomer.code && (
               <>
-                <span className="text-gray-400">|</span>
-                <span className="text-gray-400">Code: {selectedCustomer.code}</span>
+                <span className="text-muted-foreground">|</span>
+                <span className="text-muted-foreground">Code: {selectedCustomer.code}</span>
               </>
             )}
             {selectedCustomer.phone && (
               <>
-                <span className="text-gray-400">|</span>
-                <span className="text-gray-400">Phone: {selectedCustomer.phone}</span>
+                <span className="text-muted-foreground">|</span>
+                <span className="text-muted-foreground">Phone: {selectedCustomer.phone}</span>
               </>
             )}
           </div>
@@ -496,7 +496,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
 
       {/* Empty State */}
       {!selectedCustomer && (
-        <div className="flex-1 flex items-center justify-center text-gray-400">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
           Please select a customer to view ledger
         </div>
       )}

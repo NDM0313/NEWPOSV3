@@ -1,0 +1,26 @@
+# Repo safety — Calendar stability 2026-07-03 (gate)
+
+**Run local date/time:** 2026-07-02 18:45:16 +05:00
+
+| Check | Result |
+|-------|--------|
+| Branch | `main` |
+| HEAD | `eabab4017cc8122edf98623696b9152fe791ae8d` |
+| origin/main | `eabab4017cc8122edf98623696b9152fe791ae8d` |
+| In sync with origin | **yes** |
+| Calendar Day 2 commit `eabab401` present | **yes** |
+| Staged credentials | **none** |
+| Staged APK/AAB | **none** |
+| graphify-out | unstaged |
+| downloads | unstaged |
+| Unrelated operational artifacts | unstaged |
+
+## Calendar gate
+
+**Calendar Day 3 check is not runnable yet.**
+
+- Required local date: **2026-07-03**
+- Actual local date: **2026-07-02**
+- Calendar Day 2 already recorded PASS at 2026-07-02 18:06:31 +05:00 (`eabab401`)
+
+Per calendar rule, same-day repeated samples are troubleshooting evidence only and do not advance the stability window. Monitoring for Calendar Day 3 must wait until the office machine local date rolls to **2026-07-03**.

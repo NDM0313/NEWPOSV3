@@ -1,0 +1,33 @@
+{
+  "phase": "2.8",
+  "title": "Single Core Ledger Preview QA — Automated Gates",
+  "timestampUtc": "2026-06-25T12:12:55.460Z",
+  "branch": "feature/single-core-ledger-phase-2-8-preview-qa-signoff",
+  "baseCommit": "020a2e5dedddfdcdfb19f10c14d924b084552f0f",
+  "baseBranch": "feature/single-core-ledger-phase-2-7-party-ledger-preview",
+  "environment": "local-dev (Windows)",
+  "commands": [
+    {
+      "command": "npm run test:unified-ledger",
+      "expected": "112/112 PASS",
+      "result": "PASS",
+      "tests": 112,
+      "failures": 0,
+      "durationMs": 2764.6499,
+      "evidenceFile": "test-unified-ledger-output.txt"
+    },
+    {
+      "command": "npm run build",
+      "expected": "PASS",
+      "result": "PASS",
+      "buildTimeSec": 48.3,
+      "evidenceFile": "build-output.txt"
+    }
+  ],
+  "gitChecks": {
+    "migrationsDiffEmpty": true,
+    "noFeatureFlagWritesInPreviewServices": true,
+    "unifiedLedgerEngineDefaultOff": true
+  },
+  "productionDbMutation": "NONE"
+}

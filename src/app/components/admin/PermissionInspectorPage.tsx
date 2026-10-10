@@ -68,9 +68,9 @@ function hasDelete(rows: RolePermissionRow[], module: string): boolean {
 function EffectiveMatrix({ rows }: { rows: RolePermissionRow[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border border-gray-700 rounded-lg overflow-hidden">
+      <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
         <thead>
-          <tr className="bg-gray-800/80 text-left">
+          <tr className="bg-muted/80 text-left">
             <th className="px-4 py-2 font-medium text-gray-200">Module</th>
             <th className="px-4 py-2 font-medium text-gray-200 text-center w-24">View</th>
             <th className="px-4 py-2 font-medium text-gray-200 text-center w-24">Create</th>
@@ -89,8 +89,8 @@ function EffectiveMatrix({ rows }: { rows: RolePermissionRow[] }) {
               <tr
                 key={module}
                 className={cn(
-                  'border-t border-gray-700/70',
-                  hasAny ? 'bg-gray-900/50' : 'bg-gray-900/30 opacity-70'
+                  'border-t border-border/70',
+                  hasAny ? 'bg-muted/40' : 'bg-muted/30 opacity-70'
                 )}
               >
                 <td className="px-4 py-2 text-gray-200">{MODULE_LABELS[module] ?? module}</td>
@@ -206,7 +206,7 @@ export function PermissionInspectorPage() {
         <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-6 text-center">
           <Shield className="mx-auto h-10 w-10 text-red-400 mb-3" />
           <h2 className="text-lg font-semibold text-red-200">Access denied</h2>
-          <p className="text-sm text-gray-400 mt-1">Only owner or admin can access Permission Inspector.</p>
+          <p className="text-sm text-muted-foreground mt-1">Only owner or admin can access Permission Inspector.</p>
         </div>
       </div>
     );
@@ -222,19 +222,19 @@ export function PermissionInspectorPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-2 text-gray-300">
+      <div className="flex items-center gap-2 text-muted-foreground">
         <Shield className="h-6 w-6 text-amber-500" />
         <h1 className="text-xl font-semibold">Permission Inspector</h1>
       </div>
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted-foreground">
         Live DB view: same data and logic as production. Select a user to see role permissions, branch access, and RLS scope.
       </p>
 
       {/* User selector */}
-      <section className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
-        <label className="block text-sm font-medium text-gray-300 mb-2">Select User</label>
+      <section className="rounded-lg border border-border bg-muted/40 p-4">
+        <label className="block text-sm font-medium text-muted-foreground mb-2">Select User</label>
         <select
-          className="w-full max-w-md rounded-md border border-gray-600 bg-gray-800 text-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+          className="w-full max-w-md rounded-md border border-gray-600 bg-muted text-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
           value={selectedUserId}
           onChange={(e) => setSelectedUserId(e.target.value)}
           disabled={loading}
@@ -249,44 +249,44 @@ export function PermissionInspectorPage() {
       </section>
 
       {loadingPayload && (
-        <div className="text-sm text-gray-500">Loading user data…</div>
+        <div className="text-sm text-muted-foreground">Loading user data…</div>
       )}
 
       {!loadingPayload && selectedUser && payload && (
         <>
           {/* Section 1 – User Summary */}
-          <section className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+          <section className="rounded-lg border border-border bg-muted/40 p-4">
             <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
               <User size={16} /> User Summary
             </h2>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <div>
-                <dt className="text-gray-500">Name</dt>
+                <dt className="text-muted-foreground">Name</dt>
                 <dd className="text-gray-200">{selectedUser.full_name || '—'}</dd>
               </div>
               <div>
-                <dt className="text-gray-500">Email</dt>
+                <dt className="text-muted-foreground">Email</dt>
                 <dd className="text-gray-200">{selectedUser.email || '—'}</dd>
               </div>
               <div>
-                <dt className="text-gray-500">Role</dt>
+                <dt className="text-muted-foreground">Role</dt>
                 <dd className="text-gray-200">
-                  <span className="rounded px-2 py-0.5 bg-gray-700 text-gray-200">{selectedUser.role}</span>
-                  <span className="ml-2 text-gray-500">(engine: {payload.engineRole})</span>
+                  <span className="rounded px-2 py-0.5 bg-muted text-gray-200">{selectedUser.role}</span>
+                  <span className="ml-2 text-muted-foreground">(engine: {payload.engineRole})</span>
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">Company</dt>
+                <dt className="text-muted-foreground">Company</dt>
                 <dd className="text-gray-200 flex items-center gap-1">
                   <Building2 size={14} /> {selectedUser.company_id}
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">Branch Mode</dt>
+                <dt className="text-muted-foreground">Branch Mode</dt>
                 <dd className="text-gray-200">{branchMode}</dd>
               </div>
               <div>
-                <dt className="text-gray-500">Branches Assigned</dt>
+                <dt className="text-muted-foreground">Branches Assigned</dt>
                 <dd className="text-gray-200">
                   {payload.userBranches.length > 0
                     ? payload.userBranches.map((ub) => ub.branch_id).join(', ')
@@ -294,7 +294,7 @@ export function PermissionInspectorPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">Effective Branch</dt>
+                <dt className="text-muted-foreground">Effective Branch</dt>
                 <dd className="text-gray-200 flex items-center gap-1">
                   <MapPin size={14} />
                   {effective?.effective_branch_id ?? '—'}
@@ -307,37 +307,37 @@ export function PermissionInspectorPage() {
           </section>
 
           {/* Section 2 – Branch Access & RLS scope */}
-          <section className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+          <section className="rounded-lg border border-border bg-muted/40 p-4">
             <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
               <MapPin size={16} /> Branch Access & RLS Scope
             </h2>
             <div className="text-sm space-y-1">
-              <p className="text-gray-300">
+              <p className="text-muted-foreground">
                 Company branch count: <strong>{payload.companyBranchCount}</strong>
               </p>
-              <p className="text-gray-300">
+              <p className="text-muted-foreground">
                 Accessible branch IDs:{' '}
                 {effective?.accessible_branch_ids?.length
                   ? effective.accessible_branch_ids.join(', ')
                   : '—'}
               </p>
-              <p className="text-gray-400">
+              <p className="text-muted-foreground">
                 RLS scope: company_id = current company; branch isolation by effective/accessible branches.
               </p>
             </div>
           </section>
 
           {/* Section 3 – Module Permission Matrix */}
-          <section className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+          <section className="rounded-lg border border-border bg-muted/40 p-4">
             <h2 className="text-sm font-semibold text-gray-200 mb-3">Effective Permissions (from role_permissions)</h2>
             <EffectiveMatrix rows={payload.rolePermissions} />
           </section>
 
           {/* Section 4 – Raw DB (expandable) */}
-          <section className="rounded-lg border border-gray-700 bg-gray-900/50 p-4">
+          <section className="rounded-lg border border-border bg-muted/40 p-4">
             <button
               type="button"
-              className="flex items-center gap-2 text-sm font-medium text-gray-300 hover:text-gray-200"
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-gray-200"
               onClick={() => setRawOpen((o) => !o)}
             >
               <ChevronRight className={cn('h-4 w-4 transition-transform', rawOpen && 'rotate-90')} />
@@ -346,20 +346,20 @@ export function PermissionInspectorPage() {
             {rawOpen && (
               <div className="mt-3 space-y-3 text-xs font-mono">
                 <div>
-                  <p className="text-gray-500 mb-1">role_permissions (role = {payload.engineRole}):</p>
-                  <pre className="rounded bg-gray-950 p-3 overflow-auto max-h-48 text-gray-400">
+                  <p className="text-muted-foreground mb-1">role_permissions (role = {payload.engineRole}):</p>
+                  <pre className="rounded bg-input-background p-3 overflow-auto max-h-48 text-muted-foreground">
                     {JSON.stringify(payload.rolePermissions, null, 2)}
                   </pre>
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-1">user_branches:</p>
-                  <pre className="rounded bg-gray-950 p-3 overflow-auto max-h-32 text-gray-400">
+                  <p className="text-muted-foreground mb-1">user_branches:</p>
+                  <pre className="rounded bg-input-background p-3 overflow-auto max-h-32 text-muted-foreground">
                     {JSON.stringify(payload.userBranches, null, 2)}
                   </pre>
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-1">get_effective_user_branch result:</p>
-                  <pre className="rounded bg-gray-950 p-3 overflow-auto max-h-32 text-gray-400">
+                  <p className="text-muted-foreground mb-1">get_effective_user_branch result:</p>
+                  <pre className="rounded bg-input-background p-3 overflow-auto max-h-32 text-muted-foreground">
                     {JSON.stringify(payload.effectiveBranch, null, 2)}
                   </pre>
                 </div>

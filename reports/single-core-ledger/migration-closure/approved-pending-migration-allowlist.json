@@ -1,0 +1,28 @@
+{
+  "run": "single-core-ledger-migration-closure",
+  "generated_at": "2026-06-27T17:45:00Z",
+  "status": "NO_APPROVED_PENDING_MIGRATIONS",
+  "approved_pending_migrations": [],
+  "migrations_to_apply_count": 0,
+  "exclusions": {
+    "r7_roznamcha_payment": {
+      "classification": "DESIGN_ONLY",
+      "migration_file": null,
+      "approval_found": false
+    },
+    "r8_legacy_engine_retirement": {
+      "classification": "BLOCKED",
+      "reason": "All approved companies must be stable; separate approval required"
+    },
+    "feature_flag_sql": {
+      "classification": "EXCLUDED",
+      "reason": "Not schema migrations"
+    },
+    "gl_remediation_scripts": {
+      "classification": "BLOCKED",
+      "reason": "Data mutation requires separate approval"
+    }
+  },
+  "phase_15_already_applied": true,
+  "repo_migrations_all_in_production": true
+}

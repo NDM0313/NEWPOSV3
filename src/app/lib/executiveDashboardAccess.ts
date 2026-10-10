@@ -4,6 +4,7 @@ function normalizeErpRole(role: string | null | undefined): string {
   const r = (role ?? '').toLowerCase().trim();
   if (r === 'owner') return 'owner';
   if (r === 'admin' || r === 'super admin' || r === 'superadmin') return 'admin';
+  if (r === 'manager' || r === 'accountant') return 'manager';
   return r;
 }
 
@@ -12,7 +13,8 @@ export function canViewExecutiveDashboard(role: string | null | undefined): bool
   return r === 'owner' || r === 'admin';
 }
 
-/** Salesman + commission on invoice — admin/owner only; workers auto-assigned. */
+/** Salesman + commission on invoice — owner/admin/manager; workers auto-assigned. */
 export function canAssignSaleCommission(role: string | null | undefined): boolean {
-  return canViewExecutiveDashboard(role);
+  const r = normalizeErpRole(role);
+  return r === 'owner' || r === 'admin' || r === 'manager';
 }

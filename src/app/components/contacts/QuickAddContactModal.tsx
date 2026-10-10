@@ -103,18 +103,18 @@ export const QuickAddContactModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[450px] bg-gray-900 text-white border-gray-800 p-0 gap-0 overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+      <DialogContent className="sm:max-w-[450px] bg-card text-foreground border-border p-0 gap-0 overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
         <DialogHeader className="sr-only">
           <DialogTitle>{isEdit ? 'Edit Contact' : `Quick Add ${contactType === 'customer' ? 'Customer' : 'Supplier'}`}</DialogTitle>
         </DialogHeader>
         {/* Header */}
-        <div className="p-5 border-b border-gray-800 bg-gray-950">
-          <div className="text-lg font-bold text-white flex items-center justify-between">
+        <div className="p-5 border-b border-border bg-input-background">
+          <div className="text-lg font-bold text-foreground flex items-center justify-between">
             <div className="flex items-center gap-2">
                {isEdit ? <Edit size={18} className="text-blue-400" /> : <Plus size={18} className="text-blue-400" />}
                <span>{isEdit ? 'Edit Contact' : `Quick Add ${contactType === 'customer' ? 'Customer' : 'Supplier'}`}</span>
             </div>
-            <Badge variant="outline" className="capitalize text-xs font-normal border-gray-700 text-gray-400">
+            <Badge variant="outline" className="capitalize text-xs font-normal border-border text-muted-foreground">
               {contactType}
             </Badge>
           </div>
@@ -129,11 +129,11 @@ export const QuickAddContactModal = ({
               className="w-full" 
               onValueChange={(v) => setIsBusiness(v === 'business')}
             >
-              <TabsList className="grid w-full grid-cols-2 bg-gray-800 text-gray-400">
-                <TabsTrigger value="individual" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
+              <TabsList className="grid w-full grid-cols-2 bg-muted text-muted-foreground">
+                <TabsTrigger value="individual" className="data-[state=active]:bg-muted data-[state=active]:text-foreground">
                   <User size={14} className="mr-2" /> Individual
                 </TabsTrigger>
-                <TabsTrigger value="business" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white">
+                <TabsTrigger value="business" className="data-[state=active]:bg-muted data-[state=active]:text-foreground">
                   <Building2 size={14} className="mr-2" /> Business
                 </TabsTrigger>
               </TabsList>
@@ -143,26 +143,26 @@ export const QuickAddContactModal = ({
           <div className="space-y-4">
             {/* Name Input */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Name</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Name</Label>
               <Input 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={isBusiness ? "Company Name" : "Full Name"}
-                className="bg-gray-800 border-gray-700 text-white focus:ring-blue-500/20 font-medium"
+                className="bg-muted border-border text-foreground focus:ring-blue-500/20 font-medium"
                 autoFocus={!isEdit} // Don't autofocus on edit to avoid jarring jump if they want to edit something else
               />
             </div>
 
             {/* Mobile Input */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Mobile Number</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Mobile Number</Label>
               <div className="relative">
-                <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input 
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
                   placeholder="+1 (555) 000-0000"
-                  className="bg-gray-800 border-gray-700 text-white pl-9"
+                  className="bg-muted border-border text-foreground pl-9"
                   type="tel"
                 />
               </div>
@@ -170,53 +170,53 @@ export const QuickAddContactModal = ({
 
             {/* Opening Balance */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">
                  {isEdit ? 'Current Balance' : 'Opening Balance (Optional)'}
               </Label>
               <div className="relative">
-                <Wallet size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <Wallet size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input 
                   value={balance}
                   onChange={(e) => setBalance(e.target.value)}
                   placeholder="0.00"
                   type="number"
-                  className="bg-gray-800 border-gray-700 text-white pl-9"
+                  className="bg-muted border-border text-foreground pl-9"
                 />
               </div>
-              <p className="text-[10px] text-gray-500">
+              <p className="text-[10px] text-muted-foreground">
                 Positive value = They owe you. Negative = You owe them.
               </p>
             </div>
 
             {/* Address */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500 uppercase tracking-wider">Address (Optional)</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Address (Optional)</Label>
               <Textarea 
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="Enter full address"
-                className="bg-gray-800 border-gray-700 text-white min-h-[60px]"
+                className="bg-muted border-border text-foreground min-h-[60px]"
               />
             </div>
 
             {/* City and Country */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider">City (Optional)</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">City (Optional)</Label>
                 <Input 
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                   placeholder="Karachi"
-                  className="bg-gray-800 border-gray-700 text-white"
+                  className="bg-muted border-border text-foreground"
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-gray-500 uppercase tracking-wider">Country (Optional)</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Country (Optional)</Label>
                 <Select value={country} onValueChange={setCountry}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                  <SelectTrigger className="bg-muted border-border text-foreground">
                     <SelectValue placeholder="Pakistan" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectContent className="bg-muted border-border text-foreground">
                     <SelectItem value="pk">Pakistan</SelectItem>
                     <SelectItem value="in">India</SelectItem>
                     <SelectItem value="bd">Bangladesh</SelectItem>
@@ -228,8 +228,8 @@ export const QuickAddContactModal = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-800 bg-gray-950 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-white">
+        <div className="p-5 border-t border-border bg-input-background flex justify-end gap-3">
+          <Button variant="ghost" onClick={onClose} className="text-muted-foreground hover:text-foreground">
             Cancel
           </Button>
           <Button 

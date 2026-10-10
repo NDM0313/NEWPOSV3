@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-06-26T20:00:53.317Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "mode": "narrow",
+  "golden": {
+    "cashIn": 136158012,
+    "cashOut": 67042426,
+    "closing": 69115586
+  },
+  "parityPass": true,
+  "results": [
+    {
+      "range": "wide-range-golden",
+      "dateFrom": "2000-01-01",
+      "dateTo": "2026-06-26",
+      "legacyGolden": {
+        "cashIn": 136158012,
+        "cashOut": 67042426,
+        "closing": 69115586
+      },
+      "parityModel": {
+        "cashIn": 136158012,
+        "cashOut": 67042426,
+        "closing": 69115586
+      },
+      "payments": {
+        "rows": 241,
+        "cashIn": 55305771,
+        "cashOut": 67042426,
+        "closing": -11736655
+      },
+      "journalOnly": {
+        "rows": 166,
+        "cashIn": 80852241,
+        "cashOut": 58389891
+      },
+      "unifiedRawRpc": {
+        "rowCount": 408,
+        "opening": 0,
+        "cashIn": 135736321,
+        "cashOut": 126854008,
+        "closing": 8882313
+      },
+      "rawRpcDiffersFromLegacy": {
+        "cashIn": 421691,
+        "cashOut": -59811582
+      },
+      "classifications": [
+        {
+          "bucket": "cash_in_mismatch",
+          "delta": 421691
+        },
+        {
+          "bucket": "cash_out_mismatch",
+          "delta": -59811582
+        }
+      ],
+      "parityEngineNote": "Phase 2.15 unified roznamcha loader uses getRoznamcha composite — not raw RPC totals."
+    },
+    {
+      "range": "current-month",
+      "dateFrom": "2026-05-31",
+      "dateTo": "2026-06-26",
+      "legacyGolden": {
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 0
+      },
+      "parityModel": {
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 0
+      },
+      "payments": {
+        "rows": 0,
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 0
+      },
+      "journalOnly": {
+        "rows": 0,
+        "cashIn": 0,
+        "cashOut": 0
+      },
+      "unifiedRawRpc": {
+        "rowCount": 0,
+        "opening": 8882313,
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 8882313
+      },
+      "rawRpcDiffersFromLegacy": {
+        "cashIn": 0,
+        "cashOut": 0
+      },
+      "classifications": [],
+      "parityEngineNote": "Phase 2.15 unified roznamcha loader uses getRoznamcha composite — not raw RPC totals."
+    },
+    {
+      "range": "last-30-days",
+      "dateFrom": "2026-05-27",
+      "dateTo": "2026-06-26",
+      "legacyGolden": {
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 0
+      },
+      "parityModel": {
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 0
+      },
+      "payments": {
+        "rows": 0,
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 0
+      },
+      "journalOnly": {
+        "rows": 0,
+        "cashIn": 0,
+        "cashOut": 0
+      },
+      "unifiedRawRpc": {
+        "rowCount": 0,
+        "opening": 8882313,
+        "cashIn": 0,
+        "cashOut": 0,
+        "closing": 8882313
+      },
+      "rawRpcDiffersFromLegacy": {
+        "cashIn": 0,
+        "cashOut": 0
+      },
+      "classifications": [],
+      "parityEngineNote": "Phase 2.15 unified roznamcha loader uses getRoznamcha composite — not raw RPC totals."
+    }
+  ]
+}

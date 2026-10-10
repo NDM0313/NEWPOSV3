@@ -1,0 +1,39 @@
+{
+  "run": "PHASE_3B_G_DECISION_OUTCOME_MATRIX",
+  "generated_at": "2026-06-29T15:00:00.000Z",
+  "outcomes": {
+    "Q7_A_keep_legacy_official": {
+      "runtimeNow": "none",
+      "futurePhase": null,
+      "loaderSwap": "blocked_not_approved",
+      "previewRole": "diagnostic_only"
+    },
+    "Q7_B_align_preview_to_legacy": {
+      "runtimeNow": "none",
+      "futurePhase": "3B-H_preview_alignment_fix",
+      "loaderSwap": "blocked_until_recapture",
+      "requires": ["finance_approval", "operator_approval", "golden_recapture"]
+    },
+    "Q7_C_align_legacy_to_unified": {
+      "runtimeNow": "none",
+      "futurePhase": "controlled_behavior_change",
+      "loaderSwap": "blocked_until_controlled_phase",
+      "requires": ["full_finance_signoff", "operator_approval", "rollback_plan"]
+    },
+    "Q7_D_more_review": {
+      "runtimeNow": "none",
+      "futurePhase": null,
+      "loaderSwap": "blocked",
+      "previewRole": "diagnostic_only"
+    }
+  },
+  "hardBlocks": {
+    "migrations": false,
+    "flags": false,
+    "glMutations": false,
+    "bsPlFinance": "PENDING",
+    "r7": "DESIGN_ONLY",
+    "r8": "BLOCKED",
+    "nextCompany": "BLOCKED"
+  }
+}

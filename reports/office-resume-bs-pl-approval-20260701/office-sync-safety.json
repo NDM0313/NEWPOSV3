@@ -1,0 +1,13 @@
+{
+  "runName": "OFFICE RESUME AFTER HOME SKIP — BS_PL FINANCE APPROVAL PACK ONLY",
+  "timestampUtc": "2026-07-01T00:00:00.000Z",
+  "branch": "main",
+  "headCommit": "b9a630efdc5741ffa55ecae1f2d78947c269366e",
+  "originMain": "b9a630efdc5741ffa55ecae1f2d78947c269366e",
+  "pullRequired": false,
+  "inSyncWithOrigin": true,
+  "finalHandoffFileExists": true,
+  "finalHandoffReportsExist": true,
+  "localDirtyFiles": "unrelated operational monitoring timestamps, graphify-out, office-resume artifacts — remain unstaged",
+  "credentialsStaged": false
+}

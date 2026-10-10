@@ -1,0 +1,26 @@
+{
+  "phase": "R5",
+  "status": "PREFLIGHT_READY_BLOCKED",
+  "date": "2026-06-27",
+  "prerequisite_r3": "reports/single-core-ledger/r3-pre-expansion-audit/r3-audit-complete-report.md",
+  "candidates": [
+    {
+      "slug": "din-bridal",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "monitoring_profile": "din-bridal",
+      "golden_fixture_path": "reports/single-core-ledger/din-bridal/golden-fixtures.json"
+    },
+    {
+      "slug": "din-couture",
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "monitoring_profile": "din-couture",
+      "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json"
+    }
+  ],
+  "blocked_gates": [
+    "finance_sign_off",
+    "target_company_selection",
+    "legacy_browser_roznamcha_goldens"
+  ],
+  "flag_sql_executed": false
+}

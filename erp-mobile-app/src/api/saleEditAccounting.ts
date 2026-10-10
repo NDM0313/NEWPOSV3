@@ -4,6 +4,11 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  CANONICAL_SALES_REVENUE_CODE,
+  FALLBACK_SALES_REVENUE_CODE,
+  resolveCanonicalSalesRevenueAccountIdFromMap,
+} from '../lib/canonicalSalesRevenueAccount';
 
 export type SaleAcctSnapshot = {
   total: number;
@@ -170,7 +175,12 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
     if (!arAccountId) return { updated: false, error: null, skipReason: 'missing_ar_account' };
 
     const getAccId = async (code: string) => accountIdByCode(companyId, code);
-    const merchandiseRevenueId = (await getAccId('4000')) || (await getAccId('4100'));
+    const revenueByCode = new Map<string, string>();
+    for (const code of [CANONICAL_SALES_REVENUE_CODE, FALLBACK_SALES_REVENUE_CODE]) {
+      const id = await getAccId(code);
+      if (id) revenueByCode.set(code, id);
+    }
+    const merchandiseRevenueId = resolveCanonicalSalesRevenueAccountIdFromMap(revenueByCode);
     const studioRevenueId = await getAccId('4010');
     const discountId = await getAccId('5200');
     const shippingIncomeId = await getAccId('4110');

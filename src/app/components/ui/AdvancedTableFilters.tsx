@@ -89,14 +89,14 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
   return (
     <div className="space-y-4">
       {/* Collapsible Filters Panel */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-          className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-900 transition-colors"
+          className="w-full px-6 py-4 flex items-center justify-between hover:bg-accent transition-colors"
         >
           <div className="flex items-center gap-3">
             <Filter size={18} className="text-blue-400" />
-            <span className="font-medium text-white">Filters</span>
+            <span className="font-medium text-foreground">Filters</span>
             {activeFiltersCount > 0 && (
               <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-medium">
                 {activeFiltersCount} active
@@ -104,18 +104,18 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
             )}
           </div>
           {isFiltersOpen ? (
-            <ChevronUp size={18} className="text-gray-400" />
+            <ChevronUp size={18} className="text-muted-foreground" />
           ) : (
-            <ChevronDown size={18} className="text-gray-400" />
+            <ChevronDown size={18} className="text-muted-foreground" />
           )}
         </button>
 
         {isFiltersOpen && (
-          <div className="px-6 pb-6 pt-2 border-t border-gray-800 bg-gray-950/30">
+          <div className="px-6 pb-6 pt-2 border-t border-border bg-muted/30">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {filters.map((filter) => (
                 <div key={filter.key} className="space-y-2">
-                  <label className="text-sm font-medium text-gray-400">
+                  <label className="text-sm font-medium text-muted-foreground">
                     {filter.label}
                   </label>
                   
@@ -124,10 +124,10 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
                       value={filterValues[filter.key] || 'all'}
                       onValueChange={(value) => handleFilterChange(filter.key, value)}
                     >
-                      <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                      <SelectTrigger className="bg-input-background border-border text-foreground">
                         <SelectValue placeholder="All" />
                       </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                      <SelectContent className="bg-input-background border-border text-foreground">
                         <SelectItem value="all">All</SelectItem>
                         {filter.options?.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
@@ -158,9 +158,9 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
                         type="checkbox"
                         checked={filterValues[filter.key] || false}
                         onChange={(e) => handleFilterChange(filter.key, e.target.checked)}
-                        className="w-4 h-4 rounded bg-gray-900 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-950"
+                        className="w-4 h-4 rounded bg-input-background border-border text-blue-600 focus:ring-blue-500 focus:ring-offset-background"
                       />
-                      <span className="text-sm text-gray-300">Enable</span>
+                      <span className="text-sm text-muted-foreground">Enable</span>
                     </label>
                   )}
                 </div>
@@ -168,12 +168,12 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
             </div>
 
             {activeFiltersCount > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-800 flex justify-end">
+              <div className="mt-4 pt-4 border-t border-border flex justify-end">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleClearFilters}
-                  className="border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800"
+                  className="border-border text-muted-foreground hover:text-foreground hover:bg-accent"
                 >
                   <X size={14} className="mr-2" />
                   Clear Filters
@@ -188,12 +188,12 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         {/* Left Side - Show Entries */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">Show</span>
+          <span className="text-sm text-muted-foreground">Show</span>
           <Select value={entriesCount.toString()} onValueChange={handleEntriesChange}>
-            <SelectTrigger className="w-20 bg-gray-900 border-gray-800 text-white h-9">
+            <SelectTrigger className="w-20 bg-input-background border-border text-foreground h-9">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+            <SelectContent className="bg-input-background border-border text-foreground">
               {showEntriesOptions.map((count) => (
                 <SelectItem key={count} value={count.toString()}>
                   {count}
@@ -201,7 +201,7 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
               ))}
             </SelectContent>
           </Select>
-          <span className="text-sm text-gray-400">entries</span>
+          <span className="text-sm text-muted-foreground">entries</span>
         </div>
 
         {/* Right Side - Action Buttons */}
@@ -211,7 +211,7 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
             variant="outline"
             size="sm"
             onClick={() => onExport?.('csv')}
-            className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800 h-9"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-accent h-9"
           >
             <Download size={14} className="mr-2" />
             Export CSV
@@ -221,7 +221,7 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
             variant="outline"
             size="sm"
             onClick={() => onExport?.('excel')}
-            className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800 h-9"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-accent h-9"
           >
             <FileSpreadsheet size={14} className="mr-2" />
             Export Excel
@@ -231,7 +231,7 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
             variant="outline"
             size="sm"
             onClick={onPrint}
-            className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800 h-9"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-accent h-9"
           >
             <Printer size={14} className="mr-2" />
             Print
@@ -243,31 +243,31 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800 h-9"
+                className="border-border text-muted-foreground hover:text-foreground hover:bg-accent h-9"
               >
                 <Eye size={14} className="mr-2" />
                 Columns Visibility
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="bg-gray-900 border-gray-800 text-white w-64" align="end">
+            <PopoverContent className="bg-input-background border-border text-foreground w-64" align="end">
               <div className="space-y-1">
-                <div className="px-3 py-2 border-b border-gray-800">
+                <div className="px-3 py-2 border-b border-border">
                   <h4 className="font-medium text-sm">Toggle Columns</h4>
-                  <p className="text-xs text-gray-500 mt-1">Show or hide table columns</p>
+                  <p className="text-xs text-muted-foreground mt-1">Show or hide table columns</p>
                 </div>
                 <div className="max-h-64 overflow-y-auto p-2 space-y-1">
                   {visibleColumns.map((column) => (
                     <label
                       key={column.key}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors"
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent cursor-pointer transition-colors"
                     >
                       <input
                         type="checkbox"
                         checked={column.visible}
                         onChange={() => handleColumnToggle(column.key)}
-                        className="w-4 h-4 rounded bg-gray-950 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                        className="w-4 h-4 rounded bg-input-background border-border text-blue-600 focus:ring-blue-500 focus:ring-offset-background"
                       />
-                      <span className="text-sm text-gray-300">{column.label}</span>
+                      <span className="text-sm text-muted-foreground">{column.label}</span>
                     </label>
                   ))}
                 </div>
@@ -279,7 +279,7 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
             variant="outline"
             size="sm"
             onClick={() => onExport?.('pdf')}
-            className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800 h-9"
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-accent h-9"
           >
             <FileText size={14} className="mr-2" />
             Export PDF
@@ -291,9 +291,9 @@ export const AdvancedTableFilters: React.FC<AdvancedTableFiltersProps> = ({
               placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-gray-900 border-gray-800 text-white h-9 w-64"
+              className="pl-9 bg-input-background border-border text-foreground h-9 w-64"
             />
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
           </div>
         </div>
       </div>

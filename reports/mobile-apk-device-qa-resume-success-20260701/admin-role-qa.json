@@ -1,0 +1,32 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA_RESUME",
+  "task": "admin-role-qa",
+  "generated_at": "2026-07-01T11:35:00.000Z",
+  "status": "UI_QA_PENDING_OPERATOR_UNLOCK",
+  "apk_installed": true,
+  "login_on_device": "NOT_VERIFIED",
+  "reports_hub": "NOT_VERIFIED",
+  "financial_statements_section": "NOT_VERIFIED",
+  "screens": {
+    "balance_sheet": "NOT_VERIFIED",
+    "profit_loss": "NOT_VERIFIED",
+    "trial_balance": "NOT_VERIFIED",
+    "cash_flow": "NOT_VERIFIED",
+    "ledger_v2": "NOT_VERIFIED",
+    "account_ledger": "NOT_VERIFIED"
+  },
+  "companies_on_device": {
+    "din_china": "NOT_VERIFIED",
+    "din_bridal": "NOT_VERIFIED",
+    "din_couture": "NOT_VERIFIED"
+  },
+  "golden_totals_on_device": "NOT_VERIFIED",
+  "golden_reference": {
+    "din_china": { "bs_assets": 89754087.52, "pl_net": 8465730.87 },
+    "din_bridal": { "bs_assets": 13521792, "pl_net": 119992 },
+    "din_couture": { "bs_assets": 22667273, "pl_net": -16750 }
+  },
+  "expected_filters": { "as_of": "2026-07-01", "pl_range": "2026-01-01..2026-07-01", "basis": "official_gl", "branch": "all" },
+  "production_web_monitoring_proxy": "PASS 2026-07-01T11-21-16-456Z (admin login + reports checks on web)",
+  "blocker": "DEVICE_LOCKED_UI_AUTOMATION_LIMIT"
+}

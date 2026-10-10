@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-06-30T06:50:00.000Z",
+  "sources": [
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md",
+    "docs/accounting/ACTIVE_TASK_REGISTER_2026-06-29_MAC_SYNC.md"
+  ],
+  "completed_tasks": [
+    "Party Ledger Discount feature merged and deployed (frontend cca0c246)",
+    "Create Business email OTP wizard integrated",
+    "Production frontend deploy — no migrations/flags/GL mutations",
+    "admin@test.com QA test business cleanup (1486e79d)",
+    "Local browser QA PASS for party discount UI",
+    "Tests/build PASS at handoff (298 unified + 122 unit + build)"
+  ],
+  "remaining_tasks": [
+    "Full three-company monitoring from office (QA_BROWSER_PASSWORD_*)",
+    "Controlled Party Discount JE posting QA after operator approval",
+    "Create Business OTP full E2E with operator-controlled email",
+    "Cash Flow loader swap — BLOCKED (Phase 3B-M not approved)",
+    "BS/P&L loader swap — PENDING finance sign-off",
+    "R7/R8/4th company — BLOCKED",
+    "GL backlog items — fresh diagnostics required before any repair",
+    "Business/UI QA backlog (KPIs, reports, expenses, etc.)",
+    "DIN CHINA import backlog",
+    "Mobile backlog"
+  ],
+  "do_not_do": [
+    "Deploy without separate approval",
+    "Run migrations",
+    "Toggle feature flags",
+    "Cash Flow loader swap",
+    "Post party_discount JE without explicit approval",
+    "GL repairs without fresh diagnostics",
+    "R7/R8/4th company rollout",
+    "Commit graphify-out, downloads, releases, credentials"
+  ],
+  "exact_next_office_actions": [
+    "Set QA_BROWSER_PASSWORD_CHINA/BRIDAL/COUTURE in shell session",
+    "Run npm run monitor:three-company-unified-ledger",
+    "Production browser QA for Party Discount (DIN CHINA parties)",
+    "Create Business OTP E2E with operator email inbox",
+    "Ask operator before JE posting or test-business creation"
+  ]
+}

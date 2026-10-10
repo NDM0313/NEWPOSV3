@@ -70,6 +70,10 @@ export function formatActivityLog(log: ActivityLogRow): string {
       return log.description || `${userName} edited payment`;
     case 'payment_deleted':
       return `${userName} removed payment Rs ${Number(log.amount ?? 0).toLocaleString()}`;
+    case 'attachment_added':
+      return log.description || `${userName} added attachment(s) to sale ${log.entity_reference || log.module}`;
+    case 'attachment_removed':
+      return log.description || `${userName} removed attachment(s) from sale ${log.entity_reference || log.module}`;
     case 'sale_component_edited':
       return log.description || `${userName} edited ${log.field || 'sale'}`;
     case 'delete':

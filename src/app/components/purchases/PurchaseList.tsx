@@ -17,8 +17,8 @@ export const PurchaseList = () => {
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Purchases</h2>
-          <p className="text-gray-400 text-sm">Manage purchase orders and supplier bills.</p>
+          <h2 className="text-2xl font-bold text-foreground">Purchases</h2>
+          <p className="text-muted-foreground text-sm">Manage purchase orders and supplier bills.</p>
         </div>
         <Button 
           onClick={() => openDrawer('addPurchase')}
@@ -54,7 +54,7 @@ export const PurchaseList = () => {
       </div>
 
       {/* Main Content */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden min-h-[500px] flex flex-col">
+      <div className="bg-card border border-border rounded-xl overflow-hidden min-h-[500px] flex flex-col">
         {purchases.length === 0 ? (
           <EmptyState 
             icon={Truck}
@@ -67,16 +67,16 @@ export const PurchaseList = () => {
         ) : (
           <>
              {/* Table Toolbar (Only shown if data exists) */}
-            <div className="p-4 border-b border-gray-800 flex gap-4">
+            <div className="p-4 border-b border-border flex gap-4">
               <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                 <Input 
                   placeholder="Search PO #, Supplier..." 
-                  className="pl-9 bg-gray-950 border-gray-800 text-white focus:border-blue-500" 
+                  className="pl-9 bg-input-background border-border text-foreground focus:border-blue-500" 
                 />
               </div>
                <div className="flex gap-2 ml-auto">
-                 <Button variant="outline" className="border-gray-800 text-gray-300 gap-2">
+                 <Button variant="outline" className="border-border text-muted-foreground gap-2">
                    <Filter size={14} /> Filter
                  </Button>
               </div>
@@ -92,12 +92,12 @@ export const PurchaseList = () => {
 const GlassCard = ({ title, value, subtitle, highlightColor, icon: Icon }: any) => (
   <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-xl shadow-lg relative overflow-hidden">
     <div className="absolute top-0 right-0 p-4 opacity-10">
-      {Icon && <Icon size={64} className="text-white" />}
+      {Icon && <Icon size={64} className="text-foreground" />}
     </div>
-    <p className="text-gray-400 text-sm font-medium">{title}</p>
+    <p className="text-muted-foreground text-sm font-medium">{title}</p>
     <div className="flex items-end gap-3 mt-1 mb-2">
-      <h3 className={cn("text-3xl font-bold", highlightColor || "text-white")}>{value}</h3>
+      <h3 className={cn("text-3xl font-bold", highlightColor || "text-foreground")}>{value}</h3>
     </div>
-    <p className="text-gray-500 text-xs">{subtitle}</p>
+    <p className="text-muted-foreground text-xs">{subtitle}</p>
   </div>
 );

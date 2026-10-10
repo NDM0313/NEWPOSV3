@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-30T12:09:00.000Z",
+  "local": {
+    "branch": "main",
+    "head": "e8dc3f981617a16ce96cac96cf59e8be0c97993d",
+    "origin_main": "e8dc3f981617a16ce96cac96cf59e8be0c97993d",
+    "in_sync": true
+  },
+  "vps_pre_change": {
+    "supabase_auth": "healthy",
+    "ENABLE_EMAIL_AUTOCONFIRM": "false",
+    "SMTP_HOST": "smtp.hostinger.com",
+    "SMTP_PORT": "587",
+    "SMTP_USER": "noreply@dincouture.pk",
+    "SMTP_ADMIN_EMAIL": "noreply@dincouture.pk",
+    "SMTP_SENDER_NAME": "DIN Collection ERP"
+  }
+}

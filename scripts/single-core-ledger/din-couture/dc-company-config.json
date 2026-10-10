@@ -1,0 +1,34 @@
+{
+  "slug": "din-couture",
+  "company": "DIN COUTURE",
+  "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+  "monitoring_profile": "din-couture",
+  "login_email_default": "PENDING_OPERATOR",
+  "golden_fixture_path": "reports/single-core-ledger/din-couture/golden-fixtures.json",
+  "finance_sign_off_ref": "reports/single-core-ledger/din-couture/finance-signoff-unified-ledger-rollout-2026-06-27.md",
+  "golden_party": {
+    "name": "DHARIA",
+    "party_id": "04831980-546b-4ff2-bc9d-2e75a43eb51c",
+    "account_code": "AR-CUS0010",
+    "search_pattern": "DHARIA"
+  },
+  "branches": [
+    { "id": "df93b9e4-feea-4b8b-8103-e630c185261b", "name": "SHOP A13" }
+  ],
+  "staged_enable_order": [
+    "unified_ledger_pilot",
+    "unified_ledger_engine",
+    "unified_ledger_screen_ledger_v2",
+    "unified_ledger_screen_account_statement",
+    "unified_ledger_screen_trial_balance",
+    "unified_ledger_screen_party_ledger",
+    "unified_ledger_screen_roznamcha",
+    "unified_ledger_loader_ledger_v2",
+    "unified_ledger_loader_account_statement",
+    "unified_ledger_loader_trial_balance",
+    "unified_ledger_loader_party_ledger",
+    "unified_ledger_loader_roznamcha"
+  ],
+  "sql_pack_dir": "scripts/single-core-ledger/din-couture",
+  "requires_finance_sign_off": false
+}

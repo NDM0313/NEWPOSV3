@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "admin-role-qa",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "status": "BLOCKED_NOT_RUN",
+  "reason": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE",
+  "golden_totals": {
+    "din_china": { "bs_assets": 89754087.52, "pl_net": 8465730.87 },
+    "din_bridal": { "bs_assets": 13521792, "pl_net": 119992 },
+    "din_couture": { "bs_assets": 22667273, "pl_net": -16750 }
+  },
+  "checks_run": 0,
+  "checks_total": 16
+}

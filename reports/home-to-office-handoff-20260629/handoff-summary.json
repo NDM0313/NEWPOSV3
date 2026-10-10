@@ -1,0 +1,48 @@
+{
+  "generated": "2026-06-29",
+  "head": "1486e79d",
+  "completed": [
+    "party_ledger_discount_feature_merged",
+    "create_business_otp_integrated",
+    "local_browser_qa",
+    "production_frontend_deploy_cca0c246",
+    "production_deploy_smoke_evidence",
+    "qa_test_business_cleanup",
+    "tests_build_pass"
+  ],
+  "remaining": [
+    "full_three_company_monitoring_office",
+    "controlled_party_discount_je_posting_qa",
+    "create_business_otp_e2e_qa",
+    "cash_flow_loader_swap_blocked",
+    "bs_pl_loader_swap_pending",
+    "r7_r8_4th_company_blocked",
+    "gl_backlog_fresh_diagnostics",
+    "business_ui_qa_backlog",
+    "din_china_import_backlog",
+    "mobile_backlog"
+  ],
+  "blockers": [
+    "QA_BROWSER_PASSWORD_missing_on_mac",
+    "party_discount_je_not_approved",
+    "otp_email_access",
+    "cash_flow_swap_not_approved",
+    "bs_pl_swap_pending_finance"
+  ],
+  "do_not_do": [
+    "deploy_without_approval",
+    "migrations",
+    "feature_flags",
+    "cash_flow_loader_swap",
+    "unapproved_party_discount_je",
+    "gl_repairs_without_diagnostics",
+    "commit_graphify_downloads_apk_credentials"
+  ],
+  "next_office_actions": [
+    "git_pull_origin_main",
+    "run_monitor_three_company_unified_ledger",
+    "browser_qa_party_discount_and_otp",
+    "operator_approval_before_je_posting",
+    "save_evidence_reports"
+  ]
+}

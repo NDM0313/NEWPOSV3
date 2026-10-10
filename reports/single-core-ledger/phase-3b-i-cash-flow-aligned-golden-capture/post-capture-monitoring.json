@@ -1,0 +1,18 @@
+{
+  "phase": "3B-I",
+  "run": "post-capture-monitoring",
+  "generated_at": "2026-06-29T14:52:50.625Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "source_report": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T14-42-50-782Z.json",
+  "companies": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "generic_fallback_allowed": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "loaders_per_company": 5
+}

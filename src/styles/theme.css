@@ -10,6 +10,11 @@
 :root {
   /* Typography */
   --font-size: var(--font-size-base, 16px);
+  --erp-row-padding: 4rem;
+  --erp-row-hover: color-mix(in srgb, var(--accent) 50%, transparent);
+  --erp-money-positive: #4ADE80;
+  --erp-money-negative: #F87171;
+  --erp-overlay: rgba(0, 0, 0, 0.5);
   --font-weight-medium: var(--font-weight-medium, 500);
   --font-weight-normal: var(--font-weight-normal, 400);
   
@@ -73,6 +78,7 @@
 
 .dark {
   /* Dark theme uses same tokens - override only if Figma specifies different values */
+  --erp-row-hover: color-mix(in srgb, var(--accent) 45%, transparent);
   --background: var(--color-bg-primary, #111827);
   --foreground: var(--color-text-primary, #FFFFFF);
   --card: var(--color-bg-card, #1F2937);
@@ -181,6 +187,9 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-erp-money-positive: var(--erp-money-positive);
+  --color-erp-money-negative: var(--erp-money-negative);
+  --color-erp-overlay: var(--erp-overlay);
   
   /* Z-Index - From tokens.css */
   --z-index-dropdown: var(--z-index-dropdown);
@@ -278,4 +287,10 @@
     scrollbar-width: thin;
     scrollbar-color: #374151 #0B0F17;
   }
+}
+
+/* Closed Radix overlays must never capture clicks during exit animation */
+[data-slot='sheet-overlay'][data-state='closed'],
+[data-slot='dialog-overlay'][data-state='closed'] {
+  pointer-events: none !important;
 }

@@ -1,0 +1,22 @@
+{
+  "run": "single-core-ledger-migration-closure",
+  "generated_at": "2026-06-27T17:45:00Z",
+  "migrations_applied_this_run": [],
+  "schema_migrations": {
+    "phase_15_applied": "4/4",
+    "unified_rpcs": "5/5"
+  },
+  "flags": {
+    "din_china": { "unified_flags_on": 12, "loaders_on": 5, "status": "PASS" },
+    "din_bridal": { "unified_flags_on": 12, "loaders_on": 5, "status": "PASS" },
+    "other_company_loaders_on": 0
+  },
+  "monitoring": {
+    "re_run_this_closure": false,
+    "reason": "No production migration apply; prior baseline authoritative",
+    "baseline_reference": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json",
+    "baseline_status": "PASS"
+  },
+  "gl_mutations": false,
+  "cross_company_leakage": false
+}

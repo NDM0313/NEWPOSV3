@@ -1,0 +1,18 @@
+{
+  "phase": "2.9",
+  "stage": "1-pilot-flag-only",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "timestampUtc": null,
+  "executor": null,
+  "flagsEnabled": ["unified_ledger_pilot"],
+  "flagsMustRemainOff": [
+    "unified_ledger_engine",
+    "unified_ledger_screen_ledger_v2",
+    "unified_ledger_kill_switch"
+  ],
+  "sqlRows": [],
+  "ledgerV2BannerModeToggleOff": "legacy",
+  "mainTableChanged": false,
+  "soakHours": 24,
+  "result": null
+}

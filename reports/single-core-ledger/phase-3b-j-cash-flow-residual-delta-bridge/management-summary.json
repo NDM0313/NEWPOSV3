@@ -1,0 +1,22 @@
+{
+  "phase": "3B-J",
+  "run": "management-summary",
+  "generated_at": "2026-06-29T15:30:00.000Z",
+  "audience": "finance_and_operator",
+  "keyPoints": [
+    "Official Cash Flow is still legacy roznamcha and has not changed.",
+    "Preview now follows Nadeem-approved rules Q4=A, Q5=C, Q7=B.",
+    "DIN CHINA and DIN BRIDAL do not match legacy because the approved finance basis intentionally differs from legacy presentation.",
+    "DIN COUTURE matches exactly — good candidate for review.",
+    "No data, flags, migrations, or production behavior was changed in this phase.",
+    "Operator must choose Option A, B, C, or D in writing before sign-off or loader swap."
+  ],
+  "companies": {
+    "din-china": { "status": "NON-ZERO-DIFF", "primaryReason": "Q5 transfer exclusion vs legacy gross transfers" },
+    "din-bridal": { "status": "NON-ZERO-DIFF", "primaryReason": "Q4 opening summary-only vs legacy period cash-in" },
+    "din-couture": { "status": "ZERO-DIFF", "primaryReason": "No transfers/opening reclassifications in dataset" }
+  },
+  "recommendedOption": "B",
+  "loaderSwapApproved": false,
+  "dataChanged": false
+}

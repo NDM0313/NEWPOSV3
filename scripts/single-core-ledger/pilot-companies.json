@@ -1,0 +1,28 @@
+{
+  "description": "Pilot validation companies for Phase 1.5 tie-out and diagnostic report sections only. Never hardcode these IDs in general SQL/RPC logic.",
+  "pilots": [
+    {
+      "label": "DIN CHINA",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "branches": [
+        { "label": "Main Branch / HQ", "match": { "name": "DIN CHINA" } },
+        { "label": "BL0002", "match": { "code": "BL0002" } }
+      ],
+      "golden_contact_patterns": [
+        { "label": "JALIL", "namePattern": "JALIL", "partyType": "customer" },
+        { "label": "Walk-in CUS-0000", "code": "CUS-0000", "partyType": "customer" }
+      ]
+    },
+    {
+      "label": "DIN BRIDAL",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "branches": [
+        { "label": "Main Branch", "match": { "name": "Main Branch" } },
+        { "label": "Stitch and Style", "match": { "name": "Stitch and Style" } }
+      ],
+      "golden_contact_patterns": [
+        { "label": "MR REHAN ALI", "namePattern": "REHAN ALI", "partyType": "customer", "contact_id": "cee98d04-0a04-4692-857c-18df75bcb466" }
+      ]
+    }
+  ]
+}

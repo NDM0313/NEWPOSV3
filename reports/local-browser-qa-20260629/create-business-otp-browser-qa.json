@@ -1,0 +1,13 @@
+{
+  "generated": "2026-06-29",
+  "result": "PARTIAL",
+  "stepsPhase": "PASS",
+  "otpVerify": "BLOCKED_EMAIL_ACCESS",
+  "resendOtp": "NOT_TESTED",
+  "completeBusinessCreationAfterAuth": "NOT_VERIFIED",
+  "serviceRoleInFrontend": false,
+  "duplicateSubmitPrevented": true,
+  "testEmailUsed": "admin@test.com",
+  "productionAuthUserPossible": true,
+  "operatorCleanup": "Review/delete admin@test.com auth user if unintended"
+}

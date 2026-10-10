@@ -1,0 +1,24 @@
+{
+  "phase": "3B-M",
+  "executedAt": "2026-06-29",
+  "operator": "Nadeem Khan",
+  "loaderSwapApproved": true,
+  "codeCommit": "36543345",
+  "deployedCommit": "36543345",
+  "productionUrl": "https://erp.dincouture.pk",
+  "financeRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "companies": [
+    "30bd8592-3384-4f34-899a-f3907e336485",
+    "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+    "2ab65903-62a3-4bcf-bced-076b681e9b74"
+  ],
+  "flagsEnabled": [
+    "unified_ledger_screen_cash_flow",
+    "unified_ledger_loader_cash_flow"
+  ],
+  "preSwapMonitoring": "PASS — three-company-monitoring-2026-06-29T15-51-15-416Z",
+  "postSwapMonitoring": "PASS — three-company-monitoring-2026-06-29T16-11-13-569Z",
+  "postSwapSmoke": "PASS",
+  "glMutations": false,
+  "rollbackScripts": "scripts/single-core-ledger/phase-3b-m-cash-flow-loader-swap/rollback-*.sql"
+}

@@ -113,7 +113,9 @@ function PinLockPolicyRows() {
         <label className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm text-white font-medium">Lock on app switch</p>
-            <p className="text-xs text-[#6B7280] mt-0.5">PIN when returning from home or another app</p>
+            <p className="text-xs text-[#6B7280] mt-0.5">
+              Re-lock uses idle timeout below — quick app switches stay unlocked if you were active recently
+            </p>
           </div>
           <input
             type="checkbox"
@@ -124,7 +126,8 @@ function PinLockPolicyRows() {
         </label>
       </div>
       <div className="px-4 py-3 border-b border-[#374151]/60">
-        <p className="text-sm text-white font-medium mb-2">Idle lock</p>
+        <p className="text-sm text-white font-medium mb-1">Idle lock</p>
+        <p className="text-xs text-[#6B7280] mb-2">Default 1 minute without tap, scroll, or key. Off = session limit only.</p>
         <div className="flex gap-2">
           {IDLE_LOCK_OPTIONS.map((opt) => (
             <button
@@ -745,6 +748,7 @@ export function SettingsModule({
             labelSettings={labelSettings}
             barcodeSettings={barcodeSettings}
             barcodeSaving={barcodeSaving}
+            companyName={receiptBrandPreview || undefined}
             onPrinterMode={handlePrinterMode}
             onPaperSize={handlePaperSize}
             onAutoPrint={handleAutoPrint}

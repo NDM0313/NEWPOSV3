@@ -11,6 +11,10 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Button } from "../ui/button";
+import {
+  formatAccountSelectOptionLabel,
+  getPaymentLiquidityPostingSide,
+} from "@/app/lib/accountPostingInOutLabel";
 
 type PaymentMethod = "cash" | "bank" | "card" | "cheque";
 type TransactionType = "sale" | "purchase";
@@ -170,25 +174,25 @@ export function PaymentModal({
       />
 
       {/* Modal Content */}
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl m-4">
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl m-4">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 p-6">
+        <div className="sticky top-0 z-10 bg-card border-b border-border p-6">
           <div className="flex items-center gap-4">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+              className="p-2 hover:bg-muted rounded-full transition-colors"
             >
-              <ArrowLeft size={20} className="text-gray-400" />
+              <ArrowLeft size={20} className="text-muted-foreground" />
             </button>
             <div className="flex-1">
-              <h2 className="text-xl font-bold text-white">Payment Details</h2>
-              <p className="text-sm text-gray-400">Complete the transaction</p>
+              <h2 className="text-xl font-bold text-foreground">Payment Details</h2>
+              <p className="text-sm text-muted-foreground">Complete the transaction</p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+              className="p-2 hover:bg-muted rounded-full transition-colors"
             >
-              <X size={20} className="text-gray-400" />
+              <X size={20} className="text-muted-foreground" />
             </button>
           </div>
         </div>
@@ -198,10 +202,10 @@ export function PaymentModal({
           {/* Net Payable Summary */}
           <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-6">
             <div className="text-center">
-              <p className="text-sm text-gray-400 mb-2">
+              <p className="text-sm text-muted-foreground mb-2">
                 {transactionType === "sale" ? "Net Payable" : "Total Payment"}
               </p>
-              <p className="text-4xl font-bold text-white">
+              <p className="text-4xl font-bold text-foreground">
                 {formatCurrency(grandTotal)}
               </p>
             </div>
@@ -209,7 +213,7 @@ export function PaymentModal({
 
           {/* Payment Method Tabs */}
           <div>
-            <Label className="text-gray-400 text-xs mb-3 block">
+            <Label className="text-muted-foreground text-xs mb-3 block">
               Payment Method
             </Label>
             <div className="grid grid-cols-4 gap-3">
@@ -227,7 +231,7 @@ export function PaymentModal({
                       ${
                         isActive
                           ? "border-blue-600 bg-blue-600/10"
-                          : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                          : "border-border bg-muted/50 hover:border-gray-600"
                       }
                     `}
                   >
@@ -240,7 +244,7 @@ export function PaymentModal({
                       <span className="text-2xl">{method.emoji}</span>
                       <span
                         className={`text-sm font-medium ${
-                          isActive ? "text-blue-400" : "text-gray-400"
+                          isActive ? "text-blue-400" : "text-muted-foreground"
                         }`}
                       >
                         {method.label}
@@ -261,11 +265,11 @@ export function PaymentModal({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Amount */}
             <div className="space-y-2">
-              <Label htmlFor="amount" className="text-gray-400 text-xs">
+              <Label htmlFor="amount" className="text-muted-foreground text-xs">
                 {transactionType === "sale" ? "Received Amount" : "Paid Amount"}
               </Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
                   {currency}
                 </span>
                 <Input
@@ -277,20 +281,20 @@ export function PaymentModal({
                     const value = e.target.value.replace(/[^0-9.]/g, "");
                     setAmount(value);
                   }}
-                  className="pl-10 bg-gray-800 border-gray-700 text-white text-lg font-semibold h-12 focus:border-blue-600 focus:ring-blue-600/20"
+                  className="pl-10 bg-muted border-border text-foreground text-lg font-semibold h-12 focus:border-blue-600 focus:ring-blue-600/20"
                 />
               </div>
             </div>
 
             {/* Account Selector */}
             <div className="space-y-2">
-              <Label htmlFor="account" className="text-gray-400 text-xs">
+              <Label htmlFor="account" className="text-muted-foreground text-xs">
                 {accountLabel}
               </Label>
               <Select value={selectedAccount} onValueChange={setSelectedAccount}>
                 <SelectTrigger
                   id="account"
-                  className="bg-gray-800 border-gray-700 text-white h-12 focus:border-blue-600 focus:ring-blue-600/20"
+                  className="bg-muted border-border text-foreground h-12 focus:border-blue-600 focus:ring-blue-600/20"
                 >
                   <SelectValue placeholder="Select account...">
                     {selectedAccount && (
@@ -301,10 +305,10 @@ export function PaymentModal({
                               ?.icon
                           }
                         </span>
-                        <span className="font-medium text-white">
+                        <span className="font-medium text-foreground">
                           {accounts.find((acc) => acc.id === selectedAccount)?.name}
                         </span>
-                        <span className="text-xs text-gray-500 ml-auto">
+                        <span className="text-xs text-muted-foreground ml-auto">
                           (Bal:{" "}
                           {formatCurrency(
                             accounts.find((acc) => acc.id === selectedAccount)
@@ -316,20 +320,22 @@ export function PaymentModal({
                     )}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectContent className="bg-muted border-border">
                   {getFilteredAccounts().map((account) => (
                     <SelectItem
                       key={account.id}
                       value={account.id}
-                      className="text-white hover:bg-gray-700 focus:bg-gray-700 cursor-pointer py-3"
+                      className="text-foreground hover:bg-muted focus:bg-muted cursor-pointer py-3"
                     >
                       <div className="flex items-center gap-3 w-full">
                         <span className="text-lg">{account.icon}</span>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-white">
-                            {account.name}
+                          <div className="font-medium text-foreground">
+                            {formatAccountSelectOptionLabel(account, {
+                              postingSide: getPaymentLiquidityPostingSide(transactionType === 'sale'),
+                            })}
                           </div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-muted-foreground">
                             Balance: {formatCurrency(account.balance)}
                           </div>
                         </div>
@@ -342,13 +348,13 @@ export function PaymentModal({
 
             {/* Reference */}
             <div className="space-y-2">
-              <Label htmlFor="reference" className="text-gray-400 text-xs">
+              <Label htmlFor="reference" className="text-muted-foreground text-xs">
                 {selectedMethod === "cheque"
                   ? "Cheque Number"
                   : selectedMethod === "bank"
                   ? "Transaction ID"
                   : "Reference"}
-                <span className="text-gray-600 ml-1">(Optional)</span>
+                <span className="text-muted-foreground ml-1">(Optional)</span>
               </Label>
               <Input
                 id="reference"
@@ -362,15 +368,15 @@ export function PaymentModal({
                 }
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
-                className="bg-gray-800 border-gray-700 text-white h-12 focus:border-blue-600 focus:ring-blue-600/20"
+                className="bg-muted border-border text-foreground h-12 focus:border-blue-600 focus:ring-blue-600/20"
               />
             </div>
           </div>
 
           {/* Summary Info */}
           {amount && selectedAccount && (
-            <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-              <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="text-lg">
                   {paymentMethods.find((m) => m.id === selectedMethod)?.emoji}
                 </span>
@@ -379,26 +385,26 @@ export function PaymentModal({
                 </span>
               </div>
               {reference && (
-                <div className="text-xs text-gray-500">Ref: {reference}</div>
+                <div className="text-xs text-muted-foreground">Ref: {reference}</div>
               )}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-900 border-t border-gray-800 p-6">
+        <div className="sticky bottom-0 bg-card border-t border-border p-6">
           <div className="flex gap-4">
             <Button
               onClick={onClose}
               variant="outline"
-              className="flex-1 bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-12"
+              className="flex-1 bg-muted border-border text-foreground hover:bg-muted h-12"
             >
               Cancel
             </Button>
             <Button
               onClick={handleConfirm}
               disabled={!amount || !selectedAccount}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white h-12 font-semibold"
+              className="flex-1 bg-green-600 hover:bg-green-700 text-foreground h-12 font-semibold"
             >
               Confirm Payment
             </Button>

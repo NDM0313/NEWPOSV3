@@ -20,6 +20,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../ui/select";
 import { employeeService, Employee, EmployeeLedgerEntry } from '@/app/services/employeeService';
+import { payrollSettingsService } from '@/app/services/payrollSettingsService';
 import { userService, User } from '@/app/services/userService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -27,7 +28,12 @@ import { toast } from 'sonner';
 import { cn } from "../ui/utils";
 import { Switch } from "../ui/switch";
 
-export const EmployeesTab = () => {
+interface EmployeesTabProps {
+  /** Phase 1: hide Run Payroll / Pay actions until approval center (Phase 2+). */
+  phase1HidePaymentActions?: boolean;
+}
+
+export const EmployeesTab = ({ phase1HidePaymentActions = false }: EmployeesTabProps) => {
   const { companyId, userRole } = useSupabase();
   const isAdminOrOwner = (() => {
     if (!userRole) return false;
@@ -73,7 +79,7 @@ export const EmployeesTab = () => {
     setLoading(true);
     try {
       const [empData, availUsers, branchList] = await Promise.all([
-        employeeService.getAllEmployees(),
+        employeeService.getAllEmployees(companyId),
         employeeService.getAvailableUsers(companyId),
         branchService.getAllBranches(companyId)
       ]);
@@ -103,7 +109,14 @@ export const EmployeesTab = () => {
         Number(newEmployeeSalary), 
         Number(newEmployeeCommission || 0)
       );
-      if (res) {
+      if (res && companyId) {
+        await payrollSettingsService.syncFromEmployeeRecord(
+          companyId,
+          newEmployeeUserId,
+          Number(newEmployeeSalary),
+          Number(newEmployeeCommission || 0),
+          true,
+        );
         toast.success('Employee added successfully');
         setAddEmployeeModalOpen(false);
         loadData();
@@ -202,6 +215,14 @@ export const EmployeesTab = () => {
         is_active: editIsActive
       });
 
+      await payrollSettingsService.syncFromEmployeeRecord(
+        companyId,
+        selectedEmployee.user_id,
+        Number(editSalary),
+        Number(editCommission),
+        editIsActive,
+      );
+
       // 2. Update User Role
       await userService.updateUser(selectedEmployee.user_id, { role: editRole });
 
@@ -228,34 +249,34 @@ export const EmployeesTab = () => {
     <div className="space-y-6">
       {/* Header Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl">
+        <div className="bg-card border border-border p-4 rounded-xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-blue-500/10 rounded-lg">
               <Users className="w-5 h-5 text-blue-500" />
             </div>
-            <span className="text-gray-400 text-sm">Total Employees</span>
+            <span className="text-muted-foreground text-sm">Total Employees</span>
           </div>
-          <div className="text-2xl font-bold text-white">{employees.length}</div>
+          <div className="text-2xl font-bold text-foreground">{employees.length}</div>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl">
+        <div className="bg-card border border-border p-4 rounded-xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-green-500/10 rounded-lg">
               <TrendingUp className="w-5 h-5 text-green-500" />
             </div>
-            <span className="text-gray-400 text-sm">Active Payroll</span>
+            <span className="text-muted-foreground text-sm">Active Payroll</span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-2xl font-bold text-foreground">
             {employees.filter(e => e.is_active).length}
           </div>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl">
+        <div className="bg-card border border-border p-4 rounded-xl">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-purple-500/10 rounded-lg">
               <Briefcase className="w-5 h-5 text-purple-500" />
             </div>
-            <span className="text-gray-400 text-sm">Total Monthly Salary</span>
+            <span className="text-muted-foreground text-sm">Total Monthly Salary</span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-2xl font-bold text-foreground">
             Rs. {employees.reduce((acc, e) => acc + (e.is_active ? Number(e.basic_salary) : 0), 0).toLocaleString()}
           </div>
         </div>
@@ -264,10 +285,10 @@ export const EmployeesTab = () => {
       {/* Controls */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input 
             placeholder="Search employees..." 
-            className="pl-10 bg-gray-900 border-gray-800 text-white"
+            className="pl-10 bg-card border-border text-foreground"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -275,23 +296,25 @@ export const EmployeesTab = () => {
         <div className="flex items-center gap-2 w-full md:w-auto">
           {isAdminOrOwner && (
             <>
-              <Button 
-                variant="outline" 
-                className="flex-1 md:flex-none border-gray-800 text-gray-300 hover:bg-gray-800"
-                onClick={async () => {
-                  const confirm = window.confirm('Run monthly salary credit for all active employees?');
-                  if (confirm && companyId) {
-                    const res = await employeeService.runMonthlySalaryCredit(companyId);
-                    if (res.success) {
-                      toast.success(`Processed salary for ${res.processed} employees`);
-                      loadData();
+              {!phase1HidePaymentActions && (
+                <Button 
+                  variant="outline" 
+                  className="flex-1 md:flex-none border-border text-muted-foreground hover:bg-muted"
+                  onClick={async () => {
+                    const confirm = window.confirm('Run monthly salary credit for all active employees?');
+                    if (confirm && companyId) {
+                      const res = await employeeService.runMonthlySalaryCredit(companyId);
+                      if (res.success) {
+                        toast.success(`Processed salary for ${res.processed} employees`);
+                        loadData();
+                      }
                     }
-                  }
-                }}
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Run Payroll
-              </Button>
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Run Payroll
+                </Button>
+              )}
               <Button 
                 className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={() => setAddEmployeeModalOpen(true)}
@@ -305,9 +328,9 @@ export const EmployeesTab = () => {
       </div>
 
       {/* Employee Table */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <Table>
-          <TableHeader className="bg-gray-800/50">
+          <TableHeader className="bg-muted/50">
             <TableRow>
               <TableHead>Employee</TableHead>
               <TableHead>Basic Salary</TableHead>
@@ -319,31 +342,31 @@ export const EmployeesTab = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-gray-500">Loading employees...</TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading employees...</TableCell>
               </TableRow>
             ) : filteredEmployees.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-gray-500">No employees found</TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No employees found</TableCell>
               </TableRow>
             ) : (
               filteredEmployees.map((emp) => (
-                <TableRow key={emp.id} className="hover:bg-gray-800/30">
+                <TableRow key={emp.id} className="hover:bg-accent/30">
                   <TableCell>
                     <div>
-                      <div className="font-medium text-white">{emp.user?.full_name}</div>
-                      <div className="text-xs text-gray-500">{emp.user?.email}</div>
+                      <div className="font-medium text-foreground">{emp.user?.full_name}</div>
+                      <div className="text-xs text-muted-foreground">{emp.user?.email}</div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-white">Rs. {Number(emp.basic_salary).toLocaleString()}</TableCell>
-                  <TableCell className="text-white">{emp.commission_rate}%</TableCell>
+                  <TableCell className="text-foreground">Rs. {Number(emp.basic_salary).toLocaleString()}</TableCell>
+                  <TableCell className="text-foreground">{emp.commission_rate}%</TableCell>
                   <TableCell>
-                    <Badge className={emp.is_active ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-gray-500/10 text-gray-500 border-gray-500/20"}>
+                    <Badge className={emp.is_active ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-gray-500/10 text-muted-foreground border-gray-500/20"}>
                       {emp.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => openLedger(emp)} className="text-gray-400 hover:text-white" title="View Ledger">
+                      <Button variant="ghost" size="sm" onClick={() => openLedger(emp)} className="text-muted-foreground hover:text-foreground" title="View Ledger">
                         <History className="w-4 h-4" />
                       </Button>
                       {isAdminOrOwner && (
@@ -354,9 +377,11 @@ export const EmployeesTab = () => {
                           <Button variant="ghost" size="sm" onClick={() => openAction(emp, 'bonus')} className="text-purple-400 hover:text-purple-300">
                             <Plus className="w-4 h-4 mr-1" /> Bonus
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => openAction(emp, 'payment')} className="text-green-400 hover:text-green-300">
-                            <DollarSign className="w-4 h-4 mr-1" /> Pay
-                          </Button>
+                          {!phase1HidePaymentActions && (
+                            <Button variant="ghost" size="sm" onClick={() => openAction(emp, 'payment')} className="text-[var(--erp-money-positive)] hover:text-green-300">
+                              <DollarSign className="w-4 h-4 mr-1" /> Pay
+                            </Button>
+                          )}
                         </>
                       )}
                     </div>
@@ -370,10 +395,10 @@ export const EmployeesTab = () => {
 
       {/* Edit Employee Modal */}
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-2xl">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Employee: {selectedEmployee?.user?.full_name}</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Update payroll details, role, and branch access.
             </DialogDescription>
           </DialogHeader>
@@ -390,7 +415,7 @@ export const EmployeesTab = () => {
                   type="number" 
                   value={editSalary} 
                   onChange={(e) => setEditSalary(e.target.value)}
-                  className="bg-gray-800 border-gray-700"
+                  className="bg-muted border-border"
                 />
               </div>
               <div className="space-y-2">
@@ -399,13 +424,13 @@ export const EmployeesTab = () => {
                   type="number" 
                   value={editCommission} 
                   onChange={(e) => setEditCommission(e.target.value)}
-                  className="bg-gray-800 border-gray-700"
+                  className="bg-muted border-border"
                 />
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
                 <div className="space-y-0.5">
                   <Label className="text-sm font-medium">Active Status</Label>
-                  <p className="text-xs text-gray-500">Employee can receive salary/commission</p>
+                  <p className="text-xs text-muted-foreground">Employee can receive salary/commission</p>
                 </div>
                 <Switch 
                   checked={editIsActive} 
@@ -422,10 +447,10 @@ export const EmployeesTab = () => {
               <div className="space-y-2">
                 <Label>User Role</Label>
                 <Select value={editRole} onValueChange={setEditRole}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700">
+                  <SelectTrigger className="bg-muted border-border">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectContent className="bg-muted border-border text-foreground">
                     <SelectItem value="owner">Owner</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
@@ -437,7 +462,7 @@ export const EmployeesTab = () => {
                 <Label className="flex items-center gap-2 mb-2">
                   <MapPin className="w-4 h-4" /> Branch Access
                 </Label>
-                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                <div className="bg-muted/50 border border-border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
                   {branches.map((branch) => (
                     <div key={branch.id} className="flex items-center space-x-2">
                       <Checkbox 
@@ -460,7 +485,7 @@ export const EmployeesTab = () => {
                     </div>
                   ))}
                   {branches.length === 0 && (
-                    <div className="text-xs text-gray-500 text-center py-2">No branches found</div>
+                    <div className="text-xs text-muted-foreground text-center py-2">No branches found</div>
                   )}
                 </div>
               </div>
@@ -468,7 +493,7 @@ export const EmployeesTab = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditModalOpen(false)} className="border-gray-800 text-gray-400">
+            <Button variant="outline" onClick={() => setEditModalOpen(false)} className="border-border text-muted-foreground">
               Cancel
             </Button>
             <Button 
@@ -484,10 +509,10 @@ export const EmployeesTab = () => {
 
       {/* Add Employee Modal */}
       <Dialog open={addEmployeeModalOpen} onOpenChange={setAddEmployeeModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white">
+        <DialogContent className="bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle>Add New Employee</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Select a user to register as an employee.
             </DialogDescription>
           </DialogHeader>
@@ -495,10 +520,10 @@ export const EmployeesTab = () => {
             <div className="space-y-2">
               <Label>Select User</Label>
               <Select value={newEmployeeUserId} onValueChange={setNewEmployeeUserId}>
-                <SelectTrigger className="bg-gray-800 border-gray-700">
+                <SelectTrigger className="bg-muted border-border">
                   <SelectValue placeholder="Select a user" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                <SelectContent className="bg-muted border-border text-foreground">
                   {availableUsers.map(u => (
                     <SelectItem key={u.id} value={u.id}>{(u as any).full_name ?? (u as any).name} ({u.email})</SelectItem>
                   ))}
@@ -510,7 +535,7 @@ export const EmployeesTab = () => {
                 <Label>Basic Salary (Rs.)</Label>
                 <Input 
                   type="number" 
-                  className="bg-gray-800 border-gray-700" 
+                  className="bg-muted border-border" 
                   value={newEmployeeSalary}
                   onChange={(e) => setNewEmployeeSalary(e.target.value)}
                 />
@@ -519,7 +544,7 @@ export const EmployeesTab = () => {
                 <Label>Commission Rate (%)</Label>
                 <Input 
                   type="number" 
-                  className="bg-gray-800 border-gray-700" 
+                  className="bg-muted border-border" 
                   value={newEmployeeCommission}
                   onChange={(e) => setNewEmployeeCommission(e.target.value)}
                 />
@@ -527,7 +552,7 @@ export const EmployeesTab = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddEmployeeModalOpen(false)} className="border-gray-800 text-gray-300">Cancel</Button>
+            <Button variant="outline" onClick={() => setAddEmployeeModalOpen(false)} className="border-border text-muted-foreground">Cancel</Button>
             <Button onClick={handleAddEmployee} className="bg-blue-600 hover:bg-blue-700">Add Employee</Button>
           </DialogFooter>
         </DialogContent>
@@ -535,12 +560,12 @@ export const EmployeesTab = () => {
 
       {/* Ledger Modal */}
       <Dialog open={ledgerModalOpen} onOpenChange={setLedgerModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-2xl">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl">
           <DialogHeader>
             <DialogTitle>Employee Ledger: {selectedEmployee?.user?.full_name}</DialogTitle>
             <div className="mt-2 flex items-center gap-4">
-              <div className="bg-gray-800 px-3 py-1 rounded-lg border border-gray-700">
-                <span className="text-gray-400 text-xs uppercase mr-2 font-semibold">Current Balance</span>
+              <div className="bg-muted px-3 py-1 rounded-lg border border-border">
+                <span className="text-muted-foreground text-xs uppercase mr-2 font-semibold">Current Balance</span>
                 <span className={cn("font-bold", selectedBalance >= 0 ? "text-green-500" : "text-red-500")}>
                   Rs. {selectedBalance.toLocaleString()}
                 </span>
@@ -550,22 +575,22 @@ export const EmployeesTab = () => {
           <div className="max-h-[400px] overflow-y-auto pr-2 mt-4">
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800">
-                  <TableHead className="text-gray-400">Date</TableHead>
-                  <TableHead className="text-gray-400">Type</TableHead>
-                  <TableHead className="text-gray-400">Description</TableHead>
-                  <TableHead className="text-right text-gray-400">Amount</TableHead>
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">Date</TableHead>
+                  <TableHead className="text-muted-foreground">Type</TableHead>
+                  <TableHead className="text-muted-foreground">Description</TableHead>
+                  <TableHead className="text-right text-muted-foreground">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {selectedLedger.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-gray-500">No transactions recorded</TableCell>
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No transactions recorded</TableCell>
                   </TableRow>
                 ) : (
                   selectedLedger.map((entry) => (
-                    <TableRow key={entry.id} className="border-gray-800/50">
-                      <TableCell className="text-xs text-gray-300">
+                    <TableRow key={entry.id} className="border-border">
+                      <TableCell className="text-xs text-muted-foreground">
                         {new Date(entry.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
@@ -578,12 +603,12 @@ export const EmployeesTab = () => {
                           {entry.type}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-gray-400 max-w-[200px] truncate">
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                         {entry.description}
                       </TableCell>
                       <TableCell className={cn("text-right font-medium", 
                         ['salary', 'bonus', 'commission'].includes(entry.type) ? "text-blue-400" : 
-                        entry.type === 'payment' ? "text-red-400" : "text-gray-300"
+                        entry.type === 'payment' ? "text-red-400" : "text-muted-foreground"
                       )}>
                         {['salary', 'bonus', 'commission'].includes(entry.type) ? '+' : '-'} Rs. {Number(entry.amount).toLocaleString()}
                       </TableCell>
@@ -594,17 +619,17 @@ export const EmployeesTab = () => {
             </Table>
           </div>
           <DialogFooter>
-            <Button onClick={() => setLedgerModalOpen(false)} className="bg-gray-800 border-gray-700 text-white">Close</Button>
+            <Button onClick={() => setLedgerModalOpen(false)} className="bg-muted border-border text-foreground">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Bonus / Payment / Adjustment Modal */}
       <Dialog open={actionModalOpen} onOpenChange={setActionModalOpen}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white">
+        <DialogContent className="bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle>Record {actionType.charAt(0).toUpperCase() + actionType.slice(1)}</DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-muted-foreground">
               Recording for {selectedEmployee?.user?.full_name}
             </DialogDescription>
           </DialogHeader>
@@ -613,7 +638,7 @@ export const EmployeesTab = () => {
               <Label>Amount (Rs.)</Label>
               <Input 
                 type="number" 
-                className="bg-gray-800 border-gray-700" 
+                className="bg-muted border-border" 
                 value={actionAmount}
                 onChange={(e) => setActionAmount(e.target.value)}
                 placeholder="0.00"
@@ -622,7 +647,7 @@ export const EmployeesTab = () => {
             <div className="space-y-2">
               <Label>Description</Label>
               <Input 
-                className="bg-gray-800 border-gray-700" 
+                className="bg-muted border-border" 
                 value={actionDescription}
                 onChange={(e) => setActionDescription(e.target.value)}
                 placeholder="Reason for this entry..."
@@ -630,7 +655,7 @@ export const EmployeesTab = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionModalOpen(false)} className="border-gray-800 text-gray-300">Cancel</Button>
+            <Button variant="outline" onClick={() => setActionModalOpen(false)} className="border-border text-muted-foreground">Cancel</Button>
             <Button onClick={handleAction} className={cn(
               actionType === 'payment' ? "bg-green-600 hover:bg-green-700" : "bg-purple-600 hover:bg-purple-700"
             )}>

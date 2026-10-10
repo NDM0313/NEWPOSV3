@@ -118,7 +118,7 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
             {onClose && (
               <button
                 onClick={onClose}
-                className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 flex items-center gap-2"
+                className="bg-gray-600 text-foreground px-4 py-2 rounded-lg hover:bg-muted flex items-center gap-2"
               >
                 <span>Close</span>
               </button>
@@ -199,7 +199,7 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
             })
           ) : (
             <tr>
-              <td colSpan={enablePacking ? 6 : 5} className="text-center text-gray-500" style={{ padding: '24px' }}>
+              <td colSpan={enablePacking ? 6 : 5} className="text-center text-muted-foreground" style={{ padding: '24px' }}>
                 No items in this return
               </td>
             </tr>

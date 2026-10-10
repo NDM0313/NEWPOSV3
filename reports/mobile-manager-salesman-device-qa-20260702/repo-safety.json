@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_MANAGER_SALESMAN_DEVICE_QA_REPO_SAFETY",
+  "run_local_datetime": "2026-07-02T19:22:36+05:00",
+  "branch": "main",
+  "head": "eabab4017cc8122edf98623696b9152fe791ae8d",
+  "origin_main": "eabab4017cc8122edf98623696b9152fe791ae8d",
+  "in_sync": true,
+  "calendar_day2_commit_present": true,
+  "staged_credentials": false,
+  "staged_apk_aab": false,
+  "graphify_out_unstaged": true,
+  "downloads_unstaged": true,
+  "erp_mobile_releases_unstaged": true
+}

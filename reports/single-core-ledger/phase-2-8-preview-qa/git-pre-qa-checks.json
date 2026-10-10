@@ -1,0 +1,9 @@
+{
+  "headCommit": "020a2e5dedddfdcdfb19f10c14d924b084552f0f",
+  "headMessage": "Single Core Ledger Phase 2.7 — Party Ledger preview toggle",
+  "qaBranch": "feature/single-core-ledger-phase-2-8-preview-qa-signoff",
+  "migrationsDiffOnQaBranch": [],
+  "phase28Scope": "docs + evidence only — no preview feature code, no flag enablement",
+  "unifiedLedgerEngine": "OFF",
+  "featureFlagWrites": "NONE"
+}

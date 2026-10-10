@@ -1,0 +1,20 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "latest-delta-audit",
+  "generated_at": "2026-07-01T13:53:34.957Z",
+  "since_utc": "2026-07-01T13:12:09.163Z",
+  "classification": "LEGITIMATE_LIVE_BUSINESS_ACTIVITY",
+  "blocked": false,
+  "new_journal_entries": [
+    { "entry_no": "JE-0206", "amount_pkr": 22500, "type": "sale", "ref": "SL-0020", "cash_impact_pkr": 0, "created_at": "2026-07-01T13:15:24Z" },
+    { "entry_no": "RCV-0078", "amount_pkr": 13500, "type": "payment", "ref": "SL-0020 Walk-in", "cash_impact_pkr": 13500, "created_at": "2026-07-01T13:15:40Z" },
+    { "entry_no": "RCV-0079", "amount_pkr": 5000, "type": "payment", "ref": "SL-0021 Zaneb A114", "cash_impact_pkr": 5000, "created_at": "2026-07-01T13:31:52Z" },
+    { "entry_no": "JE-0208", "amount_pkr": 42000, "type": "sale", "ref": "SL-0021", "cash_impact_pkr": 0, "created_at": "2026-07-01T13:33:15Z" },
+    { "entry_no": "RCV-0080", "amount_pkr": 30000, "type": "payment", "ref": "SL-0022 IBRAHIM N221", "cash_impact_pkr": 30000, "created_at": "2026-07-01T13:49:06Z" },
+    { "entry_no": "JE-0209", "amount_pkr": 0, "type": "manual_receipt", "ref": "Walk-in", "cash_impact_pkr": 0, "note": "zero-line JE shell" },
+    { "entry_no": "JE-0210", "amount_pkr": 0, "type": "manual_receipt", "ref": "Walk-in", "cash_impact_pkr": 0, "note": "zero-line JE shell" }
+  ],
+  "tb_sum_after_13_12_pkr": 113000,
+  "roznamcha_cash_sum_after_13_12_pkr": 48500,
+  "all_balanced": true
+}

@@ -1,0 +1,2629 @@
+{
+  "run_at": "2026-06-23T19:33:37.224Z",
+  "staging_guard": "UNIFIED_LEDGER_STAGING=1",
+  "clone_database": "ledger_stage_20260623_prodcheck",
+  "diagnostics_summary": {
+    "companies_total": 3,
+    "strict_pass_count": 3,
+    "strict_fail_count": 0,
+    "branch_attribution_risk_total": 0,
+    "warnings_unposted_sales": 0,
+    "warnings_unposted_purchases": 0
+  },
+  "diagnostics_companies": [
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "company_is_active": true,
+      "payments_missing_contact_sale_linked": 0,
+      "payments_wrong_party_attribution": 0,
+      "branch_attribution_risk": 0,
+      "unposted_final_sales": 0,
+      "unposted_final_purchases": 0,
+      "unposted_rentals": 0,
+      "correction_reversal_je_count": 0,
+      "opening_balance_null_branch_je_count": 173,
+      "strict_pass": true
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "company_is_active": true,
+      "payments_missing_contact_sale_linked": 0,
+      "payments_wrong_party_attribution": 0,
+      "branch_attribution_risk": 0,
+      "unposted_final_sales": 0,
+      "unposted_final_purchases": 0,
+      "unposted_rentals": 0,
+      "correction_reversal_je_count": 0,
+      "opening_balance_null_branch_je_count": 11,
+      "strict_pass": true
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "company_is_active": true,
+      "payments_missing_contact_sale_linked": 0,
+      "payments_wrong_party_attribution": 0,
+      "branch_attribution_risk": 0,
+      "unposted_final_sales": 0,
+      "unposted_final_purchases": 0,
+      "unposted_rentals": 0,
+      "correction_reversal_je_count": 0,
+      "opening_balance_null_branch_je_count": 72,
+      "strict_pass": true
+    }
+  ],
+  "inventory_summary": [],
+  "payment_contact_rows": [],
+  "branch_attribution_rows": [],
+  "opening_balance_rows": [
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "60005157-5e3e-4007-a4a5-f3a6fd7c8972",
+      "entry_no": "JE-0172",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1171 — Noor Khan Committee"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "026877d0-5ceb-4861-8325-81983dfd0804",
+      "entry_no": "JE-0173",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1172 — M. Ullah Committee"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "6e7494dc-040e-4229-93ab-034b1e4bef03",
+      "entry_no": "JE-0174",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1173 — SKT Committee"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b4ab394d-0016-4d2d-a56e-2a9b23d16880",
+      "entry_no": "JE-0175",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1174 — Wali WK Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "52a5d9e3-a274-40bc-af25-faefd88e32dd",
+      "entry_no": "JE-0176",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1175 — NSR Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ede6ad3d-eaaa-425d-b64e-f445b5b349a4",
+      "entry_no": "JE-0177",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1176 — Jilani Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "de607e3d-3368-4674-9fde-43a3282b4ec2",
+      "entry_no": "JE-0178",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1177 — Laiq Shah Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "4cb17112-fb90-44fe-b120-292ba537b12a",
+      "entry_no": "JE-0179",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1181 — Shahzaman Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5d6af4ff-ca35-44c6-b3b3-ca44dc16665a",
+      "entry_no": "JE-0180",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1182 — Mushtaq Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5eaf82e4-151e-400e-95c6-e4505df54592",
+      "entry_no": "JE-0181",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1183 — Javed Carier Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "664d4f24-0580-4a20-b55d-437710df1684",
+      "entry_no": "JE-0182",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1184 — Qadeem Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "717bf492-c0f8-4d68-a4cd-3d836d16998f",
+      "entry_no": "JE-0183",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1185 — Telawat Shah Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "fde6dde4-9188-4888-9908-7f446ae57e25",
+      "entry_no": "JE-0184",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1186 — Qadar Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0eb9ad14-cd0e-4a68-b37c-95e5961e8350",
+      "entry_no": "JE-0185",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1187 — Irshad Dasti"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "20b5879c-b9fd-4306-ae58-72a238c2da62",
+      "entry_no": "JE-0186",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 3003 — HOME EXPENSES"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "04675b22-2ee8-400f-80b0-ef0942da70af",
+      "entry_no": "JE-0187",
+      "entry_date": "2025-10-01T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 3005 — Saeed Ajmal Capital"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0ef00be3-ca98-4a19-bae9-8849605d0f84",
+      "entry_no": "JE-0193",
+      "entry_date": "2026-05-25T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1003 — Cash in NDM"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5eac1d64-6a15-4fed-b6fc-712c9ff778de",
+      "entry_no": "JE-0171",
+      "entry_date": "2026-05-27T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1021 — NDM EASY"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ce8810f1-c6f1-4cd9-81f3-6dcab2e712e0",
+      "entry_no": "JE-0001",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0001-2 BRIDAL - 700 - ZAYED KG /1153"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "239be22f-797e-42f2-b67c-3b862c0e1b7d",
+      "entry_no": "JE-0002",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0005-2 MAXI 300 - - ANYA / 694"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "426f927e-97d7-400d-a904-25b693d6f443",
+      "entry_no": "JE-0003",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0002-2 MAXI 360 - - ANYA / 697"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "97625ef1-b1dd-4096-a0a5-172980daa0c8",
+      "entry_no": "JE-0004",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0004-2 MAXI 315 -  - ANYA / 521"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "f4876218-54d1-47b1-b84b-96a48c6b4412",
+      "entry_no": "JE-0005",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0003-2 BODY  - 62 - IRSHAD /1250"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5bcc0880-639a-4bc6-9e90-ce7e9fe44706",
+      "entry_no": "JE-0006",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0006-2 MAXI 280 - - ANYA / 695"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b7262f49-7bba-4077-80f8-f013f9c77086",
+      "entry_no": "JE-0007",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0007-2 MAXI 400 - - ANYA / 522"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ea28c8c1-95a5-42a6-af43-5fc401ab1207",
+      "entry_no": "JE-0008",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0008-2 MAXI 260 - - ANYA / 588"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "795090df-ab55-4612-ba46-87b9e3dd9693",
+      "entry_no": "JE-0009",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0011-2 PESHWAS 375 - - AANYA  /858"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "af3d636c-b8b6-4781-a2cc-070a3965cd55",
+      "entry_no": "JE-0010",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0012-2 BODY  - 50 - IMRAN KG /1264"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e3988403-b665-4811-9997-e25bf6006dd1",
+      "entry_no": "JE-0011",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0009-2 PESHWAS 340 - - ANYA / 859"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "353864ff-a848-462e-9a07-ee917b7d2296",
+      "entry_no": "JE-0012",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0010-2 MAXI 310 - - ANYA / 586"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "1f80ff11-e6b3-4a28-afcb-1ecdfa85fd72",
+      "entry_no": "JE-0013",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0013-2 BIDAL 400 - AKRAM KG /953"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5d499c0a-34d4-4292-9f3e-effa7a92a69c",
+      "entry_no": "JE-0014",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0015-2 BRIDAL - 400 - AKRAM KG /952"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b5c54e74-81de-45a2-9871-bf724d01f6aa",
+      "entry_no": "JE-0015",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0014-2 BRIDAL - 450 - AKRAM KG /961"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "43d6d37d-f250-4aaf-8bcd-3c75244dbf9a",
+      "entry_no": "JE-0016",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0017-2 BRIDAL - 400 - ASHRAF /1263"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "d0965bcb-7e2d-463d-99d3-95e68867db21",
+      "entry_no": "JE-0017",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0016-2 BRIDAL - 370 - ASHRAF /1248"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "211e69c3-4034-4797-a063-4dc6eed4be07",
+      "entry_no": "JE-0018",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0018-2 BRIDAL - 1150 - ASIF KG /970"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c2cee18b-dc0a-4eea-b6d2-41b2f0260461",
+      "entry_no": "JE-0019",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0019-2 BRIDAL - 500 - ASIF KG /980"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "027ae83e-3d98-48f1-bc04-8e6939f9160f",
+      "entry_no": "JE-0020",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0021-2 BRIDAL - 500 - ASIF KG /948"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "827a15b7-c59a-48db-accc-aae340473540",
+      "entry_no": "JE-0021",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0020-2 BRIDAL - 500 - ASIF KG /947"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "bc54dc53-d8fc-46c6-9dd6-70ae69e3d4c8",
+      "entry_no": "JE-0022",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0023-2 BRIDAL - 230 - ASIF KG /716"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "51745af7-3d8f-4e15-8f1d-a1b6732e07e7",
+      "entry_no": "JE-0023",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0024-2 BRIDAL TEAL - 350 - ASIF KG /598"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "05284f0e-b268-4aee-926a-a41d47dcd70c",
+      "entry_no": "JE-0024",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0022-2 BRIDAL - 210 - ASIF KG /602"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0218f588-bcdb-460a-8521-d7b823d87b39",
+      "entry_no": "JE-0025",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0025-2 BRIDAL RAW - 500 - ASIF KG /981"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "67aa8389-db60-484b-ac47-273e8ead7cb9",
+      "entry_no": "JE-0026",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0026-2 BRIDAL TEAL - 550 - ASIF KG /946"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "05caf87f-faed-4f5e-aa06-8ebd9d93a8f6",
+      "entry_no": "JE-0027",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0027-2 BRIDAL - 300 - KASHIF /1166"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "d1ecfed8-f15a-4bf0-8a7a-3afd4e6e38b3",
+      "entry_no": "JE-0028",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0028-2 BRIDAL - 300 - KASHIF /1167"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "8a273059-f2f5-455d-a6b9-35be2be53fd2",
+      "entry_no": "JE-0029",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0029-2 BRIDAL KAJOR - 460 - ASIF KG1 /1089"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e7bc02d0-4963-446b-a5bc-bab59fda2c6f",
+      "entry_no": "JE-0030",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0030-2 BRIDAL - 350 - FAROOG KG /1367"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c88c7bb6-48ba-4149-b212-08d05cac7183",
+      "entry_no": "JE-0031",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0031-2 BRIDAL - 500 - IRSHAD /1268"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "9ab79e53-7929-43c7-9fde-0d727cefa8aa",
+      "entry_no": "JE-0032",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0032-2 BRIDAL - 500 - JAVED KG /1325"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "7dc76be3-d1ef-41a7-b297-92f08f9b8d78",
+      "entry_no": "JE-0033",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0033-2 BRIDAL FAZIA SQLIN - 400 - MODSAR KG /1217"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b88bff89-2e77-4e8c-ac11-3baf26ed3997",
+      "entry_no": "JE-0034",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0034-2 BRIDAL DURANI - 260 - MODSAR KG /1216"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c901b926-a12a-47e6-ba74-8e1919623085",
+      "entry_no": "JE-0035",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0036-2 BRIDAL EMB 02 - 500 - IRSHAD /1238"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "03e0725a-110d-4676-8bb6-d033c63569a8",
+      "entry_no": "JE-0036",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0035-2 BRIDAL  - 350 - NAZIM /1212"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "88bf5a8e-3e78-47bf-95d6-4ae4fe282ac5",
+      "entry_no": "JE-0037",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0037-2 BRIDAL EMB 04 - 400 - IRSHAD /1245"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5e90b76c-eb5e-47a1-a8ee-1f6dd9d32f45",
+      "entry_no": "JE-0038",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0038-2 FRESHI  - 1100 - SIKANDAR /1451"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "347d5883-5ff6-4aab-bbdb-4ba448f0a27d",
+      "entry_no": "JE-0039",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0039-2 BRIDAL - 400 - No Brand /773"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "d69f58d0-14c4-4a84-a5da-be0fd00202a2",
+      "entry_no": "JE-0040",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0040-2 BRIDAL - 315 - MEHBOOB /1287"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "6aa76295-b7da-494b-945e-d9c912f5393b",
+      "entry_no": "JE-0041",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0041-2 BRIDAL - 320 - MEHBOOB /1282"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a8e55933-a087-4570-957a-9c9e3bcbb460",
+      "entry_no": "JE-0042",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0044-2 BRIDAL  - 550 - SADIQ KG /1381"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b59e5dc3-bb27-4e6f-9106-0b89047b03bd",
+      "entry_no": "JE-0043",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0043-2 FRESHI  - 850 - IRSHAD /1211"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0c4beed8-2744-4e09-990a-976a22ce223c",
+      "entry_no": "JE-0044",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0042-2 BRIDAL - 320 - MEHBOOB /1283"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "1e7e7597-9ce5-4417-84ae-5dd89c174ca6",
+      "entry_no": "JE-0045",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0045-2 BRIDAL - 470 - SADIQ KG /1312"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c6640357-22ef-4876-83a2-a1d2cf0686ed",
+      "entry_no": "JE-0046",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0046-2 BRIDAL - 400 - SATTAR CHUHAN /1148"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "f63c1473-c299-40b7-8e82-e10ea285e9e9",
+      "entry_no": "JE-0047",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0047-2 BRIDAL - 500 - ZAYED KG /977"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "2336e6f5-c9d7-4171-bc3c-f001d3573247",
+      "entry_no": "JE-0048",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0048-2 BRIDAL - 365 - ZAYED KG /1012"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a58ceacd-8910-4782-b44b-073cebad47ef",
+      "entry_no": "JE-0049",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0002-3 BRIDAL MNR - 450 - ZAYED KG /1087"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "6e75d62f-bfb5-4514-bf72-3693ffa65cc8",
+      "entry_no": "JE-0050",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0001-3 BRIDAL KASHI - 450 - ZAYED KG /1088"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c78e3030-3347-4c8a-a163-41a468409a0c",
+      "entry_no": "JE-0051",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0003-3 BRIDAL - 400 - ZAYED KG /1074"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e8d5c94c-e1f4-4630-be7d-c62ac08c33cd",
+      "entry_no": "JE-0052",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0005-3 MAXI - 200 - AQSIA  /1062"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "649e1af7-2a42-439d-af4f-8b8656d7301a",
+      "entry_no": "JE-0053",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0004-3 MAXI - 135 - AANYA  /578"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a3b5945a-3b24-40b0-a884-4c5250961d49",
+      "entry_no": "JE-0054",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0007-3 MAXI - 225 - AQSIA  /1059"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "2f0bef74-3cdc-47d0-a1a6-893e7d9df3bb",
+      "entry_no": "JE-0055",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0009-3 MAXI - 300 - ASIF KG /983"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "552092ea-b699-4399-85b2-f8a5b6957188",
+      "entry_no": "JE-0056",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0006-3 MAXI - 210 - AQSIA  /1060"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0146f0bc-b3c2-4875-abeb-0cd2156ded96",
+      "entry_no": "JE-0057",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0008-3 MAXI - 210 - AQSIA  /1064"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "76189090-7423-44c9-ad75-213731f1e3dc",
+      "entry_no": "JE-0058",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0011-3 BRIDAL HINA - 420 - KSF KG /1458"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "913ab879-567f-45f1-ab9c-08943e0ddeb8",
+      "entry_no": "JE-0059",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0012-3 MAXI - 230 - IRSHAD /1254"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "20d3b4f9-9e02-47bb-a829-5ee50f83c233",
+      "entry_no": "JE-0060",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0010-3 BRIDAL V - 550 - Hassan KG /1210"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "26985009-4a60-4872-a402-c0ebbe98c368",
+      "entry_no": "JE-0061",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0003-4 MAXI  - 220 - SJD KG /1382"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "832ffc49-a6c8-4747-a1c7-d59ff3080519",
+      "entry_no": "JE-0062",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0001-4 FRESHI  - 900 - SIKANDAR /1453"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b4e79376-0a43-439d-a7fd-adf87a2e6989",
+      "entry_no": "JE-0063",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0002-4 BRIDAL V - 650 - RAFIQ /1315"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a94d99ab-0c7c-46ba-a73d-00607f436448",
+      "entry_no": "JE-0064",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0005-4 BRIDAL  - 400 - SATTAR KG /1455"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "1a829ac4-ecc4-42c3-ac1d-1ac1cc6137bf",
+      "entry_no": "JE-0065",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0004-4 BRIDAL - 400 - SATTAR KG /1456"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "dece1101-d542-413a-b7a4-eb53f178e4db",
+      "entry_no": "JE-0066",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0006-4 BRIDAL CARRY - 550 - ZAYED KG /1130"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "9e98c33e-2bcf-481f-a0bf-8d1cbf14624a",
+      "entry_no": "JE-0067",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0008-4 BRIDAL FB - 600 - SATTAR KG /1457"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "56ae2978-7590-41da-886f-9312bee5d1d1",
+      "entry_no": "JE-0068",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0007-4 BRIDAL - 700 - RAFIQ KG /976"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "45f9df87-5d64-486a-8a5e-501251fa159d",
+      "entry_no": "JE-0069",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0009-4 GRAIB CH - / 596"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "9555fa3a-32b4-4ad0-b93f-fc469f0d021d",
+      "entry_no": "JE-0070",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0011-4 LORS ZARI - 3PK /767"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "6bc81cfe-eef5-481e-abf8-14946d5065e1",
+      "entry_no": "JE-0071",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0010-4 GRAIB PK -  / 770"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "fcb19f0e-bd17-4648-8748-a0d0380cdd96",
+      "entry_no": "JE-0072",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0012-4 CRINKLE BAMER - 5INDIAN /1369"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "848e4e71-b636-42c7-89d6-521946acd93a",
+      "entry_no": "JE-0073",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0001-5 MEDIUM SILK  - 2PK /1252"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "9f0329df-6a2b-477a-9929-c8f2fc222856",
+      "entry_no": "JE-0074",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0003-5 RAW SILK - 2PK /768"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5ad99eec-be4f-451e-bb79-3eca1ac5eebd",
+      "entry_no": "JE-0075",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0002-5 RASHIM  - 1PK /769"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "26d43b98-e668-4c1d-9f26-0b53db998854",
+      "entry_no": "JE-0076",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0004-5 SHAMOZ SILK - 6PK /772"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0e868065-6496-468c-987a-b83ea7b2570f",
+      "entry_no": "JE-0077",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0005-5 CRINKLE BAMER - 4 - PK /1261"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "14f664d9-f31b-4448-b9d6-e54a5cdd2688",
+      "entry_no": "JE-0078",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0007-5 COLOR NET - 0 - IMPORTED /1176"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "35ec3c1e-dd15-4233-a65d-8d2bd4ecbb53",
+      "entry_no": "JE-0079",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0006-5 CAN CAN - 0 - IMPORTED /1177"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c47bb4f2-998e-40a7-ab27-c85d35429d27",
+      "entry_no": "JE-0080",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0009-5 MUKESH NET + ORGANZIA - 5 - PK /1178"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0358b1cc-82e0-4b93-9739-fe5fbf4241cc",
+      "entry_no": "JE-0081",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0008-5 JAMWAR - 2 - PK /765"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b9abec80-8d93-4b8e-b02e-44e15799fc0e",
+      "entry_no": "JE-0082",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0010-5 WHITE NET - 0 - IMPORTED /853"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "abb80998-66b2-47bf-af26-02cd8661bd2a",
+      "entry_no": "JE-0083",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0011-5 SATAIN SILK  - 4 - IMPORTED /1237"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "c2b4fa3b-7922-43ca-8f78-a22869231e4c",
+      "entry_no": "JE-0084",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0012-5 ORGANZIA WHITE - 0 - PK /872"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "424e4b03-614f-495f-9555-dc869a8e7d5b",
+      "entry_no": "JE-0085",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0001-6 SHESHA SILK - 6 - PK /1256"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a24e5462-76bc-4b23-b09b-262035a70fcf",
+      "entry_no": "JE-0086",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0002-6 ORGANZIA SHINE WHITE - 1 - IMPORTED /1228"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "cec09500-fd55-4cdc-9c2e-83f0e25ed9d5",
+      "entry_no": "JE-0087",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0003-6 TASIL SILK  - 3 - PK /1091"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0b75237b-a6ab-41bb-8de0-945b5b3b98b4",
+      "entry_no": "JE-0088",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — HAMZA"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "d5ec3d2a-a216-4368-89fe-adbe514908d8",
+      "entry_no": "JE-0089",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — Walk-in Customer"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "62d95b68-493a-4696-9701-fc4037c124d3",
+      "entry_no": "JE-0090",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MISS SAMAN KHAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "75fe3cb6-15dc-4474-93bd-7b28c10f7591",
+      "entry_no": "JE-0091",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MISS SALIHA AMEEN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b4a4c7d1-1fa9-4352-9806-d01320de25de",
+      "entry_no": "JE-0092",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ABDULLAH MANAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5e0ae67e-4e7c-4578-836b-d9274ce94588",
+      "entry_no": "JE-0093",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR AHMAD AWAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e0b4a5c4-dfc3-4bd7-8acc-efa1b0e2910d",
+      "entry_no": "JE-0094",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ALI"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "63058d76-8f88-407e-aa66-9f310899934c",
+      "entry_no": "JE-0095",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ALI"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "92e46f39-b6fb-48e1-818e-3fe8af3fbede",
+      "entry_no": "JE-0096",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR AMBER"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "77c78f81-7d3a-418a-bd07-68d2a58b4952",
+      "entry_no": "JE-0097",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ARMAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e976bbbf-39a8-4d53-a39d-a70b6d36ea25",
+      "entry_no": "JE-0098",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — ASIM"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "efc6cced-1c62-456f-a52c-5d9e36d63873",
+      "entry_no": "JE-0099",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ARSLAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a9496f01-7dd3-4b5a-bb9f-76397e27bbab",
+      "entry_no": "JE-0100",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ASIF"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "539594a0-6bf2-426e-a863-0a0806fa5b6f",
+      "entry_no": "JE-0101",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ASNAT AHMAD"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ee790362-e9ed-4f6b-b31a-1375187a5a2b",
+      "entry_no": "JE-0102",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ATIF NADEEM"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "9eb4f80a-c1e0-41c9-a7f8-302f95ff7d55",
+      "entry_no": "JE-0103",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR AWAIS"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "567398ca-e85e-455e-823d-7a94009231d1",
+      "entry_no": "JE-0104",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR FALK SKEIKH"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "f4dc1ae6-b591-4dec-a12b-64f7dbf83c49",
+      "entry_no": "JE-0105",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR FAYSAL"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "1655320f-a536-4727-a998-72851c15d139",
+      "entry_no": "JE-0106",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR EMAN FATIMA"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "89affd57-cadf-449f-a719-6456dff9d486",
+      "entry_no": "JE-0107",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR HAMZA"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "d0d37e38-b2c1-4621-a519-0eda3f869459",
+      "entry_no": "JE-0108",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR FAZIAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "afb5233c-3c77-4e07-8dc2-a0af655ff921",
+      "entry_no": "JE-0109",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR H.Gul Shah Ali"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "81d99184-1ae7-43f0-93a2-607180370438",
+      "entry_no": "JE-0110",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR IBRAHIM"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "b34c8bbb-3ae4-40a2-a004-7ebfb3fdcfc8",
+      "entry_no": "JE-0111",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ASAD"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "8458fc76-64d1-4442-b64b-65f2c9a30acb",
+      "entry_no": "JE-0112",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR IFTIKHAR ALI"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "f088bc47-1171-4d68-ba82-c98eb8e5199d",
+      "entry_no": "JE-0113",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR Kamran Ahmed"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5a669230-2b69-4cdd-ad14-4ae1476f597f",
+      "entry_no": "JE-0114",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR M ISHAQ"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "d412ac3c-b77c-43a9-8be5-6402657098eb",
+      "entry_no": "JE-0115",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MANSOOR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "253f0954-b4e7-4de4-b623-a2d29b0b61cd",
+      "entry_no": "JE-0116",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MEHWAISH"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ae147f28-4b48-4a7b-94e4-59a93d84a580",
+      "entry_no": "JE-0117",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MEHMOOD HUSSAIN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "23792ccc-20fb-4bae-84f9-9d15351c078f",
+      "entry_no": "JE-0118",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MOHSIN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "560c0c8e-70a3-4800-a2d4-7a362811baea",
+      "entry_no": "JE-0119",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MOHMMAD SHAFIQ"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "0c5e35af-4dec-479a-8529-c58e867e156d",
+      "entry_no": "JE-0120",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MOHSIN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "28fa9350-9092-4b5e-9aac-67d886826a0c",
+      "entry_no": "JE-0121",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MOHSIN CUSTOMER"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ff57d297-70f3-4e38-9478-1074f4d5d7de",
+      "entry_no": "JE-0122",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MOMNA"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "7d888d48-9d8f-48bc-822b-46c864484c58",
+      "entry_no": "JE-0123",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR IBRAR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "758f3113-e1c8-4c9f-b985-0cfa1399a089",
+      "entry_no": "JE-0124",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR N633"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "186dcfed-6a70-4b24-a249-cc9715de737f",
+      "entry_no": "JE-0125",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MURTAJIZ"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "baa674d2-5d3b-4e52-9624-f90de8690273",
+      "entry_no": "JE-0126",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR NABEEL CUSTOMER"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "2366a786-2a80-4876-a4a6-49fd31d51f30",
+      "entry_no": "JE-0127",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR NISAR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "bd805e46-ceea-4c8b-9d00-558858544c2c",
+      "entry_no": "JE-0128",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR QUDRAT ULLAH"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "27fb089a-680f-41c5-accf-933887e00ee1",
+      "entry_no": "JE-0129",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SAJJAD KHAN"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "314ad949-58af-4d9a-b62a-a3524077c09d",
+      "entry_no": "JE-0130",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR REHAN ALI"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5dc76515-e632-4ef2-a2ef-42db0cdef246",
+      "entry_no": "JE-0131",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SAMAVIA IFTIKHAR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "cb7170ca-d060-4814-a362-e243291e4456",
+      "entry_no": "JE-0132",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SAYED ADIL SHAH"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "00cd74e4-eb49-4a46-9a50-292549798913",
+      "entry_no": "JE-0133",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SAYED MUJTBA"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "201c1bf0-0b26-4405-a8ec-e390ad149738",
+      "entry_no": "JE-0134",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SHERYAR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "27db50cc-3289-4b31-a344-008612b7717a",
+      "entry_no": "JE-0135",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR MOQEEM"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "f62b33f9-e7c1-4249-8602-933bcc77a909",
+      "entry_no": "JE-0136",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SOHAIB"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "7decd0eb-472a-4de6-8d48-2d2c57903168",
+      "entry_no": "JE-0137",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR TAIB BASHIR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e131c58f-0b58-4578-b20d-bce14cfa3b78",
+      "entry_no": "JE-0138",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR TOUQEER"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "f7a4a246-16fc-4dff-958c-ce300fe6291d",
+      "entry_no": "JE-0139",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR WAHID"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "7c50b352-f8b5-4e63-a1ef-854bc836ee1a",
+      "entry_no": "JE-0140",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR WAQAS"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "bd98a9f2-443e-45fe-bc3c-6431b2145526",
+      "entry_no": "JE-0141",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR Waseem"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "dd2c6b46-70a2-477b-992e-4bd0ff01aa27",
+      "entry_no": "JE-0142",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR ZAMAAR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "5eb92a31-c81e-4977-8506-60e092ab96e3",
+      "entry_no": "JE-0143",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — Miss NAGHMANA RAJA"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "8c2ce562-3cb0-4698-8bee-e70298f0b187",
+      "entry_no": "JE-0144",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MR SHOAIB PRINCE"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "a9a10e13-eaf5-4b46-9041-3fcd06bf50b8",
+      "entry_no": "JE-0145",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — ASIF PINDI"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "3193c4d9-82e5-4bf4-912b-e44d9c7d5b31",
+      "entry_no": "JE-0146",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — KASHIF ASIF"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "ab7729d8-8074-402e-98cd-0ce06b37ddd9",
+      "entry_no": "JE-0147",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MR ABDULLAH KHTK"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "8d32f792-8619-4cd9-9625-1f7d0b6f22a4",
+      "entry_no": "JE-0148",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — Mr HASEEB KARGAR"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "9b14666b-d8e6-4df2-8de4-5e68a8e661de",
+      "entry_no": "JE-0149",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MR IRSHAD KG"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "54999939-12d3-41c6-b3bf-865be286a8ed",
+      "entry_no": "JE-0150",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MR NAZIM"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "4105b844-7ec0-415a-9878-15e9c4fd196e",
+      "entry_no": "JE-0151",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MR SAJID KHANIWAL"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "1c8472fa-606b-4db3-aab9-cb52862dc5a6",
+      "entry_no": "JE-0152",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — Mr SHAHZAD KG"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "e0295457-2738-4948-aac7-a7ed1a7fa293",
+      "entry_no": "JE-0153",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MR ZAHID KRH"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "656f0601-a7f3-45a9-a679-830edb9e753d",
+      "entry_no": "JE-0159",
+      "entry_date": "2026-05-30T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0001-18 - 315 - AKRAM KG /1014"
+    },
+    {
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "company_name": "DIN BRIDAL",
+      "journal_entry_id": "3baab9dd-cd2e-4b91-ac0a-2fe5c3a80410",
+      "entry_no": "JE-0166",
+      "entry_date": "2026-06-01T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — PRD-0081 FRESHI TAIL 140 - SADIQ 1464"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "e1a9ff4b-ae8f-482c-b120-8081a2456bb8",
+      "entry_no": "JE-0308",
+      "entry_date": "2025-10-02T00:00:00.000Z",
+      "reference_type": "opening_balance_account",
+      "branch_id": null,
+      "description": "Opening balance — account 1205 — HAMID IK RMB (adjusted to debit Owner Capital Account)"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "967c6718-19af-40a0-bbf0-440cc0f73991",
+      "entry_no": "JE-0297",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0014 VELVET SETECHABLE — 0014"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "d528f64d-28f7-4d91-bbd5-67e5f006e4ae",
+      "entry_no": "JE-0299",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0013-4 WOOL — 0013-3"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "b9091734-7e62-4229-8883-078cc7c7158c",
+      "entry_no": "JE-0300",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0012 TC — 0012"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "c8a074fd-8650-48a6-b5dc-e7b9f146d3e3",
+      "entry_no": "JE-0301",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0017-1 TAIBO — 0017-1"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "5ebd99fc-3ccc-4edb-9cbb-f8f6ab65a955",
+      "entry_no": "JE-0302",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0011 RAD RIYAN — 0011"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "6da82ed4-7617-4b61-8dde-8e2745579f79",
+      "entry_no": "JE-0303",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0010 RIYAN SILK PRINT — 0010"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "76991da0-b36e-45d3-95d3-6c9acfcde770",
+      "entry_no": "JE-0304",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0008 DUBAL SHADE POLYSTER — 0008"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "aff65bb7-a042-436e-b2a2-8ffcae9a97bc",
+      "entry_no": "JE-0305",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0007 GRIAB RIYAN — 0007"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "83c2245c-e1ed-405a-b5ef-e5d1930793a7",
+      "entry_no": "JE-0306",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0004 KATAN RIYAN — 0004"
+    },
+    {
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "company_name": "DIN CHINA",
+      "journal_entry_id": "5eea8cd0-1b27-4e74-aed9-2dba6860b7f9",
+      "entry_no": "JE-0307",
+      "entry_date": "2026-06-16T00:00:00.000Z",
+      "reference_type": "opening_balance_inventory",
+      "branch_id": null,
+      "description": "Opening inventory — 0003-3 TR — 0003-3"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "1e6ed4ea-0889-4e7d-8212-1a07b407ead0",
+      "entry_no": "JE-0001",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — HUMAIRA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "5fe31e00-8a36-42eb-aebf-6d1ca2a749f6",
+      "entry_no": "JE-0002",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — AWAN"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "623f5e9c-3f4e-41e6-815e-f9a6c735a71f",
+      "entry_no": "JE-0003",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — TEETLYAN WHOLESALE"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "f32c192c-0ef7-4b3e-9538-fb2be82de1de",
+      "entry_no": "JE-0004",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SABA 3778"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "1bf2e91a-f610-433c-a9a7-7093dfe2a28b",
+      "entry_no": "JE-0005",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 3522"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "63fcbe01-452f-4b4c-b592-23da878c3e36",
+      "entry_no": "JE-0006",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SYDA FATIMA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "88605263-f512-4bfb-a3bb-7a83cabc3b76",
+      "entry_no": "JE-0007",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — JASBIR"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "b6996414-24fe-4644-a527-59e4e17e0154",
+      "entry_no": "JE-0008",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SHIRIN US"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "8ada6590-2075-4876-adb6-8861e7646113",
+      "entry_no": "JE-0009",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — jyoti baljinder"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "f652fc07-1065-48be-9b0e-a8e5845ca0fc",
+      "entry_no": "JE-0010",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — juhi"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "26f89859-3fdb-410e-9d02-7ad195d075fa",
+      "entry_no": "JE-0011",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — DHARIA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "a3f663ff-a1d6-43eb-b929-d6deaee40ff0",
+      "entry_no": "JE-0012",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — NAZIA AWAN"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "30714df4-7d5d-428e-870e-8c3aff83ca0a",
+      "entry_no": "JE-0013",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 2088"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "8230f8f3-e441-4059-8f7f-d24982c69d8f",
+      "entry_no": "JE-0014",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — KULJEET SIDHU"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "1d1f1ca7-5ba0-441c-9f86-10f9269e58c0",
+      "entry_no": "JE-0015",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SHUMAIL AUS"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "027b0e1e-42a6-4da2-86a1-4266445f76ca",
+      "entry_no": "JE-0016",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SHEGUFTA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "28428748-7e7f-4a95-8745-6232b3005e63",
+      "entry_no": "JE-0017",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SAIROZ CANADA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "7fcd7c40-7eca-4319-b26a-50a1f636c611",
+      "entry_no": "JE-0018",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MARIAM 966"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "9a859e32-fa74-4f8b-bbd7-2bcd6ea50474",
+      "entry_no": "JE-0019",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SHIMYL 3026"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "d4d70a3d-7842-49d3-af6b-a285b07e310b",
+      "entry_no": "JE-0020",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — ITRAT FATIMA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "3b83a1e9-7f3f-469b-b253-90f30805a6b2",
+      "entry_no": "JE-0021",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SHAGILLA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "1c1c97d9-ee92-4ea9-bfba-86a6bbd8eac6",
+      "entry_no": "JE-0022",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 3061"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "15c64bd5-8bb2-4ecb-99d3-aef1e270d81d",
+      "entry_no": "JE-0023",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — LUBNA HAMID"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "95bd64e1-25a0-4e5b-8262-8a812b64f26a",
+      "entry_no": "JE-0024",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — NASEEM NORWAY"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "f4e99e85-dd00-480e-a1a3-b292bdb8d76f",
+      "entry_no": "JE-0025",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — FOZIA 3110"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "90e7634f-bba7-49ed-93e8-1a97c1b10513",
+      "entry_no": "JE-0026",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — AMARJEET"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "623f7901-d29d-4713-8e03-07f0cf16447b",
+      "entry_no": "JE-0027",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — BALJINDER"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "38987729-7b4f-4ea4-93c4-a1a8bd05df22",
+      "entry_no": "JE-0028",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — HARPEET 3117"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "21cc8537-8180-47eb-a058-d124ac025b8d",
+      "entry_no": "JE-0029",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — attar"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "05df5961-b118-4185-a12a-6ee8d1ca7ae1",
+      "entry_no": "JE-0030",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — IRFAN MIANWALI"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "3b05e980-0c4c-4306-90fd-5181ceb60e9f",
+      "entry_no": "JE-0031",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 3453"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "6c6d1c9e-d4ec-434c-8995-a91b5cf85fc7",
+      "entry_no": "JE-0032",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — TAHINA OSLO"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "eba1cc34-a855-43d9-ba4d-3460c66e362d",
+      "entry_no": "JE-0033",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — RUBINA WHITE"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "ad1fb338-6515-4704-a1d5-2d282f28499e",
+      "entry_no": "JE-0034",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — prabjhot"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "ab7484a4-8da7-4af8-87f5-e3d8d6cb3997",
+      "entry_no": "JE-0035",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — RAMMI"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "6def70d1-a92a-4259-9d8f-a3739dad4a9e",
+      "entry_no": "JE-0035",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — 1850 VANI WHOLESALE"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "761c7fdb-b369-4e7b-b99f-18a520946145",
+      "entry_no": "JE-0036",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — HOLLAND"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "0606342f-8e04-4b0d-b471-a1872cd3c06a",
+      "entry_no": "JE-0037",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — ABDULL RAFAY"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "3e801c1e-f6ff-46c5-8d4d-0f079b65d691",
+      "entry_no": "JE-0038",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — BUSHRA H.PAINT"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "c96e1894-e9eb-4a8a-a68b-ad7f6a29232c",
+      "entry_no": "JE-0039",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SHEEBA INR"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "6c2d7607-6593-485c-8464-d65c19a222de",
+      "entry_no": "JE-0040",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — TINA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "1898b387-5801-4032-b055-85326453b522",
+      "entry_no": "JE-0041",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — ARSHAD"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "d0683e4b-dff8-4ad4-8675-c9234f5eff0c",
+      "entry_no": "JE-0042",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — HIJAB"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "06a1134b-1daa-435c-9890-2caa8d5d54dc",
+      "entry_no": "JE-0043",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — sadia kaftan"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "982ec0de-93a2-4e6c-b02b-c49b542ea553",
+      "entry_no": "JE-0044",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — MISS MANSOR"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "11458a5b-63d8-492e-9e0a-fa31a775f5af",
+      "entry_no": "JE-0045",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — ARSHI INR"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "8b9fcf10-9cb9-4c90-b264-4e8b52fb5ce5",
+      "entry_no": "JE-0046",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — abida qatar"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "092357ab-d703-4712-bc6d-450e90279a7b",
+      "entry_no": "JE-0047",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 2007"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "d1bd90bb-466e-41bc-aa1b-fdd520d91761",
+      "entry_no": "JE-0048",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 3120"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "193df476-a564-46df-8785-41f32dc9fc3e",
+      "entry_no": "JE-0049",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — FOZIA 4565"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "e5c41575-4de7-4a99-ab0b-9e3057457c45",
+      "entry_no": "JE-0050",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — SEEMA US"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "338824d6-29a1-4d09-bbf8-03903ca4ccfe",
+      "entry_no": "JE-0051",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — GREEN UK"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "550acadb-2edb-44a7-84e3-96360ff25b62",
+      "entry_no": "JE-0052",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — CUST 2079"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "4d727d2d-8838-48f8-8879-7f052fefaf5e",
+      "entry_no": "JE-0053",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — NA BLACK"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "e1fc5d64-e858-4570-9855-08769a06fc97",
+      "entry_no": "JE-0054",
+      "entry_date": "2026-06-07T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ar",
+      "branch_id": null,
+      "description": "Opening balance — customer AR — FOZIA AUS"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "84e35398-b215-419d-b774-2cb43f7c585a",
+      "entry_no": "JE-0055",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MOHSIN ALTAF"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "97b64404-5fb1-45d2-99d7-f0c9f1f98d89",
+      "entry_no": "JE-0056",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — ALEEM ULLAH"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "647a439d-8d07-47e4-9ad6-6ce15bac70f3",
+      "entry_no": "JE-0057",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — HASSAN"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "306d0c37-51c1-4770-bdb5-1fdac4187fda",
+      "entry_no": "JE-0058",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — ANSAR GULZAR"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "83a34fbb-91e0-4de0-9244-86e59c2cf4f4",
+      "entry_no": "JE-0059",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — HAFIZ SAEED"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "08a4f714-5572-4436-9c8a-4cbba99efc11",
+      "entry_no": "JE-0060",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — ZIA"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "a43b7de9-efe5-4b41-bd7d-5cec248647fb",
+      "entry_no": "JE-0061",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MOHAMMAD ALAM"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "7cd5eb53-9faf-4948-8629-8da763f43691",
+      "entry_no": "JE-0062",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — FAROOQ EMB"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "d57cc27d-518f-41f5-b84e-73609c36249c",
+      "entry_no": "JE-0063",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — IBRAHIM"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "9714bcd2-c424-48bc-aaad-44b00bbe544b",
+      "entry_no": "JE-0064",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — BUTTON CORNER"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "2e20a401-3467-47a7-91dc-ea7fb075817e",
+      "entry_no": "JE-0065",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — ID LACE"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "a0319c0c-43ab-4d35-9ca8-b5d04373739e",
+      "entry_no": "JE-0066",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — FAHAD LACE"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "230d46dd-fda7-40d6-97b6-c8e94042ea6b",
+      "entry_no": "JE-0067",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — HAFIZ GUJ"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "68eb1ed2-9516-4630-aa5a-4dd21bdc2f6a",
+      "entry_no": "JE-0068",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — SHERAZ KHTK"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "f27ba535-958f-4b0b-aa76-55dd5b581f6f",
+      "entry_no": "JE-0069",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — JAMSHID KHTK"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "db42fe11-feee-4c1d-a025-affe3256a3ea",
+      "entry_no": "JE-0070",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — MARYEM SILK"
+    },
+    {
+      "company_id": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "company_name": "DIN COUTURE",
+      "journal_entry_id": "4f7b3ee6-68ba-44b2-9f0b-33297953d483",
+      "entry_no": "JE-0071",
+      "entry_date": "2026-06-09T00:00:00.000Z",
+      "reference_type": "opening_balance_contact_ap",
+      "branch_id": null,
+      "description": "Opening balance — supplier AP — ABDULLAH KHTK"
+    }
+  ],
+  "totals": {
+    "payment_contact_count": 0,
+    "branch_attribution_count": 0,
+    "opening_balance_count": 256,
+    "safe_apply": 0,
+    "manual_review": 0
+  }
+}

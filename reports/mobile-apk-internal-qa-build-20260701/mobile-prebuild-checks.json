@@ -1,0 +1,18 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "mobile-prebuild-checks",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "status": "PASS",
+  "commands": {
+    "build_mobile": { "command": "npm run build:mobile", "status": "PASS" },
+    "build_mobile_prod": { "command": "npm run build:mobile:prod", "status": "PASS", "note": "after TS fix for LoaderSourceBadge" }
+  },
+  "api_endpoint": "https://erp.dincouture.pk",
+  "credentials_printed": false,
+  "mock_data_enabled": false,
+  "new_report_routes_compile": true,
+  "ts_fixes_applied": [
+    "BalanceSheetReport.tsx — remove unused DateRangeBar imports",
+    "AccountLedgerReport.tsx — wire LoaderSourceBadge in ReportHeader rightExtras"
+  ]
+}
