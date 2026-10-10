@@ -20,8 +20,8 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 
 ## Client runtime (locked behavior)
 
-- **Web:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) forces **same-origin** `https://erp.dincouture.pk` in production so `/auth` and `/rest` go through ERP nginx → Kong (avoids cross-origin CORS in the browser).
-- **Capacitor native (Android/iOS):** [`erp-mobile-app/src/lib/supabase.ts`](../../erp-mobile-app/src/lib/supabase.ts) **must** use baked `VITE_SUPABASE_URL` only — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md). Do not reuse the web `window.location.origin` shortcut on native.
+- **Web:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) forces **same-origin** on the ERP host in production so `/auth` and `/rest` go through ERP nginx → Kong (avoids cross-origin CORS in the browser). Current production host: **`https://erp.ndmcore.com`** (legacy `https://erp.dincouture.pk` still recognized).
+- **Capacitor native (Android/iOS):** resolves to **`https://api.ndmcore.com`** — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md). Do not reuse the web `window.location.origin` shortcut on native.
 
 ## After changing keys
 

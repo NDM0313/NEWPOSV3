@@ -122,7 +122,7 @@ export function formatSignInError(
     message.includes('Failed to fetch') ||
     (signInError.name && signInError.name.includes('AuthRetryableFetchError'))
   ) {
-    return 'Network error: Cannot reach the server. On VPS run: git pull && bash deploy/deploy.sh (uses https://supabase.dincouture.pk).';
+    return 'Network error: Cannot reach the server. Redeploy ERP so the SPA uses same-origin https://erp.ndmcore.com (nginx → Kong).';
   }
   if (signInError.status === 401) {
     return 'Authentication configuration error. Contact administrator or retry after deploy.';

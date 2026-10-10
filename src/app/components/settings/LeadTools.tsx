@@ -10,7 +10,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 const BASE_URL =
   typeof window !== 'undefined'
     ? `${window.location.origin}/register-contact`
-    : 'https://erp.dincouture.pk/register-contact';
+    : 'https://erp.ndmcore.com/register-contact';
 
 export const LeadTools = () => {
   const { companyId, branchId } = useSupabase();

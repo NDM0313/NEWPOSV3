@@ -21,18 +21,27 @@ import {
 // IMPORTANT: Vite inlines these at BUILD time. For production Docker build,
 // pass VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as build args (see deploy/Dockerfile).
 let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
-/** Baked env host (e.g. https://supabase.dincouture.pk) — used for direct Realtime WSS in Vite dev while REST uses /supabase proxy. */
+/** Baked env host — used for direct Realtime WSS in Vite dev while REST uses /supabase proxy. */
 const configuredSupabaseHost = supabaseUrl.replace(/\/$/, '');
-// Production (app served from erp.dincouture.pk): same-origin so /auth/, /rest/ go through nginx → Kong (avoids SecurityError).
-// Vite dev: always use same-origin `/supabase` (see vite.config.ts proxy). LAN IPs (e.g. 192.168.x.x:5173) must not call
-// https://supabase.dincouture.pk directly or Kong may reject the browser Origin with CORS (localhost-only bypass was insufficient).
+const NDMCORE_API = 'https://api.ndmcore.com';
+function isProductionErpOrigin(origin: string): boolean {
+  return (
+    origin.includes('erp.ndmcore.com') || origin.includes('erp.dincouture.pk')
+  );
+}
+function isLegacyDincoutureApiUrl(url: string): boolean {
+  return /(?:erp|supabase)\.dincouture\.pk/i.test(url);
+}
+// Production ERP host (erp.ndmcore.com / legacy erp.dincouture.pk): same-origin so /auth/, /rest/
+// go through nginx → Kong (avoids SecurityError / CORS). Vite dev: same-origin `/supabase` proxy.
 if (typeof window !== 'undefined') {
   if (import.meta.env.DEV) {
     supabaseUrl = `${window.location.origin}/supabase`;
-  } else if (window.location.origin.includes('erp.dincouture.pk')) {
+  } else if (isProductionErpOrigin(window.location.origin)) {
     supabaseUrl = window.location.origin;
-  } else if (supabaseUrl.includes('erp.dincouture.pk')) {
-    supabaseUrl = 'https://supabase.dincouture.pk';
+  } else if (isLegacyDincoutureApiUrl(supabaseUrl)) {
+    // Non-ERP origins with stale baked env → ndmcore API (CORS allows erp.ndmcore.com).
+    supabaseUrl = NDMCORE_API;
   }
 }
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
@@ -142,7 +151,8 @@ export const webRealtimeHealth = {
 if (typeof window !== 'undefined' && isPlaceholderSupabaseAnonKey) {
   const msg =
     '[Supabase] VITE_SUPABASE_ANON_KEY is the demo JWT (iss=supabase-demo). Set your project anon key for Realtime and auth refresh; dev Realtime subscriptions are skipped to reduce console noise.';
-  if (/dincouture\.pk$/i.test(window.location.hostname)) {
+  const host = window.location.hostname;
+  if (/ndmcore\.com$/i.test(host) || /dincouture\.pk$/i.test(host)) {
     console.warn(msg + ' Rebuild the ERP image with your project anon JWT for production.');
   } else if (import.meta.env.DEV) {
     console.warn(msg);
@@ -151,7 +161,11 @@ if (typeof window !== 'undefined' && isPlaceholderSupabaseAnonKey) {
 
 // Self-hosted stack: if the SPA was built without a real project anon key, JWT iss stays "supabase-demo"
 // → realtime WebSocket and /auth/v1/token refresh often fail with 502/HTML while REST may still work.
-if (typeof window !== 'undefined' && /dincouture\.pk$/i.test(window.location.hostname)) {
+if (
+  typeof window !== 'undefined' &&
+  (/ndmcore\.com$/i.test(window.location.hostname) ||
+    /dincouture\.pk$/i.test(window.location.hostname))
+) {
   try {
     const parts = supabaseAnonKey.split('.');
     if (parts.length === 3) {
@@ -161,7 +175,7 @@ if (typeof window !== 'undefined' && /dincouture\.pk$/i.test(window.location.hos
       const payload = JSON.parse(json) as { iss?: string };
       if (payload?.iss === 'supabase-demo') {
         console.warn(
-          '[Supabase] VITE_SUPABASE_ANON_KEY decodes to iss=supabase-demo. Rebuild the ERP image with your project anon JWT; otherwise Realtime and auth refresh will fail on erp.dincouture.pk.'
+          '[Supabase] VITE_SUPABASE_ANON_KEY decodes to iss=supabase-demo. Rebuild the ERP image with your project anon JWT; otherwise Realtime and auth refresh will fail on erp.ndmcore.com.'
         );
       }
     }
