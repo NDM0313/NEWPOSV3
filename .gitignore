@@ -59,6 +59,7 @@ posv3.zip
 .env.*
 !.env.example
 !.env.db.example
+!.env.staging.example
 
 # graphify — local AST cache + graph blob (graph.json exceeds GitHub 100MB when repo grows)
 graphify-out/cache/

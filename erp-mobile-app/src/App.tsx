@@ -31,6 +31,7 @@ import { ModuleGrid } from './components/ModuleGrid';
 import { TabletSidebar } from './components/TabletSidebar';
 import { PlaceholderModule } from './components/PlaceholderModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
+import { StagingEnvBanner, isStagingMobileBuild } from './components/StagingEnvBanner';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { MainScrollContext } from './contexts/MainScrollContext';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
@@ -801,12 +802,17 @@ export default function App() {
     };
   }, [authLoading, user, currentScreen, lockOverlayActive, showModuleGrid]);
 
+  const stagingBanner = <StagingEnvBanner />;
+
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
-          <div className="text-[#9CA3AF] animate-pulse">Loading...</div>
+      <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex flex-col">
+        {stagingBanner}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+            <div className="text-[#9CA3AF] animate-pulse">Loading...</div>
+          </div>
         </div>
       </div>
     );
@@ -815,6 +821,7 @@ export default function App() {
   if (currentScreen === 'login' && !user && showCreateBusiness) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        {stagingBanner}
         <CreateBusinessWizardScreen
           onCancel={() => setShowCreateBusiness(false)}
           onComplete={(u, cid) => {
@@ -829,6 +836,7 @@ export default function App() {
   if (currentScreen === 'login' && !user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        {stagingBanner}
         <LoginScreen
           onLogin={handleLogin}
           onCreateBusiness={() => setShowCreateBusiness(true)}
@@ -840,6 +848,7 @@ export default function App() {
   if (currentScreen === 'company-selection' && user && isPlatformCompanyOperator(user.role)) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        {stagingBanner}
         <CompanySelection
           user={user}
           currentCompanyId={companyId}
@@ -852,6 +861,7 @@ export default function App() {
   if (currentScreen === 'branch-selection' && user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        {stagingBanner}
         <BranchSelection user={user} companyId={companyId} profileId={user.profileId} onBranchSelect={handleBranchSelect} />
       </div>
     );
@@ -1132,9 +1142,18 @@ export default function App() {
     </div>
   );
 
+  const staging = isStagingMobileBuild();
   const syncBar = user && selectedBranch ? (
-    <header className="erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-[#374151]/50 bg-[#111827] min-h-[44px]">
-      <span className="text-sm font-semibold text-white truncate">Din Collection</span>
+    <header
+      className={
+        staging
+          ? 'erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-amber-700 bg-amber-500 min-h-[44px]'
+          : 'erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-[#374151]/50 bg-[#111827] min-h-[44px]'
+      }
+    >
+      <span className={`text-sm font-semibold truncate ${staging ? 'text-[#1C1917]' : 'text-white'}`}>
+        {staging ? 'ERP Stage' : 'Din Collection'}
+      </span>
       <SyncStatusBar
         status={status}
         onSyncClick={() => {
@@ -1168,6 +1187,7 @@ export default function App() {
           />
         )}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {stagingBanner}
           {permissionBar}
           {syncBar}
           <MainScrollContext.Provider value={mainScrollRef}>
@@ -1186,6 +1206,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+      {stagingBanner}
       {permissionBar}
       {syncBar}
       {content}

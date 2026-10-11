@@ -73,6 +73,34 @@ Launch screen background matches app shell (`#111827`) — no white flash before
 
 ---
 
+## Staging iOS (side-by-side with production)
+
+Installs next to production without overwriting it.
+
+| | Production | Staging |
+|---|---|---|
+| Bundle ID | `com.dincouture.erp` | `com.dincouture.erp.stage` |
+| Home-screen name | Din Collection | **ERP Stage** |
+| API | `https://api.ndmcore.com` | `https://api-stage.ndmcore.com` |
+| Icon | Production art | Orange **STAGE** banner |
+| In-app | — | Amber `[STAGING DB]` strip |
+
+On Mac after `git pull`:
+
+```bash
+cd erp-mobile-app
+npm ci
+cp .env.staging.example .env.staging   # already filled with staging URL + anon
+npm run ios:prep:mac:stage             # build:mobile:stage + STAGE icon + cap sync ios + pod install
+npm run cap:ios                        # opens App.xcworkspace
+```
+
+Or step-by-step: `npm run build:mobile:stage` then `npm run cap:sync:ios:stage`.
+
+Restore production icon/bundle before a prod IPA: unset `CAP_PROFILE` / use `npm run cap:sync:ios:prod`, and run `python3 scripts/badge-ios-stage-icon.py --restore-prod`.
+
+---
+
 ## After web or native changes
 
 ```bash

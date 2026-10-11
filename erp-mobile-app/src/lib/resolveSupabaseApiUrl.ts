@@ -1,20 +1,33 @@
-/** Native + direct production API (ndmcore Kong / Mini PC edge). */
+/** Production Kong / Mini PC edge. */
 const PRODUCTION_API = 'https://api.ndmcore.com';
+/** Staging Kong → erp_core. */
+const STAGING_API = 'https://api-stage.ndmcore.com';
 
 export type ResolveSupabaseApiUrlOptions = {
   isNativeCapacitor?: boolean;
   isDev?: boolean;
 };
 
+function isStagingApiUrl(url: string): boolean {
+  return /api-stage\.ndmcore\.com/i.test(url) || /erp-stage\.ndmcore\.com/i.test(url);
+}
+
 /**
  * Production (PWA + native Capacitor): https://api.ndmcore.com
- * (auth/rest/storage; CORS allows capacitor://localhost).
+ * Staging bake (VITE_SUPABASE_URL=https://api-stage.ndmcore.com): keep staging on native too.
  * Vite dev browser: same-origin → proxy (avoids CORS). Never on native Capacitor.
  */
 export function resolveSupabaseApiUrl(
   raw?: string,
   opts?: ResolveSupabaseApiUrlOptions,
 ): string {
+  const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
+
+  // Explicit staging bake wins (including native Capacitor).
+  if (isStagingApiUrl(trimmed)) {
+    return STAGING_API;
+  }
+
   if (opts?.isNativeCapacitor) {
     return PRODUCTION_API;
   }
@@ -34,10 +47,10 @@ export function resolveSupabaseApiUrl(
     }
   }
 
-  const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
   if (!trimmed) return PRODUCTION_API;
-  // Treat ERP web host as API mis-bake → canonical API.
-  if (/erp\.ndmcore\.com/i.test(trimmed) || /api\.ndmcore\.com/i.test(trimmed)) {
+  // Treat ERP web host / exact api.ndmcore.com as canonical production API.
+  // Do not match api-stage.ndmcore.com (handled above).
+  if (/erp\.ndmcore\.com/i.test(trimmed) || /(^|[/.])api\.ndmcore\.com([/:?]|$)/i.test(trimmed)) {
     return PRODUCTION_API;
   }
   // Hardcoded office LAN Kong (Mixed Content on https://erp.ndmcore.com).
