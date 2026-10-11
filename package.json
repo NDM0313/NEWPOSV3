@@ -6,6 +6,7 @@
   "scripts": {
     "build": "vite build",
     "typecheck:mobile": "cd erp-mobile-app && npx tsc -b",
+    "fix:mac-ios-stage": "bash erp-mobile-app/scripts/fix-mac-ios-stage-now.sh",
     "dev": "node scripts/run-migrations.js --allow-fail && vite",
     "dev:no-migrate": "vite",
     "dev:w3-demo": "vite --open /demo/import-fx-w3",

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# One-shot: fix merge-broken TS from origin/main, build iOS Stage, open Xcode.
-# Run on MacBook from ANY cwd inside the NEWPOSV3 repo:
-#   bash erp-mobile-app/scripts/fix-mac-ios-stage-now.sh
+# One-shot on MacBook (from NEWPOSV3 root OR erp-mobile-app):
+#   npm run fix:mac-ios-stage
+#   # or: bash erp-mobile-app/scripts/fix-mac-ios-stage-now.sh
+#
+# Pulls main, builds ERP Stage (api-stage), pods, opens Xcode, and installs+launches
+# on the first connected physical iPhone/iPad when possible.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -26,21 +29,7 @@ if [ -n "$(git ls-files -u)" ]; then
   git rebase --abort 2>/dev/null || true
 fi
 
-echo "==> restore clean files from origin/main"
-git checkout origin/main -- \
-  erp-mobile-app/vite.config.ts \
-  erp-mobile-app/src/lib/supabase.ts \
-  erp-mobile-app/src/lib/resolveSupabaseApiUrl.ts \
-  erp-mobile-app/src/App.tsx \
-  erp-mobile-app/src/components/StagingEnvBanner.tsx \
-  erp-mobile-app/capacitor.config.ts \
-  erp-mobile-app/package.json \
-  erp-mobile-app/.env.staging.example \
-  erp-mobile-app/scripts/badge-ios-stage-icon.py \
-  erp-mobile-app/scripts/mac-merge-origin-main-stage.sh \
-  erp-mobile-app/scripts/auto-resolve-merge-conflicts.mjs || true
-
-# Fast-forward if possible (ignore dirty unrelated files)
+echo "==> fast-forward origin/main"
 git pull --ff-only origin main || true
 
 cd erp-mobile-app
@@ -70,16 +59,100 @@ for s in ("api-stage.ndmcore.com","[STAGING DB]","Created by","Filters"):
 print("OK", c["appId"], c["appName"])
 PY
 
-echo "==> opening Xcode workspace"
-npx cap open ios
+SCHEME="NDM ERP"
+WORKSPACE="ios/App/App.xcworkspace"
+BUNDLE_ID="com.dincouture.erp.stage"
+DERIVED="$(pwd)/ios/build/DerivedData-stage"
+mkdir -p "$DERIVED"
 
-# Best-effort: build+run on first connected iPhone if xcodebuild device list works
-if command -v xcrun >/dev/null 2>&1; then
-  DEVICES="$(xcrun xctrace list devices 2>/dev/null | grep -E 'iPhone|iPad' | grep -v Simulator | head -5 || true)"
-  echo "==> devices:"
-  echo "$DEVICES"
+pick_device_udid() {
+  # Prefer wired/network physical devices from devicectl JSON when available.
+  if xcrun devicectl list devices --json-output /tmp/erp-devices.json >/dev/null 2>&1; then
+    python3 - <<'PY'
+import json
+from pathlib import Path
+data=json.loads(Path("/tmp/erp-devices.json").read_text())
+devices=[]
+# Shape varies by Xcode version; walk for plausible device dicts.
+def walk(o):
+    if isinstance(o, dict):
+        udid=o.get("identifier") or o.get("udid") or o.get("hardwareIdentifier")
+        name=o.get("name") or o.get("deviceName") or ""
+        conn=str(o.get("connectionProperties") or o.get("connectionState") or o.get("state") or "")
+        dtype=str(o.get("deviceType") or o.get("hardwareProperties") or o.get("platform") or "")
+        if udid and ("iPhone" in name or "iPad" in name or "iOS" in dtype or "iphone" in dtype.lower()):
+            if "Simulator" in name:
+                return
+            devices.append((str(udid), name, conn))
+        for v in o.values():
+            walk(v)
+    elif isinstance(o, list):
+        for i in o:
+            walk(i)
+walk(data)
+# Prefer available / connected
+def rank(item):
+    _, _, conn = item
+    c=conn.lower()
+    if "available" in c or "connected" in c:
+        return 0
+    return 1
+devices.sort(key=rank)
+if devices:
+    print(devices[0][0])
+PY
+    return
+  fi
+  # Fallback: xctrace text list
+  xcrun xctrace list devices 2>/dev/null \
+    | grep -E 'iPhone|iPad' \
+    | grep -v Simulator \
+    | head -1 \
+    | sed -E 's/.*\(([0-9A-Fa-f-]+)\).*/\1/' || true
+}
+
+echo "==> detecting connected iPhone/iPad"
+UDID="$(pick_device_udid | tr -d '[:space:]')"
+if [[ -z "${UDID}" ]]; then
+  echo "WARN: no physical device UDID found. Opening Xcode — select iPhone → Run (⌘R)."
+  npx cap open ios || true
+  exit 0
+fi
+echo "==> device UDID: $UDID"
+xcrun xctrace list devices 2>/dev/null | grep -E 'iPhone|iPad' | grep -v Simulator | head -5 || true
+
+echo "==> xcodebuild Debug → device (auto provisioning)"
+xcodebuild \
+  -workspace "$WORKSPACE" \
+  -scheme "$SCHEME" \
+  -configuration Debug \
+  -destination "id=${UDID}" \
+  -derivedDataPath "$DERIVED" \
+  -allowProvisioningUpdates \
+  -allowProvisioningDeviceRegistration \
+  DEVELOPMENT_TEAM=NLNZN84GX4 \
+  build
+
+APP_PATH="$(find "$DERIVED/Build/Products" -type d -name '*.app' | head -1 || true)"
+if [[ -z "${APP_PATH}" ]]; then
+  echo "ERROR: built .app not found under $DERIVED"
+  npx cap open ios || true
+  exit 1
+fi
+echo "==> app: $APP_PATH"
+
+echo "==> install on device"
+if xcrun devicectl device install app --device "$UDID" "$APP_PATH"; then
+  echo "==> launch $BUNDLE_ID"
+  xcrun devicectl device process launch --device "$UDID" "$BUNDLE_ID" || true
+  echo ""
+  echo "DONE. ERP Stage installed+launched on device."
+  echo "Bundle: $BUNDLE_ID"
+else
+  echo "WARN: devicectl install failed — opening Xcode for manual Run (⌘R)."
+  npx cap open ios || true
+  exit 1
 fi
 
-echo ""
-echo "DONE. In Xcode: select your iPhone → Product → Run (⌘R)."
-echo "App name: ERP Stage  |  Bundle: com.dincouture.erp.stage"
+# Also open Xcode so the project stays handy
+npx cap open ios || true
