@@ -1147,7 +1147,8 @@ export const SalesPage = () => {
       setSortKey(key);
       setSortDir('desc');
     }
-    setCurrentPage(1);
+    // Server-paginated list: reset to first page via SalesContext (0-based).
+    setPage(0);
   };
 
   // Effective due = billable invoice (product + shipment + studio) − paid

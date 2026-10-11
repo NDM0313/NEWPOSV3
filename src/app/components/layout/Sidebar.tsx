@@ -247,8 +247,11 @@ export const Sidebar = () => {
           )}
         </div>
         <button 
+          type="button"
           onClick={toggleSidebar}
-          className="p-1.5 hover:bg-sidebar-accent rounded-lg text-muted-foreground hover:text-sidebar-foreground transition-colors absolute -right-3 top-6 bg-sidebar border border-sidebar-border shadow-sm"
+          aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-expanded={isSidebarOpen}
+          className="p-1.5 hover:bg-sidebar-accent rounded-lg text-muted-foreground hover:text-sidebar-foreground transition-colors absolute -right-3 top-6 bg-sidebar border border-sidebar-border shadow-sm z-30"
         >
           {isSidebarOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
         </button>
