@@ -10,6 +10,14 @@
 name: Deploy Supabase Staging Stack
 
 on:
+  # Push trigger: workflow file on this branch is enough (no default-branch registration needed).
+  push:
+    branches:
+      - cursor/supabase-stage-minipc-e9d2
+    paths:
+      - 'scripts/deploy-supabase-stage-minipc.sh'
+      - '.github/workflows/deploy-supabase-stage.yml'
+      - 'deploy/gen-jwt-keys.cjs'
   workflow_dispatch:
     inputs:
       skip_migrate:
@@ -51,8 +59,8 @@ jobs:
       - name: Deploy staging Supabase over SSH
         env:
           KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
-          INPUT_HOST: ${{ github.event.inputs.host }}
-          SKIP_MIGRATE: ${{ github.event.inputs.skip_migrate }}
+          INPUT_HOST: ${{ github.event.inputs.host || '' }}
+          SKIP_MIGRATE: ${{ github.event.inputs.skip_migrate || '0' }}
           STAGE_SSH_HOST: ${{ vars.STAGE_SSH_HOST }}
           STAGE_SSH_USER: ${{ vars.STAGE_SSH_USER }}
         run: |
