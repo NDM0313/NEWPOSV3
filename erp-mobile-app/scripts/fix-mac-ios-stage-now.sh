@@ -44,6 +44,24 @@ test -f .env.staging
 echo "==> ios:prep:mac:stage"
 npm run ios:prep:mac:stage
 
+echo "==> ensure CocoaPods (Pods is gitignored — required for Capacitor search paths)"
+(
+  cd ios/App
+  # Always reinstall so Xcode FRAMEWORK_SEARCH_PATHS resolve under Pods/
+  pod install --repo-update || pod install
+  test -d Pods/Pods.xcodeproj || test -f Pods/Manifest.lock
+  test -f App.xcworkspace/contents.xcworkspacedata
+  if ! grep -q 'Pods/Pods.xcodeproj' App.xcworkspace/contents.xcworkspacedata; then
+    echo "ERROR: App.xcworkspace is missing Pods — open workspace after pod install, never .xcodeproj alone."
+    exit 1
+  fi
+  echo "OK Pods present: $(ls -d Pods | head -1)"
+)
+
+echo "==> clean stale DerivedData (fixes Capacitor search-path not found)"
+rm -rf "$HOME/Library/Developer/Xcode/DerivedData/App-"* 2>/dev/null || true
+rm -rf ios/build/DerivedData-stage 2>/dev/null || true
+
 echo "==> verify identity"
 grep PRODUCT_BUNDLE_IDENTIFIER ios/App/App.xcodeproj/project.pbxproj | head -2
 grep -A1 CFBundleDisplayName ios/App/App/Info.plist | head -3
@@ -111,18 +129,26 @@ PY
     | sed -E 's/.*\(([0-9A-Fa-f-]+)\).*/\1/' || true
 }
 
+open_workspace() {
+  echo "==> open App.xcworkspace (never App.xcodeproj — Pods will not link)"
+  osascript -e 'tell application "Xcode" to quit' >/dev/null 2>&1 || true
+  sleep 1
+  open "$ROOT/erp-mobile-app/ios/App/App.xcworkspace"
+}
+
 echo "==> detecting connected iPhone/iPad"
 UDID="$(pick_device_udid | tr -d '[:space:]')"
 if [[ -z "${UDID}" ]]; then
-  echo "WARN: no physical device UDID found. Opening Xcode — select iPhone → Run (⌘R)."
-  npx cap open ios || true
+  echo "WARN: no physical device UDID found."
+  open_workspace
+  echo "In Xcode: select physical iPhone → Product → Clean Build Folder → Run (⌘R)."
   exit 0
 fi
 echo "==> device UDID: $UDID"
 xcrun xctrace list devices 2>/dev/null | grep -E 'iPhone|iPad' | grep -v Simulator | head -5 || true
 
 echo "==> xcodebuild Debug → device (auto provisioning)"
-xcodebuild \
+if ! xcodebuild \
   -workspace "$WORKSPACE" \
   -scheme "$SCHEME" \
   -configuration Debug \
@@ -132,11 +158,16 @@ xcodebuild \
   -allowProvisioningDeviceRegistration \
   DEVELOPMENT_TEAM=NLNZN84GX4 \
   build
+then
+  echo "ERROR: xcodebuild failed. Opening workspace for manual fix."
+  open_workspace
+  exit 1
+fi
 
 APP_PATH="$(find "$DERIVED/Build/Products" -type d -name '*.app' | head -1 || true)"
 if [[ -z "${APP_PATH}" ]]; then
   echo "ERROR: built .app not found under $DERIVED"
-  npx cap open ios || true
+  open_workspace
   exit 1
 fi
 echo "==> app: $APP_PATH"
@@ -149,10 +180,9 @@ if xcrun devicectl device install app --device "$UDID" "$APP_PATH"; then
   echo "DONE. ERP Stage installed+launched on device."
   echo "Bundle: $BUNDLE_ID"
 else
-  echo "WARN: devicectl install failed — opening Xcode for manual Run (⌘R)."
-  npx cap open ios || true
+  echo "WARN: devicectl install failed — opening workspace for manual Run (⌘R)."
+  open_workspace
   exit 1
 fi
 
-# Also open Xcode so the project stays handy
-npx cap open ios || true
+open_workspace
