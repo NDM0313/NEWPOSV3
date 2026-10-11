@@ -1,6 +1,9 @@
 # Staging Supabase Kong + Studio (isolated from production supabase.yml)
 # Hosts: api-stage.ndmcore.com → stage Kong ; db-stage.ndmcore.com → stage Studio
 # Requires: dokploy-traefik attached to stage-supabase-net (see wire script).
+#
+# Studio publish on host is 3010→3000. Traefik reaches the container on the
+# Docker network at stage-supabase-studio:3000 (do NOT use host :3010 here).
 http:
   middlewares:
     stage-studio-storage-policy:
