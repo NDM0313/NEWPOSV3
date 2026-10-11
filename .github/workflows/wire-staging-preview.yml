@@ -1,0 +1,93 @@
+# Wire Traefik api-stage/db-stage + rebuild erp-frontend-preview (:3002) against staging Supabase.
+# Does not touch production erp-frontend (:3001) or /root/supabase/docker.
+name: Wire staging preview (:3002)
+
+on:
+  push:
+    branches:
+      - cursor/supabase-stage-minipc-e9d2
+    paths:
+      - 'deploy/supabase-stage-traefik.yml'
+      - 'scripts/wire-staging-preview-vps.sh'
+      - '.github/workflows/wire-staging-preview.yml'
+  workflow_dispatch:
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"
+          if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
+          if [ -z "$KEY" ]; then
+            echo "::error::Add repository secret VPS_SSH_KEY"
+            exit 1
+          fi
+          KEYFILE="${RUNNER_TEMP}/wire_stage.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" > /dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Wire Traefik + rebuild preview on VPS
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+        run: |
+          set -euo pipefail
+          HOST="72.62.254.176"
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 "$HOST" >> "$KNOWN" 2>/dev/null || true
+
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            root@"$HOST" \
+            "mkdir -p /root/NEWPOSV3/deploy /root/NEWPOSV3/scripts /etc/dokploy/traefik/dynamic"
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            deploy/supabase-stage-traefik.yml \
+            root@"$HOST":/root/NEWPOSV3/deploy/supabase-stage-traefik.yml
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            scripts/wire-staging-preview-vps.sh \
+            root@"$HOST":/root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            root@"$HOST" \
+            "set -euo pipefail
+             chmod +x /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+             export REPO_ROOT=/root/NEWPOSV3
+             export BRANCH=cursor/supabase-stage-minipc-e9d2
+             bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+            "
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"
