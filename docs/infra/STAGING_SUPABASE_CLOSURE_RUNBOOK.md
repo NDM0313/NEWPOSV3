@@ -1,18 +1,21 @@
 # Staging Supabase — Closure Runbook
 
-**Status:** Closed after final isolation verification (VPS `72.62.254.176`).  
-**PR:** staging stack + Traefik + preview `:3002` wiring.
+**Status:** CLOSED — migration complete.  
+**Verified:** 2026-10-11T13:38:42Z via [CI run 38143962108](https://github.com/NDM0313/NEWPOSV3/actions/runs/38143962108)  
+**Host:** VPS `72.62.254.176` (`/opt/supabase-stage`)  
+**PR:** [#28](https://github.com/NDM0313/NEWPOSV3/pull/28)
 
 ## Surfaces
 
 | Role | URL / port | Notes |
 |---|---|---|
-| Production ERP | `:3001` / `https://erp.dincouture.pk` | Untouched |
-| Production API | `https://supabase.dincouture.pk` / `https://api.ndmcore.com` | Untouched |
-| Staging Kong | `http://127.0.0.1:8010` / `https://api-stage.ndmcore.com` | `/opt/supabase-stage` |
-| Staging Studio | `http://127.0.0.1:3010` / `https://db-stage.ndmcore.com` | DNS for `db-stage` may need A record |
+| Production ERP | `:3001` / `https://erp.dincouture.pk` | UNTOUCHED |
+| Production API | `https://supabase.dincouture.pk` / `https://api.ndmcore.com` | UNTOUCHED |
+| Staging Kong | `http://127.0.0.1:8010` / `https://api-stage.ndmcore.com` | HTTP 401 local / 200 public |
+| Staging Studio | `http://127.0.0.1:3010` / `https://db-stage.ndmcore.com` | Local 307; public DNS A record still pending |
 | Staging Postgres | `127.0.0.1:5433` | Container `stage-supabase-db` |
-| Preview ERP | `http://127.0.0.1:3002` | Built with staging URL + anon key |
+| Preview ERP | `http://127.0.0.1:3002` | HTTP 200; staging URL + anon baked in |
+| Staging Anon Key | see `.stage_anon_key` / below | Distinct from production |
 
 ## Operator commands
 
@@ -37,14 +40,23 @@ bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
 - `scripts/wire-staging-preview-vps.sh` — Traefik + preview rebuild
 - `scripts/verify-staging-isolation-vps.sh` — final health + isolation proof
 
-## Isolation proof
+## Isolation proof (PASS)
 
-Script inserts canary `STG-VERIFY-999` into **staging** `public.expenses`, then asserts **production** count is `0`.
+Canary `STG-VERIFY-999` inserted into **staging** `public.expenses` only.
 
-Expected line:
+| DB | Canary count |
+|---|---|
+| Staging (`stage-supabase-db`) | **1** |
+| Production (`supabase-db`) | **0** |
 
 ```text
 ISOLATION VERIFIED: Record exists in Staging only, 0 leakage to Production.
+```
+
+## Staging Anon Key (preview bake)
+
+```text
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQxNzY5MjAwLCJleHAiOjE3OTk1MzU2MDB9.OHbNef2x7CVNAPLi302ouCz3UN1sG1TK_uVFOivGM90
 ```
 
 ## Preview tunnel
