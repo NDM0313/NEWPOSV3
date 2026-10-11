@@ -301,9 +301,11 @@ docker compose -p "$COMPOSE_PROJECT" ps
 # ---------------------------------------------------------------------------
 if [[ "$SKIP_MIGRATE" != "1" ]]; then
   DUMP="$STAGE_DIR/prod_stage.dump"
-  log "pg_dump from $PROD_DB → $DUMP"
+  log "pg_dump public schema from $PROD_DB → $DUMP"
+  # Fresh stage already has auth/storage/realtime system schemas; restore ERP public schema.
   docker exec "$PROD_DB" pg_dump -U postgres -d postgres \
     --format=custom --no-owner --no-acl \
+    --schema=public \
     -f /tmp/prod_stage.dump
   docker cp "$PROD_DB:/tmp/prod_stage.dump" "$DUMP"
   docker exec "$PROD_DB" rm -f /tmp/prod_stage.dump
@@ -311,10 +313,16 @@ if [[ "$SKIP_MIGRATE" != "1" ]]; then
 
   log "Restoring dump into $STAGE_DB"
   docker cp "$DUMP" "$STAGE_DB:/tmp/prod_stage.dump"
-  # Prefer clean restore; tolerate role/extension noise
+  # Prefer supabase_admin (superuser in self-hosted images) to reduce ownership errors.
+  RESTORE_USER="postgres"
+  if docker exec "$STAGE_DB" psql -U supabase_admin -d postgres -Atc 'SELECT 1' >/dev/null 2>&1; then
+    RESTORE_USER="supabase_admin"
+  fi
+  log "pg_restore as role: $RESTORE_USER"
   set +e
-  docker exec "$STAGE_DB" pg_restore -U postgres -d postgres \
+  docker exec "$STAGE_DB" pg_restore -U "$RESTORE_USER" -d postgres \
     --clean --if-exists --no-owner --no-acl \
+    --schema=public \
     /tmp/prod_stage.dump
   RC=$?
   set -e
@@ -324,15 +332,19 @@ if [[ "$SKIP_MIGRATE" != "1" ]]; then
   docker exec "$STAGE_DB" rm -f /tmp/prod_stage.dump
 
   log "Verification queries"
-  docker exec "$STAGE_DB" psql -U postgres -d postgres -v ON_ERROR_STOP=0 <<'SQL'
+  docker exec -i "$STAGE_DB" psql -U "$RESTORE_USER" -d postgres -v ON_ERROR_STOP=0 <<'SQL'
 \echo '=== public tables ==='
 SELECT count(*) AS public_tables
 FROM information_schema.tables WHERE table_schema = 'public';
 
 \echo '=== row counts ==='
-SELECT 'sales' AS tbl, count(*) FROM public.sales
-UNION ALL SELECT 'contacts', count(*) FROM public.contacts
-UNION ALL SELECT 'expenses', count(*) FROM public.expenses;
+SELECT
+  CASE WHEN to_regclass('public.sales') IS NULL THEN 'MISSING'
+       ELSE (SELECT count(*)::text FROM public.sales) END AS sales_rows,
+  CASE WHEN to_regclass('public.contacts') IS NULL THEN 'MISSING'
+       ELSE (SELECT count(*)::text FROM public.contacts) END AS contacts_rows,
+  CASE WHEN to_regclass('public.expenses') IS NULL THEN 'MISSING'
+       ELSE (SELECT count(*)::text FROM public.expenses) END AS expenses_rows;
 
 \echo '=== functions (public) ==='
 SELECT count(*) AS public_functions
@@ -353,11 +365,28 @@ fi
 # ---------------------------------------------------------------------------
 # Phase 3: HTTP checks
 # ---------------------------------------------------------------------------
-log "HTTP health checks"
-STUDIO_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I "http://127.0.0.1:${STUDIO_HOST_PORT}" || true)"
-KONG_HEADERS="$(curl -sSI "http://127.0.0.1:${KONG_HOST_PORT}/rest/v1/" || true)"
-KONG_CODE="$(printf '%s\n' "$KONG_HEADERS" | head -1 | awk '{print $2}')"
+log "Waiting for Studio on :${STUDIO_HOST_PORT} and Kong on :${KONG_HOST_PORT}"
+STUDIO_CODE="000"
+KONG_CODE="000"
+KONG_HEADERS=""
+for i in $(seq 1 36); do
+  STUDIO_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I "http://127.0.0.1:${STUDIO_HOST_PORT}" 2>/dev/null || echo 000)"
+  KONG_HEADERS="$(curl -sSI "http://127.0.0.1:${KONG_HOST_PORT}/rest/v1/" 2>/dev/null || true)"
+  KONG_CODE="$(printf '%s\n' "$KONG_HEADERS" | head -1 | awk '{print $2}')"
+  KONG_CODE="${KONG_CODE:-000}"
+  if [[ "$STUDIO_CODE" =~ ^(200|301|302|307|308)$ ]] && [[ "$KONG_CODE" == "401" ]]; then
+    break
+  fi
+  # If studio container exists but port not published, show once
+  if [[ $i -eq 6 ]]; then
+    log "compose ps (debug):"
+    docker compose -p "$COMPOSE_PROJECT" ps || true
+    docker ps --filter name=stage-supabase --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' || true
+  fi
+  sleep 5
+done
 
+log "HTTP health checks"
 log "Studio HTTP: $STUDIO_CODE (expect 200/301/302/307/308)"
 log "Kong /rest/v1/ HTTP: $KONG_CODE (expect 401)"
 printf '%s\n' "$KONG_HEADERS" | head -20
@@ -366,6 +395,9 @@ printf '%s\n' "$KONG_HEADERS" | head -20
 # Phase 4: summary
 # ---------------------------------------------------------------------------
 ANON_PRINT="$(cat "$STAGE_DIR/.stage_anon_key")"
+ANON_LEN="${#ANON_PRINT}"
+ANON_PREFIX="${ANON_PRINT:0:12}"
+ANON_SUFFIX="${ANON_PRINT: -12}"
 cat <<EOF
 
 ======== STAGING SUPABASE READY ========
@@ -373,6 +405,8 @@ Staging Studio local target: http://localhost:${STUDIO_HOST_PORT}
 Staging API local target:    http://localhost:${KONG_HOST_PORT}
 Staging Public Anon Key:
 ${ANON_PRINT}
+Anon key fingerprint: len=${ANON_LEN} prefix=${ANON_PREFIX} suffix=${ANON_SUFFIX}
+(Full key also at ${STAGE_DIR}/.stage_anon_key and STAGE_SUMMARY.txt on the host.)
 
 Ready-to-use .env (tunnel hostname placeholder):
 VITE_SUPABASE_URL=https://<your-stage-tunnel-api-hostname>
@@ -385,14 +419,19 @@ VITE_SUPABASE_ANON_KEY=${ANON_PRINT}
 Compose project: ${COMPOSE_PROJECT}
 Stage dir:       ${STAGE_DIR}
 Network:         ${NETWORK_NAME}
+Studio HTTP:     ${STUDIO_CODE}
+Kong HTTP:       ${KONG_CODE}
 ========================================
 EOF
 
-# Write machine-readable summary (no service role in stdout file for convenience — it's in .stage_service_role_key)
+# Write machine-readable summary (service role in separate file)
 cat > "$STAGE_DIR/STAGE_SUMMARY.txt" <<EOF
 STUDIO_URL=http://localhost:${STUDIO_HOST_PORT}
 API_URL=http://localhost:${KONG_HOST_PORT}
 ANON_KEY=${ANON_PRINT}
+ANON_KEY_LEN=${ANON_LEN}
+ANON_KEY_PREFIX=${ANON_PREFIX}
+ANON_KEY_SUFFIX=${ANON_SUFFIX}
 STUDIO_HTTP=${STUDIO_CODE}
 KONG_HTTP=${KONG_CODE}
 PROD_DB=${PROD_DB}

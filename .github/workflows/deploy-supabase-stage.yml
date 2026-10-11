@@ -110,10 +110,50 @@ jobs:
              export REPO_ROOT=/root/NEWPOSV3
              export GEN_JWT_SCRIPT=/root/NEWPOSV3/deploy/gen-jwt-keys.cjs
              export SKIP_MIGRATE='${SKIP_MIGRATE:-0}'
+             # Re-run migrate even if stage dir exists from a prior attempt
+             rm -f /opt/supabase-stage/prod_stage.dump
              bash /root/NEWPOSV3/scripts/deploy-supabase-stage-minipc.sh
-             echo '--- STAGE_SUMMARY ---'
-             cat /opt/supabase-stage/STAGE_SUMMARY.txt
+             echo '--- STAGE_SUMMARY (redact-safe fields) ---'
+             grep -E '^(STUDIO_URL|API_URL|ANON_KEY_LEN|ANON_KEY_PREFIX|ANON_KEY_SUFFIX|STUDIO_HTTP|KONG_HTTP|PROD_DB|STAGE_DB)=' /opt/supabase-stage/STAGE_SUMMARY.txt || true
+             echo '--- docker ps stage ---'
+             docker ps --filter name=stage-supabase --format '{{.Names}}\t{{.Status}}\t{{.Ports}}'
             "
+
+      - name: Fetch STAGE_SUMMARY artifact
+        if: always()
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+          STAGE_SSH_HOST: ${{ vars.STAGE_SSH_HOST }}
+          STAGE_SSH_USER: ${{ vars.STAGE_SSH_USER }}
+          INPUT_HOST: ${{ github.event.inputs.host || '' }}
+        run: |
+          set -euo pipefail
+          HOST="${INPUT_HOST:-}"
+          if [ -z "$HOST" ]; then HOST="${STAGE_SSH_HOST:-}"; fi
+          if [ -z "$HOST" ]; then HOST="72.62.254.176"; fi
+          USER="${STAGE_SSH_USER:-root}"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          mkdir -p "${RUNNER_TEMP}/stage-out"
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            "${USER}@${HOST}:/opt/supabase-stage/STAGE_SUMMARY.txt" \
+            "${RUNNER_TEMP}/stage-out/STAGE_SUMMARY.txt" || true
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            "${USER}@${HOST}:/opt/supabase-stage/.stage_anon_key" \
+            "${RUNNER_TEMP}/stage-out/stage_anon_key.txt" || true
+
+      - name: Upload staging summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-stage-summary
+          path: ${{ runner.temp }}/stage-out/
+          if-no-files-found: warn
 
       - name: Remove SSH key file
         if: always()
