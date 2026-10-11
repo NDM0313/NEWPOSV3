@@ -121,9 +121,13 @@ jobs:
               echo "[mobile] ERROR: LAN IP in capacitor.config.ts"
               return 1
             fi
-            npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
-            npm run build:mobile:prod
-            npx cap sync android || npx cap sync
+            # Capacitor CLI needs Node >= 22; VPS host node may be older — use node:22 container.
+            docker run --rm \
+              -v "$ROOT/erp-mobile-app:/app" \
+              -w /app \
+              -e VITE_SUPABASE_URL=https://api.ndmcore.com \
+              node:22-bookworm \
+              bash -lc 'npm ci --ignore-scripts && npm run build:mobile:prod && npx cap sync android || npx cap sync'
             if [ -n "${ANDROID_HOME:-}" ] || [ -d /opt/android-sdk ] || [ -d "$HOME/Android/Sdk" ]; then
               export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Android/Sdk}"
               export PATH="$PATH:$ANDROID_HOME/platform-tools"
@@ -139,6 +143,8 @@ jobs:
             fi
             if grep -rql 'api\.ndmcore\.com' dist 2>/dev/null; then
               echo "[mobile] FOUND api.ndmcore.com in dist"
+            else
+              echo "[mobile] WARN: api.ndmcore.com not grepped in dist (check resolve path)"
             fi
           }
 
