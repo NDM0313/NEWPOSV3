@@ -53,7 +53,8 @@ jobs:
       - name: Deploy on VPS
         env:
           KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
-          MODE: ${{ github.event.inputs.mode || 'rebuild' }}
+          # Push default: recreate (fast). Manual dispatch can choose rebuild.
+          MODE: ${{ github.event.inputs.mode || 'recreate' }}
           DEPLOY_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
         run: |
           set -euo pipefail
@@ -127,7 +128,7 @@ jobs:
               -w /app \
               -e VITE_SUPABASE_URL=https://api.ndmcore.com \
               node:22-bookworm \
-              bash -lc 'npm ci --ignore-scripts && npm run build:mobile:prod && npx cap sync android || npx cap sync'
+              bash -lc 'npm ci --ignore-scripts && (npm run build:mobile:prod || npm run build:mobile) && (npx cap sync android; npx cap sync)'
             if [ -n "${ANDROID_HOME:-}" ] || [ -d /opt/android-sdk ] || [ -d "$HOME/Android/Sdk" ]; then
               export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Android/Sdk}"
               export PATH="$PATH:$ANDROID_HOME/platform-tools"
@@ -150,6 +151,14 @@ jobs:
 
           if [ "$MODE" = "recreate" ]; then
             recreate
+            # Still refresh Capacitor assets on VPS trees when image is already current.
+            if [ -d /root/NEWPOSV3/.git ]; then
+              cd /root/NEWPOSV3
+              git fetch origin "$BRANCH" || true
+              git checkout -B "$BRANCH" "origin/$BRANCH" || true
+              sync_mobile /root/NEWPOSV3 || true
+            fi
+            sync_mobile /root/NEWPOSV3-preview-qa || true
           else
             # Full preview rebuild from branch (includes SalesPage + /m PWA)
             export DEPLOY_DIR=/root/NEWPOSV3-preview-qa
