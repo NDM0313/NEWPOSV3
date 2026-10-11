@@ -8,7 +8,7 @@
     "fix:gradle-jdk": "node ../scripts/ensure-gradle-jdk17.mjs",
     "env:staging": "cp env.staging .env.production && cp env.staging .env",
     "typecheck": "tsc -b",
-    "dev": "npm run env:staging && vite --host --port 5175",
+    "dev": "npm run env:staging && vite --host --port 5174",
     "build": "npm run env:staging && tsc -b && vite build",
     "build:mobile": "npm run env:staging && vite build",
     "build:mobile:prod": "npm run env:staging && tsc -b && vite build --mode production",

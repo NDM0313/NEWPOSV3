@@ -2,6 +2,7 @@
  * Direct GoTrue password grant when browser storage blocks signInWithPassword persistence.
  */
 import type { AuthError, Session, User } from '@supabase/supabase-js';
+import { clearStaleSupabaseAuthStorage, isPlainUnauthorizedBody } from './clearStaleSupabaseAuth';
 import { getResolvedAnonKey, getResolvedSupabaseUrl } from './supabase';
 
 type GoTrueTokenResponse = {
@@ -32,11 +33,12 @@ function mapTokenResponseToSession(body: GoTrueTokenResponse): Session | null {
   };
 }
 
-function toAuthError(status: number, body: GoTrueTokenResponse): AuthError {
+function toAuthError(status: number, body: GoTrueTokenResponse, fallback?: string): AuthError {
   const message =
     body.error_description ||
     body.msg ||
     body.error ||
+    fallback ||
     `Login failed (${status})`;
   return {
     name: 'AuthApiError',
@@ -69,12 +71,42 @@ export async function loginWithPasswordGrant(
       method: 'POST',
       headers: {
         apikey: anon,
+        Authorization: `Bearer ${anon}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ email, password }),
     });
 
-    const body = (await res.json().catch(() => ({}))) as GoTrueTokenResponse;
+    const text = await res.text();
+    if (isPlainUnauthorizedBody(text) || (res.status === 401 && !text.trim().startsWith('{'))) {
+      const cleared = clearStaleSupabaseAuthStorage();
+      console.warn(
+        '[ERP Mobile Stage] Auth Unauthorized (non-JSON). Cleared stale tokens:',
+        cleared.length,
+        'url=',
+        base,
+      );
+      return {
+        data: null,
+        error: {
+          name: 'AuthApiError',
+          message:
+            'Unauthorized — Supabase URL/anon key mismatch. Cleared stale session; restart Vite and retry.',
+          status: 401,
+        } as AuthError,
+      };
+    }
+
+    let body: GoTrueTokenResponse = {};
+    try {
+      body = text ? (JSON.parse(text) as GoTrueTokenResponse) : {};
+    } catch {
+      return {
+        data: null,
+        error: toAuthError(res.status, {}, `Login failed: non-JSON response (${text.slice(0, 80)})`),
+      };
+    }
+
     if (!res.ok) {
       return { data: null, error: toAuthError(res.status, body) };
     }
@@ -90,9 +122,21 @@ export async function loginWithPasswordGrant(
     return { data: { session, user: session.user }, error: null };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    if (/Unexpected token ['"]?U['"]?|Unauthorized.*JSON/i.test(message)) {
+      clearStaleSupabaseAuthStorage();
+      return {
+        data: null,
+        error: {
+          name: 'AuthApiError',
+          message:
+            'Unauthorized — URL/key mismatch. Cleared stale session; confirm api-stage URL + anon key, restart Vite.',
+          status: 401,
+        } as AuthError,
+      };
+    }
     if (typeof console !== 'undefined' && /fetch|network/i.test(message)) {
       const tail = anon.length >= 8 ? anon.slice(-8) : '(short)';
-      console.warn('[ERP Mobile] password grant failed:', message, 'url=', base, 'anon…', tail);
+      console.warn('[ERP Mobile Stage] password grant failed:', message, 'url=', base, 'anon…', tail);
     }
     return {
       data: null,

@@ -21,11 +21,14 @@ npm run serve:pwa
 
 On the phone (same Wi‑Fi): open `http://<lan-ip>:4175`, then **Add to Home Screen**.
 
-Dev (hot reload, Vite proxy → api-stage):
+Dev (hot reload, Vite proxy → api-stage on **:5174**):
 
 ```bash
+npm run env:staging   # writes .env from env.staging
 npm run dev
-# → http://<lan-ip>:5175
+# → http://localhost:5174
+# If you see plain "Unauthorized" / JSON parse errors: hard-refresh,
+# Application → Clear site data, then restart Vite (stale prod tokens).
 ```
 
 ## Env

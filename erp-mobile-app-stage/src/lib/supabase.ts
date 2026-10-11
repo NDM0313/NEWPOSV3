@@ -11,6 +11,7 @@ import {
   recoverStaleAuthSessionFromBootstrap,
   recoverStaleAuthSessionIfNeeded,
 } from './authSessionRecovery';
+import { clearStaleSupabaseAuthStorage, isPlainUnauthorizedBody } from './clearStaleSupabaseAuth';
 import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
 import { clearStorageDisplayUrlCache } from '../utils/storageDisplayUrl';
 
@@ -189,7 +190,46 @@ async function authLockNoOp<T>(_name: string, _acquireTimeout: number, fn: () =>
   return await fn();
 }
 
+async function stagingAwareFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  try {
+    const clone = res.clone();
+    const ct = clone.headers.get('content-type') || '';
+    if (res.status === 401 || !ct.includes('json')) {
+      const text = await clone.text();
+      if (isPlainUnauthorizedBody(text)) {
+        const cleared = clearStaleSupabaseAuthStorage();
+        console.warn(
+          '[ERP Mobile Stage] Kong returned plain Unauthorized — cleared stale auth keys:',
+          cleared.length,
+          'resolvedUrl=',
+          url,
+        );
+        return new Response(
+          JSON.stringify({
+            error: 'unauthorized',
+            error_description:
+              'Unauthorized — URL/anon key mismatch. Cleared stale session; restart Vite after fixing env.staging/.env.',
+            msg: 'Unauthorized',
+          }),
+          {
+            status: 401,
+            statusText: 'Unauthorized',
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  return res;
+}
+
 export const supabase = createClient(url, key, {
+  global: {
+    fetch: stagingAwareFetch,
+  },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -198,6 +238,21 @@ export const supabase = createClient(url, key, {
     lock: authLockNoOp,
   },
 });
+
+if (typeof window !== 'undefined' && env.DEV && hasConfig) {
+  const bootFlag = '__erp_stage_cleared_stale_auth_boot__';
+  try {
+    if (!sessionStorage.getItem(bootFlag)) {
+      const removed = clearStaleSupabaseAuthStorage();
+      if (removed.length) {
+        console.info('[ERP Mobile Stage] Cleared stale auth at boot:', removed.length);
+      }
+      sessionStorage.setItem(bootFlag, '1');
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 export function noteMobileRealtimeConnectionFailure(): void {
   if (!env.DEV || mobileRealtimeRuntimeDisabled) return;
