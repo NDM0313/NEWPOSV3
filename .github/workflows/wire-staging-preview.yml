@@ -73,20 +73,60 @@ jobs:
             scripts/wire-staging-preview-vps.sh \
             root@"$HOST":/root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
 
+          # Detach long docker build from SSH so keepalive drops don't kill it.
           ssh -i "$KEYFILE" \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$KNOWN" \
             -o ConnectTimeout=30 \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=40 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=8 \
             root@"$HOST" \
             "set -euo pipefail
              chmod +x /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
-             export REPO_ROOT=/root/NEWPOSV3
-             export BRANCH=cursor/supabase-stage-minipc-e9d2
-             bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+             rm -f /tmp/wire-stage.done /tmp/wire-stage.failed /tmp/wire-stage.log
+             nohup env REPO_ROOT=/root/NEWPOSV3 BRANCH=cursor/supabase-stage-minipc-e9d2 \
+               bash -c '
+                 set -euo pipefail
+                 bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+                 echo OK > /tmp/wire-stage.done
+               ' > /tmp/wire-stage.log 2>&1 &
+             echo STARTED:\$!
             "
+
+          # Poll for completion (build can take 10–20 minutes)
+          for i in $(seq 1 90); do
+            STATUS=$(ssh -i "$KEYFILE" \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$KNOWN" \
+              -o ConnectTimeout=20 \
+              root@"$HOST" \
+              'if [ -f /tmp/wire-stage.done ]; then echo DONE; elif pgrep -f wire-staging-preview-vps.sh >/dev/null; then echo RUNNING; else echo DEAD; fi' || echo SSHFAIL)
+            echo "[poll $i] $STATUS"
+            if [ "$STATUS" = "DONE" ]; then
+              ssh -i "$KEYFILE" \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN" \
+                root@"$HOST" \
+                'tail -n 80 /tmp/wire-stage.log; echo ---; curl -sI http://127.0.0.1:3002/ | head -5; docker ps --filter name=erp-frontend --format "{{.Names}} {{.Ports}} {{.Status}}"'
+              exit 0
+            fi
+            if [ "$STATUS" = "DEAD" ]; then
+              ssh -i "$KEYFILE" \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN" \
+                root@"$HOST" \
+                'tail -n 120 /tmp/wire-stage.log || true' || true
+              echo "::error::wire script exited without success marker"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "::error::timed out waiting for wire script"
+          exit 1
 
       - name: Remove SSH key
         if: always()
