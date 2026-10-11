@@ -1,0 +1,169 @@
+# Wire Traefik api-stage/db-stage + rebuild erp-frontend-preview (:3002) against staging Supabase.
+# Does not touch production erp-frontend (:3001) or /root/supabase/docker.
+name: Wire staging preview (:3002)
+
+on:
+  push:
+    branches:
+      - cursor/supabase-stage-minipc-e9d2
+    paths:
+      - 'deploy/supabase-stage-traefik.yml'
+      - 'deploy/Dockerfile.preview-webonly'
+      - 'scripts/wire-staging-preview-vps.sh'
+      - '.github/workflows/wire-staging-preview.yml'
+  workflow_dispatch:
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"
+          if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
+          if [ -z "$KEY" ]; then
+            echo "::error::Add repository secret VPS_SSH_KEY"
+            exit 1
+          fi
+          KEYFILE="${RUNNER_TEMP}/wire_stage.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" > /dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Wire Traefik + rebuild preview on VPS
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+        run: |
+          set -euo pipefail
+          HOST="72.62.254.176"
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 "$HOST" >> "$KNOWN" 2>/dev/null || true
+
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            root@"$HOST" \
+            "mkdir -p /root/NEWPOSV3/deploy /root/NEWPOSV3/scripts /etc/dokploy/traefik/dynamic"
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            deploy/supabase-stage-traefik.yml \
+            root@"$HOST":/root/NEWPOSV3/deploy/supabase-stage-traefik.yml
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            scripts/wire-staging-preview-vps.sh \
+            root@"$HOST":/root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            deploy/Dockerfile.preview-webonly \
+            root@"$HOST":/root/NEWPOSV3/deploy/Dockerfile.preview-webonly
+
+          # Kill stuck prior wires, then detach a single nohup job.
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=8 \
+            root@"$HOST" \
+            "set -euo pipefail
+             chmod +x /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+             mkdir -p /root/NEWPOSV3/deploy
+             # Kill only a prior recorded PID (never pkill -f this script name — it matches the SSH cmdline).
+             if [ -f /tmp/wire-stage.pid ]; then
+               old=\$(cat /tmp/wire-stage.pid || true)
+               if [ -n \"\$old\" ] && kill -0 \"\$old\" 2>/dev/null; then
+                 kill \"\$old\" 2>/dev/null || true
+                 sleep 1
+                 kill -9 \"\$old\" 2>/dev/null || true
+               fi
+             fi
+             rm -f /tmp/wire-stage.done /tmp/wire-stage.failed /tmp/wire-stage.log /tmp/wire-stage.lock /tmp/wire-stage.pid
+             nohup env REPO_ROOT=/root/NEWPOSV3 BRANCH=cursor/supabase-stage-minipc-e9d2 \
+               bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh \
+               > /tmp/wire-stage.log 2>&1 &
+             echo \$! > /tmp/wire-stage.pid
+             # Marker written by the script on success; also wrap for CI poll
+             (
+               pid=\$(cat /tmp/wire-stage.pid)
+               if wait \"\$pid\"; then
+                 echo OK > /tmp/wire-stage.done
+               else
+                 echo FAIL > /tmp/wire-stage.failed
+               fi
+             ) >/dev/null 2>&1 &
+             echo STARTED:\$(cat /tmp/wire-stage.pid)
+             sleep 3
+             tail -n 30 /tmp/wire-stage.log || true
+            "
+          # Poll for completion (web-only build should finish well under 20 minutes)
+          for i in $(seq 1 60); do
+            STATUS=$(ssh -i "$KEYFILE" \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$KNOWN" \
+              -o ConnectTimeout=20 \
+              root@"$HOST" \
+              'if [ -f /tmp/wire-stage.done ]; then echo DONE; elif [ -f /tmp/wire-stage.failed ]; then echo FAILED; elif [ -f /tmp/wire-stage.pid ] && kill -0 "$(cat /tmp/wire-stage.pid)" 2>/dev/null; then echo RUNNING; else echo DEAD; fi' || echo SSHFAIL)
+            echo "[poll $i] $STATUS"
+            if [ "$STATUS" = "DONE" ]; then
+              ssh -i "$KEYFILE" \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN" \
+                root@"$HOST" \
+                'tail -n 100 /tmp/wire-stage.log; echo ---; curl -sI http://127.0.0.1:3002/ | head -5; docker ps --filter name=erp-frontend --format "{{.Names}} {{.Ports}} {{.Status}}"; ls -la /etc/dokploy/traefik/dynamic/supabase-stage.yml; curl -sI http://127.0.0.1:8010/rest/v1/ | head -3; curl -sI http://127.0.0.1:3001/ | head -3'
+              exit 0
+            fi
+            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "DEAD" ]; then
+              ssh -i "$KEYFILE" \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN" \
+                root@"$HOST" \
+                'tail -n 160 /tmp/wire-stage.log || true' || true
+              echo "::error::wire script ended without success ($STATUS)"
+              exit 1
+            fi
+            # Every 5th poll, stream last log lines for visibility
+            if [ $((i % 5)) -eq 0 ]; then
+              ssh -i "$KEYFILE" \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN" \
+                root@"$HOST" \
+                'tail -n 15 /tmp/wire-stage.log || true' || true
+            fi
+            sleep 15
+          done
+          echo "::error::timed out waiting for wire script"
+          ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o UserKnownHostsFile="$KNOWN" root@"$HOST" 'tail -n 80 /tmp/wire-stage.log || true' || true
+          exit 1
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"

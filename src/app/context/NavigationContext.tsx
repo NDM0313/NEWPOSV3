@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { parseNavLocationFromUrl, type FinancialReportType } from '@/app/lib/navDeepLinks';
 import { clearStuckModalLocks, shouldClearStuckModalLocks } from '@/app/lib/clearStuckModalLocks';
+import { readStoredSidebarOpen, writeStoredSidebarOpen } from '@/app/lib/sidebarOpenPreference';
 import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
+
+export { SIDEBAR_OPEN_STORAGE_KEY, parseSidebarOpenStoredValue } from '@/app/lib/sidebarOpenPreference';
 
 export type AccountingTabInitial = 'account_statements' | null;
 
@@ -184,7 +187,9 @@ const defaultNavigationContext: NavigationContextType = {
 
 export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  // Default expanded; hydrate from localStorage after mount to avoid SSR/CSR mismatch.
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [sidebarPrefHydrated, setSidebarPrefHydrated] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>('none');
   const [parentDrawer, setParentDrawer] = useState<DrawerType | null>(null);
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
@@ -215,6 +220,21 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       }
     }
   }, []);
+
+  // Restore collapsed/expanded preference once on the client (no hydration mismatch).
+  useEffect(() => {
+    const stored = readStoredSidebarOpen();
+    if (stored !== null) {
+      setIsSidebarOpen(stored);
+    }
+    setSidebarPrefHydrated(true);
+  }, []);
+
+  // Persist after hydrate so the initial default `true` does not overwrite a stored collapse.
+  useEffect(() => {
+    if (!sidebarPrefHydrated) return;
+    writeStoredSidebarOpen(isSidebarOpen);
+  }, [isSidebarOpen, sidebarPrefHydrated]);
 
   const clearSaleDrawerBespokeMode = useCallback(() => {
     setSaleDrawerBespokeMode(false);
