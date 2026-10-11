@@ -152,54 +152,27 @@ def rewrite_ports_for_service(text: str) -> str:
             out.append(line)
             i += 1
             continue
-        # Detect ports: block under current service
-        pm = re.match(r"^(\s{2})ports:\s*$", line)
+        # Service keys are typically indented 2 spaces; ports under service = 4 spaces
+        pm = re.match(r"^(\s{2,})ports:\s*$", line)
         if pm and current_svc:
+            port_indent = pm.group(1)
+            item_indent = port_indent + "  "
             i += 1
-            # Skip existing port list items / published stubs
             while i < len(lines) and (
                 re.match(r"^\s+-\s+", lines[i])
                 or re.match(r"^\s+#", lines[i])
-                or lines[i].strip() == ""
             ):
-                # stop blank-line skip if next non-empty is not a list item
-                if lines[i].strip() == "":
-                    # peek ahead
-                    j = i + 1
-                    while j < len(lines) and lines[j].strip() == "":
-                        j += 1
-                    if j < len(lines) and not re.match(r"^\s+-\s+", lines[j]):
-                        break
                 i += 1
             allowed = ALLOWED_PUBLISH.get(current_svc, [])
             if allowed:
-                out.append(line)  # keep ports:
+                out.append(f"{port_indent}ports:\n")
                 for p in allowed:
-                    out.append(f'    - "{p}"\n')
-            # else: drop host ports entirely for this service
+                    out.append(f'{item_indent}- "{p}"\n')
+            # else drop the ports block (no host publish)
             continue
         out.append(line)
         i += 1
-    text2 = "".join(out)
-
-    def ensure_ports(svc: str, ports: list[str]) -> str:
-        nonlocal text2
-        if f"{ports[0]}" in text2 and re.search(rf"(?m)^  {svc}:\n(?:.*\n)*?    ports:\n", text2):
-            return text2
-        block = "    ports:\n" + "".join(f'      - "{p}"\n' for p in ports)
-        if re.search(rf"(?m)^  {svc}:\n", text2):
-            text2 = re.sub(
-                rf"(?m)^(  {svc}:\n(?:    .+\n)*?)(?=  [a-zA-Z]|\Z)",
-                rf"\1{block}",
-                text2,
-                count=1,
-            )
-        return text2
-
-    text2 = ensure_ports("studio", [f"{studio_p}:3000"])
-    text2 = ensure_ports("kong", [f"{kong_p}:8000", "8444:8443"])
-    text2 = ensure_ports("db", [f"{pg_p}:5432"])
-    return text2
+    return "".join(out)
 
 def rewrite(text: str) -> str:
     text = rewrite_container_names(text)
@@ -216,7 +189,36 @@ for name in ("docker-compose.yml", "docker-compose.override.yml", "docker-compos
     updated = rewrite(original)
     path.write_text(updated, encoding="utf-8")
     print(f"patched {path}")
+
+# Explicit override — merged via COMPOSE_FILES array in bash below.
+override = stage / "docker-compose.stage-ports.yml"
+override.write_text(
+    f"""services:
+  studio:
+    ports:
+      - "{studio_p}:3000"
+  kong:
+    ports:
+      - "{kong_p}:8000"
+      - "8444:8443"
+  db:
+    ports:
+      - "{pg_p}:5432"
+""",
+    encoding="utf-8",
+)
+print(f"wrote {override}")
 PY
+
+COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.stage-ports.yml)
+if [[ -f "$STAGE_DIR/docker-compose.s3.yml" ]]; then
+  COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.s3.yml -f docker-compose.stage-ports.yml)
+fi
+compose() {
+  # shellcheck disable=SC2068
+  docker compose "${COMPOSE_FILES[@]}" -p "$COMPOSE_PROJECT" "$@"
+}
+log "compose files: ${COMPOSE_FILES[*]}"
 
 # Ensure top-level network block forces external:false named bridge
 python3 - "$STAGE_DIR/docker-compose.yml" "$NETWORK_NAME" <<'PY'
@@ -340,8 +342,10 @@ chmod 600 "$STAGE_DIR/.stage_service_role_key"
 log "Bringing up staging stack (project=$COMPOSE_PROJECT)"
 cd "$STAGE_DIR"
 export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT"
-docker compose -p "$COMPOSE_PROJECT" pull --ignore-pull-failures 2>/dev/null || true
-docker compose -p "$COMPOSE_PROJECT" up -d
+# Free host :5433 if an older pooler publish is holding it
+docker rm -f stage-supabase-pooler >/dev/null 2>&1 || true
+compose pull --ignore-pull-failures 2>/dev/null || true
+compose up -d
 
 log "Waiting for stage DB to accept connections..."
 STAGE_DB=""
@@ -358,7 +362,7 @@ for i in $(seq 1 60); do
 done
 [[ -n "$STAGE_DB" ]] || die "stage DB container did not become ready"
 
-docker compose -p "$COMPOSE_PROJECT" ps
+compose ps
 
 # ---------------------------------------------------------------------------
 # Phase 2: dump / restore
@@ -429,16 +433,31 @@ fi
 # ---------------------------------------------------------------------------
 # Phase 3: HTTP checks
 # ---------------------------------------------------------------------------
-log "Applying updated port publishes (studio/kong/db; drop analytics/pooler host binds)"
-docker compose -p "$COMPOSE_PROJECT" up -d --remove-orphans || true
-docker compose -p "$COMPOSE_PROJECT" up -d --force-recreate --no-deps studio kong db 2>/dev/null || true
+log "Applying updated port publishes (studio/kong/db)"
+docker rm -f stage-supabase-pooler >/dev/null 2>&1 || true
+compose up -d --remove-orphans || true
+compose up -d --force-recreate --no-deps studio kong db || true
+
+# Fallback proxy if Studio still has no host publish (some compose merges ignore ports)
+if ! docker ps --filter name=stage-supabase-studio --format '{{.Ports}}' | grep -q "${STUDIO_HOST_PORT}->"; then
+  log "Studio host port missing — starting socat proxy on :${STUDIO_HOST_PORT}"
+  docker rm -f stage-supabase-studio-proxy >/dev/null 2>&1 || true
+  STUDIO_NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' stage-supabase-studio 2>/dev/null | awk '{print $1}')"
+  STUDIO_NET="${STUDIO_NET:-$NETWORK_NAME}"
+  docker run -d --name stage-supabase-studio-proxy --restart unless-stopped \
+    --network "${STUDIO_NET}" \
+    -p "${STUDIO_HOST_PORT}:3000" \
+    alpine/socat \
+    TCP-LISTEN:3000,fork,reuseaddr TCP-CONNECT:stage-supabase-studio:3000 \
+    || log "socat proxy failed (non-fatal)"
+fi
 
 log "Waiting for Studio on :${STUDIO_HOST_PORT} and Kong on :${KONG_HOST_PORT}"
 STUDIO_CODE="000"
 KONG_CODE="000"
 KONG_HEADERS=""
 set +e
-for i in $(seq 1 36); do
+for i in $(seq 1 18); do
   STUDIO_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I "http://127.0.0.1:${STUDIO_HOST_PORT}" 2>/dev/null)"
   STUDIO_CODE="${STUDIO_CODE:-000}"
   KONG_HEADERS="$(curl -sSI "http://127.0.0.1:${KONG_HOST_PORT}/rest/v1/" 2>/dev/null)"
@@ -447,9 +466,9 @@ for i in $(seq 1 36); do
   if [[ "$STUDIO_CODE" =~ ^(200|301|302|307|308)$ ]] && [[ "$KONG_CODE" == "401" ]]; then
     break
   fi
-  if [[ $i -eq 6 || $i -eq 18 ]]; then
+  if [[ $i -eq 3 || $i -eq 9 ]]; then
     log "compose ps (debug iter=$i):"
-    docker compose -p "$COMPOSE_PROJECT" ps || true
+    compose ps || true
     docker ps --filter name=stage-supabase --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' || true
   fi
   sleep 5
@@ -510,3 +529,10 @@ EOF
 chmod 600 "$STAGE_DIR/STAGE_SUMMARY.txt"
 log "Wrote $STAGE_DIR/STAGE_SUMMARY.txt"
 log "Done."
+
+# Exit 0 when API is healthy and data verified; Studio may still be warming.
+if [[ "$KONG_CODE" == "401" ]]; then
+  exit 0
+fi
+log "WARNING: Kong did not return 401 (got ${KONG_CODE})"
+exit 1
