@@ -128,7 +128,7 @@ jobs:
               -o UserKnownHostsFile="$KNOWN" \
               -o ConnectTimeout=20 \
               root@"$HOST" \
-              'if [ -f /tmp/wire-stage.done ]; then echo DONE; elif [ -f /tmp/wire-stage.failed ]; then echo FAILED; elif pgrep -f wire-staging-preview-vps.sh >/dev/null; then echo RUNNING; else echo DEAD; fi' || echo SSHFAIL)
+              'if [ -f /tmp/wire-stage.done ]; then echo DONE; elif [ -f /tmp/wire-stage.failed ]; then echo FAILED; elif [ -f /tmp/wire-stage.pid ] && kill -0 "$(cat /tmp/wire-stage.pid)" 2>/dev/null; then echo RUNNING; else echo DEAD; fi' || echo SSHFAIL)
             echo "[poll $i] $STATUS"
             if [ "$STATUS" = "DONE" ]; then
               ssh -i "$KEYFILE" \

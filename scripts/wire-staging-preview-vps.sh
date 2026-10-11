@@ -168,18 +168,40 @@ docker build \
   -t erp-frontend-preview:latest \
   .
 
+# Free :3002 if a stale process holds it
+if ss -lntp 2>/dev/null | grep -q ':3002'; then
+  log "Port 3002 still bound — forcing remove of erp-frontend-preview"
+  docker rm -f erp-frontend-preview 2>/dev/null || true
+  sleep 1
+fi
+
 docker run -d \
   --name erp-frontend-preview \
   --restart unless-stopped \
   --network erp-preview_net \
-  -p 3002:80 \
+  -p 127.0.0.1:3002:80 \
   erp-frontend-preview:latest
+
+log "Waiting for preview :3002 to return HTTP 200"
+PREVIEW_CODE="000"
+for i in $(seq 1 30); do
+  PREVIEW_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I http://127.0.0.1:3002/ 2>/dev/null || echo 000)"
+  PREVIEW_CODE="${PREVIEW_CODE:-000}"
+  if [[ "$PREVIEW_CODE" == "200" ]]; then
+    break
+  fi
+  if [[ $i -eq 5 || $i -eq 15 ]]; then
+    log "preview wait iter=$i code=$PREVIEW_CODE"
+    docker ps -a --filter name=erp-frontend-preview --format '{{.Names}} {{.Status}} {{.Ports}}' || true
+    docker logs --tail 30 erp-frontend-preview 2>&1 || true
+  fi
+  sleep 2
+done
 
 # ---------------------------------------------------------------------------
 # 3) Verification
 # ---------------------------------------------------------------------------
 log "Verification"
-PREVIEW_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I http://127.0.0.1:3002/ || true)"
 KONG_LOCAL="$(curl -sS -o /dev/null -w '%{http_code}' -I http://127.0.0.1:8010/rest/v1/ || true)"
 STUDIO_LOCAL="$(curl -sS -o /dev/null -w '%{http_code}' -I http://127.0.0.1:3010/ || true)"
 PROD_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I http://127.0.0.1:3001/ || true)"
