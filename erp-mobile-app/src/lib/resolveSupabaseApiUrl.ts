@@ -1,5 +1,6 @@
 /** Native + direct production API (ndmcore Kong / Mini PC edge). */
 const PRODUCTION_API = 'https://api.ndmcore.com';
+const STAGING_API = 'https://api-stage.ndmcore.com';
 
 export type ResolveSupabaseApiUrlOptions = {
   isNativeCapacitor?: boolean;
@@ -8,13 +9,22 @@ export type ResolveSupabaseApiUrlOptions = {
 
 /**
  * Production (PWA + native Capacitor): https://api.ndmcore.com
- * (auth/rest/storage; CORS allows capacitor://localhost).
- * Vite dev browser: same-origin → proxy (avoids CORS). Never on native Capacitor.
+ * Staging .env (api-stage): use api-stage directly (even in Vite DEV) so a
+ * misconfigured/stale localhost proxy cannot send the staging anon key to
+ * production Kong (plain "Unauthorized").
+ * Vite DEV + production URL: same-origin → proxy.
  */
 export function resolveSupabaseApiUrl(
   raw?: string,
   opts?: ResolveSupabaseApiUrlOptions,
 ): string {
+  const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
+
+  // Explicit staging URL always wins (browser + native stage testing).
+  if (/api-stage\.ndmcore\.com/i.test(trimmed)) {
+    return STAGING_API;
+  }
+
   if (opts?.isNativeCapacitor) {
     return PRODUCTION_API;
   }
@@ -26,21 +36,22 @@ export function resolveSupabaseApiUrl(
         (import.meta as { env?: { DEV?: boolean } }).env?.DEV,
     );
 
-  // Vite dev browser: same-origin → proxy (avoids CORS). Never on native Capacitor.
+  // Vite DEV + production config: same-origin → proxy (avoids CORS).
   if (typeof window !== 'undefined' && isDev && !opts?.isNativeCapacitor) {
     const origin = window.location.origin.replace(/\/$/, '');
     if (/^https?:\/\/(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?$/i.test(origin)) {
-      return origin;
+      // Only use localhost proxy when env is NOT staging.
+      if (!/api-stage/i.test(trimmed)) {
+        return origin;
+      }
     }
   }
 
-  const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
   if (!trimmed) return PRODUCTION_API;
-  // Treat ERP web host as API mis-bake → canonical API.
+  // Treat ERP web host / production API host as canonical production API.
   if (/erp\.ndmcore\.com/i.test(trimmed) || /api\.ndmcore\.com/i.test(trimmed)) {
     return PRODUCTION_API;
   }
-  // Dev .env often sets localhost for Vite proxy; only keep localhost when isDev proxy mode is active.
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
     return isDev ? trimmed : PRODUCTION_API;
   }

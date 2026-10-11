@@ -123,8 +123,9 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), bootScriptOnErrorPlugin()],
     server: {
       port: 5174,
+      strictPort: true,
       host: '0.0.0.0',
-      open: true,
+      open: false,
       hmr: true,
       proxy: {
         '/auth': supabaseProxy(),
