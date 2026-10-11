@@ -27,16 +27,23 @@ else
 fi
 
 echo "==> git pull --no-rebase origin main"
+set +e
 git pull --no-rebase origin main
+PULL_RC=$?
+set -e
 
-if [ -n "$(git ls-files -u)" ]; then
-  echo ""
-  echo "MERGE CONFLICTS DETECTED. Resolve keeping BOTH:"
-  echo "  - origin: production HTTPS endpoints + iOS staging (capacitor.config, package scripts, badge icon)"
-  echo "  - local: SalesListFilterSheet / SalesHome filters and UI"
-  echo "Then: git add <files> && git commit && re-run this script."
-  git status -sb
-  exit 1
+if [ -n "$(git ls-files -u)" ] || git grep -q '<<<<<<<' -- ':!node_modules' ':!dist' 2>/dev/null; then
+  echo "==> Auto-resolving merge conflicts"
+  node "$ROOT/scripts/auto-resolve-merge-conflicts.mjs"
+  if [ -n "$(git ls-files -u)" ] || git grep -q '<<<<<<<' -- ':!node_modules' ':!dist' 2>/dev/null; then
+    echo "Auto-resolve left conflicts. Fix manually then: git add -A && git commit"
+    git status -sb
+    exit 1
+  fi
+  git commit -m "chore(merge): cleanly merge local sales filters with remote staging setup" || true
+elif [ "$PULL_RC" -ne 0 ]; then
+  echo "git pull failed (exit $PULL_RC)"
+  exit "$PULL_RC"
 fi
 
 cd "$ROOT"
