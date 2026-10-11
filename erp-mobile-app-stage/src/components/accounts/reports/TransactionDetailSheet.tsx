@@ -1,0 +1,539 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  X,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Share2,
+  BookOpen,
+  Loader2,
+  SquarePen,
+  Ban,
+  Trash2,
+} from 'lucide-react';
+import {
+  getTransactionDetail,
+  canEditTransaction,
+  type TransactionDetail,
+} from '../../../api/transactions';
+import {
+  canCancelTransactionRow,
+  resolveJournalEntryIdForCancel,
+  resolveJournalEntryIdFromPayment,
+} from '../../../api/transactionCancel';
+import { buildPaymentReferenceLabels } from '../../../utils/paymentReferenceDisplay';
+import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
+import { ReceiptPreviewPdf } from '../../shared/ReceiptPreviewPdf';
+import { usePdfPreview } from '../../shared/usePdfPreview';
+import { EditTransactionSheet } from './_shared/EditTransactionSheet';
+import { useTransactionCancel } from '../../../hooks/useTransactionCancel';
+import { useJournalCompleteDelete } from '../../../hooks/useJournalCompleteDelete';
+import { MANUAL_JE_HARD_DELETE_LABEL } from '../../../lib/manualJournalHardDeletePolicy';
+import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
+import { AttachmentPreviewModal } from '../../sales/AttachmentPreviewModal';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { AttachmentsSection } from '../../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../../lib/normalizeAttachments';
+import { formatPaymentDateTimeLine, paymentDateTimeIsoForReceipt } from '../../../utils/transactionDisplayDate';
+
+interface Props {
+  paymentId: string;
+  companyId: string;
+  branchId?: string | null;
+  onClose: () => void;
+  onViewLedger?: (info: { partyId?: string | null; partyName?: string | null; accountId?: string | null }) => void;
+  onCancelled?: () => void;
+}
+
+const METHOD_LABEL: Record<string, string> = {
+  cash: 'Cash',
+  bank: 'Bank',
+  card: 'Card',
+  other: 'Other',
+};
+
+export function TransactionDetailSheet({
+  paymentId,
+  companyId,
+  branchId,
+  onClose,
+  onViewLedger,
+  onCancelled,
+}: Props) {
+  const [detail, setDetail] = useState<TransactionDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const preview = usePdfPreview(companyId);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editSheetTarget, setEditSheetTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(
+    null,
+  );
+  const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
+
+  const {
+    cancelBusy,
+    cancelError,
+    setCancelError,
+    beginCancelByJournalEntryId,
+    CancelConfirmPortal,
+  } = useTransactionCancel({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      onCancelled?.();
+      onClose();
+    },
+  });
+
+  const {
+    hardDeleteBusy,
+    hardDeleteError,
+    beginCompleteDeleteByJournalEntryId,
+    CompleteDeleteConfirmPortal,
+    completeDeleteHint,
+  } = useJournalCompleteDelete({
+    companyId,
+    branchId,
+    onSuccess: () => {
+      onCancelled?.();
+      onClose();
+    },
+  });
+
+  useEffect(() => {
+    setLoading(true);
+    getTransactionDetail(companyId, paymentId)
+      .then(({ data, error }) => {
+        if (error) setError(error);
+        setDetail(data);
+      })
+      .finally(() => setLoading(false));
+  }, [companyId, paymentId]);
+
+  const refLabels = detail
+    ? buildPaymentReferenceLabels(detail.referenceNumber ?? null, detail.entryNo ?? null)
+    : { primary: '', full: '' };
+
+  const isReceived = detail?.direction === 'received';
+  const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
+  const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
+
+  const handleShare = async () => {
+    if (!detail) return;
+    await preview.openPreview();
+  };
+
+  const handleLedger = () => {
+    if (!detail) return;
+    onViewLedger?.({
+      partyId: detail.partyId,
+      partyName: detail.partyName,
+      accountId: detail.partyAccountId,
+    });
+  };
+  const editability = detail
+    ? canEditTransaction(
+        detail.referenceType,
+        detail.id.startsWith('journal-') || detail.journalEntryId === detail.paymentId
+          ? 'journal_entry'
+          : 'payment_row',
+      )
+    : { editable: false, kind: 'locked' as const };
+
+  const cancelHint = useMemo(
+    () => (detail ? canCancelTransactionRow(detail) : { show: false, label: 'Cancel Entry' as const, journalEntryId: null }),
+    [detail],
+  );
+
+  const hardDeleteHint = useMemo(() => {
+    if (!detail) return { show: false, isPayment: false };
+    const jeId =
+      resolveJournalEntryIdForCancel({
+        id: detail.id,
+        journalEntryId: detail.journalEntryId,
+        paymentId: detail.paymentId,
+      }) || detail.journalEntryId;
+    const payId = String(detail.paymentId || '').trim();
+    const je = String(jeId || '').trim();
+    // Journal-only rows often reuse paymentId prop as the JE id — do not treat as payment link.
+    const realPaymentId = payId && payId !== je && !detail.id.startsWith('journal-') ? payId : null;
+    return completeDeleteHint({
+      journalEntryId: jeId,
+      paymentId: realPaymentId,
+      referenceType: detail.referenceType,
+    });
+  }, [detail, completeDeleteHint]);
+
+  const beginCompleteDelete = async () => {
+    if (!detail) return;
+    setCancelError(null);
+    let jeId =
+      resolveJournalEntryIdForCancel({
+        id: detail.id,
+        journalEntryId: detail.journalEntryId,
+        paymentId: detail.paymentId,
+      }) || cancelHint.journalEntryId;
+    if (!jeId && detail.paymentId) {
+      jeId = await resolveJournalEntryIdFromPayment(companyId, detail.paymentId);
+    }
+    const paymentIdLooksLikeUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId);
+    if (!jeId && paymentIdLooksLikeUuid && (detail.id.startsWith('journal-') || detail.journalEntryId === paymentId)) {
+      jeId = paymentId;
+    }
+    if (!jeId) {
+      setCancelError('No journal entry linked — cannot Complete Delete.');
+      return;
+    }
+    await beginCompleteDeleteByJournalEntryId(jeId);
+  };
+
+  const openAttachmentPreview = (items: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(items);
+    setAttachmentPreviewStart(startIndex);
+  };
+
+  const attachmentItems = detail ? normalizeAttachments(detail.attachments) : [];
+
+  const openEditSheet = async () => {
+    if (!detail || !editability.editable) return;
+    if (editability.kind === 'journal') {
+      let jeId = detail.journalEntryId || null;
+      if (!jeId && detail.paymentId) {
+        jeId = await resolveJournalEntryIdFromPayment(companyId, detail.paymentId);
+      }
+      if (!jeId && detail.id.startsWith('journal-')) {
+        jeId = detail.id.replace(/^journal-/, '');
+      }
+      if (!jeId) {
+        setCancelError('No journal entry linked — cannot edit both From and To accounts.');
+        return;
+      }
+      setEditSheetTarget({ mode: 'journal', id: jeId });
+      setShowEdit(true);
+      return;
+    }
+    setEditSheetTarget({ mode: 'payment', id: detail.paymentId });
+    setShowEdit(true);
+  };
+
+  const beginCancel = async () => {
+    if (!detail) return;
+    setCancelError(null);
+    let jeId =
+      resolveJournalEntryIdForCancel({
+        id: detail.id,
+        journalEntryId: detail.journalEntryId,
+        paymentId: detail.paymentId,
+      }) || cancelHint.journalEntryId;
+    if (!jeId && detail.paymentId) {
+      jeId = await resolveJournalEntryIdFromPayment(companyId, detail.paymentId);
+    }
+    const paymentIdLooksLikeUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId);
+    if (!jeId && paymentIdLooksLikeUuid && (detail.id.startsWith('journal-') || detail.journalEntryId === paymentId)) {
+      jeId = paymentId;
+    }
+    if (!jeId) {
+      setCancelError('No journal entry linked to this transaction.');
+      return;
+    }
+    await beginCancelByJournalEntryId(jeId);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="w-full md:w-[32rem] bg-[#111827] rounded-t-2xl md:rounded-2xl border border-[#374151] max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flow-screen-header bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
+          <h2 className="text-base font-semibold text-white">Transaction</h2>
+          <div className="flex items-center gap-1">
+            {attachmentItems.length > 0 ? (
+              <AttachmentIndicatorButton
+                onClick={() => openAttachmentPreview(attachmentItems, 0)}
+                size="sm"
+              />
+            ) : null}
+            <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="py-16 flex items-center justify-center text-[#9CA3AF]">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="m-4 p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-sm text-[#EF4444]">{error}</div>
+        )}
+
+        {detail && !loading && (
+          <div className="p-4 space-y-4">
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className={`shrink-0 w-11 h-11 rounded-full flex items-center justify-center ${
+                  isReceived ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#EF4444]/20 text-[#EF4444]'
+                }`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs uppercase tracking-wide text-[#9CA3AF]">
+                    {isReceived ? 'Payment Received' : 'Payment Paid'}
+                  </p>
+                  <p className="text-lg font-semibold text-white truncate">{detail.partyName ?? detail.partyAccountName ?? '—'}</p>
+                  <p className="text-xs text-[#9CA3AF] mt-0.5">{formatPaymentDateTimeLine(detail.paymentDate, detail.createdAt)}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`text-lg font-bold ${amountColor}`}>
+                    Rs. {detail.amount.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-[11px] text-[#9CA3AF] uppercase">{METHOD_LABEL[detail.method] ?? detail.method}</p>
+                </div>
+              </div>
+            </div>
+
+            <section className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-3">Route</h3>
+              <div className="space-y-2">
+                <RouteRow
+                  label="From"
+                  value={
+                    detail.referenceType === 'transfer' || detail.referenceType === 'general'
+                      ? detail.paymentAccountName
+                      : isReceived
+                        ? detail.paymentAccountName
+                        : (detail.partyAccountName ?? detail.partyName ?? '—')
+                  }
+                />
+                <RouteRow
+                  label="To"
+                  value={
+                    detail.referenceType === 'transfer' || detail.referenceType === 'general'
+                      ? detail.partyAccountName
+                      : isReceived
+                        ? (detail.partyAccountName ?? detail.partyName ?? '—')
+                        : detail.paymentAccountName
+                  }
+                />
+              </div>
+            </section>
+
+            <section className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-3">Reference</h3>
+              <dl className="grid grid-cols-2 gap-y-2 text-sm">
+                <dt className="text-[#9CA3AF]">Reference #</dt>
+                <dd className="text-white text-right break-all" title={refLabels.full || undefined}>
+                  {refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? '—')}
+                </dd>
+                {refLabels.full && refLabels.primary && refLabels.full !== refLabels.primary && (
+                  <>
+                    <dt className="text-[#9CA3AF] text-[11px]">Payment ref</dt>
+                    <dd className="text-[#9CA3AF] text-right text-[11px] break-all">{refLabels.full}</dd>
+                  </>
+                )}
+                <dt className="text-[#9CA3AF]">Type</dt>
+                <dd className="text-white text-right capitalize">{detail.referenceType.replace('_', ' ')}</dd>
+                {detail.branchName && (
+                  <>
+                    <dt className="text-[#9CA3AF]">Branch</dt>
+                    <dd className="text-white text-right">{detail.branchName}</dd>
+                  </>
+                )}
+                {detail.partyPhone && (
+                  <>
+                    <dt className="text-[#9CA3AF]">Phone</dt>
+                    <dd className="text-white text-right">{detail.partyPhone}</dd>
+                  </>
+                )}
+                {detail.createdByName && (
+                  <>
+                    <dt className="text-[#9CA3AF]">Created by</dt>
+                    <dd className="text-white text-right">{detail.createdByName}</dd>
+                  </>
+                )}
+              </dl>
+            </section>
+
+            {detail.journalLines.length > 0 && (
+              <section className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+                <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-3">Journal Lines</h3>
+                <div className="space-y-2">
+                  {detail.journalLines.map((l) => (
+                    <div key={l.id} className="flex items-start justify-between gap-3 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-white truncate">
+                          {l.accountCode ? <span className="text-[#6366F1] mr-1">{l.accountCode}</span> : null}
+                          {l.accountName ?? 'Unknown'}
+                        </p>
+                        {l.description && <p className="text-[11px] text-[#6B7280] truncate">{l.description}</p>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        {l.debit > 0 && <p className="text-[#10B981] text-xs">Dr {l.debit.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</p>}
+                        {l.credit > 0 && <p className="text-[#EF4444] text-xs">Cr {l.credit.toLocaleString('en-PK', { minimumFractionDigits: 2 })}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {detail.notes && (
+              <section className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+                <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-2">Notes</h3>
+                <p className="text-sm text-white whitespace-pre-line">{detail.notes}</p>
+              </section>
+            )}
+
+            {attachmentItems.length > 0 && (
+              <AttachmentsSection items={attachmentItems} onOpenPreview={openAttachmentPreview} />
+            )}
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                onClick={handleShare}
+                className="flex items-center justify-center gap-2 py-3 bg-[#25D366] hover:bg-[#1FB058] rounded-lg text-white font-semibold text-sm"
+              >
+                <Share2 className="w-4 h-4" /> Share Receipt
+              </button>
+              <button
+                onClick={handleLedger}
+                className="flex items-center justify-center gap-2 py-3 bg-[#6366F1] hover:bg-[#4F46E5] rounded-lg text-white font-semibold text-sm"
+              >
+                <BookOpen className="w-4 h-4" /> View Ledger
+              </button>
+              {editability.editable && (
+                <button
+                  type="button"
+                  onClick={() => void openEditSheet()}
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#4B5563] hover:bg-[#374151] rounded-lg text-white font-semibold text-sm mt-1"
+                >
+                  <SquarePen className="w-4 h-4" /> Edit Transaction
+                </button>
+              )}
+              {cancelHint.show && (
+                <button
+                  type="button"
+                  disabled={cancelBusy || hardDeleteBusy}
+                  onClick={() => void beginCancel()}
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#7F1D1D] hover:bg-[#991B1B] rounded-lg text-white font-semibold text-sm mt-1 disabled:opacity-50"
+                >
+                  {cancelBusy ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Ban className="w-4 h-4" />
+                  )}
+                  {cancelHint.label}
+                </button>
+              )}
+              {hardDeleteHint.show && (
+                <button
+                  type="button"
+                  disabled={cancelBusy || hardDeleteBusy}
+                  onClick={() => void beginCompleteDelete()}
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#450A0A] hover:bg-[#7F1D1D] border border-[#EF4444]/50 rounded-lg text-white font-semibold text-sm mt-1 disabled:opacity-50"
+                >
+                  {hardDeleteBusy ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {MANUAL_JE_HARD_DELETE_LABEL}
+                </button>
+              )}
+              {cancelError || hardDeleteError ? (
+                <div className="col-span-2 p-3 bg-[#EF4444]/15 border border-[#EF4444]/40 rounded-lg text-sm text-[#FCA5A5]">
+                  {cancelError || hardDeleteError}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {CancelConfirmPortal}
+      {CompleteDeleteConfirmPortal}
+
+      {preview.brand && detail && (
+        <PdfPreviewModal
+          open={preview.open}
+          title={detail.direction === 'received' ? 'Payment Receipt' : 'Payment Voucher'}
+          filename={`Receipt_${refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? detail.id)}.pdf`}
+          onClose={preview.close}
+          sharePhone={detail.partyPhone}
+          whatsAppFallbackText={`${detail.direction === 'received' ? 'Received' : 'Paid'} Rs. ${detail.amount.toLocaleString('en-PK')} — ${detail.partyName ?? detail.partyAccountName ?? ''}`}
+        >
+          <ReceiptPreviewPdf
+            brand={preview.brand}
+            heading={detail.direction === 'received' ? 'Payment Received' : 'Payment Paid'}
+            partyName={detail.partyName ?? detail.partyAccountName ?? 'Customer'}
+            amount={detail.amount}
+            dateTime={paymentDateTimeIsoForReceipt(detail.paymentDate, detail.createdAt)}
+            fromAccountName={detail.direction === 'received' ? detail.paymentAccountName : (detail.partyAccountName ?? detail.partyName ?? null)}
+            toAccountName={detail.direction === 'received' ? (detail.partyAccountName ?? detail.partyName ?? null) : detail.paymentAccountName}
+            referenceNumber={refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? null)}
+            referenceStorageNumber={
+              refLabels.full !== refLabels.primary ? refLabels.full : undefined
+            }
+            referenceType={detail.referenceType}
+            method={METHOD_LABEL[detail.method] ?? detail.method}
+            notes={detail.notes}
+            branchName={detail.branchName}
+            generatedBy="User"
+          />
+        </PdfPreviewModal>
+      )}
+      {detail && showEdit && editSheetTarget && (
+        <EditTransactionSheet
+          open={true}
+          companyId={companyId}
+          mode={editSheetTarget.mode}
+          targetId={editSheetTarget.id}
+          initialDetail={editSheetTarget.mode === 'payment' ? detail : null}
+          onClose={() => {
+            setShowEdit(false);
+            setEditSheetTarget(null);
+          }}
+          onSaved={() => {
+            setShowEdit(false);
+            setEditSheetTarget(null);
+            dispatchMobileAccountingInvalidated({
+              companyId,
+              reason: 'transaction-edited',
+            });
+            setLoading(true);
+            getTransactionDetail(companyId, paymentId)
+              .then(({ data, error }) => {
+                if (error) setError(error);
+                setDetail(data);
+              })
+              .finally(() => setLoading(false));
+          }}
+        />
+      )}
+      {attachmentPreviewList && attachmentPreviewList.length > 0 && (
+        <AttachmentPreviewModal
+          attachments={attachmentPreviewList}
+          initialIndex={attachmentPreviewStart}
+          isOpen={true}
+          onClose={() => {
+            setAttachmentPreviewList(null);
+            setAttachmentPreviewStart(0);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RouteRow({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-[#9CA3AF]">{label}</span>
+      <span className="text-white text-right truncate max-w-[70%]">{value || '—'}</span>
+    </div>
+  );
+}

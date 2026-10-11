@@ -1,0 +1,1447 @@
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { localNowDateString, toLocalDateString } from '../utils/localDate';
+import { formatExtraStageNotes } from '../lib/studioExtraStageNotes';
+import { parseStudioWorkflowDate } from '../lib/studioWorkflowDates';
+import { tryFinalizeStudioProductionAfterMobileInvoice } from './studioFinalizeAfterInvoice';
+
+/** Shown when PostgREST reports missing studio_productions.design_name (DB not migrated). */
+export const STUDIO_DESIGN_NAME_MIGRATION_HINT =
+  'Database is missing column studio_productions.design_name. In Supabase SQL Editor, run migrations/20260458_studio_productions_design_name.sql (or from project root: node scripts/run-migrations.js when DATABASE_POOLER_URL / DATABASE_URL points at this database).';
+
+export function formatStudioSchemaError(message: string | null | undefined): string {
+  const m = String(message ?? '');
+  if (/studio_productions\.design_name/i.test(m) && /does not exist/i.test(m)) return STUDIO_DESIGN_NAME_MIGRATION_HINT;
+  if (/column .*design_name/i.test(m) && /does not exist/i.test(m)) return STUDIO_DESIGN_NAME_MIGRATION_HINT;
+  return m || 'Unknown error';
+}
+
+/** DB stage types (enum: dyer, stitching, handwork, embroidery, finishing, quality_check after migration) */
+export type DbStageType = 'dyer' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality_check';
+
+/** UI stage types */
+export type UiStageType = 'dyeing' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality-check';
+
+/** Ordered pipeline row for batch stage insert (presets + custom extra tasks). */
+export type StudioPipelineStageInput =
+  | { kind: 'preset'; stageType: UiStageType }
+  | { kind: 'extra'; label: string };
+
+function uiToDbStageType(ui: UiStageType): DbStageType {
+  if (ui === 'dyeing') return 'dyer';
+  if (ui === 'stitching') return 'stitching';
+  if (ui === 'embroidery') return 'embroidery';
+  if (ui === 'finishing') return 'finishing';
+  if (ui === 'quality-check') return 'quality_check';
+  return 'handwork';
+}
+
+export interface StudioSaleRow {
+  id: string;
+  invoiceNo: string;
+  date: string;
+  customer: string;
+  total: number;
+  paid: number;
+  due: number;
+  paymentStatus: string;
+}
+
+export interface StudioProductionRow {
+  id: string;
+  sale_id: string;
+  branch_id?: string | null;
+  production_no: string;
+  production_date: string;
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
+  current_stage_id?: string | null;
+  product_id: string;
+  /** Replica / custom outfit title (optional). */
+  design_name?: string | null;
+  /** sales_items.id of linked studio line — same gate as web before shipment. */
+  generated_invoice_item_id?: string | null;
+  product?: { id: string; name: string; sku?: string };
+  sale?: {
+    id: string;
+    invoice_no: string;
+    customer_name: string;
+    total: number;
+    invoice_date: string;
+    deadline?: string | null;
+    status?: string | null;
+    created_by?: string | null;
+  };
+}
+
+function applyStudioBranchFilter<T extends { eq: (col: string, val: string) => T; in: (col: string, vals: string[]) => T }>(
+  query: T,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): T {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    return query.eq('branch_id', branchId);
+  }
+  if (accessibleBranchIds?.length) {
+    return query.in('branch_id', accessibleBranchIds);
+  }
+  return query;
+}
+
+const BILL_LOCKED_MSG =
+  'Bill already generated — production pipeline is locked. Use invoice update on web or mobile invoice screen only.';
+
+async function productionIdForStage(stageId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('studio_production_stages')
+    .select('production_id')
+    .eq('id', stageId)
+    .maybeSingle();
+  return (data as { production_id?: string } | null)?.production_id ?? null;
+}
+
+async function companyIdForStage(stageId: string): Promise<string | null> {
+  const productionId = await productionIdForStage(stageId);
+  if (!productionId) return null;
+  const { data: prod } = await supabase
+    .from('studio_productions')
+    .select('company_id')
+    .eq('id', productionId)
+    .maybeSingle();
+  return (prod as { company_id?: string } | null)?.company_id ?? null;
+}
+
+/** FK assigned_worker_id → workers(id); upsert from contact when sync missed. */
+async function ensureWorkerRowForAssign(companyId: string, workerId: string): Promise<string> {
+  const id = workerId?.trim();
+  if (!id) throw new Error('Worker is required to assign this step.');
+  const { data: existing } = await supabase
+    .from('workers')
+    .select('id')
+    .eq('id', id)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (existing) return id;
+
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('id, company_id, name, phone, mobile, worker_role, is_active, type')
+    .eq('id', id)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (!contact) {
+    throw new Error('Worker not found. Open Contacts → Workers and save the worker again.');
+  }
+  const ct = (contact as { type?: string }).type;
+  if (ct !== 'worker' && String(ct) !== 'worker') {
+    throw new Error('Selected contact is not a worker.');
+  }
+  const c = contact as {
+    id: string;
+    company_id: string;
+    name?: string | null;
+    phone?: string | null;
+    mobile?: string | null;
+    worker_role?: string | null;
+    is_active?: boolean | null;
+  };
+  const { error } = await supabase.from('workers').upsert(
+    {
+      id: c.id,
+      company_id: c.company_id,
+      name: (c.name || 'Worker').slice(0, 255),
+      phone: c.phone || c.mobile || null,
+      worker_type: c.worker_role || 'General',
+      is_active: c.is_active !== false,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
+  if (error) throw new Error(error.message || 'Could not sync worker row.');
+  return id;
+}
+
+/** Block structural stage edits after studio invoice line is linked. */
+async function assertProductionPipelineUnlockedForStage(stageId: string): Promise<string | null> {
+  const productionId = await productionIdForStage(stageId);
+  if (!productionId) return null;
+  const { data: prod } = await supabase
+    .from('studio_productions')
+    .select('generated_invoice_item_id')
+    .eq('id', productionId)
+    .maybeSingle();
+  if ((prod as { generated_invoice_item_id?: string | null } | null)?.generated_invoice_item_id) {
+    return BILL_LOCKED_MSG;
+  }
+  return null;
+}
+
+export interface StudioStageRow {
+  id: string;
+  production_id: string;
+  stage_order?: number;
+  stage_type: DbStageType | 'extra';
+  assigned_worker_id: string | null;
+  cost: number;
+  expected_cost?: number | null;
+  customer_charge?: number | null;
+  status: 'pending' | 'assigned' | 'in_progress' | 'sent_to_worker' | 'received' | 'completed';
+  expected_completion_date: string | null;
+  completed_at: string | null;
+  assigned_at?: string | null;
+  sent_date?: string | null;
+  received_date?: string | null;
+  notes?: string | null;
+  worker?: { id: string; name: string };
+}
+
+export interface WorkerRow {
+  id: string;
+  name: string;
+  /** Default rate Rs. per job (workers.rate / contacts.worker_default_rate). */
+  rate?: number;
+  /** Raw specialization value: 'dyer' | 'stitcher' | 'master' | 'handwork' | 'other' | 'General' (or free text). */
+  workerType?: string | null;
+}
+
+/**
+ * Accepted worker specializations for each UI stage type.
+ * 'master' is accepted for every stage since a master can handle any.
+ * Free-text or 'other' / 'General' is also accepted as fallback so nothing gets hidden unexpectedly.
+ */
+const STAGE_WORKER_TYPES: Record<UiStageType, string[]> = {
+  dyeing: ['dyer', 'master'],
+  stitching: ['stitcher', 'master'],
+  handwork: ['handwork', 'master'],
+  embroidery: ['handwork', 'master'],
+  finishing: ['master'],
+  'quality-check': ['master'],
+};
+
+/** True if a worker's specialization is compatible with the given UI stage (or either side is empty). */
+export function workerMatchesStage(workerType: string | null | undefined, stage: UiStageType): boolean {
+  const wt = String(workerType ?? '').trim().toLowerCase();
+  if (!wt || wt === 'other' || wt === 'general') return true;
+  return STAGE_WORKER_TYPES[stage].map((s) => s.toLowerCase()).includes(wt);
+}
+
+export async function getStudioSales(
+  companyId: string,
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
+) {
+  if (!isSupabaseConfigured) return { data: [] as StudioSaleRow[], error: 'App not configured.' };
+  let q = supabase
+    .from('sales')
+    .select('id, invoice_no, invoice_date, customer_name, total, paid_amount, due_amount, payment_status, branch_id, created_by')
+    .eq('company_id', companyId)
+    .eq('is_studio', true)
+    .order('invoice_date', { ascending: false })
+    .limit(50);
+  q = applyStudioBranchFilter(q, branchId, options?.accessibleBranchIds);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id ?? ''),
+      invoiceNo: String(r.invoice_no ?? `STD-${String(r.id ?? '').slice(0, 8)}`),
+      date: r.invoice_date ? toLocalDateString(r.invoice_date as string) : '—',
+      customer: String(r.customer_name ?? '—'),
+      total: Number(r.total) || 0,
+      paid: Number(r.paid_amount) || 0,
+      due: Number(r.due_amount) || 0,
+      paymentStatus: String(r.payment_status ?? '—'),
+    })),
+    error: null,
+  };
+}
+
+/**
+ * Ensure every studio sale has a studio_production (backfill).
+ * Call before loading Studio dashboard so STD-* sales show in Studio.
+ */
+export async function ensureStudioProductionsForCompany(companyId: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const { data: sales, error: salesErr } = await supabase
+      .from('sales')
+      .select('id, company_id, branch_id, invoice_no, invoice_date, created_by')
+      .eq('company_id', companyId)
+      .eq('is_studio', true)
+      .neq('status', 'cancelled');
+    if (salesErr || !sales?.length) return { error: salesErr?.message ?? null };
+
+    const { data: prods } = await supabase
+      .from('studio_productions')
+      .select('sale_id')
+      .eq('company_id', companyId);
+    const hasProduction = new Set((prods || []).map((p: { sale_id: string }) => p.sale_id));
+    const missing = (sales as { id: string; company_id: string; branch_id: string; invoice_no: string; invoice_date: string; created_by: string | null }[]).filter((s) => !hasProduction.has(s.id));
+    if (missing.length === 0) return { error: null };
+
+    let items: { sale_id: string; product_id: string; variation_id: string | null; quantity: number }[] = [];
+    const { data: itemsSales } = await supabase
+      .from('sales_items')
+      .select('sale_id, product_id, variation_id, quantity')
+      .in('sale_id', missing.map((s) => s.id));
+    if (itemsSales?.length) {
+      items = (itemsSales as { sale_id: string; product_id: string; variation_id: string | null; quantity: number }[]).map((r) => ({
+        sale_id: r.sale_id,
+        product_id: r.product_id,
+        variation_id: r.variation_id ?? null,
+        quantity: Math.max(0.01, Number(r.quantity) || 1),
+      }));
+    } else {
+      const { data: itemsLegacy } = await supabase
+        .from('sale_items')
+        .select('sale_id, product_id, variation_id, quantity')
+        .in('sale_id', missing.map((s) => s.id));
+      if (itemsLegacy?.length) {
+        items = (itemsLegacy as { sale_id: string; product_id: string; variation_id: string | null; quantity: number }[]).map((r) => ({
+          sale_id: r.sale_id,
+          product_id: r.product_id,
+          variation_id: r.variation_id ?? null,
+          quantity: Math.max(0.01, Number(r.quantity) || 1),
+        }));
+      }
+    }
+    const firstItemBySale = new Map<string, { product_id: string; variation_id: string | null; quantity: number }>();
+    for (const it of items) {
+      if (!firstItemBySale.has(it.sale_id)) firstItemBySale.set(it.sale_id, { product_id: it.product_id, variation_id: it.variation_id, quantity: it.quantity });
+    }
+
+    for (const sale of missing) {
+      const first = firstItemBySale.get(sale.id);
+      if (!first?.product_id) continue;
+      // Sequential production number: PRD-0001, PRD-0002, ...
+      let productionNo = `PRD-${sale.invoice_no || sale.id}`;
+      try {
+        const { data: prods } = await supabase.from('studio_productions').select('production_no').eq('company_id', sale.company_id).not('production_no', 'is', null);
+        let maxNum = 0;
+        if (prods?.length) {
+          for (const row of prods) {
+            const match = ((row as any).production_no || '').match(/^PRD-(\d+)$/i);
+            if (match) { const n = parseInt(match[1], 10); if (n > maxNum) maxNum = n; }
+          }
+        }
+        productionNo = `PRD-${String(maxNum + 1).padStart(4, '0')}`;
+      } catch { /* fallback to old format */ }
+      const productionDate = sale.invoice_date ? toLocalDateString(sale.invoice_date) : localNowDateString();
+      const { error: insErr } = await supabase
+        .from('studio_productions')
+        .insert({
+          company_id: sale.company_id,
+          branch_id: sale.branch_id,
+          sale_id: sale.id,
+          production_no: productionNo,
+          production_date: productionDate,
+          product_id: first.product_id,
+          variation_id: first.variation_id,
+          quantity: first.quantity,
+          status: 'draft',
+          created_by: sale.created_by ?? null,
+        })
+        .select('id')
+        .single();
+      if (insErr) {
+        if (insErr.code === '23505') continue;
+        console.warn('[studio] ensureStudioProductions backfill insert failed:', insErr);
+        continue;
+      }
+      // New productions start with 0 stages; user adds stages via "+" in Studio dashboard
+      // (No default stages inserted – workflow: Assign Stages → Stage Execution → Receive → Next)
+    }
+    return { error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { error: msg };
+  }
+}
+
+/** Fetch studio productions with sale + product, for company/branch */
+export async function getStudioProductions(
+  companyId: string,
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
+): Promise<{ data: StudioProductionRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  try {
+    let q = supabase
+      .from('studio_productions')
+      .select(
+        'id, sale_id, branch_id, production_no, production_date, status, product_id, design_name, generated_invoice_item_id, product:products!product_id(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline, status, created_by)',
+      )
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    q = applyStudioBranchFilter(q, branchId, options?.accessibleBranchIds);
+    const { data, error } = await q;
+    if (error) return { data: [], error: formatStudioSchemaError(error.message) };
+    return { data: (data || []) as unknown as StudioProductionRow[], error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: [], error: formatStudioSchemaError(msg) };
+  }
+}
+
+/** Shared workflow: Assign worker to stage (STEP 1). Uses RPC when available. */
+export async function assignWorkerToStep(
+  stageId: string,
+  params: {
+    worker_id: string;
+    expected_cost: number;
+    expected_completion_date?: string | null;
+    notes?: string | null;
+  }
+): Promise<{ data: StudioStageRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const lockErr = await assertProductionPipelineUnlockedForStage(stageId);
+  if (lockErr) return { data: null, error: lockErr };
+  try {
+    const companyId = await companyIdForStage(stageId);
+    if (!companyId) return { data: null, error: 'Production not found for this stage.' };
+    let workerId: string;
+    try {
+      workerId = await ensureWorkerRowForAssign(companyId, params.worker_id);
+    } catch (e: unknown) {
+      return { data: null, error: e instanceof Error ? e.message : 'Worker sync failed' };
+    }
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_assign_worker_to_stage', {
+      p_stage_id: stageId,
+      p_worker_id: workerId,
+      p_expected_cost: params.expected_cost,
+      p_expected_completion_date: params.expected_completion_date ?? null,
+      p_notes: params.notes ?? null,
+    });
+    if (rpcErr) {
+      if (rpcErr.code === '42883' || rpcErr.message?.includes('function') || rpcErr.message?.includes('does not exist')) {
+        const payload: Record<string, unknown> = {
+          assigned_worker_id: workerId,
+          expected_cost: params.expected_cost,
+          assigned_at: new Date().toISOString(),
+          status: 'assigned',
+          cost: 0,
+          expected_completion_date: params.expected_completion_date ?? null,
+          notes: params.notes ?? null,
+        };
+        let { data: stage, error: updErr } = await supabase
+          .from('studio_production_stages')
+          .update(payload)
+          .eq('id', stageId)
+          .select('*, worker:workers(id, name)')
+          .single();
+        if (updErr && (updErr.message?.includes('assigned') || updErr.message?.includes('enum'))) {
+          payload.status = 'in_progress';
+          delete payload.expected_cost;
+          delete payload.assigned_at;
+          const retry = await supabase
+            .from('studio_production_stages')
+            .update(payload)
+            .eq('id', stageId)
+            .select('*, worker:workers(id, name)')
+            .single();
+          stage = retry.data;
+          updErr = retry.error;
+        }
+        if (updErr) return { data: null, error: updErr.message };
+        return { data: stage as unknown as StudioStageRow, error: null };
+      }
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
+    }
+    if (!(rpcResult as { ok?: boolean })?.ok) {
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? 'Assign failed' };
+    }
+    const stagesResult = await getStudioStages(
+      (await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single()).data?.production_id ?? ''
+    );
+    const updated = stagesResult.data.find((s) => s.id === stageId);
+    return { data: updated ?? null, error: null };
+  } catch (e: unknown) {
+    return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/** Shared workflow: Receive stage (STEP 2). Operational record only — GL/worker ledger post after studio bill (see web finalize). Uses RPC when available. */
+export async function receiveStepAndFinalizeCost(
+  stageId: string,
+  params: { final_cost: number; notes?: string | null }
+): Promise<{ data: StudioStageRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const lockErr = await assertProductionPipelineUnlockedForStage(stageId);
+  if (lockErr) return { data: null, error: lockErr };
+  try {
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_receive_stage_and_finalize', {
+      p_stage_id: stageId,
+      p_final_cost: params.final_cost,
+      p_notes: params.notes ?? null,
+    });
+    if (rpcErr) {
+      if (rpcErr.code === '42883' || rpcErr.message?.includes('function') || rpcErr.message?.includes('does not exist')) {
+        const { data: stageRow } = await supabase
+          .from('studio_production_stages')
+          .select('production_id, assigned_worker_id')
+          .eq('id', stageId)
+          .single();
+        if (!(stageRow as { assigned_worker_id?: string })?.assigned_worker_id) {
+          return { data: null, error: 'Assign a worker before receiving' };
+        }
+        const { data: updatedStage, error } = await updateStudioStage(stageId, {
+          status: 'completed',
+          cost: params.final_cost,
+          completed_at: new Date().toISOString(),
+        });
+        const frag = (params.notes ?? '').trim();
+        if (!error && frag) {
+          await supabase.rpc('rpc_append_receive_notes_fragment', {
+            p_stage_id: stageId,
+            p_notes: frag,
+          });
+        }
+        return { data: updatedStage ?? null, error };
+      }
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
+    }
+    if (!(rpcResult as { ok?: boolean })?.ok) {
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? 'Receive failed' };
+    }
+    const stagesRecv = await getStudioStages(
+      (await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single()).data?.production_id ?? ''
+    );
+    const updatedRecv = stagesRecv.data.find((s) => s.id === stageId);
+    return { data: updatedRecv ?? null, error: null };
+  } catch (e: unknown) {
+    return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/** Shared workflow: Reopen completed stage (admin/manager). Reverses accounting. Uses RPC when available. */
+export async function reopenStep(stageId: string): Promise<{ data: StudioStageRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const lockErr = await assertProductionPipelineUnlockedForStage(stageId);
+  if (lockErr) return { data: null, error: lockErr };
+  try {
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_reopen_stage', { p_stage_id: stageId });
+    if (rpcErr) {
+      if (rpcErr.code === '42883' || rpcErr.message?.includes('function') || rpcErr.message?.includes('does not exist')) {
+        const { data, error } = await updateStudioStage(stageId, {
+          status: 'assigned',
+          cost: 0,
+          completed_at: null,
+        });
+        return { data: data ?? null, error };
+      }
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
+    }
+    if (!(rpcResult as { ok?: boolean })?.ok) {
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? 'Reopen failed' };
+    }
+    const stagesReopen = await getStudioStages(
+      (await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single()).data?.production_id ?? ''
+    );
+    const updatedReopen = stagesReopen.data.find((s) => s.id === stageId);
+    return { data: updatedReopen ?? null, error: null };
+  } catch (e: unknown) {
+    return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/** Send to worker: assigned → sent_to_worker, set sent_date */
+export async function sendToWorker(
+  stageId: string,
+  opts?: { sentDate?: string | null; notes?: string | null }
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const lockErr = await assertProductionPipelineUnlockedForStage(stageId);
+  if (lockErr) return { error: lockErr };
+  try {
+    const p_sent_date = parseStudioWorkflowDate(opts?.sentDate ?? undefined);
+    const noteText = (opts?.notes ?? '').trim();
+    const { data: r, error: e } = await supabase.rpc('rpc_send_to_worker', {
+      p_stage_id: stageId,
+      ...(p_sent_date ? { p_sent_date } : {}),
+      ...(noteText ? { p_notes: noteText } : {}),
+    });
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Send failed' };
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/** Receive work: sent_to_worker → received, set received_date */
+export async function receiveWork(
+  stageId: string,
+  opts?: { receivedDate?: string | null; notes?: string | null }
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const lockErr = await assertProductionPipelineUnlockedForStage(stageId);
+  if (lockErr) return { error: lockErr };
+  try {
+    const p_received_date = parseStudioWorkflowDate(opts?.receivedDate ?? undefined);
+    const noteText = (opts?.notes ?? '').trim();
+    const { data: r, error: e } = await supabase.rpc('rpc_receive_work', {
+      p_stage_id: stageId,
+      ...(p_received_date ? { p_received_date } : {}),
+      ...(noteText ? { p_notes: noteText } : {}),
+    });
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Receive failed' };
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/** Confirm payment: set cost + accounting. UI uses pay_now=true only. */
+export async function confirmStagePayment(
+  stageId: string,
+  params: {
+    final_cost: number;
+    pay_now: boolean;
+    payment_account_id?: string | null;
+    notes?: string | null;
+    customer_charge?: number | null;
+  }
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const lockErr = await assertProductionPipelineUnlockedForStage(stageId);
+  if (lockErr) return { error: lockErr };
+  try {
+    const cc = params.customer_charge != null && params.customer_charge > 0 ? params.customer_charge : null;
+    const { data: r, error: e } = await supabase.rpc('rpc_confirm_stage_payment', {
+      p_stage_id: stageId,
+      p_final_cost: params.final_cost,
+      p_pay_now: params.pay_now,
+      p_payment_account_id: params.pay_now && params.payment_account_id ? params.payment_account_id : null,
+      p_notes: params.notes ?? null,
+      ...(cc != null ? { p_customer_charge: cc } : {}),
+    });
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Confirm payment failed' };
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/** Complete stage: received → completed, set completed_at. Payment must be confirmed first. */
+export async function completeStage(stageId: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const { data: r, error: e } = await supabase.rpc('rpc_complete_stage', { p_stage_id: stageId });
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Complete failed' };
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/** Fetch stages for a production */
+export async function getStudioStages(productionId: string): Promise<{
+  data: StudioStageRow[];
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  try {
+    const { data, error } = await supabase
+      .from('studio_production_stages')
+      .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, expected_cost, customer_charge, status, expected_completion_date, completed_at, assigned_at, sent_date, received_date, notes, worker:workers(id, name)')
+      .eq('production_id', productionId)
+      .order('stage_order', { ascending: true });
+    if (error) return { data: [], error: error.message };
+    const rows = (data || []) as unknown as StudioStageRow[];
+    const missingWorkerIds = rows
+      .filter((s) => s.assigned_worker_id && !(s as { worker?: { name?: string } }).worker?.name)
+      .map((s) => s.assigned_worker_id as string);
+    if (missingWorkerIds.length > 0) {
+      const { data: contactsData } = await supabase
+        .from('contacts')
+        .select('id, name')
+        .in('id', missingWorkerIds);
+      const idToName = new Map<string, string>();
+      (contactsData || []).forEach((c: { id: string; name: string }) => idToName.set(c.id, c.name || 'Worker'));
+      rows.forEach((s) => {
+        if (s.assigned_worker_id && !(s as { worker?: { name?: string } }).worker?.name) {
+          const name = idToName.get(s.assigned_worker_id);
+          if (name) (s as StudioStageRow).worker = { id: s.assigned_worker_id, name };
+        }
+      });
+    }
+    return { data: rows, error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: [], error: msg };
+  }
+}
+
+/** Fetch studio stages for a sale (by sale_id). Uses RPC when available so data is always returned; else direct query. */
+export async function getStudioStagesBySaleId(saleId: string): Promise<{
+  data: Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  try {
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('get_studio_stages_for_sale', {
+      p_sale_id: saleId,
+    });
+    if (!rpcErr && Array.isArray(rpcData) && rpcData.length >= 0) {
+      const out = (rpcData as Array<{ task_type: string; cost: number; worker_name?: string | null; completed_at?: string | null }>).map((row) => ({
+        task_type: row.task_type ?? '',
+        cost: Number(row.cost) || 0,
+        worker_name: row.worker_name ?? undefined,
+        completed_at: row.completed_at ?? undefined,
+      }));
+      return { data: out, error: null };
+    }
+    const { data: prods, error: e1 } = await supabase
+      .from('studio_productions')
+      .select('id')
+      .eq('sale_id', saleId);
+    if (e1 || !prods?.length) return { data: [], error: rpcErr?.message ?? e1?.message ?? null };
+    const productionIds = (prods as { id: string }[]).map((p) => p.id);
+    const out: Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }> = [];
+    for (const pid of productionIds) {
+      const { data: stageRows } = await getStudioStages(pid);
+      for (const s of stageRows) {
+        const worker = s.worker as { name?: string } | undefined;
+        out.push({
+          task_type: s.stage_type,
+          cost: Number(s.cost) || 0,
+          worker_name: worker?.name ?? undefined,
+          completed_at: s.completed_at ?? undefined,
+        });
+      }
+    }
+    return { data: out, error: null };
+  } catch (e) {
+    return { data: [], error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/**
+ * Fetch workers for company (for stage assignment).
+ * Uses workers table; fallback to contacts (type=worker) so dropdown shows when workers table is empty or not synced.
+ * Returns rate + workerType (specialization) so the UI can prefill cost and filter by stage.
+ * Filtering by stage is done client-side to keep the fallback path simple – callers should pass `stageType`
+ * to pre-filter, and a UI toggle can show all when desired.
+ */
+export async function getWorkers(
+  companyId: string,
+  opts: { stageType?: UiStageType } = {},
+): Promise<{ data: WorkerRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  try {
+    const { data: workersData, error: workersErr } = await supabase
+      .from('workers')
+      .select('id, name, worker_type, rate')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('name');
+    let list: WorkerRow[] = [];
+    if (!workersErr && workersData?.length) {
+      list = (workersData as Array<{ id: string; name: string; worker_type?: string | null; rate?: number | null }>).map((r) => ({
+        id: r.id,
+        name: r.name || 'Worker',
+        rate: Number(r.rate) || 0,
+        workerType: r.worker_type ?? null,
+      }));
+    } else {
+      const { data: contactsData, error: contactsErr } = await supabase
+        .from('contacts')
+        .select('id, name, worker_role, worker_default_rate')
+        .eq('company_id', companyId)
+        .eq('type', 'worker')
+        .order('name');
+      if (contactsErr) return { data: [], error: contactsErr.message };
+      list = (contactsData || []).map(
+        (r: { id: string; name: string; worker_role?: string | null; worker_default_rate?: number | null }) => ({
+          id: r.id,
+          name: r.name || 'Worker',
+          rate: Number(r.worker_default_rate) || 0,
+          workerType: r.worker_role ?? null,
+        }),
+      );
+    }
+    if (opts.stageType) {
+      list = list.filter((w) => workerMatchesStage(w.workerType, opts.stageType as UiStageType));
+    }
+    return { data: list, error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: [], error: msg };
+  }
+}
+
+/** Create a stage for a production. Uses stage_order (next available if not provided). */
+export async function createStudioStage(
+  productionId: string,
+  input: {
+    stage_type: UiStageType;
+    stage_order?: number;
+    assigned_worker_id?: string | null;
+    cost: number;
+    expected_completion_date: string | null;
+    notes?: string | null;
+  }
+): Promise<{ data: StudioStageRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (input.assigned_worker_id) {
+    console.warn('[studioApi] createStudioStage: ignoring assigned_worker_id – assignment only via Assign flow');
+  }
+  try {
+    let stageOrder = input.stage_order;
+    if (stageOrder == null) {
+      const { data: existing } = await supabase
+        .from('studio_production_stages')
+        .select('stage_order')
+        .eq('production_id', productionId)
+        .order('stage_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      stageOrder = ((existing as { stage_order?: number } | null)?.stage_order ?? 0) + 1;
+    }
+    const { data, error } = await supabase
+      .from('studio_production_stages')
+      .insert({
+        production_id: productionId,
+        stage_type: uiToDbStageType(input.stage_type),
+        stage_order: stageOrder,
+        assigned_worker_id: null,
+        cost: 0,
+        expected_completion_date: input.expected_completion_date,
+        status: 'pending',
+        notes: input.notes ?? null,
+      })
+      .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, status, expected_completion_date, completed_at, worker:workers(id, name)')
+      .single();
+    if (error) return { data: null, error: error.message };
+    return { data: data as unknown as StudioStageRow, error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: null, error: msg };
+  }
+}
+
+/** Add multiple stages to a production in order (stage_order 1, 2, 3...). Used when user selects stages from pipeline. */
+export async function addStudioStagesBatch(
+  productionId: string,
+  stages: StudioPipelineStageInput[]
+): Promise<{ data: StudioStageRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!stages.length) return { data: [], error: null };
+  try {
+    const rows = stages.map((entry, i) => {
+      if (entry.kind === 'extra') {
+        return {
+          production_id: productionId,
+          stage_type: 'extra' as const,
+          stage_order: i + 1,
+          assigned_worker_id: null,
+          cost: 0,
+          status: 'pending',
+          notes: formatExtraStageNotes(entry.label),
+        };
+      }
+      return {
+        production_id: productionId,
+        stage_type: uiToDbStageType(entry.stageType),
+        stage_order: i + 1,
+        assigned_worker_id: null,
+        cost: 0,
+        status: 'pending',
+        notes: null,
+      };
+    });
+    const { data, error } = await supabase
+      .from('studio_production_stages')
+      .insert(rows)
+      .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, status, expected_completion_date, completed_at, notes, worker:workers(id, name)');
+    if (error) return { data: [], error: error.message };
+    return { data: (data || []) as unknown as StudioStageRow[], error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: [], error: msg };
+  }
+}
+
+/** Delete a stage before send/receive. Allowed for pending or assigned (no paid worker ledger). */
+export async function deleteStudioStage(stageId: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const { data: existing } = await supabase
+      .from('studio_production_stages')
+      .select('id, status, stage_type, assigned_worker_id, sent_date')
+      .eq('id', stageId)
+      .single();
+    if (!existing) return { error: 'Stage not found' };
+    const row = existing as {
+      status?: string;
+      stage_type?: string;
+      assigned_worker_id?: string | null;
+      sent_date?: string | null;
+    };
+    if (row.status === 'completed') {
+      return { error: 'Cannot remove a completed stage. Reopen it first if needed.' };
+    }
+    const blocked = ['sent_to_worker', 'received', 'completed', 'in_progress'];
+    if (blocked.includes(String(row.status || '')) || row.sent_date) {
+      return {
+        error: 'Cannot remove a stage after work has been sent to the worker. Reopen or complete cleanup first.',
+      };
+    }
+    const deletableStatuses = ['pending', 'assigned'];
+    if (!deletableStatuses.includes(String(row.status || ''))) {
+      return { error: 'This stage cannot be removed in its current status.' };
+    }
+    const { data: ledgerRows } = await supabase
+      .from('worker_ledger_entries')
+      .select('id, status')
+      .eq('reference_type', 'studio_production_stage')
+      .eq('reference_id', stageId);
+    const paid = (ledgerRows || []).some(
+      (r: { status?: string }) => String(r.status || '').toLowerCase() === 'paid',
+    );
+    if (paid) {
+      return { error: 'Cannot remove a stage that has been paid. Reverse payment in accounting first.' };
+    }
+    if ((ledgerRows || []).length > 0) {
+      await supabase
+        .from('worker_ledger_entries')
+        .delete()
+        .eq('reference_type', 'studio_production_stage')
+        .eq('reference_id', stageId);
+    }
+    const { error } = await supabase.from('studio_production_stages').delete().eq('id', stageId);
+    return { error: error?.message ?? null };
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/** Update stage (status, cost, expected_cost, worker, expected date, sent_date, received_date) */
+export async function updateStudioStage(
+  stageId: string,
+  updates: {
+    status?: 'pending' | 'assigned' | 'in_progress' | 'sent_to_worker' | 'received' | 'completed';
+    cost?: number;
+    expected_cost?: number;
+    assigned_worker_id?: string | null;
+    expected_completion_date?: string | null;
+    completed_at?: string | null;
+    sent_date?: string | null;
+    received_date?: string | null;
+  }
+): Promise<{ data: StudioStageRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  try {
+    const payload: Record<string, unknown> = {};
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.cost !== undefined) payload.cost = updates.cost;
+    if (updates.expected_cost !== undefined) payload.expected_cost = updates.expected_cost;
+    if (updates.assigned_worker_id !== undefined) payload.assigned_worker_id = updates.assigned_worker_id;
+    if (updates.expected_completion_date !== undefined) payload.expected_completion_date = updates.expected_completion_date;
+    if (updates.completed_at !== undefined) payload.completed_at = updates.completed_at;
+    if (updates.sent_date !== undefined) payload.sent_date = updates.sent_date;
+    if (updates.received_date !== undefined) payload.received_date = updates.received_date;
+    if (updates.status === 'completed') {
+      payload.completed_at = payload.completed_at ?? new Date().toISOString();
+    }
+    if (payload.assigned_worker_id != null && payload.status === undefined) {
+      payload.status = 'assigned';
+    }
+    if (Object.keys(payload).length === 0) {
+      const { data } = await supabase
+        .from('studio_production_stages')
+        .select('*')
+        .eq('id', stageId)
+        .single();
+      return { data: data as unknown as StudioStageRow, error: null };
+    }
+    const { data, error } = await supabase
+      .from('studio_production_stages')
+      .update(payload)
+      .eq('id', stageId)
+      .select('*')
+      .single();
+    if (error) return { data: null, error: error.message };
+    const row = data as { production_id?: string };
+    if (updates.status === 'completed' && row?.production_id) {
+      try {
+        await tryFinalizeStudioProductionAfterMobileInvoice({ productionId: row.production_id });
+      } catch (finErr: unknown) {
+        console.warn('[updateStudioStage] finalize after stage complete (non-fatal):', finErr);
+      }
+    }
+    return { data: data as unknown as StudioStageRow, error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: null, error: msg };
+  }
+}
+
+/** Persist pricing calculator profit margin on studio_productions (matches web pricing calculator save). */
+export async function saveProductionProfitMargin(
+  productionId: string,
+  mode: 'percentage' | 'fixed',
+  value: number,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const { error } = await supabase
+      .from('studio_productions')
+      .update({ profit_margin_mode: mode, profit_margin_value: value })
+      .eq('id', productionId);
+    return { error: error?.message ?? null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { error: msg };
+  }
+}
+
+/** Load pricing calculator fields for a production (mode + value). */
+export async function loadProductionProfitMargin(
+  productionId: string,
+): Promise<{ data: { mode: 'percentage' | 'fixed'; value: number } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('studio_productions')
+    .select('profit_margin_mode, profit_margin_value')
+    .eq('id', productionId)
+    .maybeSingle();
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: null };
+  const mode = (data as { profit_margin_mode?: string }).profit_margin_mode === 'fixed' ? 'fixed' : 'percentage';
+  const value = Number((data as { profit_margin_value?: number | string }).profit_margin_value ?? 0) || 0;
+  return { data: { mode, value }, error: null };
+}
+
+/** Persist replica / new design name on unified studio production. */
+export async function updateStudioProductionDesignName(
+  productionId: string,
+  designName: string | null
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const v = designName?.trim() || null;
+    const { error } = await supabase.from('studio_productions').update({ design_name: v }).eq('id', productionId);
+    return { error: error?.message ? formatStudioSchemaError(error.message) : null };
+  } catch (e: unknown) {
+    return { error: formatStudioSchemaError(e instanceof Error ? e.message : 'Unknown error') };
+  }
+}
+
+/** Update production status */
+export async function updateStudioProductionStatus(
+  productionId: string,
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled'
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const payload: Record<string, unknown> = { status };
+    if (status === 'completed') payload.completed_at = new Date().toISOString();
+    const { error } = await supabase.from('studio_productions').update(payload).eq('id', productionId);
+    return { error: error?.message ?? null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { error: msg };
+  }
+}
+
+/** Fetch sale by id (for order detail) */
+export async function getSaleById(saleId: string): Promise<{
+  data: { id: string; invoice_no: string; customer_name: string; total: number; invoice_date: string } | null;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('sales')
+    .select('id, invoice_no, customer_name, total, invoice_date')
+    .eq('id', saleId)
+    .single();
+  if (error) return { data: null, error: error.message };
+  return { data: data as { id: string; invoice_no: string; customer_name: string; total: number; invoice_date: string }, error: null };
+}
+
+export interface StudioWorkerWithStats {
+  id: string;
+  name: string;
+  phone: string;
+  workerType: string;
+  activeJobs: number;
+  pendingJobs: number;
+  completedJobs: number;
+  pendingAmount: number;
+  totalEarnings: number;
+}
+
+export interface StudioWorkerStageJob {
+  id: string;
+  stage_type: string;
+  status: string;
+  cost: number;
+  expected_completion_date?: string | null;
+  completed_at?: string | null;
+  production_no?: string;
+  sale_id?: string;
+  customer_name?: string;
+}
+
+export interface StudioWorkerDetailResult {
+  worker: StudioWorkerWithStats;
+  currentStages: StudioWorkerStageJob[];
+  recentCompletedStages: StudioWorkerStageJob[];
+}
+
+type MergedWorker = {
+  id: string;
+  name: string;
+  phone: string;
+  worker_type: string;
+  rate: number;
+};
+
+async function getAllWorkersMerged(companyId: string): Promise<MergedWorker[]> {
+  const result: MergedWorker[] = [];
+  const seen = new Set<string>();
+  const { data: workersData } = await supabase
+    .from('workers')
+    .select('id, name, phone, worker_type, rate')
+    .eq('company_id', companyId)
+    .order('name');
+  const workersById = new Map((workersData || []).map((w: { id: string }) => [w.id, w]));
+  const { data: contactWorkers } = await supabase
+    .from('contacts')
+    .select('id, name, phone, mobile, worker_role, is_active')
+    .eq('company_id', companyId)
+    .eq('type', 'worker')
+    .order('name');
+  for (const c of contactWorkers || []) {
+    const row = c as {
+      id: string;
+      name?: string | null;
+      phone?: string | null;
+      mobile?: string | null;
+      worker_role?: string | null;
+      is_active?: boolean | null;
+    };
+    if (!row.id || seen.has(row.id) || row.is_active === false) continue;
+    seen.add(row.id);
+    const wr = workersById.get(row.id) as { worker_type?: string; rate?: number } | undefined;
+    result.push({
+      id: row.id,
+      name: row.name || 'Worker',
+      phone: row.phone || row.mobile || '',
+      worker_type: row.worker_role || wr?.worker_type || 'General',
+      rate: Number(wr?.rate) || 0,
+    });
+  }
+  for (const w of workersData || []) {
+    const row = w as { id: string; name?: string; phone?: string; worker_type?: string; rate?: number };
+    if (!row.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    result.push({
+      id: row.id,
+      name: row.name || 'Worker',
+      phone: row.phone || '',
+      worker_type: row.worker_type || 'General',
+      rate: Number(row.rate) || 0,
+    });
+  }
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
+}
+
+function countStageStatus(status: string): 'pending' | 'active' | 'completed' | 'other' {
+  const st = (status || '').toLowerCase();
+  if (st === 'assigned' || st === 'pending') return 'pending';
+  if (st === 'completed') return 'completed';
+  if (st === 'in_progress' || st === 'sent_to_worker' || st === 'received') return 'active';
+  return 'other';
+}
+
+/** Workers list with job counts (parity with web StudioWorkflowPage). */
+export async function getWorkersWithStats(
+  companyId: string,
+): Promise<{ data: StudioWorkerWithStats[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  try {
+    const merged = await getAllWorkersMerged(companyId);
+    const stageCounts: Record<string, { pending: number; active: number; completed: number }> = {};
+    const earningsByWorker: Record<string, number> = {};
+    const dueByWorker: Record<string, number> = {};
+
+    const { data: prods } = await supabase.from('studio_productions').select('id').eq('company_id', companyId);
+    const prodIds = (prods || []).map((p: { id: string }) => p.id);
+    if (prodIds.length > 0) {
+      const { data: stageRows } = await supabase
+        .from('studio_production_stages')
+        .select('assigned_worker_id, status')
+        .in('production_id', prodIds);
+      for (const row of stageRows || []) {
+        const wid = (row as { assigned_worker_id?: string | null }).assigned_worker_id;
+        if (!wid) continue;
+        if (!stageCounts[wid]) stageCounts[wid] = { pending: 0, active: 0, completed: 0 };
+        const bucket = countStageStatus((row as { status: string }).status);
+        if (bucket === 'pending') stageCounts[wid].pending++;
+        else if (bucket === 'active') stageCounts[wid].active++;
+        else if (bucket === 'completed') stageCounts[wid].completed++;
+      }
+    }
+
+    const { data: ledger } = await supabase
+      .from('worker_ledger_entries')
+      .select('worker_id, amount, status')
+      .eq('company_id', companyId);
+    for (const r of ledger || []) {
+      const row = r as { worker_id: string; amount: number; status?: string };
+      const wid = row.worker_id;
+      const amt = Number(row.amount) || 0;
+      earningsByWorker[wid] = (earningsByWorker[wid] || 0) + amt;
+      const st = (row.status || '').toLowerCase();
+      if (st !== 'paid' && st !== 'cancelled') dueByWorker[wid] = (dueByWorker[wid] || 0) + amt;
+    }
+
+    const list: StudioWorkerWithStats[] = merged.map((w) => {
+      const c = stageCounts[w.id] || { pending: 0, active: 0, completed: 0 };
+      return {
+        id: w.id,
+        name: w.name,
+        phone: w.phone,
+        workerType: w.worker_type,
+        activeJobs: c.pending + c.active,
+        pendingJobs: c.pending,
+        completedJobs: c.completed,
+        pendingAmount: Math.round((dueByWorker[w.id] || 0) * 100) / 100,
+        totalEarnings: Math.round((earningsByWorker[w.id] || 0) * 100) / 100,
+      };
+    });
+    return { data: list, error: null };
+  } catch (e: unknown) {
+    return { data: [], error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+/** Single worker detail with current + recent completed stages. */
+export async function getWorkerDetail(
+  companyId: string,
+  workerId: string,
+): Promise<{ data: StudioWorkerDetailResult | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  try {
+    const { data: statsList } = await getWorkersWithStats(companyId);
+    const workerStats = (statsList || []).find((w) => w.id === workerId);
+    if (!workerStats) return { data: null, error: 'Worker not found' };
+
+    const currentStages: StudioWorkerStageJob[] = [];
+    const recentCompletedStages: StudioWorkerStageJob[] = [];
+
+    const { data: stages } = await supabase
+      .from('studio_production_stages')
+      .select('id, production_id, stage_type, status, cost, expected_completion_date, completed_at')
+      .eq('assigned_worker_id', workerId)
+      .order('created_at', { ascending: false });
+
+    const prodIds = [...new Set((stages || []).map((s: { production_id: string }) => s.production_id).filter(Boolean))];
+    let prodMap = new Map<string, { production_no?: string; sale_id?: string; customer_name?: string }>();
+    if (prodIds.length > 0) {
+      const { data: prods } = await supabase
+        .from('studio_productions')
+        .select('id, production_no, sale_id, sale:sales(customer_name)')
+        .in('id', prodIds);
+      for (const p of prods || []) {
+        const row = p as {
+          id: string;
+          production_no?: string;
+          sale_id?: string;
+          sale?: { customer_name?: string } | null;
+        };
+        prodMap.set(row.id, {
+          production_no: row.production_no,
+          sale_id: row.sale_id,
+          customer_name: row.sale?.customer_name,
+        });
+      }
+    }
+
+    for (const s of stages || []) {
+      const row = s as {
+        id: string;
+        production_id: string;
+        stage_type: string;
+        status: string;
+        cost: number;
+        expected_completion_date?: string | null;
+        completed_at?: string | null;
+      };
+      const prod = prodMap.get(row.production_id);
+      const item: StudioWorkerStageJob = {
+        id: row.id,
+        stage_type: row.stage_type,
+        status: row.status,
+        cost: Number(row.cost) || 0,
+        expected_completion_date: row.expected_completion_date,
+        completed_at: row.completed_at,
+        production_no: prod?.production_no,
+        sale_id: prod?.sale_id,
+        customer_name: prod?.customer_name,
+      };
+      if (row.status === 'completed') {
+        recentCompletedStages.push(item);
+      } else {
+        currentStages.push(item);
+      }
+    }
+    recentCompletedStages.sort((a, b) => {
+      const da = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+      const db = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+      return db - da;
+    });
+    if (recentCompletedStages.length > 10) recentCompletedStages.length = 10;
+
+    return {
+      data: { worker: workerStats, currentStages, recentCompletedStages },
+      error: null,
+    };
+  } catch (e: unknown) {
+    return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
+
+export interface StudioStageJobDetail {
+  id: string;
+  stage_type: string;
+  status: string;
+  stage_order?: number | null;
+  assigned_at?: string | null;
+  sent_date?: string | null;
+  received_date?: string | null;
+  completed_at?: string | null;
+  expected_completion_date?: string | null;
+  cost: number;
+  expected_cost?: number | null;
+  customer_charge?: number | null;
+  notes?: string | null;
+  worker_name?: string;
+  production_no?: string;
+  sale_id?: string;
+  customer_name?: string;
+  invoice_no?: string;
+  ledger_paid: number;
+  ledger_due: number;
+  ledger_status: string;
+}
+
+/** Full stage/job detail for Workers tab and timeline sheets. */
+export async function getStageJobDetail(
+  stageId: string
+): Promise<{ data: StudioStageJobDetail | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  try {
+    const { data: stage, error: stageErr } = await supabase
+      .from('studio_production_stages')
+      .select(
+        'id, production_id, stage_type, stage_order, status, assigned_worker_id, assigned_at, sent_date, received_date, completed_at, expected_completion_date, cost, expected_cost, customer_charge, notes, worker:workers(id, name)'
+      )
+      .eq('id', stageId)
+      .maybeSingle();
+    if (stageErr || !stage) return { data: null, error: stageErr?.message ?? 'Stage not found' };
+
+    type StageDetailRow = {
+      id: string;
+      production_id: string;
+      stage_type: string;
+      status: string;
+      stage_order?: number | null;
+      assigned_worker_id?: string | null;
+      assigned_at?: string | null;
+      sent_date?: string | null;
+      received_date?: string | null;
+      completed_at?: string | null;
+      expected_completion_date?: string | null;
+      cost?: number | null;
+      expected_cost?: number | null;
+      customer_charge?: number | null;
+      notes?: string | null;
+      worker?: { id: string; name: string } | { id: string; name: string }[] | null;
+    };
+    const s = stage as StageDetailRow;
+    const workerRel = s.worker;
+    const workerObj = Array.isArray(workerRel) ? workerRel[0] : workerRel;
+    let workerName = workerObj?.name;
+    if (!workerName && s.assigned_worker_id) {
+      const { data: c } = await supabase.from('contacts').select('name').eq('id', s.assigned_worker_id).maybeSingle();
+      workerName = (c as { name?: string } | null)?.name;
+    }
+
+    let production_no: string | undefined;
+    let sale_id: string | undefined;
+    let customer_name: string | undefined;
+    let invoice_no: string | undefined;
+    if (s.production_id) {
+      const { data: prod } = await supabase
+        .from('studio_productions')
+        .select('production_no, sale_id, sale:sales(customer_name, invoice_no)')
+        .eq('id', s.production_id)
+        .maybeSingle();
+      if (prod) {
+        const p = prod as {
+          production_no?: string;
+          sale_id?: string;
+          sale?: { customer_name?: string; invoice_no?: string } | null;
+        };
+        production_no = p.production_no;
+        sale_id = p.sale_id;
+        customer_name = p.sale?.customer_name;
+        invoice_no = p.sale?.invoice_no;
+      }
+    }
+
+    let ledger_paid = 0;
+    let ledger_due = 0;
+    let ledger_status = 'none';
+    const { data: ledgerRows } = await supabase
+      .from('worker_ledger_entries')
+      .select('amount, status')
+      .eq('reference_type', 'studio_production_stage')
+      .eq('reference_id', stageId);
+    for (const r of ledgerRows || []) {
+      const row = r as { amount?: number; status?: string };
+      const amt = Number(row.amount) || 0;
+      const st = (row.status || '').toLowerCase();
+      if (st === 'paid') ledger_paid += amt;
+      else if (st !== 'cancelled') ledger_due += amt;
+    }
+    if (ledger_paid > 0 && ledger_due > 0) ledger_status = 'partial';
+    else if (ledger_paid > 0) ledger_status = 'paid';
+    else if (ledger_due > 0) ledger_status = 'unpaid';
+
+    return {
+      data: {
+        id: s.id,
+        stage_type: s.stage_type,
+        status: s.status,
+        stage_order: s.stage_order,
+        assigned_at: s.assigned_at,
+        sent_date: s.sent_date,
+        received_date: s.received_date,
+        completed_at: s.completed_at,
+        expected_completion_date: s.expected_completion_date,
+        cost: Number(s.cost) || 0,
+        expected_cost: s.expected_cost != null ? Number(s.expected_cost) : null,
+        customer_charge: s.customer_charge != null ? Number(s.customer_charge) : null,
+        notes: s.notes,
+        worker_name: workerName,
+        production_no,
+        sale_id,
+        customer_name,
+        invoice_no,
+        ledger_paid,
+        ledger_due,
+        ledger_status,
+      },
+      error: null,
+    };
+  } catch (e: unknown) {
+    return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}

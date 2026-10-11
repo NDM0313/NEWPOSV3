@@ -1,0 +1,58 @@
+# Final staging isolation verification on VPS (read prod; write canary only to staging).
+name: Verify staging isolation
+
+on:
+  push:
+    branches:
+      - cursor/supabase-stage-minipc-e9d2
+    paths:
+      - 'scripts/verify-staging-isolation-vps.sh'
+      - '.github/workflows/verify-staging-isolation.yml'
+      - 'docs/infra/STAGING_SUPABASE_CLOSURE_RUNBOOK.md'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"; [ -z "$KEY" ] && KEY="${VPS_KEY_ALT:-}"
+          [ -n "$KEY" ] || { echo "::error::VPS_SSH_KEY missing"; exit 1; }
+          KEYFILE="${RUNNER_TEMP}/verify.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" >/dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+      - name: Run verification on VPS
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+        run: |
+          set -euo pipefail
+          HOST=72.62.254.176
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 "$HOST" >> "$KNOWN" 2>/dev/null || true
+          ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 \
+            -o ServerAliveInterval=20 -o ServerAliveCountMax=10 \
+            root@"$HOST" "mkdir -p /root/NEWPOSV3/scripts"
+          scp -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            scripts/verify-staging-isolation-vps.sh \
+            root@"$HOST":/root/NEWPOSV3/scripts/verify-staging-isolation-vps.sh
+          ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 \
+            -o ServerAliveInterval=20 -o ServerAliveCountMax=10 \
+            root@"$HOST" \
+            "chmod +x /root/NEWPOSV3/scripts/verify-staging-isolation-vps.sh && bash /root/NEWPOSV3/scripts/verify-staging-isolation-vps.sh"
+      - name: Cleanup key
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"

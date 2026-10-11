@@ -1,0 +1,49 @@
+name: Verify staging anon key
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/fix-mobile-stage-login-e9d2
+    paths:
+      - 'scripts/verify-stage-anon-key-vps.sh'
+      - '.github/workflows/verify-stage-anon-key.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"; [ -z "$KEY" ] && KEY="${VPS_KEY_ALT:-}"
+          [ -n "$KEY" ] || { echo "::error::VPS_SSH_KEY missing"; exit 1; }
+          KEYFILE="${RUNNER_TEMP}/anon.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" >/dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+      - name: Verify ANON_KEY on VPS + public Kong
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+        run: |
+          set -euo pipefail
+          HOST=72.62.254.176
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 "$HOST" >> "$KNOWN" 2>/dev/null || true
+          scp -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            scripts/verify-stage-anon-key-vps.sh root@"$HOST":/tmp/verify-stage-anon-key-vps.sh
+          ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 \
+            root@"$HOST" "bash /tmp/verify-stage-anon-key-vps.sh"
+      - name: Cleanup
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"

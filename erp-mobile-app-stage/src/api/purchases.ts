@@ -1,0 +1,802 @@
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { listCacheKeys } from '../lib/listCache';
+import { readThroughCache } from '../lib/offlineData';
+import { formatDocumentListDateTime, localNowDateString, toLocalDateString } from '../utils/localDate';
+import { resolveBranchUuidForWrite } from '../utils/branchId';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
+
+export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
+
+export interface CreatePurchaseInput {
+  companyId: string;
+  branchId: string;
+  supplierId: string | null;
+  supplierName: string;
+  contactNumber?: string;
+  status?: PurchaseStatus;
+  paidAmount?: number;
+  paymentMethod?: 'cash' | 'bank' | 'card' | 'other';
+  paymentAccountId?: string | null;
+  items: {
+    productId: string;
+    variationId?: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    packingDetails?: { total_boxes?: number; total_pieces?: number };
+  }[];
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  shippingCost: number;
+  total: number;
+  notes?: string;
+  attachments?: { url: string; name: string }[];
+  userId: string;
+  /** Purchase order date YYYY-MM-DD (local). */
+  poDate?: string;
+}
+
+const PURCHASE_ATTACHMENTS_BUCKET = 'purchase-attachments';
+export const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_PURCHASE_ATTACHMENTS_COUNT = 5;
+
+export type PurchaseAttachmentMeta = { url: string; name: string };
+
+/** Merge attachment lists; dedupe by url; cap at MAX_PURCHASE_ATTACHMENTS_COUNT. */
+export function mergePurchaseAttachments(
+  existing: PurchaseAttachmentMeta[],
+  uploaded: PurchaseAttachmentMeta[],
+): PurchaseAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: PurchaseAttachmentMeta[] = [];
+  const push = (a: PurchaseAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_PURCHASE_ATTACHMENTS_COUNT);
+}
+
+async function fetchPurchaseAttachments(purchaseId: string): Promise<PurchaseAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('purchases').select('attachments').eq('id', purchaseId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Persist attachment metadata on the purchase row (after upload). */
+export async function updatePurchaseAttachments(
+  purchaseId: string,
+  attachments: { url: string; name: string }[],
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('purchases')
+    .update({ attachments: attachments.length > 0 ? attachments : null })
+    .eq('id', purchaseId);
+  if (error) {
+    if (error.code === 'PGRST204' && String(error.message || '').includes('attachments')) {
+      return { error: null };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Upload new files and merge onto existing purchase.attachments (max 5 total). */
+export async function appendPurchaseAttachments(
+  companyId: string,
+  purchaseId: string,
+  files: File[],
+  existing?: PurchaseAttachmentMeta[],
+): Promise<{ data: PurchaseAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchPurchaseAttachments(purchaseId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchPurchaseAttachments(purchaseId));
+  const slotsLeft = MAX_PURCHASE_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_PURCHASE_ATTACHMENTS_COUNT} attachments per purchase.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadPurchaseAttachments(companyId, purchaseId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergePurchaseAttachments(prior, upload.data);
+  const upd = await updatePurchaseAttachments(purchaseId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
+}
+
+export async function uploadPurchaseAttachments(
+  companyId: string,
+  purchaseRef: string,
+  files: File[]
+): Promise<{ data: { url: string; name: string }[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) return { data: [], error: null };
+
+  const uploaded: { url: string; name: string }[] = [];
+  const prefix = `${companyId}/${purchaseRef}/${Date.now()}`;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    if (file.size > MAX_PURCHASE_ATTACHMENT_BYTES) {
+      return { data: uploaded, error: `File "${file.name}" is too large. Max 10MB per file.` };
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    try {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: PURCHASE_ATTACHMENTS_BUCKET,
+          path,
+          file,
+          upsert: true,
+          logTag: 'purchase-attachments',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+      uploaded.push({ url: ref, name: file.name });
+    } catch (err) {
+      console.warn('[uploadPurchaseAttachments]', (err as Error)?.message ?? err);
+      const classified = classifyStorageUploadError(err, file.name);
+      if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+        return { data: uploaded, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG };
+      }
+      const bucketMissing = classified.kind === 'bucket';
+      return {
+        data: uploaded,
+        error: bucketMissing
+          ? 'Storage bucket "purchase-attachments" not found. Create it in Supabase Storage first.'
+          : classified.userMessage,
+      };
+    }
+  }
+
+  return { data: uploaded, error: null };
+}
+
+export async function createPurchase(
+  input: CreatePurchaseInput
+): Promise<{ data: { id: string; poNo: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: 'App not configured.' };
+  }
+
+  const {
+    companyId,
+    branchId,
+    supplierId,
+    supplierName,
+    contactNumber,
+    items,
+    subtotal,
+    discountAmount,
+    taxAmount,
+    shippingCost,
+    total,
+    notes,
+    attachments,
+    userId,
+    poDate,
+    status = 'ordered',
+    paidAmount = 0,
+    paymentMethod = 'cash',
+    paymentAccountId,
+  } = input;
+
+  if (!companyId || !branchId || !userId) {
+    return { data: null, error: 'Missing company, branch, or user.' };
+  }
+  if (!items.length) {
+    return { data: null, error: 'No items in purchase.' };
+  }
+
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch on the Branch screen or in Settings to create purchases.',
+    );
+  } catch (err) {
+    return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
+  }
+
+  const paid = Math.max(0, Math.min(Number(paidAmount) || 0, Number(total) || 0));
+  const due = Math.max(0, (Number(total) || 0) - paid);
+  const paymentStatus = paid <= 0 ? 'unpaid' : paid >= (Number(total) || 0) ? 'paid' : 'partial';
+  const defaultPoDay = localNowDateString();
+  const poDay =
+    poDate != null && String(poDate).trim() !== '' ? String(poDate).trim().slice(0, 10) : defaultPoDay;
+
+  const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_purchase_document_header', {
+    p_company_id: companyId,
+    p_branch_id: effectiveBranchId,
+    p_purchase: {
+      po_date: poDay,
+      supplier_id: supplierId || null,
+      supplier_name: supplierName || 'Unknown',
+      contact_number: contactNumber || null,
+      status,
+      payment_status: paymentStatus,
+      subtotal: Number(subtotal) || 0,
+      discount_amount: Number(discountAmount) || 0,
+      tax_amount: Number(taxAmount) || 0,
+      shipping_cost: Number(shippingCost) || 0,
+      total: Number(total) || 0,
+      paid_amount: paid,
+      due_amount: due,
+      notes: notes || null,
+      attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : null,
+    },
+    p_created_by: userId,
+  });
+
+  if (hdrErr) return { data: null, error: hdrErr.message };
+
+  const hdr = hdrRaw as {
+    success?: boolean;
+    purchase_id?: string;
+    allocated_no?: string;
+    po_no?: string | null;
+    order_no?: string | null;
+    draft_no?: string | null;
+    error?: string;
+  } | null;
+  if (!hdr?.success || !hdr.purchase_id) {
+    return { data: null, error: hdr?.error ?? 'Failed to create purchase.' };
+  }
+
+  const purchaseId = hdr.purchase_id;
+  const poNo =
+    hdr.allocated_no ||
+    (status === 'ordered' ? hdr.order_no : null) ||
+    (status === 'draft' ? hdr.draft_no : null) ||
+    hdr.po_no ||
+    '';
+  const itemsWithPurchaseId = items.map((item) => {
+    const row: Record<string, unknown> = {
+      purchase_id: purchaseId,
+      product_id: item.productId,
+      variation_id: item.variationId || null,
+      product_name: item.productName,
+      sku: item.sku || '—',
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      total: item.total,
+    };
+    if (item.packingDetails && (item.packingDetails.total_boxes != null || item.packingDetails.total_pieces != null)) {
+      row.packing_details = item.packingDetails;
+    }
+    return row;
+  });
+
+  const { error: itemsError } = await supabase.from('purchase_items').insert(itemsWithPurchaseId);
+
+  if (itemsError) {
+    await supabase.from('purchases').delete().eq('id', purchaseId);
+    return { data: null, error: `Failed to save items: ${itemsError.message}` };
+  }
+
+  // Keep mobile discount posting behavior in parity with web by writing discount to purchase_charges.
+  if ((Number(discountAmount) || 0) > 0) {
+    const { error: discountChargeError } = await supabase.from('purchase_charges').insert({
+      purchase_id: purchaseId,
+      charge_type: 'discount',
+      amount: Number(discountAmount) || 0,
+      created_by: userId,
+    });
+    if (discountChargeError) {
+      console.warn('[PURCHASES API] discount purchase_charge insert failed:', discountChargeError);
+    }
+  }
+
+  // Accounting: post journal entry for the purchase (Dr Inventory/Tax,
+  // Cr AP supplier sub-account). Idempotent RPC; soft-warn on error.
+  try {
+    const { data: postData, error: postErr } = await supabase.rpc(
+      'record_purchase_with_accounting',
+      { p_purchase_id: purchaseId },
+    );
+    if (postErr) {
+      console.warn('[PURCHASES API] record_purchase_with_accounting failed:', postErr);
+    } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+      console.warn('[PURCHASES API] record_purchase_with_accounting returned error:', postData);
+    }
+  } catch (err) {
+    console.warn('[PURCHASES API] record_purchase_with_accounting threw:', err);
+  }
+
+  // Record payment when goods are in hand (received/final) and paid > 0.
+  if ((status === 'final' || status === 'received') && paid > 0 && paymentAccountId) {
+    const { recordSupplierPayment } = await import('./accounts');
+    const payRes = await recordSupplierPayment({
+      companyId,
+      branchId: effectiveBranchId,
+      purchaseId,
+      amount: paid,
+      paymentDate: localNowDateString(),
+      paymentAccountId,
+      paymentMethod,
+      userId,
+    });
+    if (payRes.error) {
+      console.warn('[PURCHASES API] Payment record failed:', payRes.error);
+    }
+  }
+
+  return {
+    data: { id: purchaseId, poNo },
+    error: null,
+  };
+}
+
+/** Update purchase status (e.g. ordered → final). Uses DB enum value (lowercase 'final'). */
+export async function updatePurchaseStatus(
+  companyId: string,
+  purchaseId: string,
+  status: PurchaseStatus
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  // purchase_status enum: typically 'draft'|'ordered'|'received'|'final' (lowercase). Send only status to avoid 400 from missing columns.
+  const { error } = await supabase
+    .from('purchases')
+    .update({ status })
+    .eq('id', purchaseId)
+    .eq('company_id', companyId);
+  return { error: error?.message ?? null };
+}
+
+/**
+ * Cancel a purchase (full void): reverses stock, creates purchase_reversal journal entry,
+ * sets status='cancelled'. Idempotent via cancel_purchase_full_void RPC.
+ */
+export async function cancelPurchase(
+  companyId: string,
+  purchaseId: string,
+  opts?: { userId?: string | null; reason?: string | null },
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { data, error } = await supabase.rpc('cancel_purchase_full_void', {
+    p_purchase_id: purchaseId,
+    p_user_id: opts?.userId ?? null,
+    p_reason: opts?.reason ?? null,
+  });
+  if (error) return { error: error.message };
+  const res = data as { success?: boolean; error?: string } | null;
+  if (res && res.success === false) return { error: res.error ?? 'Cancel failed' };
+  // Silence unused parameter lint
+  void companyId;
+  return { error: null };
+}
+
+export interface PurchaseListItem {
+  id: string;
+  poNo: string;
+  vendor: string;
+  vendorPhone: string;
+  total: number;
+  subtotal: number;
+  discount: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: string;
+  paymentStatus: string;
+  date: string;
+  /** Friendly date e.g. "Today, 12:30 pm" */
+  dateDisplay?: string;
+  created_at?: string;
+  itemCount: number;
+  created_by?: string | null;
+  created_by_name?: string;
+  branchId?: string | null;
+  attachments?: { url: string; name: string }[];
+}
+
+async function enrichPurchasesWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
+  const ids = [...new Set((rows || []).map((r) => r.created_by as string).filter(Boolean))];
+  if (ids.length === 0) return;
+  const { data: users } = await supabase.from('users').select('id, full_name').in('id', ids);
+  const nameById = new Map<string, string>();
+  (users || []).forEach((u: Record<string, unknown>) => {
+    if (u?.id && u?.full_name) nameById.set(u.id as string, u.full_name as string);
+  });
+  rows.forEach((r) => {
+    const uid = r.created_by as string;
+    if (uid && typeof uid === 'string') {
+      (r as Record<string, unknown>).created_by_id = uid;
+      (r as Record<string, unknown>).created_by_name = nameById.get(uid) || null;
+    }
+  });
+}
+
+/** Match web: paid / due from actual payment rows (company-wide link by reference_id), exclude voided. */
+export async function enrichPurchasesPaidFromPayments(companyId: string, rows: Record<string, unknown>[]): Promise<void> {
+  if (!rows.length) return;
+  const ids = rows.map((r) => r.id as string).filter(Boolean);
+  const { data: payData } = await supabase
+    .from('payments')
+    .select('reference_id, amount')
+    .eq('reference_type', 'purchase')
+    .eq('company_id', companyId)
+    .in('reference_id', ids)
+    .is('voided_at', null);
+  const byPurchase: Record<string, number> = {};
+  for (const p of payData || []) {
+    const refId = String((p as Record<string, unknown>).reference_id || '');
+    if (refId) byPurchase[refId] = (byPurchase[refId] || 0) + Number((p as Record<string, unknown>).amount ?? 0);
+  }
+  rows.forEach((r) => {
+    const id = String(r.id || '');
+    const total = Number(r.total) || 0;
+    const paid = byPurchase[id] ?? (Number(r.paid_amount) || 0);
+    const due = Math.max(0, total - paid);
+    r.paid_amount = paid;
+    r.due_amount = due;
+    r.payment_status = paid <= 0 ? 'unpaid' : paid >= total - 0.005 ? 'paid' : 'partial';
+  });
+}
+
+const PURCHASE_LIST_LIMIT_DEFAULT = 50;
+const PURCHASE_LIST_LIMIT_ADMIN = 2000;
+
+export async function getPurchases(
+  companyId: string,
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[]; limit?: number },
+): Promise<{ data: PurchaseListItem[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const listLimit = Math.max(
+    1,
+    Math.min(options?.limit ?? PURCHASE_LIST_LIMIT_DEFAULT, PURCHASE_LIST_LIMIT_ADMIN),
+  );
+  const branchKey =
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? branchId
+      : options?.accessibleBranchIds?.length
+        ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
+        : 'all';
+  const cacheKey = listCacheKeys.purchases(companyId, branchKey, `list:lim${listLimit}`);
+  const cached = await readThroughCache(
+    cacheKey,
+    () => fetchPurchasesOnline(companyId, branchId, options?.accessibleBranchIds, listLimit),
+    [],
+  );
+  return { data: cached.data, error: cached.error };
+}
+
+async function fetchPurchasesOnline(
+  companyId: string,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+  listLimit: number = PURCHASE_LIST_LIMIT_DEFAULT,
+): Promise<{ data: PurchaseListItem[]; error: string | null }> {
+  let query = supabase
+    .from('purchases')
+    .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date, created_by, branch_id, attachments')
+    .eq('company_id', companyId)
+    // Keep cancelled POs visible with a "Cancelled" badge (web parity). Filtering removed.
+    .order('po_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(listLimit);
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    query = query.eq('branch_id', branchId);
+  } else if (accessibleBranchIds?.length) {
+    query = query.in('branch_id', accessibleBranchIds);
+  }
+  const { data, error } = await query;
+  if (error) return { data: [], error: error.message };
+
+  const rows = (data || []) as Record<string, unknown>[];
+  await enrichPurchasesWithCreatorNames(rows);
+  await enrichPurchasesPaidFromPayments(companyId, rows);
+
+  const ids = rows.map((r) => r.id as string);
+  const itemCountMap: Record<string, number> = {};
+  if (ids.length > 0) {
+    const { data: itemsData } = await supabase
+      .from('purchase_items')
+      .select('purchase_id')
+      .in('purchase_id', ids);
+    for (const row of itemsData || []) {
+      const pid = (row as { purchase_id: string }).purchase_id;
+      itemCountMap[pid] = (itemCountMap[pid] || 0) + 1;
+    }
+  }
+
+  const list = rows.map((r) => {
+    const poDate = r.po_date as string | undefined;
+    const dateStr = poDate ? toLocalDateString(poDate) : '—';
+    const dateDisplay = formatDocumentListDateTime({
+      documentDate: poDate,
+      eventTimestamp: r.created_at as string,
+    });
+    return {
+      id: r.id as string,
+      poNo: (r.po_no as string) || `PUR-${(r.id as string).slice(0, 8)}`,
+      vendor: (r.supplier_name as string) || '—',
+      vendorPhone: (r.contact_number as string) || '—',
+      total: Number(r.total) || 0,
+      subtotal: Number(r.subtotal) || 0,
+      discount: Number(r.discount_amount) || 0,
+      paidAmount: Number(r.paid_amount) || 0,
+      dueAmount: Number(r.due_amount) || 0,
+      status: String(r.status || 'ordered'),
+      paymentStatus: String(r.payment_status || 'unpaid'),
+      date: dateStr,
+      dateDisplay,
+      created_at: (r.created_at as string) || undefined,
+      itemCount: itemCountMap[r.id as string] || 0,
+      created_by: (r.created_by as string) ?? null,
+      created_by_name: (r.created_by_name as string) || undefined,
+      branchId: (r.branch_id as string) ?? null,
+      attachments: Array.isArray(r.attachments)
+        ? (r.attachments as { url?: string; name?: string }[])
+            .map((a) => ({ url: String(a?.url ?? ''), name: String(a?.name ?? 'Attachment') }))
+            .filter((a) => a.url)
+        : undefined,
+    };
+  });
+  return { data: list, error: null };
+}
+
+export interface PurchaseDetail {
+  id: string;
+  poNo: string;
+  vendor: string;
+  vendorPhone: string;
+  branchId?: string | null;
+  items: {
+    id: string;
+    productId?: string;
+    variationId?: string | null;
+    sku?: string | null;
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; packs?: number; units_per_pack?: number };
+  }[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: string;
+  paymentStatus: string;
+  orderDate: string;
+  expectedDeliveryDate?: string;
+  taxAmount: number;
+  shippingCost: number;
+  notes?: string | null;
+  paymentMethod?: string | null;
+  supplierId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
+}
+
+export async function getPurchaseById(
+  companyId: string,
+  purchaseId: string
+): Promise<{ data: PurchaseDetail | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data: purchase, error: purchaseError } = await supabase
+    .from('purchases')
+    .select('id, po_no, order_no, draft_no, supplier_id, supplier_name, contact_number, branch_id, subtotal, discount_amount, tax_amount, shipping_cost, total, paid_amount, due_amount, status, payment_status, po_date, notes, payment_method, attachments')
+    .eq('id', purchaseId)
+    .eq('company_id', companyId)
+    .single();
+  if (purchaseError || !purchase) return { data: null, error: purchaseError?.message || 'Not found' };
+
+  const { data: items, error: itemsError } = await supabase
+    .from('purchase_items')
+    .select('id, product_id, variation_id, sku, product_name, quantity, unit_price, total, packing_details')
+    .eq('purchase_id', purchaseId);
+  if (itemsError) return { data: null, error: itemsError.message };
+
+  const p = purchase as Record<string, unknown>;
+  await enrichPurchasesPaidFromPayments(companyId, [p]);
+
+  return {
+    data: {
+      id: p.id as string,
+      poNo: ((p.po_no as string) || (p.order_no as string) || (p.draft_no as string) || '—'),
+      vendor: (p.supplier_name as string) || '—',
+      vendorPhone: (p.contact_number as string) || '—',
+      items: (items || []).map((i: Record<string, unknown>) => {
+        const pd = i.packing_details as Record<string, unknown> | null | undefined;
+        const packs = pd && (pd.packs ?? pd.total_boxes) != null ? Number(pd.packs ?? pd.total_boxes) : undefined;
+        const unitsPerPack = pd && (pd.units_per_pack != null || (pd.total_pieces != null && (pd.total_boxes ?? pd.packs) != null))
+          ? (pd.units_per_pack != null ? Number(pd.units_per_pack) : (Number(pd.total_boxes ?? pd.packs) || 0) > 0 ? Math.round(Number(pd.total_pieces) / Number(pd.total_boxes ?? pd.packs)) : undefined)
+          : undefined;
+        return {
+          id: i.id as string,
+          productId: (i.product_id as string) || undefined,
+          variationId: (i.variation_id as string) || null,
+          sku: (i.sku as string) || null,
+          productName: (i.product_name as string) || '—',
+          quantity: Number(i.quantity) || 0,
+          unitPrice: Number(i.unit_price) || 0,
+          total: Number(i.total) || 0,
+          packingDetails: pd ? { total_boxes: pd.total_boxes as number | undefined, total_pieces: pd.total_pieces as number | undefined, total_meters: pd.total_meters as number | undefined, packs, units_per_pack: unitsPerPack } : undefined,
+        };
+      }),
+      branchId: (p.branch_id as string) ?? null,
+      subtotal: Number(p.subtotal) || 0,
+      discount: Number(p.discount_amount) || 0,
+      taxAmount: Number(p.tax_amount) || 0,
+      shippingCost: Number(p.shipping_cost) || 0,
+      total: Number(p.total) || 0,
+      paidAmount: Number(p.paid_amount) || 0,
+      dueAmount: Number(p.due_amount) || 0,
+      status: String(p.status || 'ordered'),
+      paymentStatus: String(p.payment_status || 'unpaid'),
+      orderDate: p.po_date ? toLocalDateString(p.po_date as string) : '—',
+      notes: (p.notes as string) ?? null,
+      paymentMethod: (p.payment_method as string) ?? null,
+      supplierId: (p.supplier_id as string) ?? null,
+      attachments: Array.isArray(p.attachments)
+        ? (p.attachments as { url?: string; name?: string }[])
+            .map((a) => ({ url: String(a?.url ?? ''), name: String(a?.name ?? 'Attachment') }))
+            .filter((a) => a.url)
+        : null,
+    },
+    error: null,
+  };
+}
+
+/** Line-item + header update (RPC). Allowed only when purchase has no payments. */
+export async function updatePurchaseWithItems(params: {
+  purchaseId: string;
+  userId: string | null;
+  supplierId?: string | null;
+  items: Array<{
+    productId: string;
+    variationId?: string | null;
+    productName: string;
+    sku?: string | null;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
+  discountAmount: number;
+  taxAmount: number;
+  shippingCost: number;
+  notes?: string | null;
+  supplierName?: string | null;
+  contactNumber?: string | null;
+  poDate?: string | null;
+}): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const p_items = params.items.map((i) => ({
+    product_id: i.productId,
+    variation_id: i.variationId ?? null,
+    product_name: i.productName,
+    sku: i.sku ?? '—',
+    quantity: i.quantity,
+    unit_price: i.unitPrice,
+    total: i.total,
+  }));
+  const { data, error } = await supabase.rpc('update_purchase_with_items', {
+    p_purchase_id: params.purchaseId,
+    p_user_id: params.userId,
+    p_items: p_items,
+    p_discount_amount: params.discountAmount,
+    p_tax_amount: params.taxAmount,
+    p_shipping_cost: params.shippingCost,
+    p_notes: params.notes ?? null,
+    p_supplier_name: params.supplierName ?? null,
+    p_contact_number: params.contactNumber ?? null,
+    p_po_date: params.poDate && params.poDate.length >= 10 ? params.poDate.slice(0, 10) : null,
+    p_supplier_id: params.supplierId ?? null,
+  });
+  if (error) return { error: error.message };
+  const row = data as { success?: boolean; error?: string } | null;
+  if (row && row.success === false) return { error: row.error || 'Update failed' };
+  // Keep mobile + web discount posting parity on edit as well.
+  const { error: delDiscountErr } = await supabase
+    .from('purchase_charges')
+    .delete()
+    .eq('purchase_id', params.purchaseId)
+    .eq('charge_type', 'discount');
+  if (delDiscountErr) {
+    console.warn('[PURCHASES API] discount charge delete failed:', delDiscountErr);
+  }
+  if ((Number(params.discountAmount) || 0) > 0) {
+    const { error: insDiscountErr } = await supabase.from('purchase_charges').insert({
+      purchase_id: params.purchaseId,
+      charge_type: 'discount',
+      amount: Number(params.discountAmount) || 0,
+      created_by: params.userId,
+    });
+    if (insDiscountErr) {
+      console.warn('[PURCHASES API] discount charge upsert failed:', insDiscountErr);
+    }
+  }
+  return { error: null };
+}
+
+export type PurchasePaymentRow = {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  referenceNo: string;
+  attachments?: { url: string; name: string }[];
+};
+
+/** Get payment history for a purchase (backend/database linked) */
+export async function getPurchasePayments(purchaseId: string): Promise<{
+  data: PurchasePaymentRow[];
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, payment_date, reference_number, amount, payment_method, attachments')
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId)
+    .is('voided_at', null)
+    .order('payment_date', { ascending: false });
+  if (error) return { data: [], error: error.message };
+  const list: PurchasePaymentRow[] = (data || []).map((p: Record<string, unknown>) => {
+    let attachments: { url: string; name: string }[] | undefined;
+    const raw = p.attachments;
+    const normalizeAttachments = (arr: unknown[]) =>
+      arr.map((a: unknown) => {
+        const o = a as Record<string, unknown>;
+        return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+      }).filter((a) => a.url);
+    if (Array.isArray(raw) && raw.length > 0) {
+      attachments = normalizeAttachments(raw);
+    } else if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) attachments = normalizeAttachments(parsed);
+      } catch {
+        // ignore malformed legacy string
+      }
+    }
+    return {
+      id: String(p.id ?? ''),
+      date: p.payment_date ? new Date(String(p.payment_date)).toLocaleDateString('en-PK') : '—',
+      amount: Number(p.amount ?? 0),
+      method: String(p.payment_method ?? '—'),
+      referenceNo: String(p.reference_number ?? '—'),
+      attachments: attachments?.length ? attachments : undefined,
+    };
+  });
+  return { data: list, error: null };
+}

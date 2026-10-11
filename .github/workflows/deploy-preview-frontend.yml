@@ -1,0 +1,199 @@
+# Preview :3002 rebuild + optional mobile cap sync on VPS (no prod erp-frontend / no migrations).
+name: Deploy preview frontend (:3002)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: recreate (image only) or rebuild (full compose build + mobile sync)
+        required: true
+        default: rebuild
+        type: choice
+        options:
+          - recreate
+          - rebuild
+      branch:
+        description: Branch to deploy
+        required: false
+        default: cursor/preview-3002-verify-runbook-e9d2
+  push:
+    branches:
+      - cursor/preview-3002-verify-runbook-e9d2
+    paths:
+      - 'src/**'
+      - 'erp-mobile-app/**'
+      - 'deploy/**'
+      - 'scripts/deploy-preview-frontend-vps.sh'
+      - '.github/workflows/deploy-preview-frontend.yml'
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"
+          if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
+          if [ -z "$KEY" ]; then
+            echo "::error::Add repository secret VPS_SSH_KEY"
+            exit 1
+          fi
+          KEYFILE="${RUNNER_TEMP}/vps_preview.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" > /dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy on VPS
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+          # Push default: recreate (fast). Manual dispatch can choose rebuild.
+          MODE: ${{ github.event.inputs.mode || 'recreate' }}
+          DEPLOY_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 72.62.254.176 >> "$KNOWN" 2>/dev/null || true
+
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=120 \
+            -p 22 \
+            root@72.62.254.176 \
+            "export MODE='${MODE}' BRANCH='${DEPLOY_BRANCH}'; bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo "[vps] mode=$MODE branch=$BRANCH"
+
+          recreate() {
+            docker image inspect erp-frontend-preview:latest >/dev/null
+            docker rm -f erp-frontend-preview 2>/dev/null || true
+            docker network create erp-preview_net 2>/dev/null || true
+            docker run -d \
+              --name erp-frontend-preview \
+              --restart unless-stopped \
+              --network erp-preview_net \
+              -p 3002:80 \
+              erp-frontend-preview:latest
+          }
+
+          sync_mobile() {
+            local ROOT="${1:-/root/NEWPOSV3}"
+            if [ ! -d "$ROOT/erp-mobile-app" ]; then
+              echo "[mobile] skip — no erp-mobile-app at $ROOT"
+              return 0
+            fi
+            cd "$ROOT/erp-mobile-app"
+            # Ensure production env points at locked API (never LAN).
+            if [ -f ../.env.production ]; then
+              ANON=$(grep -E '^VITE_SUPABASE_ANON_KEY=' ../.env.production | head -1 | cut -d= -f2- || true)
+            fi
+            if [ -z "${ANON:-}" ] && [ -f .env.production ]; then
+              ANON=$(grep -E '^VITE_SUPABASE_ANON_KEY=' .env.production | head -1 | cut -d= -f2- || true)
+            fi
+            if [ -z "${ANON:-}" ] && [ -f /root/supabase/docker/.env ]; then
+              ANON=$(grep -E '^ANON_KEY=' /root/supabase/docker/.env | head -1 | cut -d= -f2- || true)
+            fi
+            if [ -n "${ANON:-}" ]; then
+              cat > .env.production <<EOF
+          VITE_SUPABASE_URL=https://api.ndmcore.com
+          VITE_SUPABASE_ANON_KEY=${ANON}
+          VITE_TARGET=capacitor
+          EOF
+              # strip accidental leading spaces from heredoc
+              sed -i 's/^[[:space:]]*//' .env.production
+              echo "[mobile] wrote .env.production URL=https://api.ndmcore.com anon_len=${#ANON}"
+            else
+              echo "[mobile] WARN: no anon key found — skipping cap sync"
+              return 0
+            fi
+            # Strip any LAN live-reload from capacitor config if present in android assets later via sync
+            if grep -q '192\.168\.86\.235' capacitor.config.ts 2>/dev/null; then
+              echo "[mobile] ERROR: LAN IP in capacitor.config.ts"
+              return 1
+            fi
+            # Capacitor CLI needs Node >= 22; VPS host node may be older — use node:22 container.
+            docker run --rm \
+              -v "$ROOT/erp-mobile-app:/app" \
+              -w /app \
+              -e VITE_SUPABASE_URL=https://api.ndmcore.com \
+              node:22-bookworm \
+              bash -lc 'npm ci --ignore-scripts && (npm run build:mobile:prod || npm run build:mobile) && (npx cap sync android; npx cap sync)'
+            if [ -n "${ANDROID_HOME:-}" ] || [ -d /opt/android-sdk ] || [ -d "$HOME/Android/Sdk" ]; then
+              export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Android/Sdk}"
+              export PATH="$PATH:$ANDROID_HOME/platform-tools"
+              cd android && ./gradlew assembleDebug --no-daemon && cd ..
+              echo "[mobile] APK built under android/app/build/outputs/apk/debug/"
+            else
+              echo "[mobile] Android SDK not installed — cap sync done; APK deferred to workstation"
+            fi
+            # Confirm baked bundle has locked host, not LAN
+            if grep -rql '192\.168\.86\.235' dist 2>/dev/null; then
+              echo "[mobile] ERROR: LAN IP leaked into dist"
+              return 1
+            fi
+            if grep -rql 'api\.ndmcore\.com' dist 2>/dev/null; then
+              echo "[mobile] FOUND api.ndmcore.com in dist"
+            else
+              echo "[mobile] WARN: api.ndmcore.com not grepped in dist (check resolve path)"
+            fi
+          }
+
+          if [ "$MODE" = "recreate" ]; then
+            recreate
+            # Still refresh Capacitor assets on VPS trees when image is already current.
+            if [ -d /root/NEWPOSV3/.git ]; then
+              cd /root/NEWPOSV3
+              git fetch origin "$BRANCH" || true
+              git checkout -B "$BRANCH" "origin/$BRANCH" || true
+              sync_mobile /root/NEWPOSV3 || true
+            fi
+            sync_mobile /root/NEWPOSV3-preview-qa || true
+          else
+            # Full preview rebuild from branch (includes SalesPage + /m PWA)
+            export DEPLOY_DIR=/root/NEWPOSV3-preview-qa
+            export COMPOSE_PROJECT_NAME=erp-preview
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              git clone https://github.com/NDM0313/NEWPOSV3.git "$DEPLOY_DIR"
+            fi
+            cd "$DEPLOY_DIR"
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            # Run rebuild detached-friendly: script itself; keep SSH alive with ServerAlive*
+            BRANCH="$BRANCH" DEPLOY_DIR="$DEPLOY_DIR" COMPOSE_PROJECT_NAME=erp-preview \
+              bash scripts/deploy-preview-frontend-vps.sh
+
+            # Also sync main tree mobile project used for APK work
+            if [ -d /root/NEWPOSV3/.git ]; then
+              cd /root/NEWPOSV3
+              git fetch origin "$BRANCH" || true
+              git checkout -B "$BRANCH" "origin/$BRANCH" || true
+              sync_mobile /root/NEWPOSV3 || true
+            fi
+            # Sync preview-qa mobile sources used by Dockerfile /m stage (env for PWA bake is compose args)
+            sync_mobile /root/NEWPOSV3-preview-qa || true
+          fi
+
+          docker ps --filter name=erp-frontend --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'
+          echo "--- curl / ---"
+          curl -sI http://127.0.0.1:3002/ | head -5
+          echo "--- curl /m/ ---"
+          curl -sI http://127.0.0.1:3002/m/ | head -5
+          # Bundle smoke: SalesPage fix marker not needed; ensure app JS present
+          docker exec erp-frontend-preview sh -c 'ls /usr/share/nginx/html/assets/*.js | head -3'
+          echo "[vps] READY"
+          REMOTE
+
+      - name: Cleanup key
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"

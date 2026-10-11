@@ -1,0 +1,583 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, X } from 'lucide-react';
+import { getAccounts, getJournalEntryForEdit, updateJournalEntryInPlace, type JournalEntryEditRow } from '../../../../api/accounts';
+import {
+  getTransactionDetail,
+  updatePaymentTransactionInPlace,
+  canEditTransaction,
+  type TransactionDetail,
+} from '../../../../api/transactions';
+import { getPaymentAccounts } from '../../../../api/accounts';
+import { CustomSelect } from '../../../common';
+import { useSubmitLock } from '../../../../contexts/LoadingContext';
+import { SaveBlockingOverlay } from '../../../common/SaveBlockingOverlay';
+import { AttachmentFilePicker } from '../../../shared/AttachmentFilePicker';
+import { AttachmentsSection } from '../../../shared/AttachmentsSection';
+import { useAttachmentPreview } from '../../../../hooks/useAttachmentPreview';
+import {
+  appendAccountingAttachments,
+  resolveAttachmentWriteTarget,
+} from '../../../../lib/appendAccountingAttachments';
+import { loadMergedAttachmentsForJournalEntry } from '../../../../lib/loadMergedAttachments';
+import { normalizeAttachments, type NormalizedAttachment } from '../../../../lib/normalizeAttachments';
+import {
+  REPLACE_ATTACHMENT_CONFIRM_MESSAGE,
+  REPLACE_ATTACHMENT_INFO_MESSAGE,
+  resolvePolicyReferenceType,
+  usesSingleAccountingAttachmentPolicy,
+} from '../../../../lib/accountingAttachmentPolicy';
+import { POSTING_FIELD_TITLES } from '../../../../lib/accountPostingInOutLabel';
+import { DateTimeInputField } from '../../../shared/DateTimePicker';
+import { localNowDateTimeString } from '../../../../utils/localDate';
+
+interface EditTransactionSheetProps {
+  open: boolean;
+  companyId: string;
+  branchId?: string | null;
+  mode: 'payment' | 'journal';
+  targetId: string;
+  /** Already-loaded payment detail — skip a second getTransactionDetail round-trip. */
+  initialDetail?: TransactionDetail | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function toDateTimeLocalValue(datePart: string, eventTimestamp?: string | null): string {
+  const date = String(datePart || '').slice(0, 10);
+  if (!date) return localNowDateTimeString();
+  if (datePart.includes('T')) return datePart.slice(0, 16);
+  const ts = eventTimestamp ? new Date(eventTimestamp) : null;
+  if (ts && !Number.isNaN(ts.getTime())) {
+    const h = String(ts.getHours()).padStart(2, '0');
+    const m = String(ts.getMinutes()).padStart(2, '0');
+    return `${date}T${h}:${m}`;
+  }
+  return `${date}T${localNowDateTimeString().slice(11, 16)}`;
+}
+
+export function EditTransactionSheet({
+  open,
+  companyId,
+  branchId,
+  mode,
+  targetId,
+  initialDetail,
+  onClose,
+  onSaved,
+}: EditTransactionSheetProps) {
+  const [loading, setLoading] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
+  const [error, setError] = useState<string | null>(null);
+  const [attachInfo, setAttachInfo] = useState<string | null>(null);
+  const [paymentDetail, setPaymentDetail] = useState<TransactionDetail | null>(null);
+  const [journalDetail, setJournalDetail] = useState<JournalEntryEditRow | null>(null);
+  /** May upgrade payment→journal when row is a fund transfer. */
+  const [effectiveMode, setEffectiveMode] = useState<'payment' | 'journal'>(mode);
+  const [existingAttachments, setExistingAttachments] = useState<NormalizedAttachment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [singleAttachPolicy, setSingleAttachPolicy] = useState(false);
+  const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([]);
+  const [paymentAccounts, setPaymentAccounts] = useState<Array<{ id: string; name: string }>>([]);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+  const [form, setForm] = useState({
+    date: '',
+    amount: '',
+    description: '',
+    paymentMethod: 'cash',
+    paymentAccountId: '',
+    referenceNumber: '',
+    debitAccountId: '',
+    creditAccountId: '',
+    notes: '',
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setAttachInfo(null);
+    setPendingFiles([]);
+    setSingleAttachPolicy(false);
+    setEffectiveMode(mode);
+    Promise.all([getAccounts(companyId), getPaymentAccounts(companyId, { skipBalances: true })])
+      .then(async ([accRes, payRes]) => {
+        if (cancelled) return;
+        setAccounts((accRes.data || []).map((a) => ({ id: a.id, name: a.name })));
+        setPaymentAccounts((payRes.data || []).map((a) => ({ id: a.id, name: a.name })));
+        if (mode === 'payment') {
+          const reused =
+            initialDetail &&
+            (initialDetail.paymentId === targetId || initialDetail.id === targetId)
+              ? initialDetail
+              : null;
+          const res = reused
+            ? { data: reused, error: null as string | null }
+            : await getTransactionDetail(companyId, targetId);
+          if (cancelled) return;
+          if (res.error || !res.data) {
+            setError(res.error || 'Transaction not found.');
+            return;
+          }
+          const lockCheck = canEditTransaction(res.data.referenceType, 'payment_row');
+          if (!lockCheck.editable) {
+            setError(lockCheck.reason || 'This transaction is locked.');
+            return;
+          }
+          if (lockCheck.kind === 'journal') {
+            const jeId = res.data.journalEntryId;
+            if (!jeId) {
+              setError('Linked journal entry missing — cannot edit Transfer From / To.');
+              return;
+            }
+            const jeRes = await getJournalEntryForEdit(companyId, jeId);
+            if (cancelled) return;
+            if (jeRes.error || !jeRes.data) {
+              setError(jeRes.error || 'Journal entry not found.');
+              return;
+            }
+            setEffectiveMode('journal');
+            setPaymentDetail(null);
+            setJournalDetail(jeRes.data);
+            const merged = await loadMergedAttachmentsForJournalEntry(companyId, {
+              journalEntryId: jeRes.data.id,
+              rowAttachments: jeRes.data.attachments,
+              referenceType: jeRes.data.referenceType,
+              referenceId: jeRes.data.referenceId,
+              paymentId: jeRes.data.paymentId,
+            });
+            if (!cancelled) {
+              setExistingAttachments(merged);
+              const target = await resolveAttachmentWriteTarget(companyId, {
+                paymentId: jeRes.data.paymentId,
+                journalEntryId: jeRes.data.id,
+                referenceType: jeRes.data.referenceType,
+                referenceId: jeRes.data.referenceId,
+              });
+              if (target && !cancelled) {
+                const refType = await resolvePolicyReferenceType(
+                  companyId,
+                  target,
+                  jeRes.data.referenceType,
+                );
+                if (!cancelled) setSingleAttachPolicy(usesSingleAccountingAttachmentPolicy(refType));
+              }
+            }
+            setForm({
+              date: toDateTimeLocalValue(jeRes.data.entryDate || '', null),
+              amount: String(jeRes.data.amount || ''),
+              description: jeRes.data.description || '',
+              paymentMethod: 'cash',
+              paymentAccountId: '',
+              referenceNumber: '',
+              debitAccountId: jeRes.data.debitAccountId || '',
+              creditAccountId: jeRes.data.creditAccountId || '',
+              notes: '',
+            });
+            return;
+          }
+          setEffectiveMode('payment');
+          setPaymentDetail(res.data);
+          setExistingAttachments(normalizeAttachments(res.data.attachments));
+          setSingleAttachPolicy(usesSingleAccountingAttachmentPolicy(res.data.referenceType));
+          setForm({
+            date: toDateTimeLocalValue(
+              res.data.paymentDate ? String(res.data.paymentDate) : '',
+              res.data.createdAt,
+            ),
+            amount: String(res.data.amount || ''),
+            description: '',
+            paymentMethod: res.data.method || 'cash',
+            paymentAccountId: res.data.paymentAccountId || '',
+            referenceNumber: res.data.referenceNumber || '',
+            debitAccountId: '',
+            creditAccountId: '',
+            notes: res.data.notes || '',
+          });
+        } else {
+          const res = await getJournalEntryForEdit(companyId, targetId);
+          if (cancelled) return;
+          if (res.error || !res.data) {
+            setError(res.error || 'Journal entry not found.');
+            return;
+          }
+          const lockCheck = canEditTransaction(res.data.referenceType, 'journal_entry');
+          if (!lockCheck.editable) {
+            setError(lockCheck.reason || 'This transaction is locked.');
+            return;
+          }
+          setEffectiveMode('journal');
+          setJournalDetail(res.data);
+          const merged = await loadMergedAttachmentsForJournalEntry(companyId, {
+            journalEntryId: res.data.id,
+            rowAttachments: res.data.attachments,
+            referenceType: res.data.referenceType,
+            referenceId: res.data.referenceId,
+            paymentId: res.data.paymentId,
+          });
+          if (!cancelled) {
+            setExistingAttachments(merged);
+            const target = await resolveAttachmentWriteTarget(companyId, {
+              paymentId: res.data.paymentId,
+              journalEntryId: res.data.id,
+              referenceType: res.data.referenceType,
+              referenceId: res.data.referenceId,
+            });
+            if (target && !cancelled) {
+              const refType = await resolvePolicyReferenceType(
+                companyId,
+                target,
+                res.data.referenceType,
+              );
+              if (!cancelled) setSingleAttachPolicy(usesSingleAccountingAttachmentPolicy(refType));
+            }
+          }
+          setForm({
+            date: toDateTimeLocalValue(res.data.entryDate || '', null),
+            amount: String(res.data.amount || ''),
+            description: res.data.description || '',
+            paymentMethod: 'cash',
+            paymentAccountId: '',
+            referenceNumber: '',
+            debitAccountId: res.data.debitAccountId || '',
+            creditAccountId: res.data.creditAccountId || '',
+            notes: '',
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, initialDetail, mode, open, targetId]);
+
+  const refTypeLower = String(journalDetail?.referenceType || '').toLowerCase();
+  const showFromTo =
+    effectiveMode === 'journal' &&
+    ['transfer', 'expense', 'expense_payment', 'general', 'journal', 'manual'].includes(
+      refTypeLower,
+    );
+  const isTransferEdit = showFromTo && refTypeLower === 'transfer';
+
+  const journalAccountOptions = useMemo(() => {
+    if (isTransferEdit && paymentAccounts.length > 0) {
+      const byId = new Map(paymentAccounts.map((a) => [a.id, a]));
+      for (const id of [form.debitAccountId, form.creditAccountId]) {
+        if (id && !byId.has(id)) {
+          const fallback = accounts.find((a) => a.id === id);
+          if (fallback) byId.set(id, fallback);
+        }
+      }
+      return Array.from(byId.values());
+    }
+    return accounts;
+  }, [
+    isTransferEdit,
+    paymentAccounts,
+    accounts,
+    form.debitAccountId,
+    form.creditAccountId,
+  ]);
+
+  const canSave = useMemo(() => {
+    const amount = Number(form.amount || 0);
+    if (amount <= 0 || !form.date) return false;
+    if (effectiveMode === 'payment') return !!form.paymentAccountId;
+    return !!form.debitAccountId && !!form.creditAccountId && form.debitAccountId !== form.creditAccountId;
+  }, [form.amount, form.date, form.paymentAccountId, form.debitAccountId, form.creditAccountId, effectiveMode]);
+
+  const onSubmit = async () => {
+    await runSave('Saving changes...', async () => {
+      setError(null);
+      setAttachInfo(null);
+      if (effectiveMode === 'payment' && paymentDetail) {
+        const res = await updatePaymentTransactionInPlace({
+          companyId,
+          paymentId: paymentDetail.paymentId,
+          amount: Number(form.amount || 0),
+          paymentDate: form.date.slice(0, 10),
+          paymentAccountId: form.paymentAccountId,
+          paymentMethod: form.paymentMethod,
+          referenceNumber: form.referenceNumber || null,
+          notes: form.notes || null,
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+      }
+      if (effectiveMode === 'journal' && journalDetail) {
+        const res = await updateJournalEntryInPlace({
+          companyId,
+          journalEntryId: journalDetail.id,
+          entryDate: form.date.slice(0, 10),
+          description: form.description || journalDetail.description || 'Entry update',
+          debitAccountId: form.debitAccountId,
+          creditAccountId: form.creditAccountId,
+          amount: Number(form.amount || 0),
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+      }
+
+      if (pendingFiles.length > 0) {
+        if (singleAttachPolicy && existingAttachments.length > 0) {
+          if (!window.confirm(REPLACE_ATTACHMENT_CONFIRM_MESSAGE)) {
+            return;
+          }
+        }
+        const target = await resolveAttachmentWriteTarget(companyId, {
+          paymentId:
+            effectiveMode === 'payment'
+              ? paymentDetail?.paymentId
+              : journalDetail?.paymentId,
+          journalEntryId: effectiveMode === 'journal' ? journalDetail?.id : paymentDetail?.journalEntryId,
+          referenceType:
+            effectiveMode === 'payment' ? paymentDetail?.referenceType : journalDetail?.referenceType,
+          referenceId:
+            effectiveMode === 'payment' ? paymentDetail?.referenceId : journalDetail?.referenceId,
+        });
+        if (!target) {
+          setError('Could not save attachments for this entry.');
+          return;
+        }
+        const attachRes = await appendAccountingAttachments(companyId, target, pendingFiles, {
+          branchId,
+          referenceType:
+            effectiveMode === 'payment' ? paymentDetail?.referenceType : journalDetail?.referenceType,
+        });
+        if (!attachRes.ok) {
+          setError(attachRes.error || 'Attachment upload failed.');
+          return;
+        }
+        if (attachRes.warning) setAttachInfo(attachRes.warning);
+      }
+
+      onSaved();
+      onClose();
+    });
+  };
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
+        onClick={saving ? undefined : onClose}
+      >
+        <div
+          className="relative w-full sm:max-w-lg bg-[#1F2937] sm:rounded-xl rounded-t-2xl border border-[#374151] max-h-[90vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <SaveBlockingOverlay active={saving} label="Saving changes..." />
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151]">
+            <h3 className="text-sm font-semibold text-white">
+              {isTransferEdit ? 'Edit Fund Transfer' : 'Edit Transaction'}
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF] disabled:opacity-50"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {loading && (
+              <div className="py-8 flex items-center justify-center text-[#9CA3AF]">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+            )}
+            {error && !loading && (
+              <div className="p-3 rounded-lg bg-[#EF4444]/20 border border-[#EF4444] text-[#FCA5A5] text-sm">
+                {error}
+              </div>
+            )}
+            {attachInfo && !loading && (
+              <div className="p-3 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-100 text-sm">
+                {attachInfo}
+              </div>
+            )}
+            {!loading && !error && (
+              <>
+                <DateTimeInputField
+                  label="Date"
+                  value={
+                    form.date.includes('T')
+                      ? form.date
+                      : form.date
+                        ? `${form.date}T${localNowDateTimeString().slice(11, 16)}`
+                        : localNowDateTimeString()
+                  }
+                  onChange={(date) => setForm((s) => ({ ...s, date }))}
+                />
+                <label className="block text-xs text-[#9CA3AF]">Amount</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
+                  value={form.amount}
+                  onChange={(e) => setForm((s) => ({ ...s, amount: e.target.value }))}
+                  className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                />
+
+                {effectiveMode === 'payment' && (
+                  <>
+                    <CustomSelect
+                      label="Payment Account"
+                      value={form.paymentAccountId}
+                      onChange={(v) => setForm((s) => ({ ...s, paymentAccountId: v }))}
+                      options={[
+                        { value: '', label: 'Select account' },
+                        ...paymentAccounts.map((a) => ({ value: a.id, label: a.name })),
+                      ]}
+                      disabled={saving}
+                      zIndexClass="z-[100]"
+                    />
+                    <CustomSelect
+                      label="Payment Method"
+                      value={form.paymentMethod}
+                      onChange={(v) => setForm((s) => ({ ...s, paymentMethod: v }))}
+                      options={[
+                        { value: 'cash', label: 'Cash' },
+                        { value: 'bank', label: 'Bank' },
+                        { value: 'card', label: 'Card' },
+                        { value: 'other', label: 'Other' },
+                      ]}
+                      disabled={saving}
+                      zIndexClass="z-[100]"
+                    />
+                    <label className="block text-xs text-[#9CA3AF]">Reference #</label>
+                    <input
+                      type="text"
+                      value={form.referenceNumber}
+                      onChange={(e) => setForm((s) => ({ ...s, referenceNumber: e.target.value }))}
+                      className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                    />
+                    <label className="block text-xs text-[#9CA3AF]">Notes</label>
+                    <textarea
+                      rows={3}
+                      value={form.notes}
+                      onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+                      className="w-full rounded bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm"
+                    />
+                  </>
+                )}
+
+                {effectiveMode === 'journal' && (
+                  <>
+                    {showFromTo ? (
+                      <>
+                        <CustomSelect
+                          label={
+                            isTransferEdit ? POSTING_FIELD_TITLES.transferFrom : 'From account'
+                          }
+                          value={form.creditAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select from account' },
+                            ...journalAccountOptions.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                        <CustomSelect
+                          label={isTransferEdit ? POSTING_FIELD_TITLES.transferTo : 'To account'}
+                          value={form.debitAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select to account' },
+                            ...journalAccountOptions.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <CustomSelect
+                          label={POSTING_FIELD_TITLES.journalDebit}
+                          value={form.debitAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select debit account' },
+                            ...accounts.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                        <CustomSelect
+                          label={POSTING_FIELD_TITLES.journalCredit}
+                          value={form.creditAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select credit account' },
+                            ...accounts.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                      </>
+                    )}
+                    <label className="block text-xs text-[#9CA3AF]">Description</label>
+                    <textarea
+                      rows={3}
+                      value={form.description}
+                      onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+                      className="w-full rounded bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm"
+                    />
+                  </>
+                )}
+
+                {existingAttachments.length > 0 ? (
+                  <AttachmentsSection
+                    title={singleAttachPolicy ? 'Current attachment' : 'Current attachments'}
+                    items={existingAttachments}
+                    onOpenPreview={openAttachmentPreview}
+                  />
+                ) : null}
+
+                {singleAttachPolicy && existingAttachments.length > 0 ? (
+                  <div className="p-3 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-100 text-sm">
+                    {REPLACE_ATTACHMENT_INFO_MESSAGE}
+                  </div>
+                ) : null}
+
+                <AttachmentFilePicker
+                  files={pendingFiles}
+                  onChange={setPendingFiles}
+                  onError={setError}
+                  onInfo={setAttachInfo}
+                  maxFiles={singleAttachPolicy ? 1 : undefined}
+                  label={singleAttachPolicy ? 'Add attachment' : 'Add attachments'}
+                  description={
+                    singleAttachPolicy
+                      ? 'One file per receipt · saved when you tap Save Changes'
+                      : 'Camera or gallery · saved when you tap Save Changes'
+                  }
+                />
+              </>
+            )}
+          </div>
+          <div className="p-4 border-t border-[#374151]">
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={!canSave || saving || loading}
+              className="w-full h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+      {AttachmentPreviewPortal}
+    </>
+  );
+}

@@ -1,0 +1,706 @@
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  ArrowLeft,
+  Package,
+  Plus,
+  Search,
+  Loader2,
+  Edit2,
+  Boxes,
+  AlertTriangle,
+  TrendingUp,
+  Printer,
+  CheckSquare,
+  Square,
+} from 'lucide-react';
+import type { User } from '../../types';
+import * as productsApi from '../../api/products';
+import type { ProductVariationRow } from '../../api/products';
+import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
+import { ProductImage } from './ProductImage';
+import { primaryImageUrl } from '../../utils/productImageUpload';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { BarcodeLabelPrintSheet } from './BarcodeLabelPrintSheet';
+import { ProductImagePreviewSheet } from './ProductImagePreviewSheet';
+import { ProductDetailSheet } from './ProductDetailSheet';
+import { linesFromProducts } from '../../lib/barcodeLabelLines';
+import type { LabelPrintLine } from '../../services/barcodeLabelPrint';
+import * as settingsApi from '../../api/settings';
+import { PullToRefresh, OfflineBanner } from '../common';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import { formatQty } from '../../utils/quantity';
+import { getCompanyName } from '../../api/reports';
+import * as branchesApi from '../../api/branches';
+import { useSubmitLock } from '../../contexts/LoadingContext';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { prepareMobileProductDuplicateSeed } from '../../utils/productDuplicateUtils';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
+
+/** Total stock: sum of variation stocks when hasVariations, else product stock */
+function getDisplayStock(p: productsApi.Product): number {
+  if (p.hasVariations && p.variations?.length) {
+    return p.variations.reduce((s, v) => s + (v.stock ?? 0), 0);
+  }
+  return p.stock ?? 0;
+}
+
+/** Variation summary: "Size: S, M, L · Color: Red, Blue" or "3 variations" */
+function getVariationSummary(variations: ProductVariationRow[]): string {
+  if (!variations?.length) return '';
+  const attrMap: Record<string, Set<string>> = {};
+  for (const v of variations) {
+    for (const [key, val] of Object.entries(v.attributes || {})) {
+      if (!key || val == null) continue;
+      if (!attrMap[key]) attrMap[key] = new Set();
+      attrMap[key].add(String(val));
+    }
+  }
+  const parts = Object.entries(attrMap).map(([k, set]) => `${k}: ${[...set].sort().join(', ')}`);
+  return parts.length > 0 ? parts.join(' · ') : `${variations.length} variations`;
+}
+
+interface ProductsModuleProps {
+  onBack: () => void;
+  user: User;
+  companyId: string | null;
+  branchId?: string | null;
+}
+
+export type Product = productsApi.Product;
+
+export function ProductsModule({ onBack, user: _user, companyId, branchId }: ProductsModuleProps) {
+  const effectiveUserId = useEffectiveWorkerId(_user.id);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(!!companyId);
+  const [search, setSearch] = useState('');
+  const [filterCat, setFilterCat] = useState<string>('all');
+  const [view, setView] = useState<'list' | 'add'>('list');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [duplicateFromProduct, setDuplicateFromProduct] = useState<Product | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const { run: runSave, busy: saving } = useSubmitLock();
+  const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [labelSheetOpen, setLabelSheetOpen] = useState(false);
+  const [labelSheetLines, setLabelSheetLines] = useState<LabelPrintLine[]>([]);
+  const [printerSettings, setPrinterSettings] = useState<settingsApi.MobilePrinterSettings>({
+    mode: 'a4',
+    paperSize: '80mm',
+    autoPrintReceipt: false,
+  });
+  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>(
+    settingsApi.DEFAULT_BARCODE_LABEL,
+  );
+  const [labelCompanyName, setLabelCompanyName] = useState('');
+  const [labelBranchName, setLabelBranchName] = useState('');
+  const [imagePreviewProduct, setImagePreviewProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
+
+  useEffect(() => {
+    if (view === 'add') setLabelSheetOpen(false);
+  }, [view]);
+
+  const handleModuleBack = useCallback(() => {
+    setLabelSheetOpen(false);
+    onBack();
+  }, [onBack]);
+
+  const loadProducts = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId) {
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      const { data, error } = await productsApi.getProducts(companyId, { branchId: branchId ?? null });
+      setLoading(false);
+      setProducts(error ? [] : data || []);
+    },
+    [companyId, branchId]
+  );
+
+  const openEditProduct = useCallback(
+    async (p: Product) => {
+      if (!companyId) return;
+      setDetailProduct(null);
+      setDuplicateFromProduct(null);
+      setEditLoadingId(p.id);
+      const { data, error } = await productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null });
+      setEditLoadingId(null);
+      if (error || !data) {
+        setSaveError(error || 'Could not load product.');
+        return;
+      }
+      setSaveError('');
+      setEditingProduct(data);
+      setView('add');
+    },
+    [companyId, branchId],
+  );
+
+  const openDuplicateProduct = useCallback(
+    async (p: Product) => {
+      if (!companyId) return;
+      setDetailProduct(null);
+      setEditingProduct(null);
+      setEditLoadingId(p.id);
+      const [{ data, error }, skuRes] = await Promise.all([
+        productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null }),
+        productsApi.getNextProductSKU(companyId, branchId ?? null),
+      ]);
+      setEditLoadingId(null);
+      if (error || !data) {
+        setSaveError(error || 'Could not load product to duplicate.');
+        return;
+      }
+      setSaveError('');
+      setDuplicateFromProduct(prepareMobileProductDuplicateSeed(data, skuRes || data.sku));
+      setView('add');
+    },
+    [companyId, branchId],
+  );
+
+  useEffect(() => {
+    void loadProducts();
+  }, [loadProducts]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    settingsApi.getEffectivePrinterSettings(companyId).then(({ data }) => setPrinterSettings(data));
+    settingsApi.getMobileBarcodeLabelSettings(companyId).then(({ data }) => setLabelSettings(data));
+    void getCompanyName(companyId).then(setLabelCompanyName);
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId || !branchId || branchId === 'all') {
+      setLabelBranchName('');
+      return;
+    }
+    void branchesApi.getBranches(companyId).then(({ data }) => {
+      const name = data?.find((b) => b.id === branchId)?.name;
+      setLabelBranchName(name ?? '');
+    });
+  }, [companyId, branchId]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim();
+    const byCat = products.filter((p) => filterCat === 'all' || p.category === filterCat);
+    if (!term) return byCat;
+    return filterAndRankProducts(byCat, term, productMatchesSearch);
+  }, [products, search, filterCat]);
+
+  const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
+
+  const openLabelSheet = useCallback(
+    (items: Product[]) => {
+      setLabelSheetLines(linesFromProducts(items, labelSettings));
+      setLabelSheetOpen(true);
+    },
+    [labelSettings],
+  );
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkPrintLabels = () => {
+    const items = filtered.filter((p) => selectedIds.has(p.id));
+    if (items.length === 0) return;
+    openLabelSheet(items);
+  };
+
+  const mergeSavedProduct = (prev: Product, saved: Product): Product => ({
+    ...prev,
+    ...saved,
+    imageUrls: Array.isArray(saved.imageUrls) ? saved.imageUrls : prev.imageUrls,
+  });
+
+  const handleAddEditSave = async (payload: AddProductFlowSavePayload) => {
+    if (!companyId) return;
+    const label = payload.id ? 'Updating product...' : 'Saving product...';
+    await runSave(label, async () => {
+    setSaveError('');
+    const hadNewImages = (payload.imageFiles?.length ?? 0) > 0;
+    if (payload.id) {
+      const { data, error } = await productsApi.updateProduct(
+        companyId,
+        payload.id,
+        {
+        name: payload.name,
+        sku: payload.sku,
+        category: payload.category,
+        categoryId: payload.categoryId,
+        brandId: payload.brandId,
+        unitId: payload.unitId,
+        description: payload.description,
+        barcode: payload.barcode,
+        costPrice: payload.costPrice,
+        retailPrice: payload.retailPrice,
+        wholesalePrice: payload.wholesalePrice,
+        stock: payload.stock,
+        minStock: payload.minStock,
+        unit: payload.unit,
+        status: payload.status,
+        imageFiles: payload.imageFiles,
+        existingImageUrls: payload.existingImageUrls,
+        isCombo: payload.isCombo,
+        comboItems: payload.comboItems,
+        branchIds: payload.branchIds,
+        },
+        { branchId: branchId ?? null },
+      );
+      await productsApi.invalidateProductsListCache(companyId);
+      if (error) {
+        setSaveError(error);
+        if (data) {
+          setProducts(products.map((p) => (p.id === payload.id ? mergeSavedProduct(p, data) : p)));
+        }
+        void loadProducts({ silent: true });
+        return;
+      }
+      if (data) {
+        setProducts(products.map((p) => (p.id === payload.id ? mergeSavedProduct(p, data) : p)));
+      }
+      void loadProducts({ silent: true });
+    } else {
+      const { data, error } = await productsApi.createProduct(companyId, {
+        name: payload.name,
+        sku: payload.sku,
+        category: payload.category,
+        categoryId: payload.categoryId,
+        brandId: payload.brandId,
+        unitId: payload.unitId,
+        description: payload.description,
+        barcode: payload.barcode,
+        costPrice: payload.costPrice,
+        retailPrice: payload.retailPrice,
+        wholesalePrice: payload.wholesalePrice,
+        stock: payload.stock,
+        minStock: payload.minStock,
+        unit: payload.unit,
+        status: payload.status,
+        hasVariations: payload.hasVariations,
+        variations: payload.variations,
+        imageFiles: payload.imageFiles,
+        isCombo: payload.isCombo,
+        comboItems: payload.comboItems,
+        branchIds: payload.branchIds,
+      });
+      if (hadNewImages) await productsApi.invalidateProductsListCache(companyId);
+      if (error) {
+        setSaveError(error);
+        if (data) setProducts([data, ...products]);
+        return;
+      }
+      if (data) {
+        setProducts([data, ...products]);
+        setConfirmationData({
+          type: 'product',
+          title: 'Product Added Successfully',
+          transactionNo: null,
+          amount: null,
+          partyName: null,
+          date: new Date().toISOString(),
+          branch: undefined,
+          entityId: data.id,
+        });
+        return;
+      }
+    }
+    setView('list');
+    setEditingProduct(null);
+    setDuplicateFromProduct(null);
+    });
+  };
+
+  const stats = useMemo(() => {
+    const totalProducts = products.length;
+    let totalStock = 0;
+    let lowStock = 0;
+    let stockValue = 0;
+    for (const p of products) {
+      const s = getDisplayStock(p);
+      totalStock += s;
+      stockValue += s * (p.costPrice || 0);
+      if (p.minStock != null && s <= (p.minStock ?? 0)) lowStock += 1;
+    }
+    return { totalProducts, totalStock, lowStock, stockValue };
+  }, [products]);
+
+  if (view === 'add') {
+    return (
+      <>
+        <AddProductFlow
+          companyId={companyId}
+          branchId={branchId ?? null}
+          sessionUserId={effectiveUserId}
+          onClose={() => {
+            setView('list');
+            setEditingProduct(null);
+            setDuplicateFromProduct(null);
+          }}
+          onSave={handleAddEditSave}
+          product={editingProduct}
+          duplicateFrom={duplicateFromProduct}
+          saving={saving}
+          error={saveError}
+        />
+        {confirmationData && (
+          <TransactionSuccessModal
+            isOpen={!!confirmationData}
+            data={confirmationData}
+            onClose={() => {
+              setConfirmationData(null);
+              setView('list');
+              setEditingProduct(null);
+              setDuplicateFromProduct(null);
+            }}
+            onOk={() => {
+              setConfirmationData(null);
+              setView('list');
+              setEditingProduct(null);
+              setDuplicateFromProduct(null);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0B1120] pb-24">
+      <OfflineBanner online={online} pendingCount={pendingCount} />
+      {/* Gradient header */}
+      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#1E40AF] to-[#3B82F6] sticky top-0 z-40 flow-screen-header shadow-lg">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-3">
+            <button onClick={handleModuleBack} className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="w-9 h-9 bg-white/20 backdrop-blur rounded-lg flex items-center justify-center">
+              <Package size={18} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-white font-semibold text-base leading-tight">Products</h1>
+              <p className="text-[11px] text-white/70 leading-tight">{stats.totalProducts} items</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectMode) exitSelectMode();
+                else setSelectMode(true);
+              }}
+              className={`flex items-center gap-1 px-2.5 h-9 rounded-lg text-sm font-medium ${
+                selectMode ? 'bg-white text-[#1E40AF]' : 'bg-white/15 text-white hover:bg-white/25'
+              }`}
+            >
+              {selectMode ? <CheckSquare size={16} /> : <Square size={16} />}
+              {selectMode ? 'Done' : 'Select'}
+            </button>
+            {!selectMode && (
+              <button
+                onClick={() => {
+                  setEditingProduct(null);
+                  setDuplicateFromProduct(null);
+                  setView('add');
+                }}
+                className="flex items-center gap-1.5 px-3 h-9 bg-white text-[#1E40AF] rounded-lg font-semibold shadow-md hover:bg-white/95"
+              >
+                <Plus size={16} />
+                <span className="text-sm">New</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* KPI row inside gradient */}
+        <div className="px-4 pb-4 pt-1 grid grid-cols-3 gap-2">
+          <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-2.5">
+            <div className="flex items-center gap-1.5 text-white/80 text-[10px] uppercase tracking-wider">
+              <Boxes size={11} /> Stock
+            </div>
+            <p className="text-white text-base font-bold leading-tight mt-1">{formatQty(stats.totalStock)}</p>
+          </div>
+          <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-2.5">
+            <div className="flex items-center gap-1.5 text-white/80 text-[10px] uppercase tracking-wider">
+              <TrendingUp size={11} /> Value
+            </div>
+            <p className="text-white text-base font-bold leading-tight mt-1">
+              Rs. {stats.stockValue >= 1000 ? `${(stats.stockValue / 1000).toFixed(1)}k` : stats.stockValue.toFixed(0)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-2.5">
+            <div className="flex items-center gap-1.5 text-white/80 text-[10px] uppercase tracking-wider">
+              <AlertTriangle size={11} /> Low
+            </div>
+            <p className="text-white text-base font-bold leading-tight mt-1">{stats.lowStock}</p>
+          </div>
+        </div>
+      </div>
+
+      <PullToRefresh
+        onRefresh={() => loadProducts({ silent: true })}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#3B82F6]"
+      >
+        <div className="p-4">
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
+          </div>
+        ) : (
+          <>
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or SKU..."
+                className="w-full h-11 bg-[#1F2937] border border-[#374151] rounded-lg pl-10 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-4 px-4 scrollbar-hide">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setFilterCat(cat)}
+                  className={`flex-shrink-0 px-4 h-9 rounded-full text-xs font-medium capitalize transition-colors ${
+                    filterCat === cat
+                      ? 'bg-[#3B82F6] text-white shadow'
+                      : 'bg-[#1F2937] text-[#9CA3AF] border border-[#374151] hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-2.5">
+              {filtered.map((p) => {
+                const displayStock = getDisplayStock(p);
+                const variationSummary = p.hasVariations && p.variations?.length ? getVariationSummary(p.variations) : '';
+                const prices = p.variations?.map((v) => v.price).filter((n) => typeof n === 'number') ?? [];
+                const priceMin = prices.length ? Math.min(...prices) : p.retailPrice;
+                const priceMax = prices.length ? Math.max(...prices) : p.retailPrice;
+                const priceLabel =
+                  priceMin !== priceMax
+                    ? `Rs. ${priceMin.toLocaleString()} – ${priceMax.toLocaleString()}`
+                    : `Rs. ${p.retailPrice.toLocaleString()}`;
+                const thumb = primaryImageUrl(p.imageUrls);
+                const isLow = p.minStock != null && displayStock <= (p.minStock ?? 0);
+
+                const isSelected = selectedIds.has(p.id);
+
+                return (
+                  <div
+                    key={p.id}
+                    className={`bg-[#1F2937] border rounded-xl p-3 transition-all ${
+                      isSelected ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40' : 'border-[#374151] hover:border-[#3B82F6]/50'
+                    }`}
+                  >
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (selectMode) toggleSelected(p.id);
+                      else {
+                        setDetailProduct(p);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (selectMode) toggleSelected(p.id);
+                        else setDetailProduct(p);
+                      }
+                    }}
+                    className="w-full text-left active:scale-[0.99] cursor-pointer"
+                  >
+                    <div className="flex items-start gap-3">
+                      {selectMode && (
+                        <div className="pt-4 shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelected(p.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4"
+                          />
+                        </div>
+                      )}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setImagePreviewProduct(p);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setImagePreviewProduct(p);
+                          }
+                        }}
+                        className={`w-14 h-14 rounded-lg bg-[#111827] border overflow-hidden flex items-center justify-center flex-shrink-0 ${
+                          thumb
+                            ? 'border-[#374151] ring-1 ring-emerald-500/40'
+                            : 'border-[#374151] border-dashed'
+                        }`}
+                        aria-label={`View image for ${p.name}`}
+                      >
+                        <ProductImage src={thumb} alt={p.name} variant="thumb" deferUntilVisible />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-medium text-white text-sm leading-tight truncate">{p.name}</h3>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                              p.status === 'active' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#6B7280]/20 text-[#9CA3AF]'
+                            }`}
+                          >
+                            {p.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#6B7280] mt-0.5 truncate">
+                          {p.sku} · {p.category}
+                        </p>
+                        {variationSummary ? (
+                          <p className="text-[11px] text-[#9CA3AF] mt-0.5 truncate" title={variationSummary}>
+                            {variationSummary}
+                          </p>
+                        ) : null}
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-sm text-[#10B981] font-semibold">
+                            {priceLabel}
+                            <span className="text-[#6B7280] font-normal text-xs"> / {p.unit}</span>
+                          </p>
+                          <p
+                            className={`text-xs font-medium px-2 py-0.5 rounded ${
+                              isLow ? 'bg-[#EF4444]/20 text-[#F87171]' : 'bg-[#111827] text-white/80'
+                            }`}
+                          >
+                            {formatQty(displayStock)} in stock
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openEditProduct(p);
+                        }}
+                        className="p-1.5 -m-1 text-[#6B7280] hover:text-[#3B82F6] flex-shrink-0"
+                        aria-label={`Edit ${p.name}`}
+                        disabled={editLoadingId === p.id}
+                      >
+                        {editLoadingId === p.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Edit2 size={14} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  {!selectMode && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openLabelSheet([p]);
+                      }}
+                      className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-[#374151] text-[#9CA3AF] hover:text-white hover:border-[#3B82F6]/50 text-xs font-medium"
+                    >
+                      <Printer size={14} />
+                      Print labels
+                    </button>
+                  )}
+                  </div>
+                );
+              })}
+            </div>
+            {filtered.length === 0 && (
+              <div className="text-center py-12">
+                <Package size={40} className="mx-auto text-[#4B5563] mb-2" />
+                <p className="text-[#6B7280]">No products found</p>
+              </div>
+            )}
+          </>
+        )}
+        </div>
+      </PullToRefresh>
+
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-20 left-4 right-4 z-50">
+          <button
+            type="button"
+            onClick={handleBulkPrintLabels}
+            className="w-full py-3.5 rounded-xl bg-[#3B82F6] text-white font-semibold shadow-lg flex items-center justify-center gap-2"
+          >
+            <Printer className="w-5 h-5" />
+            Print labels ({selectedIds.size})
+          </button>
+        </div>
+      )}
+
+      <ProductDetailSheet
+        open={!!detailProduct}
+        product={detailProduct}
+        displayStock={detailProduct ? getDisplayStock(detailProduct) : 0}
+        onClose={() => setDetailProduct(null)}
+        onEdit={(p) => void openEditProduct(p)}
+        onDuplicate={(p) => void openDuplicateProduct(p)}
+        onPhoto={(p) => {
+          setDetailProduct(null);
+          setImagePreviewProduct(p);
+        }}
+      />
+
+      <ProductImagePreviewSheet
+        open={!!imagePreviewProduct}
+        product={imagePreviewProduct}
+        companyId={companyId}
+        onClose={() => setImagePreviewProduct(null)}
+        onUpdated={(updated) => {
+          setProducts((prev) =>
+            prev.map((x) => (x.id === updated.id ? mergeSavedProduct(x, updated) : x)),
+          );
+          setImagePreviewProduct((prev) =>
+            prev && prev.id === updated.id ? mergeSavedProduct(prev, updated) : updated,
+          );
+        }}
+      />
+
+      <BarcodeLabelPrintSheet
+        open={labelSheetOpen}
+        onClose={() => setLabelSheetOpen(false)}
+        title="Print barcode labels"
+        lines={labelSheetLines}
+        labelSettings={labelSettings}
+        printerSettings={printerSettings}
+        companyName={labelCompanyName}
+        branchName={labelBranchName}
+      />
+    </div>
+  );
+}
