@@ -1,0 +1,107 @@
+# Staging Supabase Kong + Studio + ERP preview (isolated from production)
+# Hosts:
+#   api-stage.ndmcore.com  → stage Kong
+#   db-stage.ndmcore.com   → stage Studio
+#   erp-stage.ndmcore.com  → erp-frontend-preview (:3002 / container :80)
+#
+# Requires:
+#   - dokploy-traefik attached to stage-supabase-net AND erp-preview_net
+#   - Studio host publish 3010→3000; Traefik uses stage-supabase-studio:3000
+#   - Preview published as erp-frontend-preview on erp-preview_net (host 127.0.0.1:3002→80)
+http:
+  middlewares:
+    stage-studio-storage-policy:
+      headers:
+        customResponseHeaders:
+          Permissions-Policy: "storage-access=(self)"
+    stage-supabase-cors:
+      headers:
+        accessControlAllowOriginList:
+          - "http://localhost:3002"
+          - "http://127.0.0.1:3002"
+          - "http://localhost:5173"
+          - "http://localhost:5174"
+          - "https://api-stage.ndmcore.com"
+          - "https://db-stage.ndmcore.com"
+          - "https://erp-stage.ndmcore.com"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+          - PUT
+          - PATCH
+          - DELETE
+        accessControlAllowHeaders:
+          - "*"
+        accessControlAllowCredentials: true
+        accessControlMaxAge: 86400
+        addVaryHeader: true
+    stage-redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+  routers:
+    api-stage-ndmcore:
+      rule: Host(`api-stage.ndmcore.com`)
+      service: stage-supabase-kong
+      middlewares:
+        - stage-supabase-cors
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    api-stage-ndmcore-http:
+      rule: Host(`api-stage.ndmcore.com`)
+      middlewares:
+        - stage-redirect-https
+      service: stage-supabase-kong
+      entryPoints:
+        - web
+    db-stage-ndmcore:
+      rule: Host(`db-stage.ndmcore.com`)
+      service: stage-supabase-studio
+      middlewares:
+        - stage-studio-storage-policy
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    db-stage-ndmcore-http:
+      rule: Host(`db-stage.ndmcore.com`)
+      middlewares:
+        - stage-redirect-https
+      service: stage-supabase-studio
+      entryPoints:
+        - web
+    erp-stage-ndmcore:
+      rule: Host(`erp-stage.ndmcore.com`)
+      service: stage-erp-frontend-preview
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    erp-stage-ndmcore-http:
+      rule: Host(`erp-stage.ndmcore.com`)
+      middlewares:
+        - stage-redirect-https
+      service: stage-erp-frontend-preview
+      entryPoints:
+        - web
+  services:
+    stage-supabase-kong:
+      loadBalancer:
+        servers:
+          - url: http://stage-supabase-kong:8000
+        passHostHeader: true
+    stage-supabase-studio:
+      loadBalancer:
+        servers:
+          - url: http://stage-supabase-studio:3000
+        passHostHeader: true
+    # Preview container (host bind 127.0.0.1:3002→80). Traefik reaches it via Docker DNS
+    # on erp-preview_net — NOT via 127.0.0.1 inside the Traefik container.
+    stage-erp-frontend-preview:
+      loadBalancer:
+        servers:
+          - url: http://erp-frontend-preview:80
+        passHostHeader: true

@@ -1,0 +1,117 @@
+# Wire https://erp-stage.ndmcore.com → erp-frontend-preview (:3002 staging).
+# Does not touch production ERP :3001 or production Supabase.
+name: Wire erp-stage.ndmcore.com
+
+on:
+  push:
+    branches:
+      - cursor/erp-stage-pwa-e9d2
+    paths:
+      - 'deploy/supabase-stage-traefik.yml'
+      - 'deploy/erp-stage-traefik.yml'
+      - 'scripts/wire-erp-stage-vps.sh'
+      - '.github/workflows/wire-erp-stage.yml'
+  workflow_dispatch:
+
+jobs:
+  wire-erp-stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"; [ -z "$KEY" ] && KEY="${VPS_KEY_ALT:-}"
+          [ -n "$KEY" ] || { echo "::error::VPS_SSH_KEY missing"; exit 1; }
+          KEYFILE="${RUNNER_TEMP}/wire-erp-stage.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" >/dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Wire erp-stage on VPS
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+        run: |
+          set -euo pipefail
+          HOST=72.62.254.176
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 "$HOST" >> "$KNOWN" 2>/dev/null || true
+
+          ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 \
+            root@"$HOST" "mkdir -p /root/NEWPOSV3/scripts /root/NEWPOSV3/deploy"
+
+          scp -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            scripts/wire-erp-stage-vps.sh \
+            root@"$HOST":/root/NEWPOSV3/scripts/wire-erp-stage-vps.sh
+
+          scp -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            deploy/supabase-stage-traefik.yml deploy/erp-stage-traefik.yml \
+            root@"$HOST":/root/NEWPOSV3/deploy/
+
+          ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 \
+            -o ServerAliveInterval=20 -o ServerAliveCountMax=10 \
+            root@"$HOST" \
+            "chmod +x /root/NEWPOSV3/scripts/wire-erp-stage-vps.sh && bash /root/NEWPOSV3/scripts/wire-erp-stage-vps.sh"
+
+      - name: External smoke from runner
+        run: |
+          set -euo pipefail
+          CODE="$(curl -skS -o /dev/null -w '%{http_code}' -I --connect-timeout 15 https://erp-stage.ndmcore.com/)"
+          echo "https://erp-stage.ndmcore.com/ → $CODE"
+          [[ "$CODE" =~ ^(200|301|302|307|308)$ ]]
+          # Direct-to-origin (bypass CF) — proves Traefik on VPS serves staging
+          ORIGIN=72.62.254.176
+          OBODY=""
+          OHTML="$(curl -skS --connect-timeout 15 --resolve erp-stage.ndmcore.com:443:${ORIGIN} https://erp-stage.ndmcore.com/ || true)"
+          OJS="$(printf '%s' "$OHTML" | grep -oE '/assets/index-[^"]+\.js|/assets/[^"]+\.js' | head -1 || true)"
+          echo "origin HTML js=$OJS"
+          if [[ -n "$OJS" ]]; then
+            OBODY="$(curl -skS --connect-timeout 20 --resolve erp-stage.ndmcore.com:443:${ORIGIN} "https://erp-stage.ndmcore.com${OJS}" || true)"
+            if printf '%s' "$OBODY" | grep -q 'api-stage.ndmcore.com'; then
+              echo "ORIGIN: OK — VPS Traefik serves api-stage bake"
+            else
+              echo "ORIGIN mark missing api-stage; checking Cloudflare edge…"
+            fi
+          fi
+          index_js() {
+            local base="$1"; shift
+            curl -skS --connect-timeout 15 "$@" "$base/" 2>/dev/null \
+              | grep -oE '/assets/index-[^"]+\.js' | head -1 || true
+          }
+          # Known staging chunk path probed on origin (lazy chunk; may not be preloaded)
+          STAGE_CHUNK="$(curl -skS --connect-timeout 15 --resolve "erp-stage.ndmcore.com:443:${ORIGIN}" \
+            https://erp-stage.ndmcore.com/assets/paymentAttachmentUrl-WR-rBwYF.js 2>/dev/null || true)"
+          ORIGIN_INDEX="$(index_js "https://erp-stage.ndmcore.com" --resolve "erp-stage.ndmcore.com:443:${ORIGIN}")"
+          CF_INDEX="$(index_js "https://erp-stage.ndmcore.com")"
+          echo "origin_index=$ORIGIN_INDEX cf_index=$CF_INDEX"
+          if printf '%s' "$STAGE_CHUNK" | grep -q 'api-stage.ndmcore.com'; then
+            echo "ORIGIN: OK — staging chunk reachable via VPS Traefik Host"
+          elif [[ -n "$ORIGIN_INDEX" ]]; then
+            echo "ORIGIN: index=$ORIGIN_INDEX (chunk probe missed; index present)"
+          else
+            echo "::error::Origin Traefik did not return erp-stage HTML/index"
+            exit 1
+          fi
+          if printf '%s' "$STAGE_CHUNK" | grep -q 'api-stage.ndmcore.com' && [[ "$CF_INDEX" == "$ORIGIN_INDEX" ]]; then
+            echo "EXTERNAL: OK — Cloudflare erp-stage matches origin staging preview"
+          elif printf '%s' "$STAGE_CHUNK" | grep -q 'api-stage.ndmcore.com'; then
+            echo "EXTERNAL: PARTIAL — origin Traefik OK (api-stage chunk); CF index=$CF_INDEX (purge cache if different)"
+          else
+            echo "EXTERNAL: PARTIAL — origin served index; verify CF points at VPS and purge cache"
+          fi
+
+      - name: Cleanup key
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"

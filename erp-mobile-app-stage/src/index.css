@@ -1,0 +1,244 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global: remove number input spinner arrows (Sales, Purchase, Payment, POS, Rental, Expense, etc.) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* PIN fields: tel + numeric pad; mask digits like password */
+.pin-numeric-input {
+  -webkit-text-security: disc;
+  text-security: disc;
+  font-size: 16px;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+  body {
+    @apply antialiased bg-[#111827] text-[#F9FAFB];
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+  /* Prevent horizontal overflow on all inputs/selects/textarea */
+  input, select, textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  /* App root: never allow horizontal scroll on mobile */
+  #root {
+    max-width: 100vw;
+    overflow-x: hidden;
+    width: 100%;
+  }
+}
+
+/* Utility: ensure containers never cause horizontal scroll */
+.input-full-width,
+.mobile-no-overflow {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.mobile-no-overflow {
+  overflow-x: hidden;
+}
+/* Form containers: respect parent padding, no overflow */
+.mobile-form-container {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: inherit;
+  padding-right: inherit;
+  box-sizing: border-box;
+}
+
+/* Tables: horizontal scroll contained so viewport never scrolls horizontally */
+.mobile-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-table-scroll > * {
+  min-width: 0;
+}
+.mobile-table-inner {
+  min-width: 0;
+}
+
+:root {
+  --erp-inset-top: env(safe-area-inset-top, 0px);
+  --erp-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --erp-bottom-nav-height: 64px;
+}
+
+.safe-area-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px));
+}
+
+/* App shell header — status bar + sync row */
+.erp-app-header {
+  padding-top: max(env(safe-area-inset-top, 0px), var(--erp-inset-top, 0px));
+}
+
+/* Status bar inset: legacy alias */
+.safe-area-inset-top {
+  padding-top: max(env(safe-area-inset-top, 0px), var(--erp-inset-top, 0px));
+}
+
+/* Home / scroll content above fixed bottom nav */
+.erp-content-above-nav {
+  padding-bottom: calc(var(--erp-bottom-nav-height, 64px) + max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px)) + 8px);
+}
+
+/* Flow toolbars (Back, Save, report headers) — clear status bar on phone, minimal on tablet/desktop. */
+.flow-screen-header {
+  padding-top: calc(max(env(safe-area-inset-top, 0px), var(--erp-inset-top, 0px)) + 0.75rem);
+}
+
+@media (min-width: 768px) {
+  .flow-screen-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+.flow-screen-root {
+  /* Full-screen flows that use fixed inset-0 */
+  box-sizing: border-box;
+}
+
+/* Fixed bottom action bars (Next, Save).
+   Default: flush with the viewport bottom (plus safe-area). Flow screens (sales,
+   purchase, rental, studio, expense, contacts, general entry) do NOT render the
+   BottomNav, so the action bar should sit at the very bottom — exactly where
+   the hidden nav would have been.
+   Add the `--with-nav` modifier on any screen that does still render BottomNav. */
+.action-bar-above-nav,
+.fixed-bottom-above-nav {
+  bottom: max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px));
+  padding-bottom: 12px;
+}
+.action-bar-above-nav--with-nav,
+.fixed-bottom-above-nav--with-nav {
+  bottom: calc(var(--erp-bottom-nav-height, 64px) + max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px)));
+  padding-bottom: 12px;
+}
+@media (min-width: 768px) {
+  .action-bar-above-nav,
+  .fixed-bottom-above-nav,
+  .action-bar-above-nav--with-nav,
+  .fixed-bottom-above-nav--with-nav {
+    bottom: 0;
+    padding-bottom: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: 0.3s ease-out slide-up;
+}
+
+/* ----- PDF / Print preview ----- */
+/* The captured document is rendered inside an A4-sized white container so the preview and the PDF look identical. */
+.pdf-print-root {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.pdf-document {
+  background: #ffffff;
+  color: #000000;
+  width: 210mm;
+  max-width: 100%;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 14mm;
+  box-sizing: border-box;
+  font-family: 'Helvetica', 'Arial', sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+}
+.pdf-document * {
+  color: inherit;
+  box-sizing: border-box;
+}
+.pdf-document table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pdf-document th,
+.pdf-document td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+.pdf-document th {
+  background: #f3f4f6;
+  font-weight: 600;
+  border-bottom: 1px solid #9ca3af;
+}
+.pdf-document tfoot td {
+  border-top: 1px solid #9ca3af;
+  font-weight: 600;
+}
+
+/* Print — force B&W as requested */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pdf-print-root,
+  .pdf-print-root * {
+    visibility: visible;
+  }
+  .pdf-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .pdf-print-root,
+  .pdf-print-root * {
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .pdf-print-root img {
+    filter: grayscale(100%);
+  }
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}

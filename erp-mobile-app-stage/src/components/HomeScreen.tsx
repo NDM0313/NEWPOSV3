@@ -1,0 +1,260 @@
+import {
+  ShoppingCart, ShoppingBag, Shirt, Camera, DollarSign, Receipt, Package, User as UserIcon,
+  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store, ListChecks, Building2, Scissors,
+} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import type { User, Branch, Screen } from '../types';
+import { useResponsive } from '../hooks/useResponsive';
+import { FeaturesShowcase } from './FeaturesShowcase';
+import { getMyWorkerDashboardMetrics } from '../api/myWorkerDashboard';
+import { localNowDateString } from '../utils/localDate';
+import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
+import { usePermissions } from '../context/PermissionContext';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfile,
+  useEffectiveWorkerProfileId,
+} from '../context/CounterWorkerContext';
+import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
+import { isDeveloperModeUnlocked, subscribeDeveloperMode } from '../lib/developerMode';
+import { getFunctionalRoleLabel } from '../config/functionalRoles';
+import { useBespokeEnabled } from '../hooks/useBespokeEnabled';
+
+interface HomeScreenProps {
+  user: User;
+  branch: Branch;
+  companyId: string | null;
+  companyName?: string | null;
+  onNavigate: (screen: Screen) => void;
+  onLogout: () => void;
+  onSwitchCompany?: () => void;
+}
+
+interface ModuleCard {
+  id: Screen;
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+  enabled: boolean;
+}
+
+const MODULES: ModuleCard[] = [
+  { id: 'sales', title: 'Sales', icon: <ShoppingCart className="w-8 h-8" />, color: '#3B82F6', bgColor: 'bg-[#3B82F6]/10', enabled: true },
+  { id: 'workorders', title: 'Work Orders', icon: <Scissors className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
+  { id: 'purchase', title: 'Purchase', icon: <ShoppingBag className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
+  { id: 'rental', title: 'Rental', icon: <Shirt className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
+  { id: 'studio', title: 'Studio', icon: <Camera className="w-8 h-8" />, color: '#EC4899', bgColor: 'bg-[#EC4899]/10', enabled: true },
+  { id: 'accounts', title: 'Accounts', icon: <DollarSign className="w-8 h-8" />, color: '#F59E0B', bgColor: 'bg-[#F59E0B]/10', enabled: true },
+  { id: 'expense', title: 'Expense', icon: <Receipt className="w-8 h-8" />, color: '#EF4444', bgColor: 'bg-[#EF4444]/10', enabled: true },
+  { id: 'products', title: 'Products', icon: <Package className="w-8 h-8" />, color: '#3B82F6', bgColor: 'bg-[#3B82F6]/10', enabled: true },
+  { id: 'inventory', title: 'Inventory', icon: <Package className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
+  { id: 'pos', title: 'Point of Sale', icon: <Store className="w-8 h-8" />, color: '#059669', bgColor: 'bg-[#059669]/10', enabled: true },
+  { id: 'contacts', title: 'Contacts', icon: <UserIcon className="w-8 h-8" />, color: '#6366F1', bgColor: 'bg-[#6366F1]/10', enabled: true },
+  { id: 'reports', title: 'Reports', icon: <TrendingUp className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
+  { id: 'packing', title: 'Shipment & Cargo', icon: <ListChecks className="w-8 h-8" />, color: '#0EA5E9', bgColor: 'bg-[#0EA5E9]/10', enabled: true },
+  { id: 'ledger', title: 'Ledger', icon: <Receipt className="w-8 h-8" />, color: '#84CC16', bgColor: 'bg-[#84CC16]/10', enabled: true },
+  { id: 'settings', title: 'Settings', icon: <SettingsIcon className="w-8 h-8" />, color: '#6B7280', bgColor: 'bg-[#6B7280]/10', enabled: true },
+];
+
+export function HomeScreen({
+  user,
+  branch,
+  companyId,
+  companyName,
+  onNavigate,
+  onLogout,
+  onSwitchCompany,
+}: HomeScreenProps) {
+  const responsive = useResponsive();
+  const profile = useEffectiveWorkerProfile(user);
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveProfileId = useEffectiveWorkerProfileId();
+  const displayName = profile?.displayName ?? user.name;
+  const displayRole = getFunctionalRoleLabel(profile?.role ?? user.role);
+  const { hasPermission, isPermissionLoaded, isModuleEnabled, moduleConfigBanner, canUseFullAccounting } = usePermissions();
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
+  const [showFeatures, setShowFeatures] = useState(false);
+  const [todaySales, setTodaySales] = useState<number>(0);
+  const [pendingAmount, setPendingAmount] = useState<number>(0);
+  const [devUnlocked, setDevUnlocked] = useState<boolean>(() => isDeveloperModeUnlocked());
+
+  useEffect(() => subscribeDeveloperMode(() => setDevUnlocked(isDeveloperModeUnlocked())), []);
+
+  useEffect(() => {
+    if (!companyId || !branch?.id || !effectiveUserId) return;
+    if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) return;
+    let cancelled = false;
+    const today = localNowDateString();
+    void getMyWorkerDashboardMetrics(companyId, branch.id, effectiveUserId, effectiveProfileId, {
+      fromDate: today,
+      toDate: today,
+    }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data) {
+        setTodaySales(0);
+        setPendingAmount(0);
+        return;
+      }
+      setTodaySales(data.revenue);
+      setPendingAmount(data.receivables);
+    });
+    return () => { cancelled = true; };
+  }, [companyId, branch?.id, effectiveUserId, effectiveProfileId, isPermissionLoaded]);
+
+  if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#9CA3AF] animate-pulse">Loading permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const enabled = MODULES.filter((m) => {
+    if (m.id === 'workorders' && !bespokeEnabled) return false;
+    if (!isModuleEnabled(m.id)) return false;
+    if (m.id === 'ledger' && FEATURE_MOBILE_PERMISSION_V2 && !canUseFullAccounting) {
+      if (screenSkipsModuleViewPermission('accounts')) return false;
+      const code = getPermissionModuleForScreen('accounts');
+      return code != null && hasPermission(`${code}.view`);
+    }
+    if (FEATURE_MOBILE_PERMISSION_V2) {
+      if (screenSkipsModuleViewPermission(m.id)) return true;
+      const code = getPermissionModuleForScreen(m.id);
+      return code != null && hasPermission(`${code}.view`);
+    }
+    return true;
+  }).map((m) =>
+    m.id === 'ledger' && FEATURE_MOBILE_PERMISSION_V2 && !canUseFullAccounting
+      ? { ...m, title: 'My Activity' }
+      : m,
+  );
+
+  if (showFeatures) {
+    return <FeaturesShowcase onClose={() => setShowFeatures(false)} />;
+  }
+
+  return (
+    <div className="min-h-screen erp-content-above-nav">
+      <div className="bg-gradient-to-br from-[#1F2937] to-[#111827] p-6 pb-8 flow-screen-header">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-bold text-white mb-1">
+              {companyName?.trim() || 'Din Collection'}
+            </h1>
+            <p className="text-sm text-[#9CA3AF]">Welcome, {displayName}</p>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className="inline-block px-2 py-0.5 bg-[#8B5CF6]/20 text-[#8B5CF6] text-xs rounded-full font-medium">
+                {displayRole.toUpperCase()}
+              </span>
+              <div className="w-2 h-2 bg-[#10B981] rounded-full" />
+              <p className="text-xs text-[#D1D5DB]">{branch.name}</p>
+            </div>
+            {onSwitchCompany && (
+              <button
+                type="button"
+                onClick={onSwitchCompany}
+                className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#374151] hover:bg-[#4B5563] text-xs text-white"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                Switch company
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {enabled.some((m) => m.id === 'settings') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('settings')}
+                className="p-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg transition-colors text-white"
+                aria-label="Settings"
+                title="Settings"
+              >
+                <SettingsIcon className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={onLogout}
+              className="p-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg transition-colors text-white"
+              aria-label="Logout"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">
+            <p className="text-xs text-[#9CA3AF] mb-1">My sales today</p>
+            <p className="text-lg font-bold text-[#10B981]">Rs. {todaySales.toLocaleString()}</p>
+          </div>
+          <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">
+            <p className="text-xs text-[#9CA3AF] mb-1">My pending</p>
+            <p className="text-lg font-bold text-[#F59E0B]">Rs. {pendingAmount.toLocaleString()}</p>
+          </div>
+        </div>
+        {enabled.some((m) => m.id === 'sales') && (
+          <button
+            type="button"
+            onClick={() => onNavigate('sales')}
+            className="mt-4 w-full py-4 px-4 bg-[#3B82F6] hover:bg-[#2563EB] active:scale-[0.99] rounded-xl flex items-center justify-center gap-3 touch-manipulation"
+          >
+            <ShoppingCart className="w-6 h-6 text-white" />
+            <span className="font-semibold text-white text-base">Add Sale</span>
+          </button>
+        )}
+      </div>
+
+      <div className={responsive.spacing.page}>
+        {devUnlocked && moduleConfigBanner && (
+          <div className="mb-4 p-4 bg-amber-900/30 border border-amber-500/40 rounded-xl" role="status">
+            <p className="text-sm text-amber-100">{moduleConfigBanner}</p>
+          </div>
+        )}
+        <h2 className="text-sm font-medium text-[#9CA3AF] mb-4">MODULES</h2>
+        <div
+          className={`grid gap-4 ${responsive.spacing.grid}`}
+          style={{ gridTemplateColumns: `repeat(${responsive.columns.dashboard}, minmax(0, 1fr))` }}
+        >
+          {enabled.map((module) => (
+            <button
+              key={module.id}
+              type="button"
+              onClick={() => onNavigate(module.id)}
+              className={`bg-[#1F2937] border border-[#374151] rounded-2xl min-h-[100px] ${responsive.isTablet ? 'p-8' : 'p-5'} hover:border-[#3B82F6] active:scale-[0.98] transition-all group touch-manipulation`}
+            >
+              <div
+                className={`${responsive.isTablet ? 'w-20 h-20' : 'w-14 h-14'} ${module.bgColor} rounded-2xl flex items-center justify-center mb-3 mx-auto group-hover:scale-110 transition-transform`}
+                style={{ color: module.color }}
+              >
+                {module.icon}
+              </div>
+              <p className={`font-medium text-center text-white ${responsive.isTablet ? 'text-base' : 'text-sm'}`}>
+                {module.title}
+              </p>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-6 p-4 bg-[#1F2937] border border-[#374151] rounded-xl">
+          <p className="text-xs text-[#9CA3AF] text-center">
+            {responsive.isTablet ? 'Click on any module to access its features' : 'Use bottom navigation to switch between modules quickly'}
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowFeatures(true)}
+          className="mt-4 w-full p-4 bg-gradient-to-r from-[#6366F1] to-[#4F46E5] rounded-xl hover:from-[#5558E3] hover:to-[#4338CA] active:scale-95 transition-all"
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Sparkles className="w-5 h-5 text-white" />
+            <span className="text-white font-semibold">View All Features & Methods</span>
+          </div>
+          <p className="text-xs text-white/70 mt-1">12 Modules • 100+ Features • Complete Workflows</p>
+        </button>
+      </div>
+    </div>
+  );
+}

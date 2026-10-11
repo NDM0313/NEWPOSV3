@@ -1,0 +1,4 @@
+// Stub used when capacitor-cordova-android-plugins has not been generated yet.
+// Run "npx cap sync" from erp-mobile-app to generate the real plugins project.
+ext {
+}

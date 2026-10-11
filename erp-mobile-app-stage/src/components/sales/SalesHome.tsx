@@ -1,0 +1,2758 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store, Package, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import * as salesApi from '../../api/sales';
+import * as branchesApi from '../../api/branches';
+import * as saleChargesApi from '../../api/saleCharges';
+import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
+import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
+import { listBespokeWorkOrdersBySale } from '../../api/bespokeWorkOrders';
+import * as studioApi from '../../api/studio';
+import * as reportsApi from '../../api/reports';
+import * as contactsApi from '../../api/contacts';
+import * as productsApi from '../../api/products';
+import { supabase } from '../../lib/supabase';
+import {
+  MOBILE_DATA_INVALIDATED_EVENT,
+  dispatchMobileAccountingInvalidated,
+  dispatchMobileInvalidated,
+  shouldAcceptMobileInvalidation,
+  type MobileInvalidationDetail,
+} from '../../lib/dataInvalidationBus';
+import {
+  syncSaleDocumentJournalInPlaceMobile,
+  saleAccountingSnapshotFromRow,
+  type SaleLedgerSyncSkipReason,
+} from '../../api/saleEditAccounting';
+import { CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import {
+  getPendingSaleRows,
+  mergeSalesWithPending,
+} from '../../lib/offlinePendingList';
+
+/** STD lives on order_no until finalized (matches web); invoice_no may be null pre-bill. */
+function saleDocumentDisplayNo(row: Record<string, unknown>): string {
+  const inv = row.invoice_no != null ? String(row.invoice_no).trim() : '';
+  const ord = row.order_no != null ? String(row.order_no).trim() : '';
+  return inv || ord || '';
+}
+
+function saleWhatsAppPhone(sale: { raw: Record<string, unknown> }): string {
+  const cust = sale.raw.customer as { phone?: string; mobile?: string } | null;
+  if (cust) {
+    const p = contactsApi.getContactWhatsAppPhone(cust);
+    if (p) return p;
+  }
+  return String(sale.raw.contact_phone || sale.raw.contact_number || '').trim();
+}
+
+function saleLedgerSkipHint(reason: SaleLedgerSyncSkipReason | undefined): string {
+  if (!reason || reason === 'snap_unchanged' || reason === 'not_configured') return '';
+  const map: Record<SaleLedgerSyncSkipReason, string> = {
+    not_configured: '',
+    snap_unchanged: '',
+    no_document_je: 'No sale document ledger entry yet (post sale on web or run document posting).',
+    sale_row_missing: 'Ledger sync skipped: sale row missing.',
+    sale_not_final: 'Ledger sync skipped: sale is not final.',
+    no_invoice_no: 'Ledger sync skipped: invoice number missing.',
+    missing_ar_account: 'Ledger sync skipped: receivable account (1100) not found.',
+  };
+  return map[reason] || '';
+}
+import { MobileReceivePayment } from './MobileReceivePayment';
+import { SaleCargoSection } from './SaleCargoSection';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal';
+import { SaleReturnModal } from './SaleReturnModal';
+import { PdfPreviewModal } from '../shared/PdfPreviewModal';
+import { usePdfPreview } from '../shared/usePdfPreview';
+import { NumericInput } from '../common';
+import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
+import { SaleActivitySheet } from './SaleActivitySheet';
+import { buildSaleThermalReceiptLines, saleRecordToThermalInput } from '../../services/saleThermalReceipt';
+import { mergeCustomerBillRefIntoNotes } from '../../utils/saleNotesComposition';
+import { printReceiptLines } from '../../services/printService';
+import { getEffectivePrinterSettings } from '../../api/settings';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { DateInputField } from '../shared/DateTimePicker';
+import { makeInitialRange, type DateRangeValue } from '../shared/DateRangeBar';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { SaleAddAttachmentsSheet } from './SaleAddAttachmentsSheet';
+import { SaleAttachmentEditor } from './SaleAttachmentEditor';
+import {
+  SalesListFilterSheet,
+  currentMonthCursor,
+  salesDateRangeSummary,
+  type SalesDateMode,
+  type SalesMonthCursor,
+} from './SalesListFilterSheet';
+import { usePermissions } from '../../context/PermissionContext';
+import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
+import {
+  isLikelyPosSaleRow,
+  isStudioSaleRow,
+  isOrderSaleRow,
+  saleListTypeLabel,
+  type SaleListTypeFilter,
+} from '../../lib/saleTypeClassification';
+import * as rentalsApi from '../../api/rentals';
+import type { RentalListItem } from '../../api/rentals';
+import { filterAndRankProducts, productMatchesSearch } from '../../lib/productSearchRank';
+import { ViewRentalDetails } from '../rental/ViewRentalDetails';
+import {
+  saleToUnifiedRow,
+  rentalToUnifiedRow,
+  mergeUnifiedRows,
+  filterUnifiedRows,
+  searchUnifiedRows,
+} from '../../lib/unifiedTransactionList';
+import { formatDocumentListDateTime, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
+import { resolvePaymentBranchId } from '../../utils/writeBranchResolution';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfileId,
+  useEffectiveWorkerRole,
+} from '../../context/CounterWorkerContext';
+import {
+  rowBelongsToCounterWorker,
+  resolveCounterListBranchScope,
+  shouldIsolateCounterWorkerData,
+} from '../../lib/counterDataIsolation';
+import {
+  rowInListBranchScope,
+  type ListBranchScope,
+} from '../../lib/listBranchScope';
+import { invalidateSalesListCache } from '../../lib/listCache';
+
+/** Workers/salesmen keep a smaller list; admin/owner (no worker isolation) can see company-wide history. */
+const SALE_LIST_FETCH_CAP_WORKER = 100;
+const SALE_LIST_FETCH_CAP_ADMIN = 2000;
+const SALE_LIST_DISPLAY_CAP_WORKER = 50;
+
+type SaleRecord = {
+  raw: Record<string, unknown>;
+  id: string;
+  customer: string;
+  billRef?: string;
+  amount: number;
+  total_received: number;
+  balance_due: number;
+  /** From API when overpaid (total_received > total); no frontend calc */
+  credit_balance: number;
+  date: string;
+  /** From DB join with users; not hardcoded */
+  created_by_name: string;
+  /** Delivery / studio deadline (YYYY-MM-DD) when present */
+  deadline?: string | null;
+  /** Studio worker cost; grand_total = amount + studio_charges */
+  studio_charges?: number;
+  grand_total?: number;
+  /** From sales_with_shipping when sale has a shipment */
+  shipment_status?: string;
+};
+
+function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
+  const cust = s.customer as { name?: string } | null;
+  const createdByUser = (s.created_by ?? s.created_by_user) as { full_name?: string } | null;
+  const dateStr = formatDocumentListDateTime({
+    documentDate: s.invoice_date as string,
+    eventTimestamp: s.created_at as string,
+  });
+  const totalAmount = Number(s.total_amount ?? s.total ?? 0);
+  const totalReceived = Number(s.total_received ?? 0);
+  const balanceDue = Number(s.balance_due ?? 0);
+  const creditBalance = Number(s.credit_balance ?? 0);
+  const studioCharges = Number(s.studio_charges ?? 0);
+  const grandTotal = Number(s.grand_total ?? totalAmount);
+  return {
+    raw: s,
+    id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
+    customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
+    billRef: salesApi.readSaleBillRef(s) || undefined,
+    amount: totalAmount,
+    total_received: totalReceived,
+    balance_due: balanceDue,
+    credit_balance: creditBalance,
+    date: dateStr,
+    created_by_name:
+      (s.created_by_name as string) || (createdByUser?.full_name as string) || '',
+    deadline: (s.deadline as string) || null,
+    studio_charges: studioCharges,
+    grand_total: grandTotal,
+    shipment_status: (s.shipment_status as string) || undefined,
+  };
+}
+
+interface SalesHomeProps {
+  onBack: () => void;
+  onNewSale: () => void;
+  companyId: string | null;
+  branchId: string | null;
+  userId?: string | null;
+  userProfileId?: string | null;
+  sessionRole?: string | null;
+  initialEditSaleId?: string | null;
+  onConsumedInitialEditSaleId?: () => void;
+}
+
+export function SalesHome({
+  onBack,
+  onNewSale,
+  companyId,
+  branchId,
+  userId,
+  userProfileId,
+  sessionRole,
+  initialEditSaleId,
+  onConsumedInitialEditSaleId,
+}: SalesHomeProps) {
+  const effectiveUserId = useEffectiveWorkerId(userId ?? '');
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? userProfileId ?? null;
+  const effectiveRole = useEffectiveWorkerRole(sessionRole ?? 'admin');
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const { canViewBalances, branchIds, isAdminOrOwner, isModuleEnabled } = usePermissions();
+  const studioModuleOn = isModuleEnabled('studio');
+  const saleTypeFilterTabs = useMemo((): SaleListTypeFilter[] => {
+    const tabs: SaleListTypeFilter[] = ['all'];
+    if (studioModuleOn) tabs.push('studio');
+    tabs.push('pos', 'regular', 'order', 'rental');
+    return tabs;
+  }, [studioModuleOn]);
+
+  const saleTypeTabGridClass =
+    saleTypeFilterTabs.length >= 7
+      ? 'grid-cols-4'
+      : saleTypeFilterTabs.length >= 6
+        ? 'grid-cols-6'
+        : saleTypeFilterTabs.length >= 5
+          ? 'grid-cols-5'
+          : saleTypeFilterTabs.length === 4
+            ? 'grid-cols-4'
+            : 'grid-cols-3';
+
+  const listBranchScope = useMemo(
+    (): ListBranchScope =>
+      resolveCounterListBranchScope(branchId, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branchId, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+
+  const useScopedStats =
+    isolateWorkerData || listBranchScope.mode === 'accessible';
+  /** Admin/owner with no counter-worker PIN: lift the 100/50 caps so other users' sales appear. */
+  const adminCompanyList = isAdminOrOwner && !isolateWorkerData;
+  const saleListFetchCap = adminCompanyList ? SALE_LIST_FETCH_CAP_ADMIN : SALE_LIST_FETCH_CAP_WORKER;
+  const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
+  const [recentRentals, setRecentRentals] = useState<RentalListItem[]>([]);
+  const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [saleTypeFilter, setSaleTypeFilter] = useState<SaleListTypeFilter>('all');
+  const [selectedRentalId, setSelectedRentalId] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dateMode, setDateMode] = useState<SalesDateMode>('all');
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange('all'));
+  const [monthCursor, setMonthCursor] = useState<SalesMonthCursor>(() => currentMonthCursor());
+  const [createdByFilter, setCreatedByFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [branchNameById, setBranchNameById] = useState<Map<string, string>>(() => new Map());
+
+  useEffect(() => {
+    if (!studioModuleOn && saleTypeFilter === 'studio') {
+      setSaleTypeFilter('all');
+    }
+  }, [studioModuleOn, saleTypeFilter]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setBranchNameById(new Map());
+      return;
+    }
+    let cancelled = false;
+    void branchesApi.getBranches(companyId).then(({ data }) => {
+      if (cancelled) return;
+      const map = new Map<string, string>();
+      for (const b of data || []) {
+        if (b?.id) map.set(b.id, b.name || b.location || b.id);
+      }
+      setBranchNameById(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
+  const [menuSale, setMenuSale] = useState<SaleRecord | null>(null);
+  const [activitySale, setActivitySale] = useState<SaleRecord | null>(null);
+  const [thermalPrinting, setThermalPrinting] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<
+    Array<{
+      id: string;
+      editTargetId: string;
+      date: string;
+      amount: number;
+      method: string;
+      referenceNo: string;
+      notes?: string;
+      attachments?: { url: string; name: string }[];
+    }>
+  >([]);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
+  const [saleChargeLines, setSaleChargeLines] = useState<saleChargesApi.SaleChargeDisplayRow[]>([]);
+  const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
+  const [studioSummary, setStudioSummary] = useState<{
+    has_studio: boolean;
+    production_status: string;
+    total_studio_cost: number;
+    tasks_completed: number;
+    tasks_total: number;
+    production_duration_days: number | null;
+    completed_at: string | null;
+    breakdown: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>;
+    tasks_with_workers: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; created_by?: string; completed_by?: string; completed_at?: string | null }>;
+  } | null>(null);
+  const [, setShowStudioBreakdown] = useState(false);
+  const [studioBreakdownFallback, setStudioBreakdownFallback] = useState<Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>>([]);
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
+
+  const refetchSales = useCallback(
+    async (opts?: { silent?: boolean }): Promise<SaleRecord[]> => {
+      if (!companyId) return [];
+      const scope = listBranchScope;
+      const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
+      const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
+      const summaryBranchId = apiBranchId;
+      if (!opts?.silent) setLoading(true);
+      const [salesRes, rentalsRes, todayRes, weekRes, monthRes, pendingRows] = await Promise.all([
+        salesApi.getAllSales(companyId, apiBranchId, { accessibleBranchIds }),
+        rentalsApi.getRentals(companyId, apiBranchId, {
+          accessibleBranchIds,
+          ...(isolateWorkerData
+            ? { scopeToOwn: { authUserId: effectiveUserId, profileId: effectiveProfileId } }
+            : {}),
+        }),
+        online && !useScopedStats
+          ? reportsApi.getSalesSummary(companyId, summaryBranchId, 1)
+          : Promise.resolve({ data: null, error: null }),
+        online && !useScopedStats
+          ? reportsApi.getSalesSummary(companyId, summaryBranchId, 7)
+          : Promise.resolve({ data: null, error: null }),
+        online && !useScopedStats
+          ? reportsApi.getSalesSummary(companyId, summaryBranchId, 30)
+          : Promise.resolve({ data: null, error: null }),
+        getPendingSaleRows(companyId, apiBranchId, accessibleBranchIds),
+      ]);
+      if (!opts?.silent) setLoading(false);
+      const merged = mergeSalesWithPending(salesRes.data || [], pendingRows);
+      let list: SaleRecord[] = [];
+      if (merged.length) {
+        list = merged
+          .slice(0, saleListFetchCap)
+          .map((s: Record<string, unknown>) => mapEnrichedRowToSaleRecord(s));
+        setRecentSales(list);
+      } else {
+        setRecentSales([]);
+      }
+      setRecentRentals(rentalsRes.data || []);
+      if (online && !useScopedStats) {
+        setStats({
+          today: todayRes.data?.totalSales ?? 0,
+          week: weekRes.data?.totalSales ?? 0,
+          month: monthRes.data?.totalSales ?? 0,
+        });
+      }
+      return list;
+    },
+    [
+      companyId,
+      listBranchScope,
+      online,
+      useScopedStats,
+      isolateWorkerData,
+      effectiveUserId,
+      effectiveProfileId,
+      saleListFetchCap,
+    ],
+  );
+
+  useEffect(() => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+    void refetchSales();
+  }, [companyId, branchId, refetchSales]);
+
+  /** After counter-worker PIN clears, bust cache and reload as session admin (not stuck on worker-scoped list). */
+  const prevIsolateWorkerRef = useRef(isolateWorkerData);
+  useEffect(() => {
+    const wasIsolated = prevIsolateWorkerRef.current;
+    prevIsolateWorkerRef.current = isolateWorkerData;
+    if (!wasIsolated || isolateWorkerData || !companyId || !adminCompanyList) return;
+    void invalidateSalesListCache(companyId).then(() => refetchSales({ silent: true }));
+  }, [isolateWorkerData, companyId, adminCompanyList, refetchSales]);
+
+  useEffect(() => {
+    const onSync = () => void refetchSales({ silent: true });
+    window.addEventListener('erp-mobile:autosync-complete', onSync);
+    return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
+  }, [refetchSales]);
+
+  const openAttachmentPreview = (list: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(list);
+    setAttachmentPreviewStart(startIndex);
+  };
+
+  const patchLocalSaleAttachments = useCallback(
+    (saleId: string, attachments: { url: string; name: string }[]) => {
+      setRecentSales((prev) =>
+        prev.map((s) =>
+          s.id === saleId ? { ...s, raw: { ...s.raw, attachments } } : s,
+        ),
+      );
+      setSelectedSale((prev) =>
+        prev?.id === saleId ? { ...prev, raw: { ...prev.raw, attachments } } : prev,
+      );
+    },
+    [],
+  );
+
+  const openAttachmentSheet = (sale: SaleRecord) => {
+    if (!navigator.onLine) {
+      setActionError('Attachments require an internet connection.');
+      return;
+    }
+    setMenuSale(null);
+    setAttachmentSale(sale);
+  };
+
+  const handleAttachmentSaved = (saleId: string, merged: { url: string; name: string }[]) => {
+    patchLocalSaleAttachments(saleId, merged);
+    void refetchSales({ silent: true });
+    setActionSuccess('Attachments saved.');
+  };
+
+  const scopedRecentSales = useMemo(() => {
+    let rows = recentSales.filter((sale) => rowInListBranchScope(sale.raw, listBranchScope));
+    if (isolateWorkerData) {
+      rows = rows.filter((sale) =>
+        rowBelongsToCounterWorker(sale.raw, effectiveUserId, effectiveProfileId),
+      );
+    }
+    return rows;
+  }, [
+    recentSales,
+    listBranchScope,
+    isolateWorkerData,
+    effectiveUserId,
+    effectiveProfileId,
+  ]);
+
+  const scopedRecentRentals = useMemo(() => {
+    return recentRentals.filter((r) => {
+      if (listBranchScope.mode === 'accessible') {
+        return !r.branchId || listBranchScope.branchIds.includes(r.branchId);
+      }
+      if (listBranchScope.mode === 'single') {
+        return !r.branchId || r.branchId === listBranchScope.branchId;
+      }
+      return true;
+    });
+  }, [recentRentals, listBranchScope]);
+
+  const unifiedList = useMemo(() => {
+    const saleRows = scopedRecentSales.map(saleToUnifiedRow);
+    const rentalRows = scopedRecentRentals.map(rentalToUnifiedRow);
+    return mergeUnifiedRows(saleRows, rentalRows);
+  }, [scopedRecentSales, scopedRecentRentals]);
+
+  const displayStats = useMemo(() => {
+    if (!useScopedStats) return stats;
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(todayStart);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(todayStart);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+    let today = 0;
+    let week = 0;
+    let month = 0;
+    for (const sale of scopedRecentSales) {
+      const rawDate = (sale.raw.invoice_date as string) || (sale.raw.created_at as string) || '';
+      const d = new Date(rawDate);
+      if (Number.isNaN(d.getTime())) continue;
+      const amt = sale.amount;
+      if (d >= todayStart) today += amt;
+      if (d >= weekAgo) week += amt;
+      if (d >= monthAgo) month += amt;
+    }
+    for (const rental of scopedRecentRentals) {
+      const d = new Date(rental.bookingDate);
+      if (Number.isNaN(d.getTime())) continue;
+      const amt = rental.total;
+      if (d >= todayStart) today += amt;
+      if (d >= weekAgo) week += amt;
+      if (d >= monthAgo) month += amt;
+    }
+    return { today, week, month };
+  }, [stats, scopedRecentSales, scopedRecentRentals, useScopedStats]);
+
+  const creatorFilterOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of unifiedList) {
+      const n = (row.created_by_name || '').trim();
+      if (n) names.add(n);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [unifiedList]);
+
+  const branchFilterOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of unifiedList) {
+      if (row.branchId) ids.add(row.branchId);
+    }
+    for (const id of branchNameById.keys()) ids.add(id);
+    return [...ids]
+      .map((id) => ({
+        id,
+        name: branchNameById.get(id) || (() => {
+          const hit = unifiedList.find((r) => r.branchId === id);
+          const joined = hit?.saleRaw?.branch as { name?: string } | null | undefined;
+          return joined?.name?.trim() || id.slice(0, 8);
+        })(),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [unifiedList, branchNameById]);
+
+  const showBranchFilterChips = adminCompanyList && branchFilterOptions.length > 1;
+
+  const activeListFilterCount = useMemo(() => {
+    let n = 0;
+    if (dateMode !== 'all' && (dateRange.from || dateRange.to || dateMode === 'custom')) n += 1;
+    if (createdByFilter !== 'all') n += 1;
+    if (branchFilter !== 'all') n += 1;
+    return n;
+  }, [dateMode, dateRange, createdByFilter, branchFilter]);
+
+  const dateFilterSummary = useMemo(
+    () => salesDateRangeSummary(dateMode, dateRange, monthCursor),
+    [dateMode, dateRange, monthCursor],
+  );
+
+  const clearListFilters = useCallback(() => {
+    setDateMode('all');
+    setDateRange(makeInitialRange('all'));
+    setMonthCursor(currentMonthCursor());
+    setCreatedByFilter('all');
+    setBranchFilter('all');
+  }, []);
+
+  const resolveRowBranchName = useCallback(
+    (row: { branchId?: string | null; saleRaw?: Record<string, unknown> }): string => {
+      const id = row.branchId || (row.saleRaw?.branch_id != null ? String(row.saleRaw.branch_id) : '');
+      if (!id) return '';
+      const joined = row.saleRaw?.branch as { name?: string } | null | undefined;
+      if (joined?.name?.trim()) return joined.name.trim();
+      return branchNameById.get(id) || '';
+    },
+    [branchNameById],
+  );
+
+  const showBranchOnCards = adminCompanyList || branchFilter !== 'all';
+
+  const filteredList = useMemo(() => {
+    let rows = filterUnifiedRows(unifiedList, saleTypeFilter);
+
+    if (dateMode !== 'all' && (dateRange.from || dateRange.to)) {
+      const from = dateRange.from || '';
+      const to = dateRange.to || '';
+      rows = rows.filter((row) => {
+        const ymd = (row.documentDateYmd || '').slice(0, 10);
+        if (!ymd) return false;
+        if (from && ymd < from) return false;
+        if (to && ymd > to) return false;
+        return true;
+      });
+    }
+
+    if (createdByFilter !== 'all') {
+      const want = createdByFilter.trim().toLowerCase();
+      rows = rows.filter((row) => (row.created_by_name || '').trim().toLowerCase() === want);
+    }
+
+    if (branchFilter !== 'all') {
+      rows = rows.filter((row) => (row.branchId || '') === branchFilter);
+    }
+
+    const searched = searchUnifiedRows(rows, searchQuery);
+    if (adminCompanyList) return searched;
+    return searched.slice(0, SALE_LIST_DISPLAY_CAP_WORKER);
+  }, [
+    unifiedList,
+    saleTypeFilter,
+    searchQuery,
+    adminCompanyList,
+    dateMode,
+    dateRange,
+    createdByFilter,
+    branchFilter,
+  ]);
+
+  const listRowBadge = (row: { kind: 'sale' | 'rental'; saleRaw?: Record<string, unknown> }) => {
+    if (row.kind === 'rental') {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-pink-500/20 text-pink-300 border border-pink-500/40">
+          <Package className="w-3 h-3" />
+          Rental
+        </span>
+      );
+    }
+    if (row.saleRaw && isOrderSaleRow(row.saleRaw)) {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+          <Package className="w-3 h-3" />
+          Order
+        </span>
+      );
+    }
+    if (row.saleRaw && isStudioSaleRow(row.saleRaw)) {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40">
+          <Briefcase className="w-3 h-3" />
+          Studio
+        </span>
+      );
+    }
+    if (row.saleRaw && isLikelyPosSaleRow(row.saleRaw)) {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">
+          <Zap className="w-3 h-3" />
+          POS
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/40">
+        <Store className="w-3 h-3" />
+        Regular
+      </span>
+    );
+  };
+
+  const emptyListMessage = () => {
+    if (searchQuery.trim()) return 'No invoices match your search';
+    if (saleTypeFilter === 'all') return 'No sales or rentals found';
+    if (saleTypeFilter === 'rental') return 'No rentals found';
+    return `No ${saleListTypeLabel(saleTypeFilter).toLowerCase()} sales found`;
+  };
+
+  const loadPaymentHistory = useCallback(async (saleId: string) => {
+    if (!saleId) return;
+    const { data } = await salesApi.getSalePayments(saleId);
+    setPaymentHistory(data || []);
+  }, []);
+
+  useEffect(() => {
+    if (selectedSale) {
+      const saleId = selectedSale.raw.id as string;
+      if (saleId) loadPaymentHistory(saleId);
+      else setPaymentHistory([]);
+    } else {
+      setPaymentHistory([]);
+    }
+  }, [selectedSale, loadPaymentHistory]);
+
+  useEffect(() => {
+    if (!selectedSale) {
+      setSaleChargeLines([]);
+      return;
+    }
+    const saleId = selectedSale.raw.id as string;
+    if (!saleId) {
+      setSaleChargeLines([]);
+      return;
+    }
+    const cached = (selectedSale.raw.charges ?? selectedSale.raw.sale_charges) as
+      | saleChargesApi.SaleChargeDisplayRow[]
+      | undefined;
+    if (Array.isArray(cached) && cached.length > 0) {
+      setSaleChargeLines(
+        cached.map((c) => ({
+          id: c.id,
+          charge_type: String(c.charge_type || 'other'),
+          amount: Number(c.amount) || 0,
+        })),
+      );
+      return;
+    }
+    let cancelled = false;
+    void saleChargesApi.getSaleChargesBySaleId(saleId).then(({ data }) => {
+      if (!cancelled) setSaleChargeLines(data || []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSale]);
+
+  useEffect(() => {
+    if (!selectedSale) {
+      setStudioSummary(null);
+      setShowStudioBreakdown(false);
+      setStudioBreakdownFallback([]);
+      return;
+    }
+    const saleId = selectedSale.raw.id as string;
+    if (!saleId) {
+      setStudioSummary(null);
+      setStudioBreakdownFallback([]);
+      return;
+    }
+    let cancelled = false;
+    const isStudioSale = (selectedSale.studio_charges ?? 0) > 0 || selectedSale.raw.is_studio === true || String(selectedSale.id || '').startsWith('STD-');
+    salesApi.getSaleStudioSummary(saleId).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setStudioSummary(null);
+        if (!isStudioSale) setStudioBreakdownFallback([]);
+        return;
+      }
+      setStudioSummary(data ?? null);
+      const hasBreakdown = (data?.tasks_with_workers?.length ?? 0) > 0 || (data?.breakdown?.length ?? 0) > 0;
+      if (isStudioSale && !hasBreakdown) {
+        setStudioBreakdownFallback([]);
+      } else if (!isStudioSale) {
+        setStudioBreakdownFallback([]);
+      }
+    });
+    if (isStudioSale) {
+      studioApi.getStudioStagesBySaleId(saleId).then(({ data: stages }) => {
+        if (!cancelled) setStudioBreakdownFallback(stages ?? []);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [selectedSale]);
+
+  const [cancelling, setCancelling] = useState(false);
+  const [addPaymentSale, setAddPaymentSale] = useState<SaleRecord | null>(null);
+  const [cancelConfirmSale, setCancelConfirmSale] = useState<SaleRecord | null>(null);
+  /** Non-cancelled WOs linked to cancelConfirmSale (for dialog warning). */
+  const [cancelLinkedWoCount, setCancelLinkedWoCount] = useState(0);
+  const [returnSale, setReturnSale] = useState<SaleRecord | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [finalizingSaleId, setFinalizingSaleId] = useState<string | null>(null);
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
+
+  const handleFinalizeSale = async (sale: SaleRecord) => {
+    const id = sale.raw.id as string;
+    if (!id) return;
+    setFinalizingSaleId(id);
+    setActionError(null);
+    const { error } = await salesApi.updateSaleStatus(id, 'final');
+    setFinalizingSaleId(null);
+    if (error) {
+      setActionError(error);
+      return;
+    }
+    setActionSuccess('Sale finalized.');
+    void refetchSales();
+    setSelectedSale(null);
+  };
+
+  // In-app invoice preview (replaces VITE_APP_URL-dependent print/pdf navigation)
+  const [previewSale, setPreviewSale] = useState<SaleRecord | null>(null);
+  const pdfPreview = usePdfPreview(companyId);
+  /** Line rows for edit modal (loaded from DB; save via update_sale_with_items RPC). */
+  type EditSaleLine = {
+    lineKey: string;
+    productId: string;
+    variationId: string | null;
+    productName: string;
+    sku: string;
+    /** String allows empty field while editing; parse at save/subtotal. */
+    quantity: string;
+    unitPrice: string;
+    discountAmount: number;
+    taxAmount: number;
+  };
+  const [editSale, setEditSale] = useState<SaleRecord | null>(null);
+  const [editLineItems, setEditLineItems] = useState<EditSaleLine[]>([]);
+  const [editLinesLoading, setEditLinesLoading] = useState(false);
+  const [editDate, setEditDate] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editBillRef, setEditBillRef] = useState<string>('');
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
+  const [editCustomerName, setEditCustomerName] = useState<string>('');
+  const [editCustomerOptions, setEditCustomerOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [editCustomersLoading, setEditCustomersLoading] = useState(false);
+  const [productCatalog, setProductCatalog] = useState<productsApi.Product[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [showAddProductRow, setShowAddProductRow] = useState(false);
+  const [showDiscountField, setShowDiscountField] = useState(false);
+  const [showExtrasField, setShowExtrasField] = useState(false);
+  const [editDiscount, setEditDiscount] = useState<string>('0');
+  const [editExtra, setEditExtra] = useState<string>('0');
+  const [editPendingAttachments, setEditPendingAttachments] = useState<File[]>([]);
+  const [attachmentSale, setAttachmentSale] = useState<SaleRecord | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  const dispatchSaleEditInvalidation = useCallback(
+    () => {
+      if (!companyId) return;
+      const scopedBranchId = branchId && branchId !== 'all' ? branchId : null;
+      dispatchMobileInvalidated({
+        domain: 'sales',
+        companyId,
+        branchId: scopedBranchId,
+        reason: 'sale_edited',
+      });
+      dispatchMobileAccountingInvalidated({
+        companyId,
+        branchId: scopedBranchId,
+        reason: 'sale_edited',
+      });
+    },
+    [branchId, companyId]
+  );
+
+  const handleReceivePaymentSuccess = useCallback(async () => {
+    const paidSaleId = addPaymentSale?.raw.id as string | undefined;
+    setAddPaymentSale(null);
+    const list = await refetchSales();
+    if (list?.length && paidSaleId) {
+      const updated = list.find((s) => (s.raw.id as string) === paidSaleId);
+      if (updated) {
+        setSelectedSale(updated);
+        loadPaymentHistory(paidSaleId);
+      } else {
+        setSelectedSale(null);
+      }
+    } else {
+      setSelectedSale(null);
+    }
+  }, [refetchSales, addPaymentSale, loadPaymentHistory]);
+
+  const refreshSelectedSaleAfterPaymentChange = useCallback(async () => {
+    const saleId = selectedSale?.raw.id as string | undefined;
+    if (!saleId) return;
+    const list = await refetchSales({ silent: true });
+    const updated = list?.find((s) => (s.raw.id as string) === saleId);
+    if (updated) setSelectedSale(updated);
+    await loadPaymentHistory(saleId);
+  }, [selectedSale, refetchSales, loadPaymentHistory]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void refetchSales();
+      }, 220);
+    };
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['sales', 'contacts', 'accounting'],
+          companyId,
+          branchId: branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [branchId, companyId, refetchSales]);
+
+  const saleIdRaw = (s: SaleRecord) => (s.raw.id as string) || s.id;
+
+  const openInvoicePreview = useCallback(
+    async (sale: SaleRecord, kind: 'A4' | 'Thermal' | 'PDF') => {
+      setMenuSale(null);
+      setPreviewSale(sale);
+      await pdfPreview.openPreview();
+      if (kind === 'Thermal' || kind === 'A4') {
+        salesApi.logPrint(saleIdRaw(sale), kind, effectiveUserId).catch(() => {});
+      } else {
+        salesApi.logShare(saleIdRaw(sale), 'pdf', effectiveUserId).catch(() => {});
+      }
+    },
+    [pdfPreview, effectiveUserId],
+  );
+
+  const handlePrintA4 = (sale: SaleRecord) => {
+    openInvoicePreview(sale, 'A4');
+  };
+  const handlePrintThermal = async (sale: SaleRecord) => {
+    setMenuSale(null);
+    if (!companyId) {
+      setActionError('Company not configured for printing.');
+      return;
+    }
+    setThermalPrinting(true);
+    setActionError(null);
+    try {
+      const { data: settings } = await getEffectivePrinterSettings(companyId);
+      const input = saleRecordToThermalInput(
+        companyId,
+        sale.raw,
+        sale.id,
+        sale.customer,
+        sale.created_by_name || undefined,
+      );
+      input.saleAmount = sale.amount;
+      input.grandTotal = sale.grand_total ?? sale.amount + (sale.studio_charges ?? 0);
+      input.paid = sale.total_received;
+      input.due = sale.balance_due;
+      const lines = await buildSaleThermalReceiptLines(input, settings.paperSize);
+      const res = await printReceiptLines(lines, {
+        mode: 'thermal',
+        paperSize: settings.paperSize,
+        bluetoothDeviceAddress: settings.bluetoothDeviceAddress,
+      });
+      if (res.ok) {
+        salesApi.logPrint(saleIdRaw(sale), 'Thermal', effectiveUserId).catch(() => {});
+        setActionSuccess('Sent to thermal printer.');
+      } else {
+        setActionError(res.hint || 'Thermal print failed. Pair a printer in Settings or use Print A4.');
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Thermal print failed.');
+    } finally {
+      setThermalPrinting(false);
+    }
+  };
+  const handleSharePdf = (sale: SaleRecord) => {
+    openInvoicePreview(sale, 'PDF');
+  };
+  const handleDownloadPdf = (sale: SaleRecord) => {
+    openInvoicePreview(sale, 'PDF');
+  };
+
+  const handleShareWhatsApp = (sale: SaleRecord) => {
+    setMenuSale(null);
+    const due = sale.balance_due ?? 0;
+    const total = sale.grand_total ?? sale.amount;
+    const text = [
+      `Invoice: ${sale.id}`,
+      `Customer: ${sale.customer}`,
+      `Total: Rs. ${total.toLocaleString()}`,
+      `Balance Due: Rs. ${due.toLocaleString()}`,
+    ].join('\n');
+    const rawPhone = saleWhatsAppPhone(sale);
+    salesApi.logShare(saleIdRaw(sale), 'whatsapp', effectiveUserId).catch(() => {});
+    openWhatsAppShare(rawPhone || undefined, text);
+  };
+
+  const closeEditSaleModal = () => {
+    if (editSaving) return;
+    setEditSale(null);
+    setEditLineItems([]);
+    setEditLinesLoading(false);
+    setEditCustomerId(null);
+    setEditCustomerOptions([]);
+    setProductCatalog([]);
+    setProductSearch('');
+    setShowAddProductRow(false);
+    setShowDiscountField(false);
+    setShowExtrasField(false);
+    setEditPendingAttachments([]);
+  };
+
+  const handleEdit = (sale: SaleRecord) => {
+    setMenuSale(null);
+    const currentDate = String(
+      (sale.raw.invoice_date as string) || (sale.raw.created_at as string) || '',
+    ).slice(0, 10);
+    setEditDate(currentDate);
+    setEditNotes(String((sale.raw.notes as string) || ''));
+    setEditBillRef(salesApi.readSaleBillRef(sale.raw));
+    setEditCustomerId((sale.raw.customer_id as string) || null);
+    setEditCustomerName(String((sale.raw.customer_name as string) || ''));
+    setEditDiscount(String(Number(sale.raw.discount_amount ?? 0) || 0));
+    setEditExtra(String(Number(sale.raw.extra_expenses ?? 0) || 0));
+    setShowDiscountField(Number(sale.raw.discount_amount ?? 0) > 0);
+    setShowExtrasField(Number(sale.raw.extra_expenses ?? 0) > 0);
+    setEditPendingAttachments([]);
+    setProductSearch('');
+    setShowAddProductRow(false);
+    setEditSale(sale);
+    setEditLineItems([]);
+    setEditLinesLoading(true);
+    const effBranch = branchId && branchId !== 'all' ? branchId : null;
+    if (companyId) {
+      setEditCustomersLoading(true);
+      void contactsApi.getContacts(companyId, 'customer', effBranch).then(({ data, error: cErr }) => {
+        setEditCustomersLoading(false);
+        if (!cErr && data?.length) {
+          setEditCustomerOptions(data.map((c) => ({ id: c.id, name: c.name })));
+        } else {
+          setEditCustomerOptions([]);
+        }
+      });
+      void productsApi.getProducts(companyId).then(({ data }) => {
+        setProductCatalog(data || []);
+      });
+    } else {
+      setEditCustomerOptions([]);
+      setProductCatalog([]);
+    }
+    void salesApi.getSaleReturnCandidateItems(String(sale.raw.id)).then(({ data, error: lineErr }) => {
+      setEditLinesLoading(false);
+      if (lineErr || !data?.length) {
+        setEditLineItems([]);
+        return;
+      }
+      setEditLineItems(
+        data.map((r, idx) => ({
+          lineKey: r.saleItemId || `line-${idx}-${r.variationId ?? 'n'}-${r.productName?.slice(0, 8) ?? ''}`,
+          productId: r.productId || '',
+          variationId: r.variationId,
+          productName: r.productName,
+          sku: r.sku,
+          quantity: String(r.soldQty ?? ''),
+          unitPrice: String(r.unitPrice ?? ''),
+          discountAmount: 0,
+          taxAmount: 0,
+        })),
+      );
+    });
+  };
+
+  const handleEditRef = useRef(handleEdit);
+  handleEditRef.current = handleEdit;
+
+  useEffect(() => {
+    if (!initialEditSaleId || !companyId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data: row, error } = await salesApi.getSaleEnrichedById(companyId, initialEditSaleId);
+      if (cancelled) return;
+      if (error || !row) {
+        onConsumedInitialEditSaleId?.();
+        return;
+      }
+      const saleRecord = mapEnrichedRowToSaleRecord(row);
+      await handleEditRef.current(saleRecord);
+      if (!cancelled) onConsumedInitialEditSaleId?.();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialEditSaleId, companyId, onConsumedInitialEditSaleId]);
+
+  const confirmEdit = async () => {
+    if (!editSale || editSaving) return;
+    setEditSaving(true);
+    setActionError(null);
+    try {
+      const raw = editSale.raw;
+      const paid = Number(editSale.total_received ?? raw.paid_amount ?? 0) || 0;
+      const tax = Number(raw.tax_amount ?? 0) || 0;
+      const studio = Number(raw.studio_charges ?? 0) || 0;
+      const discount = Number(editDiscount) || 0;
+      const shipmentFrozen = Number(raw.shipment_charges ?? 0) || 0;
+      const extra = Number(editExtra) || 0;
+
+      const normalizedSaleLines = editLineItems.map((row) => {
+        const qty = Math.max(0, parseFloat(String(row.quantity).trim()) || 0);
+        const up = Math.max(0, parseFloat(String(row.unitPrice).trim()) || 0);
+        const da = Math.max(0, Number(row.discountAmount) || 0);
+        const ta = Math.max(0, Number(row.taxAmount) || 0);
+        const lineTot = Math.max(0, qty * up - da + ta);
+        return { ...row, quantity: qty, unitPrice: up, discountAmount: da, taxAmount: ta, total: lineTot };
+      });
+
+      const hasPositiveQtySale = normalizedSaleLines.some((r) => r.quantity > 0);
+      if (
+        hasPositiveQtySale &&
+        normalizedSaleLines.some((r) => r.quantity > 0 && !String(r.productId || '').trim())
+      ) {
+        setActionError('Each line must be linked to a product. Use + Add product to replace orphan lines.');
+        return;
+      }
+
+      const lines = normalizedSaleLines.filter((row) => String(row.productId || '').trim() && row.quantity > 0);
+
+      if (lines.length === 0) {
+        if (editLineItems.length > 0) {
+          setActionError('Add at least one line with quantity greater than zero.');
+          return;
+        }
+        const subtotal = Number(raw.subtotal ?? 0) || 0;
+        const totalHdr = Math.max(0, subtotal - discount + tax + shipmentFrozen + extra + studio);
+        const dueHdr = Math.max(0, totalHdr - paid);
+        const updates: Record<string, unknown> = {
+          notes: mergeCustomerBillRefIntoNotes(editBillRef, editNotes) || null,
+          customer_name: editCustomerName || raw.customer_name,
+          customer_id: editCustomerId || null,
+          discount_amount: discount,
+          extra_expenses: extra,
+          total: totalHdr,
+          due_amount: dueHdr,
+          updated_at: getCurrentLocalTimestamp(),
+        };
+        if (editDate) updates.invoice_date = editDate;
+        const { error } = await supabase.from('sales').update(updates).eq('id', raw.id as string);
+        if (error) setActionError(error.message);
+        else {
+          const billPatch = await salesApi.patchSaleBillRef(String(raw.id), editBillRef);
+          if (billPatch.error) {
+            setActionError(billPatch.error);
+            return;
+          }
+          const oldSnap = saleAccountingSnapshotFromRow(raw);
+          const newSnap: typeof oldSnap = {
+            total: totalHdr,
+            subtotal,
+            discount,
+            extraExpense: extra,
+            shippingCharges: shipmentFrozen,
+          };
+          let acct: { updated: boolean; error: string | null; skipReason?: SaleLedgerSyncSkipReason };
+          try {
+            acct = await syncSaleDocumentJournalInPlaceMobile({
+              companyId: String(raw.company_id ?? companyId ?? ''),
+              saleId: String(raw.id),
+              customerId: editCustomerId ?? (raw.customer_id as string) ?? null,
+              invoiceNo: String(saleDocumentDisplayNo(raw) || editSale.id),
+              oldSnapshot: oldSnap,
+              newSnapshot: newSnap,
+            });
+          } catch (e) {
+            console.warn('[SalesHome] Ledger sync threw (header path):', e);
+            acct = { updated: false, error: (e as Error)?.message ?? String(e) };
+          }
+          if (acct.error) console.warn('[SalesHome] Ledger sync after header edit:', acct.error);
+          const skipHint = saleLedgerSkipHint(acct.skipReason);
+          const ledgerNote = [
+            acct.updated ? 'Sale document ledger updated' : '',
+            acct.error ? `Ledger: ${acct.error}` : '',
+            !acct.updated && !acct.error && skipHint ? skipHint : '',
+          ]
+            .filter(Boolean)
+            .join('; ');
+          setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
+          if (editPendingAttachments.length > 0 && companyId) {
+            const existing = normalizeAttachments(raw.attachments);
+            const attRes = await salesApi.appendSaleAttachments(
+              companyId,
+              String(raw.id),
+              editPendingAttachments,
+              existing,
+            );
+            if (attRes.error) {
+              setActionError(`Invoice updated but attachments failed: ${attRes.error}`);
+            } else {
+              patchLocalSaleAttachments(String(raw.id), attRes.data);
+              setEditPendingAttachments([]);
+            }
+          }
+          await refetchSales();
+          dispatchSaleEditInvalidation();
+          setEditSale(null);
+          setEditLineItems([]);
+        }
+        return;
+      }
+
+      const lineSubtotal = lines.reduce((s, r) => s + r.total, 0);
+      const oldAcctSnap = saleAccountingSnapshotFromRow(raw);
+      const rpcErr = await salesApi.updateSaleWithItems({
+        saleId: String(raw.id),
+        userId: effectiveUserId ?? null,
+        customerId: editCustomerId,
+        items: lines.map((r) => ({
+          productId: r.productId,
+          variationId: r.variationId,
+          productName: r.productName,
+          sku: r.sku,
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          discountAmount: r.discountAmount,
+          taxAmount: r.taxAmount,
+          total: r.total,
+        })),
+        discountAmount: discount,
+        taxAmount: tax,
+        shipmentCharges: shipmentFrozen,
+        extraExpenses: extra,
+        notes: mergeCustomerBillRefIntoNotes(editBillRef, editNotes) || null,
+        customerName: editCustomerName || null,
+        contactNumber: null,
+        paymentMethod: null,
+        invoiceDate: editDate || null,
+        deadline: null,
+      });
+      if (rpcErr.error) {
+        const msg =
+          rpcErr.error === 'Forbidden'
+            ? 'Forbidden: your session company does not match this sale. Switch company or re-login, then retry.'
+            : rpcErr.error;
+        console.warn('[SalesHome] updateSaleWithItems failed:', rpcErr.error, {
+          saleId: String(raw.id),
+          lineCount: lines.length,
+        });
+        setActionError(msg);
+        return;
+      }
+      const billPatchLines = await salesApi.patchSaleBillRef(String(raw.id), editBillRef);
+      if (billPatchLines.error) {
+        setActionError(billPatchLines.error);
+        return;
+      }
+      const newTotal = Math.max(0, lineSubtotal - discount + tax + shipmentFrozen + extra + studio);
+      const newAcctSnap = {
+        total: newTotal,
+        subtotal: lineSubtotal,
+        discount,
+        extraExpense: extra,
+        shippingCharges: shipmentFrozen,
+      };
+      let acct: { updated: boolean; error: string | null; skipReason?: SaleLedgerSyncSkipReason };
+      try {
+        acct = await syncSaleDocumentJournalInPlaceMobile({
+          companyId: String(raw.company_id ?? companyId ?? ''),
+          saleId: String(raw.id),
+          customerId: editCustomerId ?? (raw.customer_id as string) ?? null,
+          invoiceNo: String(saleDocumentDisplayNo(raw) || editSale.id),
+          oldSnapshot: oldAcctSnap,
+          newSnapshot: newAcctSnap,
+        });
+      } catch (e) {
+        console.warn('[SalesHome] Ledger sync threw (line path):', e);
+        acct = { updated: false, error: (e as Error)?.message ?? String(e) };
+      }
+      if (acct.error) console.warn('[SalesHome] Ledger sync after line edit:', acct.error);
+      const skipHintLine = saleLedgerSkipHint(acct.skipReason);
+      const ledgerNote = [
+        acct.updated ? 'Sale document ledger updated' : '',
+        acct.error ? `Ledger: ${acct.error}` : '',
+        !acct.updated && !acct.error && skipHintLine ? skipHintLine : '',
+      ]
+        .filter(Boolean)
+        .join('; ');
+      setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
+      if (editPendingAttachments.length > 0 && companyId) {
+        const existing = normalizeAttachments(raw.attachments);
+        const attRes = await salesApi.appendSaleAttachments(
+          companyId,
+          String(raw.id),
+          editPendingAttachments,
+          existing,
+        );
+        if (attRes.error) {
+          setActionError(`Invoice updated but attachments failed: ${attRes.error}`);
+        } else {
+          patchLocalSaleAttachments(String(raw.id), attRes.data);
+          setEditPendingAttachments([]);
+        }
+      }
+      await refetchSales();
+      dispatchSaleEditInvalidation();
+      setEditSale(null);
+      setEditLineItems([]);
+      setEditLinesLoading(false);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const updateEditLine = (index: number, patch: Partial<EditSaleLine>) => {
+    setEditLineItems((prev) => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  const removeEditLine = (index: number) => {
+    setEditLineItems((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const pickProductForEditSale = (p: productsApi.Product) => {
+    const key = globalThis.crypto?.randomUUID?.() ?? `lk-${Date.now()}`;
+    if (p.hasVariations && p.variations && p.variations.length > 0) {
+      const v = p.variations[0];
+      setEditLineItems((prev) => [
+        ...prev,
+        {
+          lineKey: key,
+          productId: p.id,
+          variationId: v.id,
+          productName: `${p.name} (${Object.values(v.attributes || {}).filter(Boolean).join(', ')})`,
+          sku: v.sku,
+          quantity: '1',
+          unitPrice: String(Number(v.price) || 0),
+          discountAmount: 0,
+          taxAmount: 0,
+        },
+      ]);
+    } else {
+      setEditLineItems((prev) => [
+        ...prev,
+        {
+          lineKey: key,
+          productId: p.id,
+          variationId: null,
+          productName: p.name,
+          sku: p.sku,
+          quantity: '1',
+          unitPrice: String(Number(p.retailPrice) || 0),
+          discountAmount: 0,
+          taxAmount: 0,
+        },
+      ]);
+    }
+    setProductSearch('');
+    setShowAddProductRow(false);
+  };
+
+  const filteredEditCatalog = useMemo(() => {
+    if (!editSale) return [];
+    const q = productSearch.trim();
+    if (!q) return productCatalog.slice(0, 35);
+    return filterAndRankProducts(productCatalog, q, productMatchesSearch).slice(0, 45);
+  }, [editSale, productSearch, productCatalog]);
+
+  const editLineSubtotal = editLineItems.reduce((s, r) => {
+    const qty = Math.max(0, parseFloat(String(r.quantity).trim()) || 0);
+    const up = Math.max(0, parseFloat(String(r.unitPrice).trim()) || 0);
+    return s + Math.max(0, qty * up - (Number(r.discountAmount) || 0) + (Number(r.taxAmount) || 0));
+  }, 0);
+  const handleActivity = (sale: SaleRecord) => {
+    setMenuSale(null);
+    setActivitySale(sale);
+  };
+  const handleReturn = (sale: SaleRecord) => {
+    setMenuSale(null);
+    const targetBranch = String((sale.raw.branch_id as string) || (branchId && branchId !== 'all' ? branchId : '') || '').trim();
+    if (!targetBranch) {
+      setActionError('Branch is required to create sale return. Please switch to a specific branch.');
+      return;
+    }
+    setReturnSale(sale);
+  };
+  const handleCancel = (sale: SaleRecord) => {
+    setMenuSale(null);
+    setCancelLinkedWoCount(0);
+    setCancelConfirmSale(sale);
+  };
+
+  useEffect(() => {
+    if (!cancelConfirmSale) {
+      setCancelLinkedWoCount(0);
+      return;
+    }
+    const saleId = String(cancelConfirmSale.raw.id || '');
+    if (!saleId || !bespokeEnabled) {
+      setCancelLinkedWoCount(0);
+      return;
+    }
+    let cancelled = false;
+    void listBespokeWorkOrdersBySale(saleId)
+      .then((rows) => {
+        if (cancelled) return;
+        const active = rows.filter((w) => String(w.status || '').toLowerCase() !== 'cancelled');
+        setCancelLinkedWoCount(active.length);
+      })
+      .catch(() => {
+        if (!cancelled) setCancelLinkedWoCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cancelConfirmSale, bespokeEnabled]);
+
+  const confirmCancel = async () => {
+    if (!cancelConfirmSale) return;
+    setCancelling(true);
+    setActionError(null);
+    try {
+      const { error } = await salesApi.cancelSale(cancelConfirmSale.raw.id as string, {
+        userId: effectiveUserId ?? null,
+      });
+      if (error) {
+        setActionError(error);
+      } else {
+        // Keep the row visible with cancelled badge (matches web). Mark status locally.
+        setRecentSales((prev) =>
+          prev.map((s) =>
+            s.id === cancelConfirmSale.id
+              ? {
+                  ...s,
+                  raw: { ...s.raw, status: 'cancelled' },
+                }
+              : s,
+          ),
+        );
+        setSelectedSale(null);
+        setActionSuccess(
+          cancelLinkedWoCount > 0
+            ? `Invoice ${cancelConfirmSale.id} cancelled (${cancelLinkedWoCount} work order(s) also cancelled).`
+            : `Invoice ${cancelConfirmSale.id} cancelled successfully.`,
+        );
+        setCancelConfirmSale(null);
+        setCancelLinkedWoCount(0);
+      }
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const openAddPayment = (sale: SaleRecord) => {
+    setMenuSale(null);
+    setAddPaymentSale(sale);
+  };
+
+  const closeAddPayment = () => setAddPaymentSale(null);
+
+  useEffect(() => {
+    if (!actionSuccess) return;
+    const t = setTimeout(() => setActionSuccess(null), 3000);
+    return () => clearTimeout(t);
+  }, [actionSuccess]);
+
+  useEffect(() => {
+    if (!actionError || cancelConfirmSale) return;
+    // Keep errors sticky while edit/return/payment modals are open so RPC failures stay visible.
+    if (editSale || returnSale || addPaymentSale) return;
+    const t = setTimeout(() => setActionError(null), 4000);
+    return () => clearTimeout(t);
+  }, [actionError, cancelConfirmSale, editSale, returnSale, addPaymentSale]);
+
+  useEffect(() => {
+    if (editSale || returnSale || previewSale || cancelConfirmSale || addPaymentSale || attachmentSale) {
+      setMenuSale(null);
+    }
+  }, [editSale, returnSale, previewSale, cancelConfirmSale, addPaymentSale, attachmentSale]);
+
+  const renderSaleMenuActions = (sale: SaleRecord) => (
+    <>
+      <button onClick={() => handleActivity(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <History className="w-5 h-5 text-[#3B82F6]" /> Activity
+      </button>
+      <button onClick={() => handleShareWhatsApp(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Share2 className="w-5 h-5 text-[#10B981]" /> Share via WhatsApp
+      </button>
+      <button onClick={() => handleSharePdf(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Share2 className="w-5 h-5 text-[#3B82F6]" /> Share PDF
+      </button>
+      <button onClick={() => handlePrintA4(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Printer className="w-5 h-5 text-[#3B82F6]" /> Print A4
+      </button>
+      <button
+        onClick={() => void handlePrintThermal(sale)}
+        disabled={thermalPrinting}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50"
+      >
+        <FileText className="w-5 h-5 text-[#9CA3AF]" /> {thermalPrinting ? 'Printing…' : 'Print Thermal'}
+      </button>
+      <button onClick={() => handleDownloadPdf(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
+      </button>
+      <button onClick={() => openAttachmentSheet(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Paperclip className="w-5 h-5 text-[#3B82F6]" />
+        {normalizeAttachments(sale.raw.attachments).length > 0 ? 'Update attachments' : 'Add attachments'}
+      </button>
+      <div className="border-t border-[#374151]" />
+      <button onClick={() => handleEdit(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <SquarePen className="w-5 h-5 text-[#3B82F6]" /> Edit Invoice
+      </button>
+      <button onClick={() => handleReturn(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <RotateCcw className="w-5 h-5 text-[#3B82F6]" /> Create Sale Return
+      </button>
+      <button onClick={() => handleCancel(sale)} disabled={cancelling} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50">
+        <Ban className="w-5 h-5 text-[#EF4444]" /> {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+      </button>
+    </>
+  );
+
+  const getPaymentStatusColor = (status: string) => {
+    switch (status) {
+      case 'unpaid':
+        return 'text-[#EF4444]';
+      case 'partial':
+        return 'text-[#F59E0B]';
+      case 'paid':
+        return 'text-[#10B981]';
+      default:
+        return 'text-[#9CA3AF]';
+    }
+  };
+
+  // Sale Detail View (full-page, same layout as Purchase detail)
+  return (
+  <>
+    {selectedRentalId ? (
+      <ViewRentalDetails
+        rentalId={selectedRentalId}
+        companyId={companyId}
+        userId={userId ?? null}
+        onBack={() => setSelectedRentalId(null)}
+        onRefresh={() => void refetchSales({ silent: true })}
+      />
+    ) : selectedSale ? (() => {
+    const items = (selectedSale.raw.items as Array<{ product_name?: string; quantity?: number; unit_price?: number; total?: number; packing_details?: { total_boxes?: number; total_pieces?: number } }>) ?? [];
+    const saleAmount = selectedSale.amount;
+    const studioCost = selectedSale.studio_charges ?? 0;
+    const grandTotal = selectedSale.grand_total ?? saleAmount + studioCost;
+    // Same as web drawer: when payment rows are loaded, total paid = sum of lines (sale + manual receipt allocations).
+    const paidFromHistory =
+      paymentHistory.length > 0 ? paymentHistory.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) : null;
+    const paidAmount = paidFromHistory != null ? paidFromHistory : selectedSale.total_received;
+    const dueRaw = grandTotal - paidAmount;
+    const dueAmount = dueRaw <= 0.005 ? 0 : dueRaw;
+    const paymentStatus = dueAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+    const cust = selectedSale.raw.customer as { name?: string; phone?: string } | null;
+    const customerPhone = cust?.phone ?? (selectedSale.raw.contact_phone as string) ?? '—';
+    const subtotal = Number(selectedSale.raw.subtotal ?? saleAmount);
+    const discount = Number(selectedSale.raw.discount ?? 0);
+    const tax = Number(selectedSale.raw.tax ?? 0);
+    const shippingRows = saleChargeLines.filter((c) => c.charge_type === 'shipping');
+    const extraRows = saleChargeLines.filter(
+      (c) => c.charge_type !== 'discount' && c.charge_type !== 'shipping',
+    );
+    const extraFallback =
+      Number(selectedSale.raw.extra_expenses ?? selectedSale.raw.expenses ?? 0) || 0;
+    const shippingFallback = Number(selectedSale.raw.shipment_charges ?? 0) || 0;
+    const hasChargeBreakdown =
+      shippingRows.length > 0 ||
+      extraRows.length > 0 ||
+      extraFallback > 0 ||
+      shippingFallback > 0;
+    const isCancelled = selectedSale.raw.status === 'cancelled';
+    const saleLifecycleStatus = String(selectedSale.raw.status ?? '').toLowerCase();
+    const canFinalize =
+      !isCancelled && saleLifecycleStatus !== 'final' && saleLifecycleStatus !== 'cancelled';
+    const hasStudio = (studioSummary?.has_studio ?? false) || studioCost > 0;
+    const saleDocumentAttachments = normalizeAttachments(selectedSale.raw.attachments);
+    const showSelectedSaleBalances = canViewSaleBalances(
+      canViewBalances,
+      selectedSale.raw,
+      effectiveUserId,
+      effectiveProfileId,
+    );
+
+    return (
+      <SwipeBackShell onBack={() => setSelectedSale(null)}>
+      <div className="min-h-screen pb-24 bg-[#111827]">
+        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 flow-screen-header">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectedSale(null)}
+              className="p-2 hover:bg-[#374151] rounded-lg transition-colors text-white"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1">
+              <h1 className="font-semibold text-white">{selectedSale.id}</h1>
+              <p className="text-xs text-[#9CA3AF]">{selectedSale.customer}</p>
+            </div>
+            {isCancelled && (
+              <span className="px-3 py-1 rounded-full text-xs font-medium text-[#EF4444] bg-[#EF4444]/10">
+                CANCELLED
+              </span>
+            )}
+            {!isCancelled && (
+              <div className="relative">
+                <button
+                  onClick={() => setMenuSale(menuSale?.id === selectedSale.id ? null : selectedSale)}
+                  className="p-2 hover:bg-[#374151] rounded-lg text-[#9CA3AF]"
+                  aria-label="More options"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+                {menuSale?.id === selectedSale.id && (
+                  <>
+                    <div className="fixed inset-0 z-[55]" onClick={() => setMenuSale(null)} aria-hidden="true" />
+                    <div className="absolute right-0 top-full mt-1 bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl overflow-hidden min-w-[200px] z-[60] max-h-[70vh] overflow-y-auto">
+                      {renderSaleMenuActions(selectedSale)}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h3 className="text-sm font-medium text-white mb-3">Customer Information</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Name:</span>
+                <span className="text-white">{selectedSale.customer}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Phone:</span>
+                <span className="text-white">{customerPhone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Invoice Date:</span>
+                <span className="text-white">{selectedSale.date}</span>
+              </div>
+              {(selectedSale.deadline || (selectedSale.raw.deadline as string)) && (
+                <div className="flex justify-between">
+                  <span className="text-[#9CA3AF]">Delivery Date:</span>
+                  <span className="text-cyan-300">
+                    {String(selectedSale.deadline || selectedSale.raw.deadline).slice(0, 10)}
+                  </span>
+                </div>
+              )}
+              {selectedSale.created_by_name && (
+                <div className="flex justify-between">
+                  <span className="text-[#9CA3AF]">Created by:</span>
+                  <span className="text-white">{selectedSale.created_by_name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h3 className="text-sm font-medium text-white mb-3">Items ({items.length})</h3>
+            <div className="space-y-3">
+              {items.map((item, i) => (
+                <div key={i} className="pb-3 border-b border-[#374151] last:border-0">
+                  <div className="flex justify-between mb-1">
+                    <span className="font-medium text-white">{item.product_name || 'Item'}</span>
+                    <span className="text-[#10B981]">Rs. {(item.total ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-[#9CA3AF]">
+                    <span>Qty: {item.quantity ?? 0}</span>
+                    <span>@ Rs. {(item.unit_price ?? 0).toLocaleString()}</span>
+                  </div>
+                  {item.packing_details && ((item.packing_details.total_boxes ?? 0) > 0 || (item.packing_details.total_pieces ?? 0) > 0) && (
+                    <p className="text-xs text-[#3B82F6] mt-1">
+                      {item.packing_details.total_boxes ?? 0} Box / {item.packing_details.total_pieces ?? 0} Pc
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {canFinalize && (
+            <button
+              type="button"
+              disabled={finalizingSaleId === (selectedSale.raw.id as string)}
+              onClick={() => void handleFinalizeSale(selectedSale)}
+              className="w-full h-11 rounded-xl bg-[#10B981] text-white font-medium disabled:opacity-50"
+            >
+              {finalizingSaleId === (selectedSale.raw.id as string) ? 'Finalizing…' : 'Convert to Final (invoice)'}
+            </button>
+          )}
+
+          {bespokeEnabled && companyId && branchId && effectiveUserId && typeof selectedSale.raw.id === 'string' && (
+            <SaleBespokeWorkOrders
+              companyId={companyId}
+              branchId={resolvePaymentBranchId(branchId, selectedSale.raw.branch_id as string) ?? branchId}
+              saleId={selectedSale.raw.id}
+              userId={effectiveUserId}
+              saleStatus={saleLifecycleStatus}
+            />
+          )}
+
+          {companyId && branchId && effectiveUserId && (
+            <SaleCargoSection
+              saleId={selectedSale.raw.id as string}
+              saleLabel={selectedSale.id}
+              companyId={companyId}
+              branchId={branchId}
+              authUserId={effectiveUserId}
+              dbUserId={effectiveProfileId ?? userProfileId}
+            />
+          )}
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-[#9CA3AF]">Subtotal:</span>
+              <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
+            </div>
+            {discount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-[#9CA3AF]">Discount:</span>
+                <span className="text-[#EF4444]">- Rs. {discount.toLocaleString()}</span>
+              </div>
+            )}
+            {tax > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-[#9CA3AF]">Tax:</span>
+                <span className="text-white">Rs. {tax.toLocaleString()}</span>
+              </div>
+            )}
+            {shippingRows.length > 0
+              ? shippingRows.map((c, idx) => (
+                  <div key={c.id || `ship-${idx}`} className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">{saleChargesApi.formatSaleChargeLabel('shipping')}:</span>
+                    <span className="text-white">Rs. {c.amount.toLocaleString()}</span>
+                  </div>
+                ))
+              : shippingFallback > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">Shipping:</span>
+                    <span className="text-white">Rs. {shippingFallback.toLocaleString()}</span>
+                  </div>
+                ) : null}
+            {extraRows.length > 0
+              ? extraRows.map((c, idx) => (
+                  <div key={c.id || `extra-${idx}`} className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">
+                      {saleChargesApi.formatSaleChargeDisplayLabel(c)}:
+                    </span>
+                    <span className="text-white">Rs. {c.amount.toLocaleString()}</span>
+                  </div>
+                ))
+              : extraFallback > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">Extra charges:</span>
+                    <span className="text-white">Rs. {extraFallback.toLocaleString()}</span>
+                  </div>
+                ) : null}
+            <div className="flex justify-between text-lg font-bold pt-2 border-t border-[#374151]">
+              <span className="text-white">{hasChargeBreakdown ? 'Grand Total:' : 'Sale Amount:'}</span>
+              <span className="text-[#10B981]">Rs. {saleAmount.toLocaleString()}</span>
+            </div>
+          </div>
+
+          {hasStudio && (() => {
+            const stageList = (studioSummary?.tasks_with_workers?.length ? studioSummary.tasks_with_workers : studioSummary?.breakdown?.length ? studioSummary.breakdown : studioBreakdownFallback) as Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>;
+            const stageLabel = (t: string) => t === 'dyer' ? 'Dyeing' : t === 'stitching' ? 'Stitching' : t === 'handwork' ? 'Handwork' : String(t).replace(/_/g, ' ');
+            const stagesSum = stageList.length ? stageList.reduce((a, t) => a + Number(t.cost), 0) : 0;
+            const totalStudioCostDisplay = Math.max(studioCost, studioSummary?.total_studio_cost ?? 0, stagesSum);
+            const productionStatusDisplay = studioSummary?.production_status != null && studioSummary.production_status !== ''
+              ? (String(studioSummary.production_status).toLowerCase() === 'completed' ? 'Complete' : 'Pending')
+              : (studioCost > 0 ? 'Pending' : '—');
+            return (
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-[#3B82F6]" />
+                STUDIO COST SUMMARY
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-[#9CA3AF]">Production Status:</span>
+                  <span className="text-white capitalize">{productionStatusDisplay}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#9CA3AF]">Total Studio Cost:</span>
+                  <span className="text-[#F59E0B] font-medium">Rs. {totalStudioCostDisplay.toLocaleString()}</span>
+                </div>
+                {(studioSummary?.tasks_total ?? 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-[#9CA3AF]">Tasks Completed:</span>
+                    <span className="text-white">{studioSummary?.tasks_completed ?? 0} / {studioSummary?.tasks_total ?? 0}</span>
+                  </div>
+                )}
+                {studioSummary?.production_duration_days != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#9CA3AF]">Production Duration:</span>
+                    <span className="text-white">{studioSummary.production_duration_days} Days</span>
+                  </div>
+                )}
+                {studioSummary?.completed_at && (
+                  <div className="flex justify-between">
+                    <span className="text-[#9CA3AF]">Completed On:</span>
+                    <span className="text-white">{new Date(studioSummary.completed_at).toLocaleDateString('en-PK')}</span>
+                  </div>
+                )}
+              </div>
+              {stageList.length > 0 ? (
+                <div className="mt-3 pt-3 border-t border-[#374151] space-y-3">
+                  <p className="text-xs font-medium text-[#9CA3AF] uppercase tracking-wide">Stages · Worker · Cost · Completed</p>
+                  {stageList.map((t, i) => (
+                    <div key={i} className="bg-[#374151]/50 rounded-lg p-3 space-y-1.5 text-sm">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-white font-medium">{stageLabel(t.task_type)}</span>
+                        <span className="text-[#10B981] shrink-0">Rs. {Number(t.cost).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-[#9CA3AF]">
+                        <span>{t.worker_name || '—'}</span>
+                        <span>{t.completed_at ? new Date(t.completed_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 pt-3 border-t border-[#374151] text-xs text-[#9CA3AF]">No stage details yet. Stages will appear when production is linked.</p>
+              )}
+            </div>
+            );
+          })()}
+
+          <div className="bg-gradient-to-br from-[#3B82F6]/10 to-[#10B981]/10 border border-[#3B82F6]/30 rounded-xl p-4 space-y-2">
+            <h3 className="text-sm font-medium text-white mb-1">Final Bill</h3>
+            <div className="flex justify-between text-sm">
+              <span className="text-[#9CA3AF]">Sale Amount</span>
+              <span className="text-white">Rs. {saleAmount.toLocaleString()}</span>
+            </div>
+            {studioCost > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-[#9CA3AF]">+ Studio Cost</span>
+                <span className="text-[#F59E0B]">Rs. {studioCost.toLocaleString()}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-medium pt-1 border-t border-[#3B82F6]/30">
+              <span className="text-white">Grand Total</span>
+              <span className="text-[#10B981]">Rs. {grandTotal.toLocaleString()}</span>
+            </div>
+            <div className="pt-2 border-t border-[#3B82F6]/30 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-[#9CA3AF]">Customer Payments:</span>
+                <span className="text-[#10B981]">{maskMoney(paidAmount, showSelectedSaleBalances)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold">
+                <span className="text-white">Balance Due:</span>
+                <span className={getPaymentStatusColor(paymentStatus)}>
+                  {maskMoney(dueAmount, showSelectedSaleBalances)}
+                </span>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-[#3B82F6]/30">
+              <span className={`text-xs font-medium ${getPaymentStatusColor(paymentStatus)}`}>
+                {paymentStatus === 'paid' && '✓ Fully Paid'}
+                {paymentStatus === 'partial' && '⚠ Partially Paid'}
+                {paymentStatus === 'unpaid' && '✗ Unpaid'}
+              </span>
+            </div>
+          </div>
+
+          {saleDocumentAttachments.length > 0 && (
+            <AttachmentsSection items={saleDocumentAttachments} onOpenPreview={openAttachmentPreview} />
+          )}
+
+          {paymentHistory.length > 0 && (
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
+              <div className="space-y-2">
+                {paymentHistory.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => p.editTargetId && setViewPaymentId(p.editTargetId)}
+                      className="min-w-0 flex-1 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 py-0.5 transition-colors"
+                    >
+                      <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
+                      <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
+                      {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
+                      {p.notes && <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>}
+                      <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / edit</p>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {p.attachments && p.attachments.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openAttachmentPreview(p.attachments!, 0);
+                          }}
+                          className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151]"
+                          aria-label="View attachments"
+                        >
+                          <Paperclip className="w-5 h-5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => p.editTargetId && setViewPaymentId(p.editTargetId)}
+                        className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151]"
+                        aria-label="View payment"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {attachmentPreviewList && attachmentPreviewList.length > 0 && (
+            <AttachmentPreviewModal
+              attachments={attachmentPreviewList}
+              initialIndex={attachmentPreviewStart}
+              isOpen={true}
+              onClose={() => {
+                setAttachmentPreviewList(null);
+                setAttachmentPreviewStart(0);
+              }}
+            />
+          )}
+
+          {viewPaymentId && companyId && (
+            <TransactionDetailSheet
+              paymentId={viewPaymentId}
+              companyId={companyId}
+              branchId={branchId}
+              onClose={() => {
+                setViewPaymentId(null);
+                void refreshSelectedSaleAfterPaymentChange();
+              }}
+              onCancelled={() => {
+                setViewPaymentId(null);
+                void refreshSelectedSaleAfterPaymentChange();
+              }}
+            />
+          )}
+        </div>
+      </div>
+      </SwipeBackShell>
+    );
+    })() : (
+    <SwipeBackShell onBack={onBack}>
+    <div className="min-h-screen bg-[#111827] pb-24">
+      <OfflineBanner online={online} pendingCount={pendingCount} />
+      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#2563EB] to-[#3B82F6] p-4 sticky top-0 z-10 flow-screen-header shadow-lg">
+        <div className="flex items-center gap-3 mb-4">
+          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="font-semibold text-white text-lg">Sales</h1>
+            <p className="text-xs text-white/80">
+              {saleTypeFilter === 'all'
+                  ? `${filteredList.length} item${filteredList.length === 1 ? '' : 's'}`
+                  : `${filteredList.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} item${filteredList.length === 1 ? '' : 's'}`}
+            </p>
+            {adminCompanyList && listBranchScope.mode === 'single' ? (
+              <p className="text-[11px] text-amber-200/90 mt-0.5">
+                Branch-filtered — switch header to All to see every branch
+              </p>
+            ) : null}
+          </div>
+          <button
+            onClick={onNewSale}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white text-[#2563EB] rounded-lg font-semibold text-sm shadow-md hover:bg-white/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
+            <p className="text-[10px] text-white/70 uppercase tracking-wide">Today</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {displayStats.today.toLocaleString()}</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
+            <p className="text-[10px] text-white/70 uppercase tracking-wide">Week</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {displayStats.week.toLocaleString()}</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
+            <p className="text-[10px] text-white/70 uppercase tracking-wide">Month</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {displayStats.month.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className={`grid gap-1.5 mb-3 ${saleTypeTabGridClass}`}>
+          {saleTypeFilterTabs.map((tab) => {
+            const active = saleTypeFilter === tab;
+            const label = tab === 'all' ? 'All' : saleListTypeLabel(tab);
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSaleTypeFilter(tab)}
+                className={`py-1.5 px-1 rounded-lg text-[11px] font-semibold transition-colors truncate ${
+                  active
+                    ? 'bg-white text-[#2563EB] shadow-sm'
+                    : 'bg-white/15 text-white/90 border border-white/20 hover:bg-white/25'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {saleTypeFilter !== 'all' && saleTypeFilter !== 'rental' && (
+          <p className="text-[10px] text-white/60 mb-2 -mt-1">Totals include all sale types.</p>
+        )}
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search SL #, bill ref (e.g. 260), or customer..."
+              className="w-full h-10 bg-white/15 border border-white/20 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/40"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            className={`relative h-10 px-3 rounded-xl border text-sm font-medium flex items-center gap-1.5 shrink-0 transition-colors ${
+              filtersOpen || activeListFilterCount > 0
+                ? 'bg-white text-[#2563EB] border-white'
+                : 'bg-white/15 text-white border-white/20 hover:bg-white/25'
+            }`}
+            aria-expanded={filtersOpen}
+            aria-label="List filters"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            Filter
+            {activeListFilterCount > 0 ? (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#2563EB] text-white text-[10px] font-bold flex items-center justify-center">
+                {activeListFilterCount}
+              </span>
+            ) : null}
+          </button>
+        </div>
+        {activeListFilterCount > 0 ? (
+          <p className="text-[11px] text-white/75 mt-2">
+            Filtered · {dateFilterSummary}
+            {createdByFilter !== 'all' ? ` · ${createdByFilter}` : ''}
+          </p>
+        ) : null}
+      </div>
+
+      <SalesListFilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        dateMode={dateMode}
+        onDateModeChange={setDateMode}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        monthCursor={monthCursor}
+        onMonthCursorChange={setMonthCursor}
+        createdByFilter={createdByFilter}
+        onCreatedByFilterChange={setCreatedByFilter}
+        creatorOptions={creatorFilterOptions}
+        branchFilter={branchFilter}
+        onBranchFilterChange={setBranchFilter}
+        branchOptions={branchFilterOptions}
+        showBranchFilter={showBranchFilterChips}
+        onClear={clearListFilters}
+        activeFilterCount={activeListFilterCount}
+      />
+
+      <PullToRefresh
+        onRefresh={async () => {
+          await refetchSales({ silent: true });
+        }}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#3B82F6]"
+      >
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
+        </div>
+      ) : (
+        <>
+          <div className="p-4 pt-4 space-y-3">
+            <>
+            {filteredList.map((row) => {
+              if (row.kind === 'rental') {
+                const isCancelled = row.rentalStatus === 'cancelled';
+                const paid = row.balance_due <= 0;
+                const partial = row.balance_due > 0 && row.total_received > 0;
+                const unpaid = row.balance_due > 0 && row.total_received === 0;
+                const rentalBranchName = showBranchOnCards ? resolveRowBranchName(row) : '';
+                return (
+                  <div key={`rental-${row.rentalId}`} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#3B82F6]/50 transition-all min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => row.rentalId && setSelectedRentalId(row.rentalId)}
+                      className="w-full p-4 text-left active:scale-[0.98] min-w-0"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className={`font-medium truncate ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-white'}`}>{row.id}</h3>
+                        <span className={`text-sm font-semibold shrink-0 ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-[#10B981]'}`}>
+                          Rs. {(row.grand_total ?? row.amount).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[#D1D5DB] truncate">{row.customer}</p>
+                      {row.billRef ? (
+                        <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {row.billRef}</p>
+                      ) : null}
+                      <div className="mt-1">{listRowBadge(row)}</div>
+                      {row.created_by_name ? (
+                        <p className="text-xs text-[#9CA3AF] mt-0.5">Salesman: {row.created_by_name}</p>
+                      ) : null}
+                      {rentalBranchName ? (
+                        <p className="text-xs text-[#93C5FD]/90 mt-0.5">Branch: {rentalBranchName}</p>
+                      ) : null}
+                      <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                        <Calendar className="w-3.5 h-3.5 shrink-0" />
+                        <span>{row.date}</span>
+                      </div>
+                      <div className="border-t border-[#374151] my-3" aria-hidden="true" />
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-[#9CA3AF]">Total:</span>
+                          <span className="font-medium text-white">Rs. {row.amount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#9CA3AF]">Received:</span>
+                          <span className="text-[#10B981]">Rs. {row.total_received.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-[#9CA3AF]">Balance:</span>
+                          <span className="font-medium shrink-0 text-white">Rs. {row.balance_due.toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {isCancelled && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EF4444]/20 text-[#EF4444]">
+                            Cancelled
+                          </span>
+                        )}
+                        {!isCancelled && paid && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">
+                            ✔ Paid
+                          </span>
+                        )}
+                        {!isCancelled && partial && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F59E0B]/20 text-[#F59E0B]">
+                            Partially Paid
+                          </span>
+                        )}
+                        {!isCancelled && unpaid && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#6B7280]/20 text-[#9CA3AF]">
+                            Unpaid
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+              const sale: SaleRecord = {
+                raw: row.saleRaw!,
+                id: row.id,
+                customer: row.customer,
+                billRef: row.billRef,
+                amount: row.amount,
+                total_received: row.total_received,
+                balance_due: row.balance_due,
+                credit_balance: row.credit_balance,
+                date: row.date,
+                created_by_name: row.created_by_name,
+                deadline: (row.saleRaw?.deadline as string) || null,
+                studio_charges: row.studio_charges,
+                grand_total: row.grand_total,
+                shipment_status: row.shipment_status,
+              };
+              const showSaleBalances = canViewSaleBalances(
+                canViewBalances,
+                sale.raw,
+                effectiveUserId,
+                effectiveProfileId,
+              );
+              const isCancelled = sale.raw.status === 'cancelled';
+              const overpaid = sale.credit_balance > 0;
+              const paid = !overpaid && sale.balance_due <= 0;
+              const partial = !overpaid && sale.balance_due > 0 && sale.total_received > 0;
+              const unpaid = !overpaid && sale.balance_due > 0 && sale.total_received === 0;
+              const showAddPayment = !isCancelled && !overpaid && sale.balance_due > 0;
+              const saleBranchName = showBranchOnCards ? resolveRowBranchName(row) : '';
+              return (
+              <div key={sale.id} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#3B82F6]/50 transition-all min-w-0">
+                <button
+                  onClick={() => setSelectedSale(sale)}
+                  className="w-full p-4 text-left active:scale-[0.98] min-w-0 pr-12"
+                >
+                  {/* Row 1: Invoice No. | Amount (right; grand total when studio cost present) */}
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className={`font-medium truncate ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-white'}`}>{sale.id}</h3>
+                    <span className={`text-sm font-semibold shrink-0 ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-[#10B981]'}`}>
+                      Rs. {(sale.grand_total ?? sale.amount).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>
+                  {sale.billRef ? (
+                    <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {sale.billRef}</p>
+                  ) : null}
+                  <div className="mt-1">{listRowBadge(row)}</div>
+                  {sale.shipment_status && (
+                    <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded bg-[#3B82F6]/20 text-[#93C5FD] border border-[#3B82F6]/30">
+                      {sale.shipment_status === 'Delivered' || sale.shipment_status === 'delivered' ? '✅ Delivered' :
+                        sale.shipment_status === 'In Transit' || sale.shipment_status === 'Out for Delivery' ? '🚚 In Transit' :
+                        sale.shipment_status === 'Cancelled' || sale.shipment_status === 'cancelled' ? '❌ Cancelled' :
+                        `📦 ${sale.shipment_status}`}
+                    </span>
+                  )}
+                  {sale.created_by_name && (
+                    <p className="text-xs text-[#9CA3AF] mt-0.5">Created by: {sale.created_by_name}</p>
+                  )}
+                  {saleBranchName ? (
+                    <p className="text-xs text-[#93C5FD]/90 mt-0.5">Branch: {saleBranchName}</p>
+                  ) : null}
+                  <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />
+                    <span>{sale.date}</span>
+                  </div>
+                  {sale.deadline && (
+                    <p className="text-xs text-cyan-300/90 mt-0.5">
+                      Delivery: {String(sale.deadline).slice(0, 10)}
+                    </p>
+                  )}
+
+                  <div className="border-t border-[#374151] my-3" aria-hidden="true" />
+
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[#9CA3AF]">Total:</span>
+                      <span className="font-medium text-white">Rs. {sale.amount.toLocaleString()}</span>
+                    </div>
+                    {(sale.studio_charges ?? 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-[#9CA3AF]">Studio Cost:</span>
+                        <span className="font-medium text-[#F59E0B]">Rs. {(sale.studio_charges ?? 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-[#9CA3AF]">Received:</span>
+                      <span className="text-[#10B981]">{maskMoney(sale.total_received, showSaleBalances)}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-[#9CA3AF]">
+                        {overpaid ? 'Credit Balance:' : 'Balance:'}
+                      </span>
+                      <span className={`font-medium shrink-0 ${overpaid ? 'text-[#10B981]' : 'text-white'}`}>
+                        {maskMoney(overpaid ? sale.credit_balance : sale.balance_due, showSaleBalances)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status badges: only one shown; no Add Payment when balance = 0 or cancelled or overpaid */}
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    {isCancelled && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EF4444]/20 text-[#EF4444]">
+                        Cancelled
+                      </span>
+                    )}
+                    {!isCancelled && paid && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">
+                        ✔ Paid
+                      </span>
+                    )}
+                    {!isCancelled && partial && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F59E0B]/20 text-[#F59E0B]">
+                        Partially Paid
+                      </span>
+                    )}
+                    {!isCancelled && unpaid && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#6B7280]/20 text-[#9CA3AF]">
+                        Unpaid
+                      </span>
+                    )}
+                    {!isCancelled && overpaid && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">
+                        Credit Balance
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {/* Inline Add Payment when balance_due > 0 */}
+                {showAddPayment && (
+                  <div className="px-4 pb-3 pt-0 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openAddPayment(sale); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6]/90 hover:bg-[#2563EB] text-white text-sm font-medium transition-colors"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMenuSale(menuSale?.id === sale.id ? null : sale); }}
+                  className="absolute top-3 right-3 p-2 hover:bg-[#374151] rounded-lg text-[#9CA3AF] transition-colors"
+                  aria-label="More options"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+                {menuSale?.id === sale.id && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setMenuSale(null)}>
+                    <div className="bg-[#1F2937] border border-[#374151] rounded-2xl shadow-xl overflow-hidden w-full max-w-[280px]" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Sale options">
+                      <div className="px-4 py-3 border-b border-[#374151]">
+                        <p className="text-sm font-medium text-[#9CA3AF]">{sale.id}</p>
+                        <p className="text-lg font-semibold text-white">Rs. {sale.amount.toLocaleString()}</p>
+                      </div>
+                      <div className="py-2">
+                        {renderSaleMenuActions(sale)}
+                      </div>
+                      <button onClick={() => setMenuSale(null)} className="w-full py-3 text-sm text-[#9CA3AF] border-t border-[#374151] hover:bg-[#374151]">
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              );
+            })}
+
+            {filteredList.length === 0 && (
+              <div className="text-center py-12">
+                <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-[#374151]" />
+                <p className="text-[#9CA3AF]">{emptyListMessage()}</p>
+              </div>
+            )}
+              </>
+          </div>
+
+        </>
+      )}
+      </PullToRefresh>
+    </div>
+    </SwipeBackShell>
+    )}
+
+    {addPaymentSale && companyId && resolvePaymentBranchId(branchId, addPaymentSale.raw.branch_id as string) && (
+      <MobileReceivePayment
+        onClose={closeAddPayment}
+        onSuccess={handleReceivePaymentSuccess}
+        companyId={companyId}
+        branchId={resolvePaymentBranchId(branchId, addPaymentSale.raw.branch_id as string)}
+        userId={effectiveUserId ?? undefined}
+        referenceId={addPaymentSale.raw.id as string}
+        referenceNo={addPaymentSale.id}
+        customerName={addPaymentSale.customer}
+        customerId={(addPaymentSale.raw.customer_id as string) ?? (addPaymentSale.raw.customer as { id?: string } | null)?.id ?? null}
+        customerPhone={saleWhatsAppPhone(addPaymentSale) || null}
+        totalAmount={addPaymentSale.grand_total ?? addPaymentSale.amount}
+        alreadyPaid={addPaymentSale.total_received}
+        outstandingAmount={addPaymentSale.balance_due}
+        customerBillRef={addPaymentSale.billRef}
+      />
+    )}
+
+    {actionSuccess && (
+      <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#10B981] text-white">
+        {actionSuccess}
+      </div>
+    )}
+    {!cancelConfirmSale && actionError && (
+      <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#EF4444] text-white">
+        {actionError}
+      </div>
+    )}
+
+    {cancelConfirmSale && (
+        <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => setCancelConfirmSale(null)}>
+          <div className="w-full max-w-sm bg-[#1F2937] border border-[#374151] rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-[#EF4444]/20 text-[#EF4444]">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Cancel invoice?</h3>
+                <p className="text-sm text-[#9CA3AF] mt-1">
+                  {cancelConfirmSale.id} will be fully voided (stock and accounting reversed). It stays in the list with a Cancelled badge.
+                </p>
+                {cancelLinkedWoCount > 0 ? (
+                  <p className="text-sm text-amber-300/90 mt-2">
+                    {cancelLinkedWoCount} work order(s) will also be cancelled — fabric/dress stock reversed, tailor payable voided.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            {actionError && <p className="mt-3 text-sm text-[#FCA5A5]">{actionError}</p>}
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setCancelConfirmSale(null);
+                  setCancelLinkedWoCount(0);
+                }}
+                className="h-10 rounded-lg border border-[#374151] text-[#D1D5DB]"
+              >
+                Keep
+              </button>
+              <button type="button" onClick={confirmCancel} disabled={cancelling} className="h-10 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-60 text-white font-medium">
+                {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnSale && companyId && (
+        <SaleReturnModal
+          isOpen={true}
+          companyId={companyId}
+          branchId={String((returnSale.raw.branch_id as string) || (branchId && branchId !== 'all' ? branchId : '') || '')}
+          saleId={String(returnSale.raw.id || '')}
+          saleNo={returnSale.id}
+          customerId={((returnSale.raw.customer as { id?: string } | null)?.id as string) || (returnSale.raw.customer_id as string) || null}
+          customerName={returnSale.customer}
+          userId={effectiveUserId ?? null}
+          onClose={() => setReturnSale(null)}
+          onSuccess={({ returnNo }) => {
+            setReturnSale(null);
+            setActionSuccess(`Sale return ${returnNo} created successfully.`);
+          }}
+        />
+      )}
+
+      {previewSale && pdfPreview.brand && (
+        <PdfPreviewModal
+          open={pdfPreview.open}
+          onClose={() => { pdfPreview.close(); setPreviewSale(null); }}
+          title={`Invoice ${previewSale.id}`}
+          filename={`invoice-${previewSale.id}.pdf`}
+          sharePhone={saleWhatsAppPhone(previewSale) || null}
+          whatsAppFallbackText={`Invoice: ${previewSale.id}\nCustomer: ${previewSale.customer}\nTotal: Rs. ${(previewSale.grand_total ?? previewSale.amount).toLocaleString()}`}
+        >
+          <InvoicePreviewPdf
+            brand={pdfPreview.brand}
+            docType="sale"
+            docNumber={previewSale.id}
+            docDate={String((previewSale.raw.invoice_date as string) || (previewSale.raw.created_at as string) || '').slice(0, 10)}
+            partyName={previewSale.customer}
+            partyPhone={((previewSale.raw.customer as { phone?: string } | null)?.phone as string) || (previewSale.raw.contact_phone as string) || null}
+            branchName={((previewSale.raw.branch as { name?: string } | null)?.name as string) || null}
+            items={(((previewSale.raw.items as Array<Record<string, unknown>>) || []).map((it) => ({
+              productName: String(it.product_name ?? (it.product as { name?: string } | null)?.name ?? 'Item'),
+              sku: (it.sku as string) || ((it.product as { sku?: string } | null)?.sku as string) || null,
+              quantity: Number(it.quantity ?? 0),
+              unitPrice: Number(it.unit_price ?? 0),
+              total: Number(it.total ?? 0),
+            }) as InvoicePreviewItem))}
+            subtotal={Number(previewSale.raw.subtotal ?? previewSale.amount)}
+            discount={Number(previewSale.raw.discount_amount ?? previewSale.raw.discount ?? 0)}
+            tax={Number(previewSale.raw.tax_amount ?? 0)}
+            total={previewSale.grand_total ?? previewSale.amount}
+            paid={previewSale.total_received}
+            due={previewSale.balance_due}
+            notes={(previewSale.raw.notes as string) || null}
+            generatedBy={previewSale.created_by_name || null}
+          />
+        </PdfPreviewModal>
+      )}
+
+      {attachmentSale && companyId && (
+        <SaleAddAttachmentsSheet
+          open
+          companyId={companyId}
+          saleId={String(attachmentSale.raw.id ?? attachmentSale.id)}
+          existingRaw={attachmentSale.raw.attachments}
+          invoiceLabel={saleDocumentDisplayNo(attachmentSale.raw) || attachmentSale.id}
+          onClose={() => setAttachmentSale(null)}
+          onSaved={(merged) => {
+            handleAttachmentSaved(String(attachmentSale.raw.id ?? attachmentSale.id), merged);
+            setAttachmentSale(null);
+          }}
+        />
+      )}
+
+      {editSale && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4"
+          onClick={() => {
+            if (!editSaving) closeEditSaleModal();
+          }}
+        >
+          <div className="relative bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {editSaving && (
+              <div
+                className="absolute inset-0 z-[100] rounded-2xl bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <Loader2 className="w-9 h-9 text-white animate-spin" />
+                <span className="text-sm font-medium text-white">Saving…</span>
+              </div>
+            )}
+            <div className="p-4 border-b border-[#374151] flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-white font-semibold">Edit Invoice</h3>
+                <p className="text-xs text-[#9CA3AF]">{editSale.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditSaleModal}
+                disabled={editSaving}
+                className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF] disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <div>
+                <CustomSearchableSheet
+                  label="Customer"
+                  sheetTitle="Customer"
+                  value={editCustomerId ?? ''}
+                  onChange={(v) => {
+                    setEditCustomerId(v || null);
+                    const c = editCustomerOptions.find((x) => x.id === v);
+                    if (c) setEditCustomerName(c.name);
+                    else if (!v) setEditCustomerName(String((editSale.raw.customer_name as string) || 'Walk-in'));
+                  }}
+                  options={[
+                    { value: '', label: 'Walk-in / other' },
+                    ...editCustomerOptions.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                  placeholder="Search customer…"
+                  searchPlaceholder="Search…"
+                  disabled={editCustomersLoading}
+                  zIndexClass="z-[110]"
+                />
+                {editCustomersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading customers…</p>}
+              </div>
+              <DateInputField label="Invoice Date" value={editDate} onChange={setEditDate} />
+
+              {(showDiscountField || Number(editSale.raw.discount_amount ?? 0) > 0) && (
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Discount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editDiscount}
+                    onChange={(e) => setEditDiscount(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+              )}
+              {!showDiscountField && Number(editSale.raw.discount_amount ?? 0) <= 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowDiscountField(true)}
+                  className="text-xs text-[#60A5FA] hover:underline"
+                >
+                  Add discount
+                </button>
+              )}
+
+              {(showExtrasField || Number(editSale.raw.extra_expenses ?? 0) > 0) && (
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Extras</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={editExtra}
+                    onChange={(e) => setEditExtra(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+              )}
+              {!showExtrasField && Number(editSale.raw.extra_expenses ?? 0) <= 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowExtrasField(true)}
+                  className="text-xs text-[#60A5FA] hover:underline"
+                >
+                  Add extras
+                </button>
+              )}
+
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Bill number</label>
+                <input
+                  type="text"
+                  value={editBillRef}
+                  onChange={(e) => setEditBillRef(e.target.value)}
+                  placeholder="Customer bill / REF #"
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none"
+                />
+              </div>
+
+              <SaleAttachmentEditor
+                existing={normalizeAttachments(editSale.raw.attachments)}
+                pendingFiles={editPendingAttachments}
+                onPendingChange={setEditPendingAttachments}
+                onOpenExisting={openAttachmentPreview}
+                disabled={editSaving}
+                compact
+              />
+
+              <div className="border-t border-[#374151] pt-3">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <p className="text-xs font-semibold text-white">Line items</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddProductRow((s) => !s)}
+                    className="text-xs text-[#60A5FA] font-medium"
+                  >
+                    {showAddProductRow ? 'Hide search' : '+ Add product'}
+                  </button>
+                </div>
+                {showAddProductRow && (
+                  <div className="mb-3 space-y-2">
+                    <input
+                      type="search"
+                      placeholder="Search product name or SKU…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="w-full h-9 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                    />
+                    <ul className="max-h-32 overflow-y-auto rounded-lg border border-[#374151] divide-y divide-[#374151] bg-[#111827]">
+                      {filteredEditCatalog.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => pickProductForEditSale(p)}
+                            className="w-full text-left px-3 py-2 text-xs text-white hover:bg-[#374151]"
+                          >
+                            {p.name} <span className="text-[#9CA3AF]">({p.sku})</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {editLinesLoading ? (
+                  <p className="text-xs text-[#9CA3AF] py-2">Loading lines…</p>
+                ) : editLineItems.length === 0 ? (
+                  <p className="text-[11px] text-[#F59E0B]">
+                    No sale lines loaded. You can still save header-only changes. If this persists, reload the sale from the list.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {editLineItems.map((row, idx) => (
+                      <div key={row.lineKey} className="rounded-lg bg-[#111827] border border-[#374151] p-2 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-white truncate">{row.productName}</p>
+                            {!String(row.productId || '').trim() && (
+                              <p className="text-[10px] text-amber-400 mt-0.5">
+                                Not linked to a catalog product — remove or replace with + Add product.
+                              </p>
+                            )}
+                          </div>
+                          {editLineItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEditLine(idx)}
+                              className="p-1.5 rounded-lg text-[#EF4444] hover:bg-[#EF4444]/10 shrink-0"
+                              aria-label="Remove line"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <NumericInput
+                              label="Qty"
+                              value={row.quantity}
+                              onChange={(v) => updateEditLine(idx, { quantity: v })}
+                              allowDecimal
+                              min={0}
+                              maxDecimals={4}
+                              disabled={editSaving}
+                              className="[&_label]:text-[10px] [&_label]:mb-0.5 [&_label]:font-normal"
+                              inputClassName="!h-9 !text-sm !px-2 !rounded-lg !bg-[#0B1120]"
+                            />
+                          </div>
+                          <div>
+                            <NumericInput
+                              label="Unit price"
+                              value={row.unitPrice}
+                              onChange={(v) => updateEditLine(idx, { unitPrice: v })}
+                              allowDecimal
+                              min={0}
+                              maxDecimals={4}
+                              disabled={editSaving}
+                              className="[&_label]:text-[10px] [&_label]:mb-0.5 [&_label]:font-normal"
+                              inputClassName="!h-9 !text-sm !px-2 !rounded-lg !bg-[#0B1120]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg bg-[#111827] border border-[#374151] p-3 text-xs space-y-1">
+                <div className="flex justify-between text-[#9CA3AF]">
+                  <span>Lines subtotal</span>
+                  <span className="text-white">Rs. {editLineSubtotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-[#9CA3AF]">
+                  <span>Recalculated Total</span>
+                  <span className="text-[#10B981] font-semibold">
+                    Rs. {(
+                      editLineSubtotal -
+                      (Number(editDiscount) || 0) +
+                      (Number(editSale.raw.tax_amount ?? 0) || 0) +
+                      (Number(editSale.raw.shipment_charges ?? 0) || 0) +
+                      (Number(editExtra) || 0) +
+                      (Number(editSale.raw.studio_charges ?? 0) || 0)
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <p className="text-[11px] text-[#9CA3AF]">
+                Line changes save via server (stock rebuilt). Total must stay at or above amount already received. Shipment charges are not edited here.
+              </p>
+              {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
+            </div>
+            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={closeEditSaleModal}
+                disabled={editSaving}
+                className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB] disabled:opacity-50 disabled:pointer-events-none"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmEdit}
+                disabled={editSaving}
+                className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium inline-flex items-center justify-center gap-2 disabled:pointer-events-none"
+              >
+                {editSaving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+                    Saving…
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    {activitySale && companyId && (
+      <SaleActivitySheet
+        open={true}
+        onClose={() => setActivitySale(null)}
+        companyId={companyId}
+        saleId={String(activitySale.raw.id || '')}
+        saleLabel={activitySale.id}
+      />
+    )}
+  </>
+  );
+}

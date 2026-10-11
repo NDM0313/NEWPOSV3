@@ -1,0 +1,207 @@
+import { useRef, useState } from 'react';
+import { Eye, Edit2, Trash2, Copy } from 'lucide-react';
+
+export interface ActionMenuItem {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  variant?: 'default' | 'danger';
+  show?: boolean;
+}
+
+interface LongPressCardProps {
+  onTap: () => void;
+  onView?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  /** Inserted after View, before Edit/Delete. */
+  customMenuItems?: ActionMenuItem[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+  /** Override danger-slot label (e.g. Cancel Payment). Defaults to Delete. */
+  deleteLabel?: string;
+  children: React.ReactNode;
+  className?: string;
+}
+
+const TAP_MOVE_THRESHOLD_PX = 10;
+
+/**
+ * Long Press Card – Tap opens detail, long press shows action menu
+ * Use across Sales, Purchase, Rental, Expense lists
+ */
+export function LongPressCard({
+  onTap,
+  onView,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  customMenuItems = [],
+  canEdit = true,
+  canDelete = true,
+  deleteLabel = 'Delete',
+  children,
+  className = '',
+}: LongPressCardProps) {
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+  const touchHandledRef = useRef(false);
+  const touchMovedRef = useRef(false);
+  const touchStartRef = useRef({ x: 0, y: 0 });
+
+  const clearPressTimer = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    longPressTriggered.current = false;
+    touchHandledRef.current = false;
+    touchMovedRef.current = false;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+
+    pressTimer.current = setTimeout(() => {
+      if (touchMovedRef.current) return;
+      longPressTriggered.current = true;
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+      setMenuPosition({ x: touch.clientX, y: touch.clientY });
+      setShowMenu(true);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    clearPressTimer();
+    if (!longPressTriggered.current && !touchMovedRef.current) {
+      touchHandledRef.current = true;
+      onTap();
+    }
+  };
+
+  const handleClick = () => {
+    if (longPressTriggered.current) return;
+    if (touchHandledRef.current) {
+      touchHandledRef.current = false;
+      return;
+    }
+    onTap();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartRef.current.y);
+    if (dx > TAP_MOVE_THRESHOLD_PX || dy > TAP_MOVE_THRESHOLD_PX) {
+      touchMovedRef.current = true;
+      clearPressTimer();
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 2) {
+      e.preventDefault();
+      setMenuPosition({ x: e.clientX, y: e.clientY });
+      setShowMenu(true);
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
+
+  const handleMenuAction = (action: () => void) => {
+    setShowMenu(false);
+    action();
+  };
+
+  const menuItems: ActionMenuItem[] = [
+    {
+      label: 'View',
+      icon: <Eye className="w-4 h-4" />,
+      onClick: () => handleMenuAction(onView || onTap),
+      show: true,
+    },
+    ...customMenuItems.map((item) => ({
+      ...item,
+      onClick: () => handleMenuAction(item.onClick),
+    })),
+    {
+      label: 'Edit',
+      icon: <Edit2 className="w-4 h-4" />,
+      onClick: () => handleMenuAction(onEdit!),
+      show: canEdit && !!onEdit,
+    },
+    {
+      label: 'Duplicate',
+      icon: <Copy className="w-4 h-4" />,
+      onClick: () => handleMenuAction(onDuplicate!),
+      show: !!onDuplicate,
+    },
+    {
+      label: deleteLabel,
+      icon: <Trash2 className="w-4 h-4" />,
+      onClick: () => handleMenuAction(onDelete!),
+      variant: 'danger',
+      show: canDelete && !!onDelete,
+    },
+  ];
+
+  const visibleMenuItems = menuItems.filter(item => item.show);
+
+  return (
+    <>
+      <div
+        className={`relative touch-pan-y ${className}`}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
+        onTouchCancel={clearPressTimer}
+        onMouseDown={handleMouseDown}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+      >
+        {children}
+      </div>
+
+      {showMenu && (
+        <>
+          <div
+            className="fixed inset-0 z-50"
+            onClick={() => setShowMenu(false)}
+          />
+          <div
+            className="fixed z-50 bg-[#1F2937] border border-[#374151] rounded-xl shadow-2xl overflow-hidden"
+            style={{
+              left: `${menuPosition.x}px`,
+              top: `${menuPosition.y}px`,
+              transform: 'translate(-50%, -100%) translateY(-8px)',
+              minWidth: '160px',
+            }}
+          >
+            {visibleMenuItems.map((item, idx) => (
+              <button
+                key={idx}
+                onClick={item.onClick}
+                className={`w-full px-4 py-3 flex items-center gap-3 ${
+                  item.variant === 'danger'
+                    ? 'text-[#EF4444] hover:bg-[#EF4444]/10'
+                    : 'text-white hover:bg-[#374151]'
+                } transition-colors border-b border-[#374151] last:border-0 active:scale-95`}
+              >
+                {item.icon}
+                <span className="text-sm font-medium">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}

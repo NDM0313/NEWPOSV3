@@ -1,0 +1,277 @@
+import { useState } from 'react';
+import { Search, Clock, CheckCircle, Package } from 'lucide-react';
+import {
+  getStudioDashboardBadge,
+  isBillGenerated,
+  resolveStudioCurrentStageLabel,
+} from '../../lib/studioOrderDisplay';
+
+export interface StudioOrder {
+  /** Primary production id (first line in the sale); APIs that need one production default here */
+  id: string;
+  /** Sale UUID — one dashboard row per sale */
+  saleId: string;
+  /** All studio_productions ids for this sale (ordered) */
+  productionIds: string[];
+  /** production id → product label for line picker */
+  productionLineLabels?: Record<string, string>;
+  orderNumber: string;
+  customerName: string;
+  /** Combined product labels for list cards */
+  productName: string;
+  /** Replica / custom outfit title from studio_productions.design_name */
+  designName?: string | null;
+  totalAmount: number;
+  createdDate: string;
+  /** Resolved from sale.created_by via users lookup */
+  createdByName?: string;
+  /** Auth user id of the sale creator (for view_own scoping). */
+  createdByUserId?: string;
+  /** Deadline date (from sale) for display on card */
+  deadline?: string;
+  status: 'pending' | 'in-progress' | 'ready' | 'completed' | 'shipped';
+  /** True when every production has studio invoice line linked (generated_invoice_item_id). */
+  customerInvoiceGenerated: boolean;
+  /** From sales.status — e.g. final after bill finalize. */
+  saleStatus?: string | null;
+  currentStage?: string;
+  stages: StudioStage[];
+  completedStages: number;
+  totalStages: number;
+}
+
+export interface StudioStage {
+  id: string;
+  /** studio_productions row this stage belongs to */
+  productionId: string;
+  /** DB stage_order for sorting merged pipelines */
+  stageOrder?: number;
+  name: string;
+  type: 'dyeing' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality-check';
+  /** True when DB stage_type is `extra` (custom task). */
+  isExtra?: boolean;
+  /** Raw studio_production_stages.stage_type from DB. */
+  dbStageType?: string;
+  assignedTo: string;
+  /** Worker UUID for API (when available from backend) */
+  workerId?: string;
+  internalCost: number;
+  /** Expected cost from assign (for Confirm Payment pre-fill when not yet confirmed) */
+  expectedCost?: number;
+  customerCharge: number;
+  expectedDate: string;
+  status: 'pending' | 'assigned' | 'in-progress' | 'sent_to_worker' | 'received' | 'completed';
+  startedDate?: string;
+  completedDate?: string;
+  sentDate?: string;
+  receivedDate?: string;
+  /** Persisted studio_production_stages.notes (task / assignment / appended receive & payment lines). */
+  notes?: string | null;
+}
+
+interface StudioDashboardProps {
+  orders: StudioOrder[];
+  onOrderClick: (order: StudioOrder) => void;
+}
+
+export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | StudioOrder['status'] | 'bill-generated'>('all');
+
+  const filteredOrders = orders.filter((order) => {
+    const matchesSearch =
+      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.designName && order.designName.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesStatus =
+      filterStatus === 'all'
+        ? true
+        : filterStatus === 'bill-generated'
+          ? isBillGenerated(order)
+          : order.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  const getStageIcon = (type: StudioStage['type']) => {
+    const icons: Record<StudioStage['type'], string> = {
+      dyeing: '🎨',
+      stitching: '🧵',
+      handwork: '✋',
+      embroidery: '🌸',
+      finishing: '✨',
+      'quality-check': '✓',
+    };
+    return icons[type] || '📦';
+  };
+
+  const stats = [
+    { label: 'Total Orders', value: orders.length, color: '#8B5CF6' },
+    { label: 'In Progress', value: orders.filter((o) => o.status === 'in-progress').length, color: '#3B82F6' },
+    { label: 'Ready', value: orders.filter((o) => o.status === 'ready').length, color: '#10B981' },
+    { label: 'Pending', value: orders.filter((o) => o.status === 'pending').length, color: '#F59E0B' },
+  ];
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {stats.map((stat, idx) => (
+          <div key={idx} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-xs text-[#9CA3AF] mb-1">{stat.label}</p>
+            <p className="text-2xl font-bold text-white" style={{ color: stat.color }}>
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search orders..."
+            className="w-full pl-10 pr-4 py-3 bg-[#1F2937] border border-[#374151] rounded-xl text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6]"
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {[
+          { id: 'all', label: 'All' },
+          { id: 'pending', label: 'Pending' },
+          { id: 'in-progress', label: 'In Progress' },
+          { id: 'ready', label: 'Ready' },
+          { id: 'completed', label: 'Completed' },
+          { id: 'bill-generated', label: 'Bill Generated' },
+        ].map((filter) => (
+          <button
+            key={filter.id}
+            onClick={() => setFilterStatus(filter.id as typeof filterStatus)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              filterStatus === filter.id
+                ? 'bg-[#8B5CF6] text-white'
+                : 'bg-[#1F2937] text-[#9CA3AF] border border-[#374151]'
+            }`}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      {filteredOrders.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-[#374151] rounded-full flex items-center justify-center mx-auto mb-3">
+            <Package className="w-8 h-8 text-[#6B7280]" />
+          </div>
+          <p className="text-[#9CA3AF] mb-1">No studio orders found</p>
+          <p className="text-xs text-[#6B7280]">Create your first studio order to get started</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredOrders.map((order) => {
+            const statusBadge = getStudioDashboardBadge(order);
+            const StatusIcon = statusBadge.icon;
+            const stageLabel = resolveStudioCurrentStageLabel(order);
+            const progressPercent = order.totalStages > 0 ? (order.completedStages / order.totalStages) * 100 : 0;
+
+            return (
+              <button
+                key={order.saleId}
+                onClick={() => onOrderClick(order)}
+                className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6] transition-colors text-left"
+              >
+                <div className="flex items-start justify-between mb-3 gap-2 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <p className="font-semibold text-white truncate min-w-0">{order.orderNumber}</p>
+                      <span
+                        className={`px-2 py-0.5 ${statusBadge.bg} rounded-full text-xs font-medium flex items-center gap-1 shrink-0 max-w-full`}
+                        style={{ color: statusBadge.color }}
+                      >
+                        <StatusIcon size={12} />
+                        <span className="truncate">{statusBadge.label}</span>
+                      </span>
+                    </div>
+                    <p className="text-sm text-[#9CA3AF] truncate">{order.customerName}</p>
+                    {order.designName?.trim() && (
+                      <p className="text-xs text-[#A78BFA] font-medium truncate mt-0.5">Replica: {order.designName.trim()}</p>
+                    )}
+                  </div>
+                  <p className="text-sm font-semibold text-white shrink-0">Rs. {order.totalAmount.toLocaleString()}</p>
+                </div>
+
+                <div className="mb-3 pb-3 border-b border-[#374151] min-w-0">
+                  <p className="text-sm text-white line-clamp-2 break-words">{order.productName}</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-xs text-[#6B7280]">
+                    <span>Created: {order.createdDate}</span>
+                    {order.createdByName && (
+                      <span>Created by: {order.createdByName}</span>
+                    )}
+                    {order.deadline && (
+                      <span className="flex items-center gap-1">
+                        <Clock size={10} />
+                        Deadline: {order.deadline}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {order.stages.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-[#9CA3AF]">Pipeline Progress</p>
+                      <p className="text-xs font-medium text-[#8B5CF6]">
+                        {order.completedStages}/{order.totalStages} stages
+                      </p>
+                    </div>
+                    <div className="h-2 bg-[#374151] rounded-full overflow-hidden mb-3">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] transition-all"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {order.stages.map((stage) => (
+                        <div
+                          key={stage.id}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs ${
+                            stage.status === 'completed'
+                              ? 'bg-[#10B981]/10 text-[#10B981]'
+                              : stage.status === 'in-progress' || stage.status === 'assigned' || stage.status === 'sent_to_worker' || stage.status === 'received'
+                              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
+                              : 'bg-[#374151] text-[#6B7280]'
+                          }`}
+                        >
+                          <span>{getStageIcon(stage.type)}</span>
+                          <span className="truncate max-w-[5.5rem] sm:max-w-[7rem]" title={stage.name}>
+                            {stage.name}
+                          </span>
+                          {stage.status === 'completed' && <CheckCircle size={12} />}
+                          {(stage.status === 'in-progress' || stage.status === 'assigned' || stage.status === 'sent_to_worker' || stage.status === 'received') && <Clock size={12} />}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(order.currentStage || order.stages.length === 0) && (
+                  <div className="bg-[#374151] rounded-lg p-2 space-y-0.5 min-w-0">
+                    <p className="text-xs text-[#9CA3AF] line-clamp-2 break-words">
+                      Stage: <span className="text-white font-medium">{stageLabel}</span>
+                    </p>
+                    <p className="text-xs text-[#9CA3AF] truncate">
+                      Status: <span className="text-white font-medium">{statusBadge.label}</span>
+                    </p>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
