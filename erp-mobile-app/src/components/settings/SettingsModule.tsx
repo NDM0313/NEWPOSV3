@@ -36,12 +36,15 @@ import {
 import { ChangeCounterPinModal } from './ChangeCounterPinModal';
 import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
+import { ApiEnvironmentBadge } from '../dev/ApiEnvironmentBadge';
 import { UserPermissionsScreen } from './UserPermissionsScreen';
 import { EmployeesSection } from './EmployeesSection';
 import { AddUserSheet } from './AddUserSheet';
 import { usePermissions } from '../../context/PermissionContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../../config/featureFlags';
 import { APP_VERSION, registerAppVersionTap } from '../../lib/developerMode';
+import { purgeApiHostSessionAndReload } from '../../lib/apiHostSessionGuard';
+import { getResolvedSupabaseUrl } from '../../lib/supabase';
 import { DeveloperToolsSection } from './DeveloperToolsSection';
 import { ModuleTogglesSection } from './ModuleTogglesSection';
 import { SettingsCollapsible, SettingsRow } from './settingsUi';
@@ -872,6 +875,25 @@ export function SettingsModule({
             title="About"
             subtitle="ERP for bridal & rental business"
           />
+          <div className="space-y-2 px-1 py-2">
+            <ApiEnvironmentBadge />
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Clear Supabase session for ${getResolvedSupabaseUrl()} and reload? Use after switching from the old VPS to Mini PC.`,
+                  )
+                ) {
+                  void purgeApiHostSessionAndReload();
+                }
+              }}
+              className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-lg border border-amber-700/50 bg-amber-900/30 text-amber-100 text-sm"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear session for this API
+            </button>
+          </div>
           <DeveloperToolsSection />
           <ConnectionDebug
             supabaseUrl={import.meta.env.VITE_SUPABASE_URL || ''}

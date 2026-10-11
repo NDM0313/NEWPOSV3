@@ -1,21 +1,38 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { composeJournalEntryDescription } from './journalEntryDescription';
+import {
+  buildGeneralJournalAutoDescription,
+  composeJournalEntryDescription,
+} from './journalEntryDescription';
 
-test('compose includes auto by default', () => {
-  const s = composeJournalEntryDescription({
-    auto: 'Journal entry · From-Dr A · To-Cr B',
-    userNotes: 'extra',
-    reference: 'V-1',
+test('general auto is From-Dr · To-Cr without Journal entry or By', () => {
+  const s = buildGeneralJournalAutoDescription({
+    debitName: 'Cash',
+    debitCode: '1000',
+    creditName: 'Accounts Receivable',
+    creditCode: '1100',
+    addedByName: 'Nadeem Khan',
   });
-  assert.match(s, /Journal entry/);
-  assert.match(s, /extra/);
-  assert.match(s, /Ref: V-1/);
+  assert.equal(s, 'From-Dr Cash (1000) · To-Cr Accounts Receivable (1100)');
+  assert.equal(s.includes('Journal entry'), false);
+  assert.equal(s.includes('By '), false);
+});
+
+test('compose matches formula auto | notes | Ref', () => {
+  const s = composeJournalEntryDescription({
+    auto: 'From-Dr WALI T/T (1202) · To-Cr NDM MZ (DC0159)',
+    userNotes: 'New test',
+    reference: '435345',
+  });
+  assert.equal(
+    s,
+    'From-Dr WALI T/T (1202) · To-Cr NDM MZ (DC0159) | New test | Ref: 435345',
+  );
 });
 
 test('compose omit auto when includeAuto false', () => {
   const s = composeJournalEntryDescription({
-    auto: 'Journal entry · From-Dr A · To-Cr B',
+    auto: 'From-Dr A · To-Cr B',
     userNotes: 'manual only',
     reference: 'CHQ-9',
     includeAuto: false,
@@ -25,10 +42,10 @@ test('compose omit auto when includeAuto false', () => {
   assert.match(s, /Ref: CHQ-9/);
 });
 
-test('compose includeAuto false with empty notes/ref falls back', () => {
+test('compose includeAuto false with empty notes/ref returns empty', () => {
   const s = composeJournalEntryDescription({
     auto: 'Auto text',
     includeAuto: false,
   });
-  assert.equal(s, 'Journal entry');
+  assert.equal(s, '');
 });

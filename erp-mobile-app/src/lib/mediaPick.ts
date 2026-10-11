@@ -153,9 +153,11 @@ export async function capturePhotoWithNativeCamera(): Promise<File | null> {
 
   const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
 
+  // Camera shutter only needs camera permission — requesting photos triggered
+  // NSPhotoLibraryAddUsageDescription crashes when that plist key was missing.
   const perm = await Camera.checkPermissions();
   if (perm.camera !== 'granted') {
-    const req = await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+    const req = await Camera.requestPermissions({ permissions: ['camera'] });
     if (req.camera !== 'granted') {
       throw new Error('Camera permission is required to take photos.');
     }

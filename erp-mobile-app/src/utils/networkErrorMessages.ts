@@ -11,7 +11,7 @@ export function formatNetworkFetchError(msg: string): string {
   if (!isNetworkFetchError(msg)) return msg;
   const base = 'Cannot reach the server. Check network or contact admin.';
   if (Capacitor.isNativePlatform()) {
-    return `${base} If https://erp.dincouture.pk/m/ works, install the latest APK build.`;
+    return `${base} Confirm the app shows Connected to: https://api.ndmcore.com, then reinstall the latest build.`;
   }
   return base;
 }

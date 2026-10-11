@@ -1,22 +1,27 @@
-const ERP_PROXY = 'https://erp.dincouture.pk';
-const DIRECT = 'https://supabase.dincouture.pk';
+/** Canonical Mini PC API — production + native Capacitor must always use this host. */
+export const CANONICAL_SUPABASE_API_URL = 'https://api.ndmcore.com';
+
+const LEGACY_HOST_RE = /dincouture\.pk|72\.62\.254\.176/i;
 
 export type ResolveSupabaseApiUrlOptions = {
   isNativeCapacitor?: boolean;
   isDev?: boolean;
 };
 
+function isLegacyOrBlockedHost(url: string): boolean {
+  return LEGACY_HOST_RE.test(url);
+}
+
 /**
- * PWA/browser: direct supabase.dincouture.pk (Kong echoes https://erp.dincouture.pk Origin).
- * Native Capacitor: https://erp.dincouture.pk nginx proxy (/auth, /rest, /storage) so
- * capacitor://localhost gets Access-Control-Allow-Origin from deploy/nginx.conf.
+ * Option A (ndmcore): production + native always resolve to CANONICAL_SUPABASE_API_URL.
+ * Vite dev browser on localhost/LAN may use same-origin proxy; never return VPS hosts.
  */
 export function resolveSupabaseApiUrl(
   raw?: string,
   opts?: ResolveSupabaseApiUrlOptions,
 ): string {
   if (opts?.isNativeCapacitor) {
-    return ERP_PROXY;
+    return CANONICAL_SUPABASE_API_URL;
   }
 
   const isDev =
@@ -26,8 +31,12 @@ export function resolveSupabaseApiUrl(
         (import.meta as { env?: { DEV?: boolean } }).env?.DEV,
     );
 
+  if (!isDev) {
+    return CANONICAL_SUPABASE_API_URL;
+  }
+
   // Vite dev browser: same-origin → proxy (avoids CORS). Never on native Capacitor.
-  if (typeof window !== 'undefined' && isDev && !opts?.isNativeCapacitor) {
+  if (typeof window !== 'undefined' && !opts?.isNativeCapacitor) {
     const origin = window.location.origin.replace(/\/$/, '');
     if (/^https?:\/\/(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?$/i.test(origin)) {
       return origin;
@@ -35,11 +44,11 @@ export function resolveSupabaseApiUrl(
   }
 
   const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
-  if (!trimmed) return DIRECT;
-  if (/erp\.dincouture\.pk/i.test(trimmed)) return DIRECT;
-  // Dev .env often sets localhost for Vite proxy; only keep localhost when isDev proxy mode is active.
+  if (!trimmed || isLegacyOrBlockedHost(trimmed)) {
+    return CANONICAL_SUPABASE_API_URL;
+  }
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
-    return isDev ? trimmed : DIRECT;
+    return trimmed;
   }
   return trimmed;
 }

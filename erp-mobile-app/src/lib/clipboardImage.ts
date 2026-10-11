@@ -1,7 +1,17 @@
+import { Capacitor } from '@capacitor/core';
 import { normalizePickedImageFiles } from './mediaPick';
+import { IosPasteboardPluginMissingError, readIosPasteboardImageFile } from './iosPasteboardImage';
 
-const IMAGE_CLIPBOARD_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-const IMAGE_URL_EXT = /\.(jpe?g|png|webp|gif)(\?|#|$)/i;
+const IMAGE_CLIPBOARD_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+];
+const IMAGE_URL_EXT = /\.(jpe?g|png|webp|gif|heic|heif)(\?|#|$)/i;
 
 export class ClipboardImageError extends Error {
   constructor(message: string) {
@@ -13,6 +23,8 @@ export class ClipboardImageError extends Error {
 /** True when Async Clipboard read with image types is likely available. */
 export function isClipboardImagePasteAvailable(): boolean {
   if (typeof navigator === 'undefined') return false;
+  // iOS native can fall back to UIPasteboard even when web clipboard.read is missing.
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') return true;
   const { clipboard } = navigator;
   if (!clipboard || typeof clipboard.read !== 'function') return false;
   return typeof ClipboardItem !== 'undefined';
@@ -23,6 +35,7 @@ function extForMime(mime: string): string {
   if (m === 'image/png') return 'png';
   if (m === 'image/webp') return 'webp';
   if (m === 'image/gif') return 'gif';
+  if (m === 'image/heic' || m === 'image/heif') return 'heic';
   return 'jpg';
 }
 
@@ -38,13 +51,22 @@ async function blobToImageFile(blob: Blob, mimeHint?: string): Promise<File> {
   return out;
 }
 
+function imageTypesOnItem(item: ClipboardItem): string[] {
+  const fromKnown = IMAGE_CLIPBOARD_TYPES.filter((type) => item.types.includes(type));
+  const fromAny = item.types.filter((type) => type.toLowerCase().startsWith('image/'));
+  return [...new Set([...fromKnown, ...fromAny])];
+}
+
 async function readImageFromClipboardItems(items: ClipboardItem[]): Promise<File | null> {
   for (const item of items) {
-    for (const type of IMAGE_CLIPBOARD_TYPES) {
-      if (!item.types.includes(type)) continue;
-      const blob = await item.getType(type);
-      if (blob && blob.size > 0) {
-        return blobToImageFile(blob, type);
+    for (const type of imageTypesOnItem(item)) {
+      try {
+        const blob = await item.getType(type);
+        if (blob && blob.size > 0) {
+          return blobToImageFile(blob, type);
+        }
+      } catch {
+        /* try next type */
       }
     }
   }
@@ -86,7 +108,7 @@ async function readTextFromClipboardItems(items: ClipboardItem[]): Promise<strin
 }
 
 function itemHasImageMimeType(item: ClipboardItem): boolean {
-  return IMAGE_CLIPBOARD_TYPES.some((type) => item.types.includes(type));
+  return imageTypesOnItem(item).length > 0;
 }
 
 async function clipboardItemsHavePasteableImage(items: ClipboardItem[]): Promise<boolean> {
@@ -102,11 +124,18 @@ async function clipboardItemsHavePasteableImage(items: ClipboardItem[]): Promise
 export async function hasClipboardPasteableImage(): Promise<boolean> {
   if (!isClipboardImagePasteAvailable()) return false;
   try {
-    const items = await navigator.clipboard.read();
-    return clipboardItemsHavePasteableImage(items);
+    if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
+      const items = await navigator.clipboard.read();
+      if (await clipboardItemsHavePasteableImage(items)) return true;
+    }
   } catch {
-    return false;
+    /* fall through */
   }
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+    const native = await readIosPasteboardImageFile();
+    return Boolean(native);
+  }
+  return false;
 }
 
 /** Extract image files from a native paste event (desktop Ctrl+V / some mobile keyboards). */
@@ -125,31 +154,57 @@ export function filesFromPasteEvent(event: ClipboardEvent): File[] {
   return out;
 }
 
-/** Read a copied image from the system clipboard and return it as a File. */
-export async function readClipboardImageFile(): Promise<File> {
-  if (!isClipboardImagePasteAvailable()) {
-    throw new ClipboardImageError('Is device par paste abhi support nahi — Gallery use karein');
+const EMPTY_CLIPBOARD_MSG =
+  'Clipboard mein koi image nahi — Photos se Copy ke baad dobara try karein, ya Gallery use karein';
+
+async function readFromWebClipboard(): Promise<File | null> {
+  if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+    return null;
   }
 
   let items: ClipboardItem[];
   try {
     items = await navigator.clipboard.read();
   } catch {
-    throw new ClipboardImageError('Is device par paste abhi support nahi — Gallery use karein');
+    return null;
   }
 
-  if (!items.length) {
-    throw new ClipboardImageError('Clipboard mein koi image nahi — pehle image copy karein');
-  }
+  if (!items.length) return null;
 
   const imageFile = await readImageFromClipboardItems(items);
   if (imageFile) return imageFile;
 
   const text = await readTextFromClipboardItems(items);
   if (text && looksLikeImageUrl(text)) {
-    const fromUrl = await readImageFromClipboardUrl(text);
-    if (fromUrl) return fromUrl;
+    return readImageFromClipboardUrl(text);
   }
 
-  throw new ClipboardImageError('Clipboard mein koi image nahi — pehle image copy karein');
+  return null;
+}
+
+/** Read a copied image from the system clipboard and return it as a File. */
+export async function readClipboardImageFile(): Promise<File> {
+  if (!isClipboardImagePasteAvailable()) {
+    throw new ClipboardImageError('Is device par paste abhi support nahi — Gallery use karein');
+  }
+
+  const fromWeb = await readFromWebClipboard();
+  if (fromWeb) return fromWeb;
+
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+    try {
+      const fromNative = await readIosPasteboardImageFile();
+      if (fromNative) {
+        const normalized = normalizePickedImageFiles([fromNative]);
+        if (normalized[0]) return normalized[0];
+      }
+    } catch (err) {
+      if (err instanceof IosPasteboardPluginMissingError) {
+        throw new ClipboardImageError(err.message);
+      }
+      throw err;
+    }
+  }
+
+  throw new ClipboardImageError(EMPTY_CLIPBOARD_MSG);
 }

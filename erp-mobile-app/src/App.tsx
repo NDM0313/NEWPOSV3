@@ -39,7 +39,9 @@ import { isMediaCaptureActive, wasMediaCaptureRecent } from './lib/mediaCaptureS
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
+import { ensureApiHostSessionAligned } from './lib/apiHostSessionGuard';
 import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
+import { ApiEnvironmentBadge } from './components/dev/ApiEnvironmentBadge';
 import { POSLockScreen } from './components/auth/POSLockScreen';
 import {
   safeShouldActivateCounterLockScreen,
@@ -420,6 +422,8 @@ export default function App() {
     let cancelled = false;
     const run = async () => {
       try {
+        await ensureApiHostSessionAligned();
+        if (cancelled) return;
         const [session, pinSet] = await withBootTimeout(
           Promise.all([authApi.getSession(), authApi.hasPinSet()]),
           BOOT_AUTH_TIMEOUT_MS,
@@ -804,9 +808,10 @@ export default function App() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-4 px-4 w-full max-w-sm">
           <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
           <div className="text-[#9CA3AF] animate-pulse">Loading...</div>
+          <ApiEnvironmentBadge className="w-full" />
         </div>
       </div>
     );
@@ -822,6 +827,9 @@ export default function App() {
             void handleLogin(u, cid);
           }}
         />
+        <div className="fixed bottom-3 left-3 right-3 z-50 pointer-events-none">
+          <ApiEnvironmentBadge className="pointer-events-auto max-w-lg mx-auto" />
+        </div>
       </div>
     );
   }
@@ -1133,17 +1141,24 @@ export default function App() {
   );
 
   const syncBar = user && selectedBranch ? (
-    <header className="erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-[#374151]/50 bg-[#111827] min-h-[44px]">
-      <span className="text-sm font-semibold text-white truncate">Din Collection</span>
-      <SyncStatusBar
-        status={status}
-        onSyncClick={() => {
-          if (!online) return;
-          setStatus('syncing');
-          runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
-        }}
-      />
+    <header className="erp-app-header flex flex-col gap-1.5 px-3 py-2 border-b border-[#374151]/50 bg-[#111827]">
+      <div className="flex items-center justify-between gap-2 min-h-[28px]">
+        <span className="text-sm font-semibold text-white truncate">Din Collection</span>
+        <SyncStatusBar
+          status={status}
+          onSyncClick={() => {
+            if (!online) return;
+            setStatus('syncing');
+            runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
+          }}
+        />
+      </div>
+      <ApiEnvironmentBadge />
     </header>
+  ) : user ? (
+    <div className="px-3 pt-2">
+      <ApiEnvironmentBadge />
+    </div>
   ) : null;
 
   const permissionBar =

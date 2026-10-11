@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Pull canonical VITE_* from VPS erp-mobile-app/.env.production (after write-erp-env).
+ * Pull ANON_KEY from VPS erp-mobile-app/.env.production (optional operator tool).
+ * Always writes VITE_SUPABASE_URL=https://api.ndmcore.com (never VPS domains).
  * Usage: node scripts/sync-env-from-vps.mjs
  * Env: VPS_SSH_HOST (default dincouture-vps), VPS_MOBILE_ENV_PATH (default /root/NEWPOSV3/erp-mobile-app/.env.production)
  */
@@ -13,6 +14,7 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dest = resolve(appRoot, '.env.production');
 const host = process.env.VPS_SSH_HOST || 'dincouture-vps';
 const remotePath = process.env.VPS_MOBILE_ENV_PATH || '/root/NEWPOSV3/erp-mobile-app/.env.production';
+const CANONICAL_URL = 'https://api.ndmcore.com';
 
 function parse(text) {
   const out = {};
@@ -39,7 +41,6 @@ try {
 }
 
 const p = parse(remoteRaw);
-const url = p.VITE_SUPABASE_URL || 'https://supabase.dincouture.pk';
 const key = p.VITE_SUPABASE_ANON_KEY || '';
 const disableRt = p.VITE_DISABLE_REALTIME || 'true';
 
@@ -49,9 +50,9 @@ if (!key || key.length < 120) {
 }
 
 const body = [
-  '# Auto-synced from VPS — release APK must match Kong ANON_KEY.',
+  '# Key synced from VPS file; URL locked to Mini PC api.ndmcore.com.',
   'VITE_TARGET=capacitor',
-  `VITE_SUPABASE_URL=${url}`,
+  `VITE_SUPABASE_URL=${CANONICAL_URL}`,
   `VITE_SUPABASE_ANON_KEY=${key}`,
   `VITE_DISABLE_REALTIME=${disableRt}`,
   '',
@@ -59,4 +60,6 @@ const body = [
 
 writeFileSync(dest, body, 'utf8');
 const tail = key.slice(-8);
-console.log(`[sync-env-from-vps] Wrote .env.production (anon ${key.length} chars, …${tail})`);
+console.log(
+  `[sync-env-from-vps] Wrote .env.production → ${CANONICAL_URL} (anon ${key.length} chars, …${tail})`,
+);

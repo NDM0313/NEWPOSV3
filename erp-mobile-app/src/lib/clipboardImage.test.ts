@@ -164,4 +164,18 @@ describe('clipboardImage (mobile)', () => {
     assert.equal(file.type, 'image/png');
     assert.ok(file.size > 0);
   });
+
+  it('readClipboardImageFile accepts generic image/* clipboard types', async () => {
+    const blob = makePngBlob();
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        read: async () => [new globalThis.ClipboardItem!({ 'image/heic': blob })],
+      },
+    });
+
+    const file = await readClipboardImageFile();
+    assert.ok(file.size > 0);
+    assert.match(file.type, /^image\//);
+  });
 });

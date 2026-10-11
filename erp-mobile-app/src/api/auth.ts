@@ -43,7 +43,8 @@ const GET_SESSION_TIMEOUT_MS = 8000;
 
 function isProductionMobileHost(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.hostname.includes('erp.dincouture.pk');
+  const h = window.location.hostname;
+  return h.includes('ndmcore.com') || h.includes('dincouture.pk');
 }
 
 function isStorageOrSecurityError(err: unknown): boolean {
@@ -67,13 +68,13 @@ function isStorageOrSecurityError(err: unknown): boolean {
 function formatSignInErrorMessage(msg: string): string {
   if (msg.includes('Invalid login credentials')) return 'Invalid email or password.';
   if (/invalid authentication credentials/i.test(msg)) {
-    return 'API key mismatch: copy VITE_SUPABASE_ANON_KEY from .env.production (VPS ANON_KEY) into erp-mobile-app/.env, restart npm run dev.';
+    return 'API key mismatch: copy VITE_SUPABASE_ANON_KEY from Mini PC Kong ANON_KEY into erp-mobile-app/.env, restart npm run dev.';
   }
   if (msg.includes('Email not confirmed')) return 'Please confirm your email first.';
   if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
     const base = 'Cannot reach the server. Check network or contact admin.';
     if (Capacitor.isNativePlatform()) {
-      return `${base} If https://erp.dincouture.pk/m/ works, install the latest APK build.`;
+      return `${base} Confirm Connected to: https://api.ndmcore.com, then reinstall the latest build.`;
     }
     return base;
   }
