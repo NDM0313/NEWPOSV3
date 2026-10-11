@@ -216,4 +216,6 @@ EOF
 if [[ -n "$PROD_PORTS_BEFORE" && -n "$PROD_PORTS_AFTER" && "$PROD_PORTS_BEFORE" != "$PROD_PORTS_AFTER" ]]; then
   log "WARNING: erp-frontend container status string changed (inspect manually)"
 fi
+# Success marker for CI pollers (in addition to workflow wrapper)
+echo OK > /tmp/wire-stage.done
 log "Done — :3002 wired to staging Supabase."

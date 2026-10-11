@@ -92,21 +92,33 @@ jobs:
             root@"$HOST" \
             "set -euo pipefail
              chmod +x /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
-             # Stop zombie wires / docker builds from previous CI attempts
-             pkill -f '/root/NEWPOSV3/scripts/wire-staging-preview-vps.sh' 2>/dev/null || true
-             pkill -f 'docker build.*Dockerfile.preview' 2>/dev/null || true
-             pkill -f 'docker build.*erp-frontend-preview' 2>/dev/null || true
-             rm -f /tmp/wire-stage.done /tmp/wire-stage.failed /tmp/wire-stage.log /tmp/wire-stage.lock
              mkdir -p /root/NEWPOSV3/deploy
+             # Kill only a prior recorded PID (never pkill -f this script name — it matches the SSH cmdline).
+             if [ -f /tmp/wire-stage.pid ]; then
+               old=\$(cat /tmp/wire-stage.pid || true)
+               if [ -n \"\$old\" ] && kill -0 \"\$old\" 2>/dev/null; then
+                 kill \"\$old\" 2>/dev/null || true
+                 sleep 1
+                 kill -9 \"\$old\" 2>/dev/null || true
+               fi
+             fi
+             rm -f /tmp/wire-stage.done /tmp/wire-stage.failed /tmp/wire-stage.log /tmp/wire-stage.lock /tmp/wire-stage.pid
              nohup env REPO_ROOT=/root/NEWPOSV3 BRANCH=cursor/supabase-stage-minipc-e9d2 \
-               bash -c '
-                 set -euo pipefail
-                 bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh
+               bash /root/NEWPOSV3/scripts/wire-staging-preview-vps.sh \
+               > /tmp/wire-stage.log 2>&1 &
+             echo \$! > /tmp/wire-stage.pid
+             # Marker written by the script on success; also wrap for CI poll
+             (
+               pid=\$(cat /tmp/wire-stage.pid)
+               if wait \"\$pid\"; then
                  echo OK > /tmp/wire-stage.done
-               ' > /tmp/wire-stage.log 2>&1 &
-             echo STARTED:\$!
-             sleep 2
-             tail -n 20 /tmp/wire-stage.log || true
+               else
+                 echo FAIL > /tmp/wire-stage.failed
+               fi
+             ) >/dev/null 2>&1 &
+             echo STARTED:\$(cat /tmp/wire-stage.pid)
+             sleep 3
+             tail -n 30 /tmp/wire-stage.log || true
             "
           # Poll for completion (web-only build should finish well under 20 minutes)
           for i in $(seq 1 60); do
