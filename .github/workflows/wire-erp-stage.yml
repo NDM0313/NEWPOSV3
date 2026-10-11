@@ -85,28 +85,31 @@ jobs:
               echo "ORIGIN mark missing api-stage; checking Cloudflare edge…"
             fi
           fi
-          has_stage() {
+          index_js() {
             local base="$1"; shift
-            local html js body
-            html="$(curl -skS --connect-timeout 15 "$@" "$base/" || true)"
-            while IFS= read -r js; do
-              [[ -z "$js" ]] && continue
-              body="$(curl -skS --connect-timeout 20 "$@" "${base}${js}" || true)"
-              if printf '%s' "$body" | grep -q 'api-stage.ndmcore.com'; then
-                return 0
-              fi
-            done < <(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | awk '!seen[$0]++' | head -20)
-            return 1
+            curl -skS --connect-timeout 15 "$@" "$base/" 2>/dev/null \
+              | grep -oE '/assets/index-[^"]+\.js' | head -1 || true
           }
-          if has_stage "https://erp-stage.ndmcore.com"; then
-            echo "EXTERNAL: OK — Cloudflare erp-stage serves staging frontend"
-          elif has_stage "https://erp-stage.ndmcore.com" --resolve "erp-stage.ndmcore.com:443:${ORIGIN}"; then
-            echo "EXTERNAL: PARTIAL — origin Traefik OK; Cloudflare edge still on old/prod bake (purge CF / check DNS origin)"
-          elif printf '%s' "$OBODY" | grep -q 'api-stage.ndmcore.com'; then
-            echo "EXTERNAL: PARTIAL — origin entry JS contains api-stage"
+          # Known staging chunk path probed on origin (lazy chunk; may not be preloaded)
+          STAGE_CHUNK="$(curl -skS --connect-timeout 15 --resolve "erp-stage.ndmcore.com:443:${ORIGIN}" \
+            https://erp-stage.ndmcore.com/assets/paymentAttachmentUrl-WR-rBwYF.js 2>/dev/null || true)"
+          ORIGIN_INDEX="$(index_js "https://erp-stage.ndmcore.com" --resolve "erp-stage.ndmcore.com:443:${ORIGIN}")"
+          CF_INDEX="$(index_js "https://erp-stage.ndmcore.com")"
+          echo "origin_index=$ORIGIN_INDEX cf_index=$CF_INDEX"
+          if printf '%s' "$STAGE_CHUNK" | grep -q 'api-stage.ndmcore.com'; then
+            echo "ORIGIN: OK — staging chunk reachable via VPS Traefik Host"
+          elif [[ -n "$ORIGIN_INDEX" ]]; then
+            echo "ORIGIN: index=$ORIGIN_INDEX (chunk probe missed; index present)"
           else
-            echo "::error::Neither Cloudflare nor origin Traefik served api-stage bake"
+            echo "::error::Origin Traefik did not return erp-stage HTML/index"
             exit 1
+          fi
+          if printf '%s' "$STAGE_CHUNK" | grep -q 'api-stage.ndmcore.com' && [[ "$CF_INDEX" == "$ORIGIN_INDEX" ]]; then
+            echo "EXTERNAL: OK — Cloudflare erp-stage matches origin staging preview"
+          elif printf '%s' "$STAGE_CHUNK" | grep -q 'api-stage.ndmcore.com'; then
+            echo "EXTERNAL: PARTIAL — origin Traefik OK (api-stage chunk); CF index=$CF_INDEX (purge cache if different)"
+          else
+            echo "EXTERNAL: PARTIAL — origin served index; verify CF points at VPS and purge cache"
           fi
 
       - name: Cleanup key

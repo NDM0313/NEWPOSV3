@@ -125,59 +125,49 @@ fi
 # Reload Traefik by touching configs; wait for file provider
 sleep 5
 
-sniff_api_mark() {
+html_index_js() {
   local base_url="$1"
   shift
-  local html js body mark="unknown"
-  local -a scripts=()
+  local html
   html="$(curl -skS -L --connect-timeout 12 "$@" "$base_url/" 2>/dev/null || true)"
-  # Collect entry + modulepreload scripts (URL may live in a chunk, not index)
-  while IFS= read -r js; do
-    [[ -n "$js" ]] && scripts+=("$js")
-  done < <(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | awk '!seen[$0]++' | head -20)
-  if [[ ${#scripts[@]} -eq 0 ]]; then
-    echo "no-js"
-    return
-  fi
-  for js in "${scripts[@]}"; do
-    body="$(curl -skS --connect-timeout 15 "$@" "${base_url}${js}" 2>/dev/null || true)"
-    if printf '%s' "$body" | grep -q 'api-stage.ndmcore.com'; then
-      echo "api-stage.ndmcore.com"
-      return
-    fi
-    if printf '%s' "$body" | grep -q 'api.ndmcore.com'; then
-      mark="api.ndmcore.com"
-    fi
-  done
-  if [[ "$mark" == "api.ndmcore.com" ]]; then
-    echo "api.ndmcore.com"
+  printf '%s' "$html" | grep -oE '/assets/index-[^"]+\.js' | head -1 || true
+}
+
+probe_stage_chunk() {
+  # Fetch known staging chunk (may be lazy-loaded; not always in HTML preloads)
+  local base_url="$1"
+  shift
+  local chunk_path body
+  chunk_path="$(docker exec erp-frontend-preview sh -c 'grep -rl "api-stage.ndmcore.com" /usr/share/nginx/html/assets 2>/dev/null | head -1' | sed 's|^/usr/share/nginx/html||' || true)"
+  [[ -n "$chunk_path" ]] || { echo "no-chunk"; return; }
+  body="$(curl -skS --connect-timeout 15 "$@" "${base_url}${chunk_path}" 2>/dev/null || true)"
+  if printf '%s' "$body" | grep -q 'api-stage.ndmcore.com'; then
+    echo "api-stage.ndmcore.com"
   else
-    echo "unknown(js=${scripts[0]})"
+    echo "miss(${chunk_path})"
   fi
 }
 
-# Probe Traefik on localhost :443 and on the VPS public IP (bypass Cloudflare edge)
-TRAEFIK_MARK="$(sniff_api_mark "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HOST}:443:127.0.0.1")"
-out "Traefik localhost Host=${ERP_STAGE_HOST} JS mark: $TRAEFIK_MARK"
+[[ -n "$BUNDLE_HIT" ]] || die "preview :3002 itself not staging-baked"
+PREVIEW_INDEX="$(html_index_js "http://127.0.0.1:3002")"
+out "direct :3002 index=$PREVIEW_INDEX bake=api-stage (container grep)"
+[[ -n "$PREVIEW_INDEX" ]] || die "preview :3002 HTML missing index JS"
 
 VPS_IP="${VPS_PUBLIC_IP:-72.62.254.176}"
-VPS_MARK="$(sniff_api_mark "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HOST}:443:${VPS_IP}")"
-out "VPS ${VPS_IP} Host=${ERP_STAGE_HOST} JS mark: $VPS_MARK"
+TRAEFIK_INDEX="$(html_index_js "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HOST}:443:127.0.0.1")"
+VPS_INDEX="$(html_index_js "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HOST}:443:${VPS_IP}")"
+TRAEFIK_CHUNK="$(probe_stage_chunk "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HOST}:443:127.0.0.1")"
+VPS_CHUNK="$(probe_stage_chunk "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HOST}:443:${VPS_IP}")"
+out "Traefik localhost index=$TRAEFIK_INDEX chunk=$TRAEFIK_CHUNK"
+out "VPS ${VPS_IP} index=$VPS_INDEX chunk=$VPS_CHUNK"
 
-PREVIEW_MARK="$(sniff_api_mark "http://127.0.0.1:3002")"
-# docker exec already proved api-stage exists in the image; prefer that if HTML sniff misses chunks
-if [[ "$PREVIEW_MARK" != "api-stage.ndmcore.com" && -n "$BUNDLE_HIT" ]]; then
-  PREVIEW_MARK="api-stage.ndmcore.com"
-  out "direct :3002 JS mark: api-stage.ndmcore.com (from container assets grep: $BUNDLE_HIT)"
-else
-  out "direct :3002 JS mark: $PREVIEW_MARK"
+ROUTE_OK=0
+if [[ "$TRAEFIK_INDEX" == "$PREVIEW_INDEX" || "$VPS_INDEX" == "$PREVIEW_INDEX" ]]; then
+  ROUTE_OK=1
 fi
-[[ "$PREVIEW_MARK" == "api-stage.ndmcore.com" ]] || die "preview :3002 itself not staging-baked"
-
-# Prefer best staging mark among direct Traefik paths
-ROUTE_MARK="$TRAEFIK_MARK"
-[[ "$VPS_MARK" == "api-stage.ndmcore.com" ]] && ROUTE_MARK="$VPS_MARK"
-[[ "$TRAEFIK_MARK" == "api-stage.ndmcore.com" ]] && ROUTE_MARK="$TRAEFIK_MARK"
+if [[ "$TRAEFIK_CHUNK" == "api-stage.ndmcore.com" || "$VPS_CHUNK" == "api-stage.ndmcore.com" ]]; then
+  ROUTE_OK=1
+fi
 
 PUBLIC_IP="$(getent ahostsv4 "$ERP_STAGE_HOST" 2>/dev/null | awk '{print $1; exit}' || true)"
 if [[ -z "$PUBLIC_IP" ]] && command -v dig >/dev/null 2>&1; then
@@ -187,32 +177,31 @@ CURL_EXTRA=()
 [[ -n "${PUBLIC_IP:-}" ]] && CURL_EXTRA=(--resolve "${ERP_STAGE_HOST}:443:${PUBLIC_IP}") && out "resolve ${ERP_STAGE_HOST} → ${PUBLIC_IP}"
 
 PUBLIC_CODE="$(curl -skS -o /dev/null -w '%{http_code}' -I --connect-timeout 15 "${CURL_EXTRA[@]}" "https://${ERP_STAGE_HOST}/" || true)"
-PUBLIC_MARK="$(sniff_api_mark "https://${ERP_STAGE_HOST}" "${CURL_EXTRA[@]}")"
-out "https://${ERP_STAGE_HOST}/ → $PUBLIC_CODE JS mark: $PUBLIC_MARK"
+PUBLIC_INDEX="$(html_index_js "https://${ERP_STAGE_HOST}" "${CURL_EXTRA[@]}")"
+PUBLIC_CHUNK="$(probe_stage_chunk "https://${ERP_STAGE_HOST}" "${CURL_EXTRA[@]}")"
+out "https://${ERP_STAGE_HOST}/ → $PUBLIC_CODE index=$PUBLIC_INDEX chunk=$PUBLIC_CHUNK"
 
-# Success: at least one Traefik/VPS path (bypass CF) must serve staging bake.
-if [[ "$ROUTE_MARK" == "api-stage.ndmcore.com" ]]; then
-  out "TRAEFIK_ROUTE: OK (staging bake via Traefik/VPS Host)"
-elif [[ "$PUBLIC_MARK" == "api-stage.ndmcore.com" ]]; then
-  out "PUBLIC_ROUTE: OK (staging bake via Cloudflare)"
-  ROUTE_MARK="$PUBLIC_MARK"
+if [[ "$ROUTE_OK" -eq 1 ]]; then
+  out "TRAEFIK_ROUTE: OK (erp-stage Host → same preview index/chunk as :3002)"
+elif [[ "$PUBLIC_INDEX" == "$PREVIEW_INDEX" || "$PUBLIC_CHUNK" == "api-stage.ndmcore.com" ]]; then
+  out "PUBLIC_ROUTE: OK (Cloudflare serves staging preview)"
+  ROUTE_OK=1
 else
   out "Traefik published ports:"
   docker port "$TRAEFIK_NAME" 2>/dev/null | sed 's/^/  /' || true
   out "Other Host routers mentioning erp:"
   grep -RIn 'Host(`erp' "$DYNAMIC_DIR" 2>/dev/null | sed 's/^/  /' | head -40 || true
-  die "erp-stage not reaching staging preview (traefik=$TRAEFIK_MARK vps=$VPS_MARK public=$PUBLIC_MARK)"
+  die "erp-stage not reaching staging preview (preview=$PREVIEW_INDEX traefik=$TRAEFIK_INDEX vps=$VPS_INDEX public=$PUBLIC_INDEX)"
 fi
 
-if [[ "$PUBLIC_MARK" != "api-stage.ndmcore.com" ]]; then
-  out "WARNING: Cloudflare edge still serving mark=$PUBLIC_MARK — set CF DNS A/AAAA for erp-stage → ${VPS_IP} (proxied) and purge cache."
-  out "         Direct Traefik/VPS route is OK (mark=$ROUTE_MARK)."
+if [[ "$PUBLIC_INDEX" != "$PREVIEW_INDEX" && "$PUBLIC_CHUNK" != "api-stage.ndmcore.com" ]]; then
+  out "WARNING: Cloudflare edge index=$PUBLIC_INDEX differs from preview=$PREVIEW_INDEX — purge CF cache / confirm DNS origin → ${VPS_IP}."
 fi
 
-if [[ "$PUBLIC_CODE" == "200" && "$PUBLIC_MARK" == "api-stage.ndmcore.com" ]]; then
+if [[ "$PUBLIC_CODE" == "200" && ( "$PUBLIC_INDEX" == "$PREVIEW_INDEX" || "$PUBLIC_CHUNK" == "api-stage.ndmcore.com" ) ]]; then
   PUBLIC_OK=YES
 else
-  PUBLIC_OK="PARTIAL(route-ok public=$PUBLIC_MARK)"
+  PUBLIC_OK="PARTIAL(route-ok public_index=$PUBLIC_INDEX)"
 fi
 
 PROD_AFTER="$(docker ps --filter name=^erp-frontend$ --format '{{.Names}} {{.Ports}} {{.Status}}' || true)"
@@ -221,10 +210,10 @@ out "Production erp-frontend after: ${PROD_AFTER:-absent}"
 out "======== CONFIRMATION ========"
 out "erp_stage_host=https://${ERP_STAGE_HOST}"
 out "erp_stage_http=$PUBLIC_CODE"
-out "traefik_mark=$TRAEFIK_MARK"
-out "vps_mark=$VPS_MARK"
-out "route_mark=$ROUTE_MARK"
-out "public_mark=$PUBLIC_MARK"
+out "preview_index=$PREVIEW_INDEX"
+out "traefik_index=$TRAEFIK_INDEX"
+out "vps_index=$VPS_INDEX"
+out "public_index=$PUBLIC_INDEX"
 out "public_ok=$PUBLIC_OK"
 out "preview_local=200"
 out "api_target=${STAGE_API_URL}"
