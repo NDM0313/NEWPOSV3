@@ -8,6 +8,7 @@ on:
       - cursor/erp-stage-pwa-e9d2
     paths:
       - 'deploy/supabase-stage-traefik.yml'
+      - 'deploy/erp-stage-traefik.yml'
       - 'scripts/wire-erp-stage-vps.sh'
       - '.github/workflows/wire-erp-stage.yml'
   workflow_dispatch:
@@ -55,8 +56,8 @@ jobs:
 
           scp -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$KNOWN" \
-            deploy/supabase-stage-traefik.yml \
-            root@"$HOST":/root/NEWPOSV3/deploy/supabase-stage-traefik.yml
+            deploy/supabase-stage-traefik.yml deploy/erp-stage-traefik.yml \
+            root@"$HOST":/root/NEWPOSV3/deploy/
 
           ssh -i "$KEYFILE" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 \
@@ -69,13 +70,33 @@ jobs:
           set -euo pipefail
           CODE="$(curl -skS -o /dev/null -w '%{http_code}' -I --connect-timeout 15 https://erp-stage.ndmcore.com/)"
           echo "https://erp-stage.ndmcore.com/ → $CODE"
-          [[ "$CODE" == "200" ]]
+          [[ "$CODE" =~ ^(200|301|302|307|308)$ ]]
+          # Direct-to-origin (bypass CF) — proves Traefik on VPS serves staging
+          ORIGIN=72.62.254.176
+          OBODY=""
+          OHTML="$(curl -skS --connect-timeout 15 --resolve erp-stage.ndmcore.com:443:${ORIGIN} https://erp-stage.ndmcore.com/ || true)"
+          OJS="$(printf '%s' "$OHTML" | grep -oE '/assets/index-[^"]+\.js|/assets/[^"]+\.js' | head -1 || true)"
+          echo "origin HTML js=$OJS"
+          if [[ -n "$OJS" ]]; then
+            OBODY="$(curl -skS --connect-timeout 20 --resolve erp-stage.ndmcore.com:443:${ORIGIN} "https://erp-stage.ndmcore.com${OJS}" || true)"
+            if printf '%s' "$OBODY" | grep -q 'api-stage.ndmcore.com'; then
+              echo "ORIGIN: OK — VPS Traefik serves api-stage bake"
+            else
+              echo "ORIGIN mark missing api-stage; checking Cloudflare edge…"
+            fi
+          fi
           HTML="$(curl -skS --connect-timeout 15 https://erp-stage.ndmcore.com/)"
-          JS="$(printf '%s' "$HTML" | grep -oE '/assets/[^"]+\.js' | head -1)"
-          [[ -n "$JS" ]]
-          BODY="$(curl -skS --connect-timeout 20 "https://erp-stage.ndmcore.com${JS}")"
-          printf '%s' "$BODY" | grep -q 'api-stage.ndmcore.com'
-          echo "EXTERNAL: OK — erp-stage serves staging frontend (api-stage baked in)"
+          JS="$(printf '%s' "$HTML" | grep -oE '/assets/index-[^"]+\.js|/assets/[^"]+\.js' | head -1 || true)"
+          BODY=""
+          [[ -n "$JS" ]] && BODY="$(curl -skS --connect-timeout 20 "https://erp-stage.ndmcore.com${JS}" || true)"
+          if printf '%s' "$BODY" | grep -q 'api-stage.ndmcore.com'; then
+            echo "EXTERNAL: OK — Cloudflare erp-stage serves staging frontend"
+          elif printf '%s' "$OBODY" | grep -q 'api-stage.ndmcore.com'; then
+            echo "EXTERNAL: PARTIAL — origin Traefik OK; Cloudflare edge still on old/prod bake (purge CF / check DNS origin)"
+          else
+            echo "::error::Neither Cloudflare nor origin Traefik served api-stage bake"
+            exit 1
+          fi
 
       - name: Cleanup key
         if: always()

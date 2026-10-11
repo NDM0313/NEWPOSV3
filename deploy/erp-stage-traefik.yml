@@ -1,0 +1,32 @@
+# Dedicated high-priority Traefik routes for staging ERP web.
+# Target: erp-frontend-preview on erp-preview_net (host bind 127.0.0.1:3002→80).
+# Installed as /etc/dokploy/traefik/dynamic/erp-stage.yml (separate from supabase-stage.yml).
+http:
+  routers:
+    erp-stage-ndmcore:
+      rule: Host(`erp-stage.ndmcore.com`)
+      priority: 1000
+      service: stage-erp-frontend-preview
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    erp-stage-ndmcore-http:
+      rule: Host(`erp-stage.ndmcore.com`)
+      priority: 1000
+      middlewares:
+        - erp-stage-redirect-https
+      service: stage-erp-frontend-preview
+      entryPoints:
+        - web
+  middlewares:
+    erp-stage-redirect-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+  services:
+    stage-erp-frontend-preview:
+      loadBalancer:
+        servers:
+          - url: http://erp-frontend-preview:80
+        passHostHeader: true
