@@ -1,0 +1,112 @@
+# Deploy isolated staging Supabase stack on the target host (VPS/Mini PC via SSH).
+# Uses repository secrets for SSH. Does not touch production compose.
+#
+# Secrets:
+#   VPS_SSH_KEY or SSH_PRIVATE_KEY — private key
+# Optional vars/secrets:
+#   STAGE_SSH_HOST (default 72.62.254.176)
+#   STAGE_SSH_USER (default root)
+#
+name: Deploy Supabase Staging Stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_migrate:
+        description: "Skip pg_dump/restore (1=yes)"
+        required: false
+        default: "0"
+      host:
+        description: "SSH host override (empty = STAGE_SSH_HOST / VPS IP)"
+        required: false
+        default: ""
+
+jobs:
+  deploy-stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH key
+        id: sshkey
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"
+          if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
+          if [ -z "$KEY" ]; then
+            echo "::error::Add repository secret VPS_SSH_KEY (or SSH_PRIVATE_KEY)."
+            exit 1
+          fi
+          KEYFILE="${RUNNER_TEMP}/stage_deploy.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" > /dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy staging Supabase over SSH
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+          INPUT_HOST: ${{ github.event.inputs.host }}
+          SKIP_MIGRATE: ${{ github.event.inputs.skip_migrate }}
+          STAGE_SSH_HOST: ${{ vars.STAGE_SSH_HOST }}
+          STAGE_SSH_USER: ${{ vars.STAGE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          HOST="${INPUT_HOST:-}"
+          if [ -z "$HOST" ]; then HOST="${STAGE_SSH_HOST:-}"; fi
+          if [ -z "$HOST" ]; then HOST="72.62.254.176"; fi
+          USER="${STAGE_SSH_USER:-root}"
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 "$HOST" >> "$KNOWN" 2>/dev/null || true
+
+          echo "Target: ${USER}@${HOST}"
+          # Sync script + JWT helper to host
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -p 22 \
+            "${USER}@${HOST}" \
+            "mkdir -p /root/NEWPOSV3/scripts /root/NEWPOSV3/deploy /opt/supabase-stage"
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            scripts/deploy-supabase-stage-minipc.sh \
+            "${USER}@${HOST}:/root/NEWPOSV3/scripts/deploy-supabase-stage-minipc.sh"
+
+          scp -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            deploy/gen-jwt-keys.cjs \
+            "${USER}@${HOST}:/root/NEWPOSV3/deploy/gen-jwt-keys.cjs"
+
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -p 22 \
+            "${USER}@${HOST}" \
+            "set -euo pipefail
+             chmod +x /root/NEWPOSV3/scripts/deploy-supabase-stage-minipc.sh
+             export REPO_ROOT=/root/NEWPOSV3
+             export GEN_JWT_SCRIPT=/root/NEWPOSV3/deploy/gen-jwt-keys.cjs
+             export SKIP_MIGRATE='${SKIP_MIGRATE:-0}'
+             bash /root/NEWPOSV3/scripts/deploy-supabase-stage-minipc.sh
+             echo '--- STAGE_SUMMARY ---'
+             cat /opt/supabase-stage/STAGE_SUMMARY.txt
+            "
+
+      - name: Remove SSH key file
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"
