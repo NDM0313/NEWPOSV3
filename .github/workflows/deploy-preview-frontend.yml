@@ -1,0 +1,65 @@
+# Rebuild erp-frontend-preview on VPS :3002 only (no migrations / no prod erp-frontend).
+#
+# Requires repository secret: VPS_SSH_KEY (same as deploy-vps.yml)
+name: Deploy preview frontend (:3002)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Git branch to deploy to preview worktree
+        required: true
+        default: cursor/preview-3002-verify-runbook-e9d2
+  push:
+    branches:
+      - cursor/preview-3002-verify-runbook-e9d2
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare SSH key
+        id: sshkey
+        env:
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"
+          if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
+          if [ -z "$KEY" ]; then
+            echo "::error::Add repository secret VPS_SSH_KEY"
+            exit 1
+          fi
+          KEYFILE="${RUNNER_TEMP}/vps_preview.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          ssh-keygen -y -f "$KEYFILE" > /dev/null
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Rebuild erp-frontend-preview on :3002
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+          DEPLOY_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 72.62.254.176 >> "$KNOWN" 2>/dev/null || true
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -p 22 \
+            root@72.62.254.176 \
+            "set -euo pipefail; export BRANCH='${DEPLOY_BRANCH}'; export DEPLOY_DIR='/root/NEWPOSV3-preview-qa';
+             if [ ! -d \"\$DEPLOY_DIR/.git\" ]; then git clone https://github.com/NDM0313/NEWPOSV3.git \"\$DEPLOY_DIR\"; fi
+             cd \"\$DEPLOY_DIR\"
+             git fetch origin \"\$BRANCH\"
+             git checkout -B \"\$BRANCH\" \"origin/\$BRANCH\"
+             bash scripts/deploy-preview-frontend-vps.sh"
+
+      - name: Cleanup key
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"
