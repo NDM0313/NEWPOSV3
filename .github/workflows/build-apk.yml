@@ -36,19 +36,23 @@ jobs:
       - name: Configure Android SDK (preinstalled on ubuntu-latest)
         run: |
           set -euo pipefail
-          # GitHub-hosted runners ship the SDK under /usr/local/lib/android/sdk
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
-          # cmdline-tools version folder may be numbered (e.g. 16.0)
-          CMDLINE=$(ls -d /usr/local/lib/android/sdk/cmdline-tools/*/bin 2>/dev/null | head -1 || true)
-          if [ -n "$CMDLINE" ]; then
-            echo "$CMDLINE" >> "$GITHUB_PATH"
+          SDK_ROOT=/usr/local/lib/android/sdk
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          # GITHUB_PATH applies to *next* steps — call sdkmanager by absolute path here.
+          SDKMANAGER=$(ls "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1 || true)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            ls -la "$SDK_ROOT" || true
+            ls -la "$SDK_ROOT/cmdline-tools" || true
+            exit 1
           fi
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" || \
-            sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          # variables.gradle uses compileSdk 36
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" || \
+            "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Write production env (locked api.ndmcore.com)
         working-directory: erp-mobile-app
