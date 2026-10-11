@@ -34,6 +34,13 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing $1"; }
 need docker
 need curl
 
+# Exclusive lock — concurrent CI wires previously stuck for 30+ minutes.
+exec 9>/tmp/wire-stage.lock
+if ! flock -n 9; then
+  die "another wire-stage process holds /tmp/wire-stage.lock"
+fi
+rm -f /tmp/wire-stage.done /tmp/wire-stage.failed
+
 [[ -d "$STAGE_DIR" ]] || die "staging dir missing: $STAGE_DIR"
 docker ps --format '{{.Names}}' | grep -qx 'stage-supabase-kong' || die "stage-supabase-kong not running"
 docker ps --format '{{.Names}}' | grep -qx 'stage-supabase-studio' || die "stage-supabase-studio not running"
@@ -108,6 +115,11 @@ cd "$PREVIEW_DIR"
 git fetch origin "$BRANCH" || git fetch origin
 git checkout -B "$BRANCH" "origin/$BRANCH" 2>/dev/null || git checkout "$BRANCH" || true
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo stagewire)"
+# Ensure web-only Dockerfile is present even if preview checkout lags the push
+if [[ -f "$REPO_ROOT/deploy/Dockerfile.preview-webonly" ]]; then
+  mkdir -p "$PREVIEW_DIR/deploy"
+  cp -f "$REPO_ROOT/deploy/Dockerfile.preview-webonly" "$PREVIEW_DIR/deploy/Dockerfile.preview-webonly"
+fi
 
 # Write dedicated staging env for preview build (do NOT overwrite prod .env.production on main ERP tree)
 ENV_FILE="$PREVIEW_DIR/.env.production"
@@ -126,31 +138,42 @@ log "Wrote $ENV_FILE → VITE_SUPABASE_URL=${STAGE_API_URL}"
 PROD_PORTS_BEFORE="$(docker ps --filter name=^erp-frontend$ --format '{{.Names}} {{.Ports}} {{.Status}}' || true)"
 log "Production erp-frontend (must stay untouched): ${PROD_PORTS_BEFORE:-absent}"
 
-export COMPOSE_PROJECT_NAME=erp-preview
 export VITE_SUPABASE_URL="$STAGE_API_URL"
 export VITE_SUPABASE_URL_MOBILE="$STAGE_API_URL"
 export VITE_SUPABASE_ANON_KEY="$STAGE_ANON_KEY"
 export VITE_DISABLE_REALTIME=true
 export VITE_BUILD_COMMIT="$COMMIT"
-export CACHEBUST
 CACHEBUST="$(date +%s)"
 export CACHEBUST
 
-COMPOSE=(docker compose -p erp-preview -f deploy/docker-compose.preview.yml --env-file "$ENV_FILE")
-log "Building erp-frontend-preview with staging Supabase URL"
-"${COMPOSE[@]}" build erp-preview
-
+log "Building erp-frontend-preview (web-only Dockerfile) with staging Supabase URL"
+# Stop any leftover preview compose builds from a prior crashed CI wire
 docker rm -f erp-frontend-preview 2>/dev/null || true
 docker network create erp-preview_net 2>/dev/null || true
-if ! "${COMPOSE[@]}" up -d --no-deps --force-recreate erp-preview; then
-  log "compose up failed — docker run fallback"
-  docker run -d \
-    --name erp-frontend-preview \
-    --restart unless-stopped \
-    --network erp-preview_net \
-    -p 3002:80 \
-    erp-frontend-preview:latest
+
+DOCKERFILE="deploy/Dockerfile.preview-webonly"
+if [[ ! -f "$DOCKERFILE" ]]; then
+  DOCKERFILE="deploy/Dockerfile"
+  log "web-only Dockerfile missing — falling back to $DOCKERFILE"
 fi
+
+docker build \
+  -f "$DOCKERFILE" \
+  --build-arg "VITE_SUPABASE_URL=${STAGE_API_URL}" \
+  --build-arg "VITE_SUPABASE_ANON_KEY=${STAGE_ANON_KEY}" \
+  --build-arg "VITE_SUPABASE_URL_MOBILE=${STAGE_API_URL}" \
+  --build-arg "VITE_DISABLE_REALTIME=true" \
+  --build-arg "VITE_BUILD_COMMIT=${COMMIT}" \
+  --build-arg "CACHEBUST=${CACHEBUST}" \
+  -t erp-frontend-preview:latest \
+  .
+
+docker run -d \
+  --name erp-frontend-preview \
+  --restart unless-stopped \
+  --network erp-preview_net \
+  -p 3002:80 \
+  erp-frontend-preview:latest
 
 # ---------------------------------------------------------------------------
 # 3) Verification
