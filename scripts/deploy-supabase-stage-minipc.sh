@@ -210,13 +210,16 @@ override.write_text(
 print(f"wrote {override}")
 PY
 
+# Do NOT merge docker-compose.s3.yml (minio/mc pulls often fail and are not required for ERP staging).
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.stage-ports.yml)
-if [[ -f "$STAGE_DIR/docker-compose.s3.yml" ]]; then
-  COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.s3.yml -f docker-compose.stage-ports.yml)
-fi
 compose() {
+  # Preserve set -e friendliness: return status instead of aborting inside the function.
+  set +e
   # shellcheck disable=SC2068
   docker compose "${COMPOSE_FILES[@]}" -p "$COMPOSE_PROJECT" "$@"
+  local rc=$?
+  set -e
+  return "$rc"
 }
 log "compose files: ${COMPOSE_FILES[*]}"
 
@@ -344,8 +347,8 @@ cd "$STAGE_DIR"
 export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT"
 # Free host :5433 if an older pooler publish is holding it
 docker rm -f stage-supabase-pooler >/dev/null 2>&1 || true
-compose pull --ignore-pull-failures 2>/dev/null || true
-compose up -d
+compose pull --ignore-pull-failures || true
+compose up -d || die "compose up -d failed"
 
 log "Waiting for stage DB to accept connections..."
 STAGE_DB=""
