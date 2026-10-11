@@ -85,14 +85,25 @@ jobs:
               echo "ORIGIN mark missing api-stage; checking Cloudflare edge…"
             fi
           fi
-          HTML="$(curl -skS --connect-timeout 15 https://erp-stage.ndmcore.com/)"
-          JS="$(printf '%s' "$HTML" | grep -oE '/assets/index-[^"]+\.js|/assets/[^"]+\.js' | head -1 || true)"
-          BODY=""
-          [[ -n "$JS" ]] && BODY="$(curl -skS --connect-timeout 20 "https://erp-stage.ndmcore.com${JS}" || true)"
-          if printf '%s' "$BODY" | grep -q 'api-stage.ndmcore.com'; then
+          has_stage() {
+            local base="$1"; shift
+            local html js body
+            html="$(curl -skS --connect-timeout 15 "$@" "$base/" || true)"
+            while IFS= read -r js; do
+              [[ -z "$js" ]] && continue
+              body="$(curl -skS --connect-timeout 20 "$@" "${base}${js}" || true)"
+              if printf '%s' "$body" | grep -q 'api-stage.ndmcore.com'; then
+                return 0
+              fi
+            done < <(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | awk '!seen[$0]++' | head -20)
+            return 1
+          }
+          if has_stage "https://erp-stage.ndmcore.com"; then
             echo "EXTERNAL: OK — Cloudflare erp-stage serves staging frontend"
-          elif printf '%s' "$OBODY" | grep -q 'api-stage.ndmcore.com'; then
+          elif has_stage "https://erp-stage.ndmcore.com" --resolve "erp-stage.ndmcore.com:443:${ORIGIN}"; then
             echo "EXTERNAL: PARTIAL — origin Traefik OK; Cloudflare edge still on old/prod bake (purge CF / check DNS origin)"
+          elif printf '%s' "$OBODY" | grep -q 'api-stage.ndmcore.com'; then
+            echo "EXTERNAL: PARTIAL — origin entry JS contains api-stage"
           else
             echo "::error::Neither Cloudflare nor origin Traefik served api-stage bake"
             exit 1

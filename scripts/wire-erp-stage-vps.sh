@@ -128,21 +128,31 @@ sleep 5
 sniff_api_mark() {
   local base_url="$1"
   shift
-  local html js body
+  local html js body mark="unknown"
+  local -a scripts=()
   html="$(curl -skS -L --connect-timeout 12 "$@" "$base_url/" 2>/dev/null || true)"
-  js="$(printf '%s' "$html" | grep -oE '/assets/index-[^"]+\.js' | head -1 || true)"
-  [[ -z "$js" ]] && js="$(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | head -1 || true)"
-  if [[ -z "$js" ]]; then
+  # Collect entry + modulepreload scripts (URL may live in a chunk, not index)
+  while IFS= read -r js; do
+    [[ -n "$js" ]] && scripts+=("$js")
+  done < <(printf '%s' "$html" | grep -oE '/assets/[^"]+\.js' | awk '!seen[$0]++' | head -20)
+  if [[ ${#scripts[@]} -eq 0 ]]; then
     echo "no-js"
     return
   fi
-  body="$(curl -skS --connect-timeout 15 "$@" "${base_url}${js}" 2>/dev/null || true)"
-  if printf '%s' "$body" | grep -q 'api-stage.ndmcore.com'; then
-    echo "api-stage.ndmcore.com"
-  elif printf '%s' "$body" | grep -q 'api.ndmcore.com'; then
+  for js in "${scripts[@]}"; do
+    body="$(curl -skS --connect-timeout 15 "$@" "${base_url}${js}" 2>/dev/null || true)"
+    if printf '%s' "$body" | grep -q 'api-stage.ndmcore.com'; then
+      echo "api-stage.ndmcore.com"
+      return
+    fi
+    if printf '%s' "$body" | grep -q 'api.ndmcore.com'; then
+      mark="api.ndmcore.com"
+    fi
+  done
+  if [[ "$mark" == "api.ndmcore.com" ]]; then
     echo "api.ndmcore.com"
   else
-    echo "unknown(js=$js)"
+    echo "unknown(js=${scripts[0]})"
   fi
 }
 
@@ -155,7 +165,13 @@ VPS_MARK="$(sniff_api_mark "https://${ERP_STAGE_HOST}" --resolve "${ERP_STAGE_HO
 out "VPS ${VPS_IP} Host=${ERP_STAGE_HOST} JS mark: $VPS_MARK"
 
 PREVIEW_MARK="$(sniff_api_mark "http://127.0.0.1:3002")"
-out "direct :3002 JS mark: $PREVIEW_MARK"
+# docker exec already proved api-stage exists in the image; prefer that if HTML sniff misses chunks
+if [[ "$PREVIEW_MARK" != "api-stage.ndmcore.com" && -n "$BUNDLE_HIT" ]]; then
+  PREVIEW_MARK="api-stage.ndmcore.com"
+  out "direct :3002 JS mark: api-stage.ndmcore.com (from container assets grep: $BUNDLE_HIT)"
+else
+  out "direct :3002 JS mark: $PREVIEW_MARK"
+fi
 [[ "$PREVIEW_MARK" == "api-stage.ndmcore.com" ]] || die "preview :3002 itself not staging-baked"
 
 # Prefer best staging mark among direct Traefik paths
