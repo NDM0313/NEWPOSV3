@@ -53,12 +53,16 @@ jobs:
             -o ConnectTimeout=30 \
             -p 22 \
             root@72.62.254.176 \
-            "set -euo pipefail; export BRANCH='${DEPLOY_BRANCH}'; export DEPLOY_DIR='/root/NEWPOSV3-preview-qa';
+            "set -euo pipefail; export BRANCH='${DEPLOY_BRANCH}'; export DEPLOY_DIR='/root/NEWPOSV3-preview-qa'; export COMPOSE_PROJECT_NAME='erp-preview';
              if [ ! -d \"\$DEPLOY_DIR/.git\" ]; then git clone https://github.com/NDM0313/NEWPOSV3.git \"\$DEPLOY_DIR\"; fi
              cd \"\$DEPLOY_DIR\"
              git fetch origin \"\$BRANCH\"
              git checkout -B \"\$BRANCH\" \"origin/\$BRANCH\"
-             bash scripts/deploy-preview-frontend-vps.sh"
+             # If a previous failed run removed the preview container but left the image, bring it up even if script fails mid-way.
+             bash scripts/deploy-preview-frontend-vps.sh
+             docker ps --filter name=erp-frontend --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'
+             curl -sI http://127.0.0.1:3002/ | head -5
+             docker exec erp-frontend-preview sh -c 'grep -rl erp_sidebar_open /usr/share/nginx/html/assets | head -3'"
 
       - name: Cleanup key
         if: always()

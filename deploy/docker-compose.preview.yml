@@ -1,6 +1,9 @@
 # Phase 2.9A-3 — Parallel preview ERP (browser waiver QA only)
 # Does NOT replace erp-frontend / erp.dincouture.pk
 #
+# Project name MUST stay erp-preview so we never touch the shared deploy_default
+# network used by erp-frontend / Traefik.
+#
 # From project root on VPS:
 #   cd /root/NEWPOSV3-preview-qa
 #   bash deploy/write-erp-env-from-supabase-docker-env.sh
@@ -11,6 +14,8 @@
 # Ops access: ssh -N -L 3002:127.0.0.1:3002 dincouture-vps → http://localhost:3002
 #
 # Do NOT run deploy/deploy.sh (migrations / RLS). Frontend-only.
+
+name: erp-preview
 
 services:
   erp-preview:
@@ -36,8 +41,9 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - default
+      - preview_net
 
 networks:
-  default:
+  preview_net:
     driver: bridge
+    name: erp-preview_net

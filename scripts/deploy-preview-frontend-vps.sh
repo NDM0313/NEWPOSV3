@@ -40,10 +40,15 @@ if [ -f .env.production ]; then
   mv .env.production.tmp .env.production
 fi
 
-COMPOSE="docker compose -f deploy/docker-compose.preview.yml --env-file .env.production"
+# Isolate compose project so we never remove shared deploy_default (prod Traefik/ERP).
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-erp-preview}"
+COMPOSE="docker compose -p \"$COMPOSE_PROJECT_NAME\" -f deploy/docker-compose.preview.yml --env-file .env.production"
 $COMPOSE build erp-preview
+
+# Recreate only this container; do not prune shared networks.
 docker rm -f erp-frontend-preview 2>/dev/null || true
-$COMPOSE up -d --force-recreate erp-preview
+$COMPOSE up -d --no-deps --force-recreate erp-preview
+
 
 echo "[preview] Health:"
 curl -sI http://127.0.0.1:3002/ | head -5 || true
