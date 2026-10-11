@@ -1,16 +1,27 @@
-# Rebuild erp-frontend-preview on VPS :3002 only (no migrations / no prod erp-frontend).
-#
-# Requires repository secret: VPS_SSH_KEY (same as deploy-vps.yml)
-# Manual only — avoid auto-redeploy loops on every push to the feature branch.
+# Recover / recreate erp-frontend-preview on VPS :3002 from existing image.
+# No docker build (avoids SSH cancel during long builds). No prod touch.
 name: Deploy preview frontend (:3002)
 
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: Git branch to deploy to preview worktree
+      mode:
+        description: recreate (image only) or rebuild (full compose build)
         required: true
+        default: recreate
+        type: choice
+        options:
+          - recreate
+          - rebuild
+      branch:
+        description: Branch for rebuild mode (ignored for recreate)
+        required: false
         default: cursor/preview-3002-verify-runbook-e9d2
+  push:
+    branches:
+      - cursor/preview-3002-verify-runbook-e9d2
+    paths:
+      - '.github/workflows/deploy-preview-frontend.yml'
 
 jobs:
   preview:
@@ -36,10 +47,11 @@ jobs:
           ssh-keygen -y -f "$KEYFILE" > /dev/null
           echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy preview on :3002
+      - name: Recreate preview container on :3002
         env:
           KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
-          DEPLOY_BRANCH: ${{ github.event.inputs.branch }}
+          MODE: ${{ github.event.inputs.mode || 'recreate' }}
+          DEPLOY_BRANCH: ${{ github.event.inputs.branch || 'cursor/preview-3002-verify-runbook-e9d2' }}
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/ssh"
@@ -55,17 +67,37 @@ jobs:
             -o ServerAliveCountMax=60 \
             -p 22 \
             root@72.62.254.176 \
-            "export BRANCH='${DEPLOY_BRANCH}' COMPOSE_PROJECT_NAME=erp-preview; bash -s" <<'REMOTE'
+            "export MODE='${MODE}' BRANCH='${DEPLOY_BRANCH}'; bash -s" <<'REMOTE'
           set -euo pipefail
-          export BRANCH="${BRANCH}"
-          export DEPLOY_DIR=/root/NEWPOSV3-preview-qa
-          export COMPOSE_PROJECT_NAME=erp-preview
-          BRANCH="$BRANCH" DEPLOY_DIR="$DEPLOY_DIR" COMPOSE_PROJECT_NAME=erp-preview \
-            bash -c 'cd /root/NEWPOSV3-preview-qa && git fetch origin "$BRANCH" && git checkout -B "$BRANCH" "origin/$BRANCH" && bash scripts/deploy-preview-frontend-vps.sh'
+          echo "[preview] mode=$MODE branch=${BRANCH:-}"
+
+          recreate() {
+            docker image inspect erp-frontend-preview:latest >/dev/null
+            docker rm -f erp-frontend-preview 2>/dev/null || true
+            docker network create erp-preview_net 2>/dev/null || true
+            docker run -d \
+              --name erp-frontend-preview \
+              --restart unless-stopped \
+              --network erp-preview_net \
+              -p 3002:80 \
+              erp-frontend-preview:latest
+          }
+
+          if [ "${MODE}" = "rebuild" ]; then
+            cd /root/NEWPOSV3-preview-qa
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            BRANCH="$BRANCH" DEPLOY_DIR=/root/NEWPOSV3-preview-qa COMPOSE_PROJECT_NAME=erp-preview \
+              bash scripts/deploy-preview-frontend-vps.sh
+          else
+            recreate
+          fi
+
           docker ps --filter name=erp-frontend --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'
           curl -sI http://127.0.0.1:3002/ | head -5
           curl -sI http://127.0.0.1:3002/m/ | head -5
           docker exec erp-frontend-preview sh -c 'grep -rl erp_sidebar_open /usr/share/nginx/html/assets | head -3'
+          echo "[preview] READY"
           REMOTE
 
       - name: Cleanup key
