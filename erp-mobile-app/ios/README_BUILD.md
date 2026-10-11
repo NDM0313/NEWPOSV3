@@ -95,6 +95,12 @@ npm run ios:prep:mac:stage             # build:mobile:stage + STAGE icon + cap s
 npm run cap:ios                        # opens App.xcworkspace
 ```
 
+If `git pull` fails due to local Mac edits, from repo root (or `erp-mobile-app`):
+
+```bash
+npm run mac:merge-pull-stage   # commit local erp-mobile-app → merge origin/main → ios:prep:mac:stage
+```
+
 Or step-by-step: `npm run build:mobile:stage` then `npm run cap:sync:ios:stage`.
 
 Restore production icon/bundle before a prod IPA: unset `CAP_PROFILE` / use `npm run cap:sync:ios:prod`, and run `python3 scripts/badge-ios-stage-icon.py --restore-prod`.
