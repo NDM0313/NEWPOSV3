@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 /** Kong may reject WS/API when forwarded Origin is localhost; set on the Node→Kong leg only. */
-const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.ndmcore.com';
+const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://api.ndmcore.com';
 const supabaseProxyHost = 'api.ndmcore.com';
 
 type ProxyWithEvents = {
