@@ -28,6 +28,7 @@ fi
 
 log() { echo "[wire-stage $(date -u +%H:%M:%S)] $*"; }
 die() { echo "[wire-stage ERROR] $*" >&2; exit 1; }
+trap 'echo FAIL > /tmp/wire-stage.failed' ERR
 
 need() { command -v "$1" >/dev/null 2>&1 || die "missing $1"; }
 need docker
