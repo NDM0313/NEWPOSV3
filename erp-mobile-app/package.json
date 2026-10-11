@@ -21,6 +21,8 @@
     "cap:sync:ios:stage": "npm run build:mobile:stage && node scripts/verify-dist-for-capacitor.mjs && python3 scripts/badge-ios-stage-icon.py && CAP_PROFILE=stage VITE_APP_ENV=stage npx cap sync ios && node scripts/verify-dist-for-capacitor.mjs",
     "ios:prep:mac:stage": "npm run cap:sync:ios:stage && cd ios/App && pod install",
     "mac:merge-pull-stage": "bash scripts/mac-merge-origin-main-stage.sh",
+    "mac:resolve-conflicts": "node scripts/auto-resolve-merge-conflicts.mjs",
+    "fix:mac-ios-stage": "bash scripts/fix-mac-ios-stage-now.sh",
     "cap:android": "npx cap open android",
     "cap:ios": "node scripts/open-ios-workspace.mjs",
     "ios:prep:mac": "npm run cap:sync:ios:prod && cd ios/App && pod install",
