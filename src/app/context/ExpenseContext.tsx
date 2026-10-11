@@ -25,6 +25,7 @@ import {
   pushExpenseEditTrace,
 } from '@/app/lib/expenseEditTrace';
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { formatPaymentAccountLabel } from '@/app/lib/paymentAccountDisplay';
 import {
   isLiquidityPaymentAccount,
@@ -266,16 +267,27 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       const mapped = data.map(convertFromSupabaseExpense);
       const ids = mapped.map((e) => e.id).filter(Boolean);
       if (ids.length > 0) {
-        const { data: payRows } = await supabase
-          .from('payments')
-          .select('reference_id, reference_number, created_at')
-          .eq('company_id', companyId)
-          .eq('reference_type', 'expense')
-          .in('reference_id', ids)
-          .is('voided_at', null)
-          .order('created_at', { ascending: false });
+        const payRows = await fetchInBatches(
+          ids,
+          async (chunk) => {
+            const { data, error } = await supabase
+              .from('payments')
+              .select('reference_id, reference_number, created_at')
+              .eq('company_id', companyId)
+              .eq('reference_type', 'expense')
+              .in('reference_id', chunk)
+              .is('voided_at', null)
+              .order('created_at', { ascending: false });
+            if (error) throw error;
+            return (data || []) as Array<{
+              reference_id?: string | null;
+              reference_number?: string | null;
+            }>;
+          },
+          { chunkSize: 40 },
+        );
         const refByExpenseId = new Map<string, string>();
-        for (const row of payRows || []) {
+        for (const row of payRows) {
           const rid = row.reference_id != null ? String(row.reference_id) : '';
           const ref = row.reference_number != null ? String(row.reference_number).trim() : '';
           if (!rid || !ref || refByExpenseId.has(rid)) continue;

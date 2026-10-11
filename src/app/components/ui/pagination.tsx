@@ -11,6 +11,8 @@ interface PaginationProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   pageSizeOptions?: number[];
+  /** When true, append an All option (value -1). */
+  showAllOption?: boolean;
 }
 
 export const Pagination = ({
@@ -21,10 +23,13 @@ export const Pagination = ({
   onPageChange,
   onPageSizeChange,
   pageSizeOptions = [50, 100, 200],
+  showAllOption = false,
 }: PaginationProps) => {
-  const safeTotalPages = Math.max(1, totalPages || 1);
-  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endItem = Math.min(currentPage * pageSize, totalItems);
+  const isAll = pageSize < 0;
+  const safeTotalPages = isAll ? 1 : Math.max(1, totalPages || 1);
+  const displayPage = isAll ? 1 : currentPage;
+  const startItem = totalItems === 0 ? 0 : isAll ? 1 : (currentPage - 1) * pageSize + 1;
+  const endItem = isAll ? totalItems : Math.min(currentPage * pageSize, totalItems);
 
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
@@ -58,7 +63,7 @@ export const Pagination = ({
           {totalItems > 0 ? (
             <>
               {' '}
-              · Page <span className="text-foreground font-semibold">{currentPage}</span> of{' '}
+              · Page <span className="text-foreground font-semibold">{displayPage}</span> of{' '}
               <span className="text-foreground font-semibold">{safeTotalPages}</span>
             </>
           ) : null}
@@ -66,7 +71,7 @@ export const Pagination = ({
         <label className="flex items-center gap-2">
           <span className="whitespace-nowrap">Rows</span>
           <select
-            value={pageSize}
+            value={isAll ? -1 : pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
             className="h-8 rounded-md border border-border bg-popover px-2 text-foreground text-sm"
             aria-label="Rows per page"
@@ -76,6 +81,9 @@ export const Pagination = ({
                 {size}
               </option>
             ))}
+            {showAllOption ? (
+              <option value={-1}>All</option>
+            ) : null}
           </select>
         </label>
       </div>
@@ -86,7 +94,7 @@ export const Pagination = ({
           variant="outline"
           size="sm"
           onClick={() => onPageChange(1)}
-          disabled={currentPage <= 1 || totalItems === 0}
+          disabled={displayPage <= 1 || totalItems === 0 || isAll}
           className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronsLeft size={16} />
@@ -96,7 +104,7 @@ export const Pagination = ({
           variant="outline"
           size="sm"
           onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage <= 1 || totalItems === 0}
+          disabled={displayPage <= 1 || totalItems === 0 || isAll}
           className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronLeft size={16} />
@@ -115,10 +123,10 @@ export const Pagination = ({
               variant="outline"
               size="sm"
               onClick={() => onPageChange(page as number)}
-              disabled={totalItems === 0}
+              disabled={totalItems === 0 || isAll}
               className={cn(
                 "h-8 min-w-[32px] px-2 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                currentPage === page && "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"
+                displayPage === page && "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"
               )}
             >
               {page}
@@ -130,7 +138,7 @@ export const Pagination = ({
           variant="outline"
           size="sm"
           onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage >= safeTotalPages || totalItems === 0}
+          disabled={displayPage >= safeTotalPages || totalItems === 0 || isAll}
           className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronRight size={16} />
@@ -140,7 +148,7 @@ export const Pagination = ({
           variant="outline"
           size="sm"
           onClick={() => onPageChange(safeTotalPages)}
-          disabled={currentPage >= safeTotalPages || totalItems === 0}
+          disabled={displayPage >= safeTotalPages || totalItems === 0 || isAll}
           className="h-8 w-8 p-0 bg-popover border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronsRight size={16} />

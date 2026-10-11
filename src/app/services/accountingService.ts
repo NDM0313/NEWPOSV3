@@ -28,6 +28,9 @@ import {
   recalcApLiabilityRunningBalances,
   splitRoleFilteredApRowsByPeriod,
 } from '@/app/lib/importFxPartyLedgerRoleFilter';
+import { JOURNAL_ENTRIES_LIST_SELECT } from '@/app/lib/journalEntriesListSelect';
+
+export { JOURNAL_ENTRIES_LIST_SELECT } from '@/app/lib/journalEntriesListSelect';
 
 export interface JournalEntry {
   id?: string;
@@ -673,12 +676,11 @@ export const accountingService = {
       const offset = opts?.offset ?? 0;
       const listMode = opts?.mode === 'list';
 
-      // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only for GL.
-      // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
-      let query = supabase
-        .from('journal_entries')
-        .select(
-          `
+      // List mode: explicit lean headers only (no `*`, no nested lines) — avoids 57014 under All Branches.
+      // Full mode keeps nested select for detail/enrichment callers.
+      const selectClause = listMode
+        ? JOURNAL_ENTRIES_LIST_SELECT
+        : `
           *,
           lines:journal_entry_lines(
             id,
@@ -689,9 +691,14 @@ export const accountingService = {
             description,
             account:accounts(name, code, type)
           )
-        `,
-          opts ? { count: 'exact' } : undefined
-        )
+        `;
+
+      // SOURCE LOCK (Phase 1): journal_entries (+ lines only in full mode) for GL.
+      // List mode: skip exact count — counting millions of From-start rows can 57014 even with lean select.
+      // Full/paginated callers that need a total still get an estimated floor from the page size.
+      let query = supabase
+        .from('journal_entries')
+        .select(selectClause, opts && !listMode ? { count: 'exact' } : undefined)
         .eq('company_id', companyId)
         .order('entry_date', { ascending: false })
         .order('created_at', { ascending: false });
@@ -856,7 +863,11 @@ export const accountingService = {
 
       // List mode: skip party/attachment/stock enrichment (detail modal loads as needed).
       if (listMode) {
-        return opts ? { data: validEntries, total: count ?? validEntries.length } : validEntries;
+        // Without exact count: if the page is full, advertise at least one more row so UI can page.
+        const listTotal =
+          count ??
+          (validEntries.length >= limit ? offset + validEntries.length + 1 : offset + validEntries.length);
+        return opts ? { data: validEntries, total: listTotal } : validEntries;
       }
 
       // Party name on payment row → journal list / workbench can show "AP — Supplier" without extra round-trips in UI.

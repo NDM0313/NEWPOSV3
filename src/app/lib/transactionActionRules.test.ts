@@ -46,13 +46,14 @@ describe('transactionActionRules', () => {
     assert.ok(!actions.some((a) => a.id === 'cancel_payment' || a.id === 'cancel_entry'));
   });
 
-  it('payment row exposes edit + cancel payment in detail modal', () => {
+  it('payment row exposes edit + cancel payment + complete delete in detail modal', () => {
     const actions = getTransactionActions(
       {
         reference_type: 'sale',
         reference_id: 'sale-1',
         payment_id: 'pay-1',
         is_void: false,
+        journal_line_count: 2,
       },
       'detail_modal',
       { includeViewAction: false }
@@ -60,6 +61,7 @@ describe('transactionActionRules', () => {
     const ids = actions.map((a) => a.id);
     assert.ok(ids.includes('edit'));
     assert.ok(ids.includes('cancel_payment'));
+    assert.ok(ids.includes('complete_delete'));
     assert.ok(ids.includes('view_trace'));
     assert.ok(!ids.includes('open_source_document'));
   });

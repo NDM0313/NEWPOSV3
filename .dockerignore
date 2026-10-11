@@ -37,3 +37,14 @@ __tests__
 # Optional: large or non-essential folders to speed up build
 # erp-mobile-app/node_modules
 # figma-extract
+
+# Capacitor native trees + reports (not needed for Vite web/PWA image)
+erp-mobile-app/android
+erp-mobile-app/ios
+erp-mobile-app/dist
+reports
+backups
+POS
+figma-extract
+graphify-out
+deploy/staging-je-guard

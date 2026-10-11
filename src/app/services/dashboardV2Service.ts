@@ -10,6 +10,11 @@ import {
 } from '@/app/services/financialDashboardService';
 import { mapRpcLowStockToAlerts } from '@/app/lib/dashboardV2Stock';
 import {
+  clampDashboardV2DateRange,
+  dashboardV2ClampLimitation,
+  isDashboardRpcTimeoutMessage,
+} from '@/app/lib/dashboardV2Period';
+import {
   buildMeta,
   buildStockAlerts,
   buildSummaryFromMetrics,
@@ -147,12 +152,17 @@ function buildRentalAlerts(rentals: DashboardV2Snapshot['operations']['rentals']
   return alerts;
 }
 
+type V2RpcResult = {
+  raw: Record<string, unknown> | null;
+  errorMessage: string | null;
+};
+
 async function fetchV2Rpc(
   companyId: string,
   branchId: string | null,
   dateFrom: string,
   dateTo: string
-): Promise<Record<string, unknown> | null> {
+): Promise<V2RpcResult> {
   const { data, error } = await supabase.rpc('get_dashboard_v2_snapshot', {
     p_company_id: companyId,
     p_branch_id: safeRpcBranchId(branchId),
@@ -161,25 +171,34 @@ async function fetchV2Rpc(
   });
   if (error) {
     console.warn('[Dashboard V2] get_dashboard_v2_snapshot RPC failed:', error.message);
-    return null;
+    return { raw: null, errorMessage: error.message };
   }
   const raw = (data as Record<string, unknown>) || null;
-  if (!raw) return null;
+  if (!raw) return { raw: null, errorMessage: 'No data' };
   const metrics = raw.metrics as Record<string, unknown> | undefined;
   const rpcErr = raw.error != null ? String(raw.error) : '';
   if (rpcErr && (!metrics || Object.keys(metrics).length === 0)) {
     console.warn('[Dashboard V2] RPC returned error payload:', rpcErr);
-    return null;
+    return { raw: null, errorMessage: rpcErr };
   }
-  return raw;
+  return { raw, errorMessage: rpcErr || null };
 }
 
 async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV2Snapshot> {
-  const { companyId, branchId, dateFrom, dateTo } = params;
+  const { companyId, branchId } = params;
   const branchNorm = branchId && branchId !== 'all' ? branchId : null;
 
+  const clamp = clampDashboardV2DateRange(params.dateFrom, params.dateTo);
+  const dateFrom = clamp.dateFrom;
+  const dateTo = clamp.dateTo;
+
   // Single V2 RPC: metrics + prior_period + low_stock (no parallel inventoryOverview / prior metrics)
-  const rpcRaw = await fetchV2Rpc(companyId, branchNorm, dateFrom, dateTo);
+  const { raw: rpcRaw, errorMessage: v2Error } = await fetchV2Rpc(
+    companyId,
+    branchNorm,
+    dateFrom,
+    dateTo,
+  );
 
   let metrics: FinancialDashboardMetrics;
   let salesByCategory: Array<{ categoryName: string; total: number }> = [];
@@ -193,6 +212,7 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
   let rentals: DashboardV2Snapshot['operations']['rentals'] = [];
   let cashBankByAccount: { code: string; name: string; balance: number }[] = [];
   let priorMetrics: FinancialDashboardMetrics | null = null;
+  const extraLimitations: string[] = [];
 
   if (rpcRaw?.metrics) {
     metrics = parseFinancialMetrics(rpcRaw.metrics as Record<string, unknown>);
@@ -226,10 +246,23 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
     if (rpcRaw.prior_period && typeof rpcRaw.prior_period === 'object') {
       priorMetrics = parseFinancialMetrics(rpcRaw.prior_period as Record<string, unknown>);
     }
+  } else if (isDashboardRpcTimeoutMessage(v2Error)) {
+    // Avoid a second 57014 from get_dashboard_metrics on the same heavy window.
+    console.warn(
+      '[Dashboard V2] Skipping get_dashboard_metrics fallback after statement timeout (57014)',
+    );
+    metrics = parseFinancialMetrics({});
+    extraLimitations.push(
+      'Dashboard metrics timed out for this range — showing a partial view. Narrow the date filter or use Current Financial Year.',
+    );
   } else {
     const fallback = await getDashboardMetrics(companyId, branchNorm, dateFrom, dateTo);
     metrics = fallback.metrics;
     salesByCategory = fallback.sales_by_category;
+  }
+
+  if (clamp.clamped) {
+    extraLimitations.unshift(dashboardV2ClampLimitation(clamp));
   }
 
   const summary = buildSummaryFromMetrics(metrics, priorMetrics);
@@ -259,7 +292,10 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
   const profitTrend = normTrend(metrics.profit_trend ?? []);
 
   return {
-    meta: buildMeta(dateFrom, dateTo, branchNorm, metrics),
+    meta: buildMeta(dateFrom, dateTo, branchNorm, metrics, {
+      dateRangeClamped: clamp.clamped,
+      requestedDateFrom: clamp.requestedDateFrom,
+    }),
     summary,
     branchBreakdown,
     alerts: [...stockAlerts, ...rentalAlerts, ...liquidityAlerts],
@@ -279,7 +315,7 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
       recentPayments,
       rentals,
     },
-    limitations: defaultLimitations(),
+    limitations: [...extraLimitations, ...defaultLimitations()],
   };
 }
 

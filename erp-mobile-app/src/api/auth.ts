@@ -44,6 +44,7 @@ const GET_SESSION_TIMEOUT_MS = 8000;
 function isProductionMobileHost(): boolean {
   if (typeof window === 'undefined') return false;
   const h = window.location.hostname;
+  return h.includes('erp.ndmcore.com') || h.includes('api.ndmcore.com');
   return h.includes('ndmcore.com') || h.includes('dincouture.pk');
 }
 
@@ -74,6 +75,7 @@ function formatSignInErrorMessage(msg: string): string {
   if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
     const base = 'Cannot reach the server. Check network or contact admin.';
     if (Capacitor.isNativePlatform()) {
+      return `${base} If https://erp.ndmcore.com/m/ works, install the latest APK build.`;
       return `${base} Confirm Connected to: https://api.ndmcore.com, then reinstall the latest build.`;
     }
     return base;

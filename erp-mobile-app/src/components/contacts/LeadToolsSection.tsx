@@ -12,6 +12,7 @@ import {
 const PUBLIC_ERP_ORIGIN =
   (import.meta.env.VITE_ERP_PUBLIC_ORIGIN as string | undefined)?.replace(/\/$/, '') ||
   'https://ndmcore.com';
+  'https://erp.ndmcore.com';
 
 interface LeadToolsSectionProps {
   user: User;

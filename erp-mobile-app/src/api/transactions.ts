@@ -226,6 +226,160 @@ async function getRentalsPartyMap(companyId: string, ids: string[]): Promise<Rec
   return map;
 }
 
+function mapPaymentRowToTransaction(args: {
+  row: PaymentSupabaseRow;
+  entry: JournalEntryLite | undefined;
+  lines: JournalLineLite[];
+  accountsById: Record<string, AccountLite>;
+  contactsById: Record<string, ContactLite>;
+  branchesById: Record<string, BranchLite>;
+  salesPartyMap: Record<string, string | null>;
+  purchasesPartyMap: Record<string, string | null>;
+  rentalsPartyMap: Record<string, string | null>;
+  partyAccountByContactId: Record<string, string>;
+  expenseCategoryById: Map<string, string>;
+}): TransactionRow {
+  const {
+    row,
+    entry,
+    lines,
+    accountsById,
+    contactsById,
+    branchesById,
+    salesPartyMap,
+    purchasesPartyMap,
+    rentalsPartyMap,
+    partyAccountByContactId,
+    expenseCategoryById,
+  } = args;
+  const direction = (row.payment_type === 'received' ? 'received' : 'paid') as 'received' | 'paid';
+  const payAcc = row.payment_account_id ? accountsById[row.payment_account_id] ?? null : null;
+
+  let partyAcc: AccountLite | null = null;
+  const candidate = lines
+    .map((l) => accountsById[l.account_id])
+    .filter((a): a is AccountLite => !!a && a.id !== (payAcc?.id ?? ''));
+  partyAcc = candidate.find((a) => a.linked_contact_id) ?? candidate[0] ?? null;
+
+  let partyId: string | null = partyAcc?.linked_contact_id ?? null;
+  if (!partyId) {
+    if (row.reference_type === 'sale') partyId = salesPartyMap[row.reference_id] ?? null;
+    else if (row.reference_type === 'purchase') partyId = purchasesPartyMap[row.reference_id] ?? null;
+    else if (row.reference_type === 'rental') partyId = rentalsPartyMap[row.reference_id] ?? null;
+    else if (row.reference_type === 'worker_payment') partyId = row.reference_id;
+  }
+
+  if (!partyAcc && partyId && partyAccountByContactId[partyId]) {
+    partyAcc = accountsById[partyAccountByContactId[partyId]] ?? null;
+  }
+
+  if (!partyAcc && lines.length > 0) {
+    const payAccId = payAcc?.id ?? '';
+    let bestLine: JournalLineLite | null = null;
+    let bestAmount = 0;
+    for (const line of lines) {
+      if (String(line.account_id) === payAccId) continue;
+      const amount = direction === 'received' ? Number(line.credit || 0) : Number(line.debit || 0);
+      if (amount > bestAmount) {
+        bestAmount = amount;
+        bestLine = line;
+      }
+    }
+    if (bestLine?.account_id) {
+      partyAcc = accountsById[String(bestLine.account_id)] ?? null;
+    }
+  }
+
+  const partyContact = partyId ? contactsById[partyId] ?? null : null;
+  const attachments = mergeRowAttachments(row.attachments, entry?.attachments);
+
+  const rowOut: TransactionRow = {
+    id: row.id,
+    paymentId: row.id,
+    createdAt: row.created_at,
+    paymentDate: row.payment_date,
+    direction,
+    referenceType: row.reference_type,
+    referenceId: row.reference_id,
+    referenceNumber: row.reference_number,
+    amount: Number(row.amount) || 0,
+    method: row.payment_method,
+    paymentAccountId: payAcc?.id ?? null,
+    paymentAccountName: payAcc?.name ?? null,
+    paymentAccountCode: payAcc?.code ?? null,
+    paymentAccountType: payAcc?.type ?? null,
+    partyAccountId: partyAcc?.id ?? null,
+    partyAccountName: partyAcc?.name ?? null,
+    partyAccountCode: partyAcc?.code ?? null,
+    partyAccountType: partyAcc?.type ?? null,
+    partyId,
+    partyName: partyContact?.name ?? null,
+    branchId: row.branch_id,
+    branchName: row.branch_id ? branchesById[row.branch_id]?.name ?? null : null,
+    notes: row.notes,
+    journalEntryId: entry?.id ?? null,
+    entryNo: entry?.entry_no ?? row.reference_number,
+    createdBy: row.created_by,
+    attachments,
+    expenseCategoryLabel:
+      row.reference_type === 'expense' && row.reference_id
+        ? expenseCategoryById.get(row.reference_id) ?? null
+        : null,
+    liquidityAccountId: payAcc?.id ?? null,
+    counterpartyAccountId: partyAcc?.id ?? null,
+  };
+  rowOut.isInternalLiquidityTransfer = isInternalLiquidityTransferRow(rowOut);
+  return rowOut;
+}
+
+function mapJournalLinesToDetail(lines: JournalLineLite[], accountsById: Record<string, AccountLite>): TransactionJournalLine[] {
+  return lines.map((l) => {
+    const acc = accountsById[String(l.account_id)];
+    return {
+      id: String(l.id),
+      accountId: String(l.account_id),
+      accountName: acc?.name ?? null,
+      accountCode: acc?.code ?? null,
+      debit: Number(l.debit) || 0,
+      credit: Number(l.credit) || 0,
+      description: l.description ?? null,
+    };
+  });
+}
+
+async function resolveJournalEntryForPayment(
+  payment: PaymentSupabaseRow,
+): Promise<JournalEntryLite | null> {
+  const { data: byPaymentId } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_id, payment_id, attachments')
+    .eq('payment_id', payment.id)
+    .limit(1)
+    .maybeSingle();
+  if (byPaymentId?.id) return byPaymentId as JournalEntryLite;
+
+  const { data: byRef } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_id, payment_id, attachments')
+    .eq('reference_type', 'payment')
+    .eq('reference_id', payment.id)
+    .limit(1)
+    .maybeSingle();
+  if (byRef?.id) return byRef as JournalEntryLite;
+
+  const rt = String(payment.reference_type || '').toLowerCase();
+  const refId = String(payment.reference_id || '').trim();
+  if ((rt === 'manual_receipt' || rt === 'manual_payment') && UUID_RE.test(refId)) {
+    const { data: manualJe } = await supabase
+      .from('journal_entries')
+      .select('id, entry_no, reference_id, payment_id, attachments')
+      .eq('id', refId)
+      .maybeSingle();
+    if (manualJe?.id) return manualJe as JournalEntryLite;
+  }
+  return null;
+}
+
 /**
  * Unified paged transactions list for the Reports timeline.
  * Returns payments enriched with payment-account name, party-subledger
@@ -440,92 +594,21 @@ export async function getPaymentTransactions(
       ? await loadExpenseCategoryPathsForIds(filters.companyId, expenseRefIds)
       : new Map<string, string>();
 
-  const out: TransactionRow[] = rows.map((row) => {
-    const direction = (row.payment_type === 'received' ? 'received' : 'paid') as 'received' | 'paid';
-    const entry = entryByPayment[row.id];
-    const lines = entry ? linesByEntry[entry.id] ?? [] : [];
-    const payAcc = row.payment_account_id ? accountsById[row.payment_account_id] ?? null : null;
-
-    // Identify the party (AR/AP/WP) line by excluding the payment account and
-    // preferring an account with linked_contact_id.
-    let partyAcc: AccountLite | null = null;
-    const candidate = lines
-      .map((l) => accountsById[l.account_id])
-      .filter((a): a is AccountLite => !!a && a.id !== (payAcc?.id ?? ''));
-    partyAcc = candidate.find((a) => a.linked_contact_id) ?? candidate[0] ?? null;
-
-    let partyId: string | null = partyAcc?.linked_contact_id ?? null;
-    if (!partyId) {
-      if (row.reference_type === 'sale') partyId = salesPartyMap[row.reference_id] ?? null;
-      else if (row.reference_type === 'purchase') partyId = purchasesPartyMap[row.reference_id] ?? null;
-      else if (row.reference_type === 'rental') partyId = rentalsPartyMap[row.reference_id] ?? null;
-      else if (row.reference_type === 'worker_payment') partyId = row.reference_id;
-    }
-
-    if (!partyAcc && partyId && partyAccountByContactId[partyId]) {
-      partyAcc = accountsById[partyAccountByContactId[partyId]] ?? null;
-    }
-
-    if (!partyAcc && lines.length > 0) {
-      const payAccId = payAcc?.id ?? '';
-      let bestLine: JournalLineLite | null = null;
-      let bestAmount = 0;
-      for (const line of lines) {
-        if (String(line.account_id) === payAccId) continue;
-        const amount =
-          direction === 'received' ? Number(line.credit || 0) : Number(line.debit || 0);
-        if (amount > bestAmount) {
-          bestAmount = amount;
-          bestLine = line;
-        }
-      }
-      if (bestLine?.account_id) {
-        partyAcc = accountsById[String(bestLine.account_id)] ?? null;
-      }
-    }
-
-    const partyContact = partyId ? contactsById[partyId] ?? null : null;
-
-    const attachments = mergeRowAttachments(row.attachments, entry?.attachments);
-
-    const rowOut: TransactionRow = {
-      id: row.id,
-      paymentId: row.id,
-      createdAt: row.created_at,
-      paymentDate: row.payment_date,
-      direction,
-      referenceType: row.reference_type,
-      referenceId: row.reference_id,
-      referenceNumber: row.reference_number,
-      amount: Number(row.amount) || 0,
-      method: row.payment_method,
-      paymentAccountId: payAcc?.id ?? null,
-      paymentAccountName: payAcc?.name ?? null,
-      paymentAccountCode: payAcc?.code ?? null,
-      paymentAccountType: payAcc?.type ?? null,
-      partyAccountId: partyAcc?.id ?? null,
-      partyAccountName: partyAcc?.name ?? null,
-      partyAccountCode: partyAcc?.code ?? null,
-      partyAccountType: partyAcc?.type ?? null,
-      partyId,
-      partyName: partyContact?.name ?? null,
-      branchId: row.branch_id,
-      branchName: row.branch_id ? branchesById[row.branch_id]?.name ?? null : null,
-      notes: row.notes,
-      journalEntryId: entry?.id ?? null,
-      entryNo: entry?.entry_no ?? row.reference_number,
-      createdBy: row.created_by,
-      attachments,
-      expenseCategoryLabel:
-        row.reference_type === 'expense' && row.reference_id
-          ? expenseCategoryById.get(row.reference_id) ?? null
-          : null,
-      liquidityAccountId: payAcc?.id ?? null,
-      counterpartyAccountId: partyAcc?.id ?? null,
-    };
-    rowOut.isInternalLiquidityTransfer = isInternalLiquidityTransferRow(rowOut);
-    return rowOut;
-  });
+  const out: TransactionRow[] = rows.map((row) =>
+    mapPaymentRowToTransaction({
+      row,
+      entry: entryByPayment[row.id],
+      lines: entryByPayment[row.id] ? linesByEntry[entryByPayment[row.id].id] ?? [] : [],
+      accountsById,
+      contactsById,
+      branchesById,
+      salesPartyMap,
+      purchasesPartyMap,
+      rentalsPartyMap,
+      partyAccountByContactId,
+      expenseCategoryById,
+    }),
+  );
 
   let result = out;
   if (filters.search && filters.search.trim().length > 0) {
@@ -851,60 +934,160 @@ async function loadJournalOnlyTransactionDetail(
   };
 }
 
-/** Detailed view — includes full journal-lines breakdown for the tx modal. */
+/** Detailed view — one payment + linked JE, not a company-wide timeline rebuild. */
 export async function getTransactionDetail(
   companyId: string,
   paymentId: string,
 ): Promise<{ data: TransactionDetail | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const { data: baseArr, error } = await getPaymentTransactions({ companyId, limit: 500 });
-  if (error) return { data: null, error };
-  const base = baseArr.find((t) => t.paymentId === paymentId);
-  if (!base) {
+
+  const { data: paymentRaw, error: paymentErr } = await supabase
+    .from('payments')
+    .select(
+      'id, created_at, payment_date, payment_type, reference_type, reference_id, reference_number, amount, payment_method, payment_account_id, branch_id, notes, attachments, created_by, voided_at',
+    )
+    .eq('company_id', companyId)
+    .eq('id', paymentId)
+    .maybeSingle();
+
+  if (paymentErr) return { data: null, error: paymentErr.message };
+  if (!paymentRaw) {
     return loadJournalOnlyTransactionDetail(companyId, paymentId);
   }
 
-  let journalLines: TransactionJournalLine[] = [];
-  if (base.journalEntryId) {
-    const { data: lines } = await supabase
+  const payment = paymentRaw as PaymentSupabaseRow;
+  const entry = await resolveJournalEntryForPayment(payment);
+
+  let lines: JournalLineLite[] = [];
+  if (entry?.id) {
+    const { data: lineRows } = await supabase
       .from('journal_entry_lines')
-      .select('id, account_id, debit, credit, description')
-      .eq('journal_entry_id', base.journalEntryId);
-    const ids = (lines || []).map((l: Record<string, unknown>) => String(l.account_id));
-    let accountsById: Record<string, AccountLite> = {};
-    if (ids.length) {
-      const { data: accs } = await supabase
-        .from('accounts')
-        .select('id, code, name')
-        .in('id', ids);
-      ((accs || []) as AccountLite[]).forEach((a) => (accountsById[a.id] = a));
-    }
-    journalLines = (lines || []).map((l: Record<string, unknown>) => {
-      const acc = accountsById[String(l.account_id)];
-      return {
-        id: String(l.id),
-        accountId: String(l.account_id),
-        accountName: acc?.name ?? null,
-        accountCode: acc?.code ?? null,
-        debit: Number(l.debit) || 0,
-        credit: Number(l.credit) || 0,
-        description: (l.description as string | null) ?? null,
-      };
+      .select('id, journal_entry_id, account_id, debit, credit, description')
+      .eq('journal_entry_id', entry.id);
+    lines = (lineRows || []) as JournalLineLite[];
+  }
+
+  const accountIds = new Set<string>();
+  if (payment.payment_account_id) accountIds.add(payment.payment_account_id);
+  lines.forEach((l) => accountIds.add(String(l.account_id)));
+
+  let accountsById: Record<string, AccountLite> = {};
+  if (accountIds.size) {
+    const { data: accs } = await supabase
+      .from('accounts')
+      .select('id, code, name, type, parent_id, linked_contact_id')
+      .in('id', Array.from(accountIds));
+    ((accs || []) as AccountLite[]).forEach((a) => {
+      accountsById[String(a.id)] = a;
     });
   }
+
+  const saleIds = payment.reference_type === 'sale' && payment.reference_id ? [payment.reference_id] : [];
+  const purchaseIds =
+    payment.reference_type === 'purchase' && payment.reference_id ? [payment.reference_id] : [];
+  const rentalIds = payment.reference_type === 'rental' && payment.reference_id ? [payment.reference_id] : [];
+
+  const [salesPartyMap, purchasesPartyMap, rentalsPartyMap] = await Promise.all([
+    getSalesPartyMap(companyId, saleIds),
+    getPurchasesPartyMap(companyId, purchaseIds),
+    getRentalsPartyMap(companyId, rentalIds),
+  ]);
+
+  const contactIdSet = new Set<string>();
+  Object.values(accountsById).forEach((a) => {
+    if (a.linked_contact_id) contactIdSet.add(a.linked_contact_id);
+  });
+  Object.values(salesPartyMap).forEach((v) => {
+    if (v) contactIdSet.add(v);
+  });
+  Object.values(purchasesPartyMap).forEach((v) => {
+    if (v) contactIdSet.add(v);
+  });
+  Object.values(rentalsPartyMap).forEach((v) => {
+    if (v) contactIdSet.add(v);
+  });
+  if (payment.reference_type === 'worker_payment' && payment.reference_id) {
+    contactIdSet.add(payment.reference_id);
+  }
+
+  const partyAccountByContactId: Record<string, string> = {};
+  if (contactIdSet.size) {
+    const { data: partyAccounts } = await supabase
+      .from('accounts')
+      .select('id, code, name, type, parent_id, linked_contact_id')
+      .eq('company_id', companyId)
+      .in('linked_contact_id', Array.from(contactIdSet));
+    ((partyAccounts || []) as AccountLite[]).forEach((a) => {
+      const contactId = a.linked_contact_id ? String(a.linked_contact_id) : '';
+      if (!contactId || !a.id) return;
+      accountsById[String(a.id)] = a;
+      if (!partyAccountByContactId[contactId]) {
+        partyAccountByContactId[contactId] = String(a.id);
+      }
+    });
+  }
+
+  let contactsById: Record<string, ContactLite> = {};
+  if (contactIdSet.size) {
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id, name, type, phone, mobile')
+      .in('id', Array.from(contactIdSet));
+    ((contacts || []) as Array<ContactLite & { mobile?: string | null }>).forEach((c) => {
+      contactsById[String(c.id)] = c;
+    });
+  }
+
+  let branchesById: Record<string, BranchLite> = {};
+  if (payment.branch_id) {
+    const { data: branches } = await supabase
+      .from('branches')
+      .select('id, name')
+      .eq('id', payment.branch_id)
+      .maybeSingle();
+    if (branches) branchesById[String(branches.id)] = branches as BranchLite;
+  }
+
+  let expenseCategoryById = new Map<string, string>();
+  if (payment.reference_type === 'expense' && payment.reference_id) {
+    const { loadExpenseCategoryPathsForIds } = await import('../lib/expenseCategoryPath');
+    expenseCategoryById = await loadExpenseCategoryPathsForIds(companyId, [payment.reference_id]);
+  }
+
+  const mapped = mapPaymentRowToTransaction({
+    row: payment,
+    entry: entry ?? undefined,
+    lines,
+    accountsById,
+    contactsById,
+    branchesById,
+    salesPartyMap,
+    purchasesPartyMap,
+    rentalsPartyMap,
+    partyAccountByContactId,
+    expenseCategoryById,
+  });
+  const [base] = await enrichTransactionCreatorNames([mapped]);
+  const journalLines = mapJournalLinesToDetail(lines, accountsById);
 
   let partyPhone: string | null = null;
   let partyType: string | null = null;
   if (base.partyId) {
-    const { data: contact } = await supabase
-      .from('contacts')
-      .select('phone, mobile, type')
-      .eq('id', base.partyId)
-      .maybeSingle();
+    const contact = contactsById[base.partyId] as (ContactLite & { mobile?: string | null }) | undefined;
     if (contact) {
-      const raw = getContactWhatsAppPhone(contact as { phone?: string | null; mobile?: string | null });
-      partyPhone = raw || null;
-      partyType = ((contact as Record<string, unknown>).type as string | null) ?? null;
+      partyPhone = getContactWhatsAppPhone(contact) || null;
+      partyType = contact.type ?? null;
+    } else {
+      const { data: extraContact } = await supabase
+        .from('contacts')
+        .select('phone, mobile, type')
+        .eq('id', base.partyId)
+        .maybeSingle();
+      if (extraContact) {
+        partyPhone =
+          getContactWhatsAppPhone(extraContact as { phone?: string | null; mobile?: string | null }) || null;
+        partyType = ((extraContact as Record<string, unknown>).type as string | null) ?? null;
+      }
     }
   }
 

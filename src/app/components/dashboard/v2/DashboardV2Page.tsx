@@ -166,6 +166,19 @@ export const DashboardV2Page: React.FC = () => {
 
       {isLoading && !data ? <DashboardSkeleton /> : null}
 
+      {data?.meta.dateRangeClamped ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-start gap-2">
+          <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
+          <span>
+            Dashboard capped to {data.meta.dateFrom} → {data.meta.dateTo}
+            {data.meta.requestedDateFrom
+              ? ` (From start ${data.meta.requestedDateFrom}… is too wide for dashboard RPCs)`
+              : ''}
+            . Statements still use the full header filter.
+          </span>
+        </div>
+      ) : null}
+
       {data ? (
         <>
           <ActionRequiredPanel alerts={data.alerts} onNavigate={handleNavigate} />

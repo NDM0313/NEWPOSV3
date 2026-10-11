@@ -41,6 +41,15 @@ try {
 }
 
 const p = parse(remoteRaw);
+// Canonical mobile API host (ndmcore). Remote VPS may still list legacy dincouture URLs —
+// keep ANON_KEY from remote, always bake api.ndmcore.com for release APKs.
+const CANONICAL_API = 'https://api.ndmcore.com';
+const remoteUrl = String(p.VITE_SUPABASE_URL || '').trim();
+if (remoteUrl && remoteUrl !== CANONICAL_API) {
+  console.warn(
+    `[sync-env-from-vps] Remote VITE_SUPABASE_URL was ${remoteUrl} — forcing ${CANONICAL_API}`,
+  );
+}
 const key = p.VITE_SUPABASE_ANON_KEY || '';
 const disableRt = p.VITE_DISABLE_REALTIME || 'true';
 
@@ -50,8 +59,11 @@ if (!key || key.length < 120) {
 }
 
 const body = [
-  '# Key synced from VPS file; URL locked to Mini PC api.ndmcore.com.',
+  '# Auto-synced from VPS — release APK must match Kong ANON_KEY.',
+  '# VITE_SUPABASE_URL forced to api.ndmcore.com (native + PWA cutover).',
   'VITE_TARGET=capacitor',
+  `VITE_SUPABASE_URL=${CANONICAL_API}`,
+  '# Key synced from VPS file; URL locked to Mini PC api.ndmcore.com.',
   `VITE_SUPABASE_URL=${CANONICAL_URL}`,
   `VITE_SUPABASE_ANON_KEY=${key}`,
   `VITE_DISABLE_REALTIME=${disableRt}`,
@@ -61,5 +73,6 @@ const body = [
 writeFileSync(dest, body, 'utf8');
 const tail = key.slice(-8);
 console.log(
+  `[sync-env-from-vps] Wrote .env.production (url ${CANONICAL_API}, anon ${key.length} chars, …${tail})`,
   `[sync-env-from-vps] Wrote .env.production → ${CANONICAL_URL} (anon ${key.length} chars, …${tail})`,
 );

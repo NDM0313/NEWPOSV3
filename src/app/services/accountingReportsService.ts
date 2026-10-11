@@ -316,20 +316,23 @@ export const accountingReportsService = {
         }
         return out;
       }
-      if (import.meta.env?.DEV && error) {
-        console.warn('[getAccountBalancesFromJournal] RPC fallback to client TB:', error.message);
+      // Do NOT fall back to getTrialBalance('1900-01-01', …) — that storms journal_entry_lines
+      // during hard-refresh boot and causes Day Book 57014 under From start.
+      if (import.meta.env?.DEV) {
+        console.warn(
+          '[getAccountBalancesFromJournal] RPC unavailable — keeping stored balances (no client TB fallback):',
+          error?.message ?? 'empty payload',
+        );
       }
+      return {};
     } catch (e) {
-      if (import.meta.env?.DEV) console.warn('[getAccountBalancesFromJournal] RPC error:', e);
+      if (import.meta.env?.DEV) {
+        console.warn('[getAccountBalancesFromJournal] RPC error — keeping stored balances:', e);
+      }
+      return {};
     } finally {
       if (mark) console.timeEnd(mark);
     }
-    const tb = await this.getTrialBalance(companyId, '1900-01-01', end, branchId);
-    const out: Record<string, number> = {};
-    tb.rows.forEach((r) => {
-      out[r.account_id] = r.balance;
-    });
-    return out;
   },
 
   /**

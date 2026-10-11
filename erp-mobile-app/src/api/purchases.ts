@@ -470,22 +470,29 @@ export async function enrichPurchasesPaidFromPayments(companyId: string, rows: R
   });
 }
 
+const PURCHASE_LIST_LIMIT_DEFAULT = 50;
+const PURCHASE_LIST_LIMIT_ADMIN = 2000;
+
 export async function getPurchases(
   companyId: string,
   branchId?: string | null,
-  options?: { accessibleBranchIds?: string[] },
+  options?: { accessibleBranchIds?: string[]; limit?: number },
 ): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const listLimit = Math.max(
+    1,
+    Math.min(options?.limit ?? PURCHASE_LIST_LIMIT_DEFAULT, PURCHASE_LIST_LIMIT_ADMIN),
+  );
   const branchKey =
     branchId && branchId !== 'all' && branchId !== 'default'
       ? branchId
       : options?.accessibleBranchIds?.length
         ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
         : 'all';
-  const cacheKey = listCacheKeys.purchases(companyId, branchKey, 'list');
+  const cacheKey = listCacheKeys.purchases(companyId, branchKey, `list:lim${listLimit}`);
   const cached = await readThroughCache(
     cacheKey,
-    () => fetchPurchasesOnline(companyId, branchId, options?.accessibleBranchIds),
+    () => fetchPurchasesOnline(companyId, branchId, options?.accessibleBranchIds, listLimit),
     [],
   );
   return { data: cached.data, error: cached.error };
@@ -495,6 +502,7 @@ async function fetchPurchasesOnline(
   companyId: string,
   branchId?: string | null,
   accessibleBranchIds?: string[],
+  listLimit: number = PURCHASE_LIST_LIMIT_DEFAULT,
 ): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   let query = supabase
     .from('purchases')
@@ -503,7 +511,7 @@ async function fetchPurchasesOnline(
     // Keep cancelled POs visible with a "Cancelled" badge (web parity). Filtering removed.
     .order('po_date', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(listLimit);
   if (branchId && branchId !== 'all' && branchId !== 'default') {
     query = query.eq('branch_id', branchId);
   } else if (accessibleBranchIds?.length) {

@@ -1,7 +1,7 @@
 # Capacitor – Android & iOS Build
 
 **App:** Din Collection  
-**Bundle ID:** com.dincouture.erp
+**Bundle ID:** `com.dincouture.erp` (prod) · `com.dincouture.erp.stage` (staging)
 
 ## Quick commands (production — use these for APK/IPA)
 
@@ -23,6 +23,16 @@ npm run ios:ipa:release:mac       # Mac + Xcode
 npm run cap:android
 npm run cap:ios
 ```
+
+## Staging iOS (side-by-side)
+
+```bash
+cp .env.staging.example .env.staging
+npm run ios:prep:mac:stage   # or: npm run cap:sync:ios:stage
+npm run cap:ios
+```
+
+See [ios/README_BUILD.md](ios/README_BUILD.md#staging-ios-side-by-side-with-production).
 
 ## Build steps
 
@@ -79,7 +89,7 @@ Symptoms: `.tsx` load errors, `ws://localhost:5174` WebSocket failures, boot err
    npm run cap:sync:android:prod   # or ios
    ```
 4. Verify `dist/index.html` uses `./assets/` (not `/assets/`)
-5. Uninstall old APK/IPA from device, install fresh build; keep Wi-Fi on for API (`https://erp.dincouture.pk`)
+5. Uninstall old APK/IPA from device, install fresh build; keep Wi-Fi on for API (`https://api.ndmcore.com`)
 
 ## Browser dev (laptop only)
 

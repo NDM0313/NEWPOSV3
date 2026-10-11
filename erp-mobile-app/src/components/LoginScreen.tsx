@@ -393,6 +393,8 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           <p className="mt-1 text-amber-100/90 leading-snug">
             Copy <span className="font-mono text-xs">VITE_SUPABASE_ANON_KEY</span> from Mini PC Kong{' '}
             <span className="font-mono text-xs">ANON_KEY</span> into <span className="font-mono text-xs">erp-mobile-app/.env</span>, keep{' '}
+            Copy <span className="font-mono text-xs">VITE_SUPABASE_ANON_KEY</span> from the main ERP{' '}
+            <span className="font-mono text-xs">.env.production</span> into <span className="font-mono text-xs">erp-mobile-app/.env</span>, keep{' '}
             <span className="font-mono text-xs">VITE_SUPABASE_URL=https://api.ndmcore.com</span>, then restart{' '}
             <span className="font-mono text-xs">npm run dev</span>.
           </p>

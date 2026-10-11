@@ -27,6 +27,7 @@ export function ConnectionDebug({ supabaseUrl, companyId, branchId, userEmail }:
   const runtime = getResolvedSupabaseUrl().trim();
   const url = runtime || baked;
   const isNdmcoreApi = /api\.ndmcore\.com/i.test(url);
+  const isNdmcoreApi = url.includes('api.ndmcore.com');
 
   const label = showErpDevTools()
     ? 'Connection Debug (dev only)'
@@ -44,6 +45,7 @@ export function ConnectionDebug({ supabaseUrl, companyId, branchId, userEmail }:
               {url || 'Not set'}
             </span>
             {isNdmcoreApi && <span className="ml-1 text-emerald-500 text-xs">✓ api.ndmcore.com</span>}
+            {isNdmcoreApi && <span className="ml-1 text-emerald-500 text-xs">✓ ndmcore API</span>}
             {Capacitor.isNativePlatform() && !isNdmcoreApi && (
               <span className="ml-1 text-red-400 text-xs">⚠ native should use api.ndmcore.com</span>
             )}

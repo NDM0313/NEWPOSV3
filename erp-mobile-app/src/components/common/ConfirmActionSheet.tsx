@@ -8,12 +8,17 @@ export interface ConfirmActionSheetProps {
   cancelLabel?: string;
   busy?: boolean;
   error?: string | null;
+  /** When set, user must type this exact phrase; confirm stays disabled until match. */
+  requireTypedPhrase?: string | null;
+  typedPhrase?: string;
+  onTypedPhraseChange?: (value: string) => void;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 /**
- * Mobile confirm sheet for destructive accounting actions (Cancel Payment / Cancel Entry).
+ * Mobile confirm sheet for destructive accounting actions (Cancel / Complete Delete).
  * Web parity with TransactionConfirmDialog — no window.confirm.
  */
 export function ConfirmActionSheet({
@@ -24,10 +29,17 @@ export function ConfirmActionSheet({
   cancelLabel = 'No',
   busy = false,
   error = null,
+  requireTypedPhrase = null,
+  typedPhrase = '',
+  onTypedPhraseChange,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmActionSheetProps) {
   if (!open) return null;
+
+  const phraseGate = !!requireTypedPhrase;
+  const confirmBlocked = busy || confirmDisabled || (phraseGate && typedPhrase.trim() !== requireTypedPhrase);
 
   return (
     <div
@@ -48,8 +60,28 @@ export function ConfirmActionSheet({
           <h2 id="confirm-action-title" className="text-base font-semibold text-white">
             {title}
           </h2>
-          <p className="mt-2 text-sm text-[#9CA3AF] leading-relaxed">{description}</p>
+          <p className="mt-2 text-sm text-[#9CA3AF] leading-relaxed whitespace-pre-wrap">{description}</p>
         </div>
+
+        {phraseGate ? (
+          <div className="space-y-1.5">
+            <label htmlFor="confirm-typed-phrase" className="text-xs font-medium text-[#9CA3AF]">
+              Type <span className="text-white font-mono">{requireTypedPhrase}</span> to confirm
+            </label>
+            <input
+              id="confirm-typed-phrase"
+              type="text"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={typedPhrase}
+              disabled={busy}
+              onChange={(e) => onTypedPhraseChange?.(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg bg-[#1F2937] border border-[#4B5563] text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#EF4444]/50 disabled:opacity-50"
+              placeholder={requireTypedPhrase || ''}
+            />
+          </div>
+        ) : null}
 
         {error ? (
           <div className="p-3 rounded-lg bg-[#EF4444]/15 border border-[#EF4444]/40 text-sm text-[#FCA5A5]">
@@ -68,7 +100,7 @@ export function ConfirmActionSheet({
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={confirmBlocked}
             onClick={onConfirm}
             className="py-3 rounded-lg text-sm font-semibold bg-[#DC2626] text-white hover:bg-[#B91C1C] disabled:opacity-50 flex items-center justify-center gap-2"
           >

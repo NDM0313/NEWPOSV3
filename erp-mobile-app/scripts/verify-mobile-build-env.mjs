@@ -36,6 +36,8 @@ const url = env.VITE_SUPABASE_URL || '';
 const key = env.VITE_SUPABASE_ANON_KEY || '';
 let failed = false;
 
+if (!url.startsWith('https://api.ndmcore.com')) {
+  console.error('[verify-mobile-build-env] VITE_SUPABASE_URL must be https://api.ndmcore.com (got:', url || '(empty)', ')');
 const allowedUrls = ['https://api.ndmcore.com'];
 if (!allowedUrls.some((allowed) => url === allowed || url.startsWith(`${allowed}/`))) {
   console.error(

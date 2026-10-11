@@ -57,7 +57,7 @@ export const AUTH_CONFIG_ERROR_MESSAGE =
   'Anon key does not match the server. Copy VITE_SUPABASE_ANON_KEY from VPS .env.production into .env.local and restart the dev server (or rebuild ERP on production).';
 
 export const STORAGE_BLOCKED_MESSAGE =
-  'Browser blocked site storage. Allow cookies/storage for erp.dincouture.pk or use a normal (non-private) window, then Retry.';
+  'Browser blocked site storage. Allow cookies/storage for erp.ndmcore.com or use a normal (non-private) window, then Retry.';
 
 /** SecurityError / request denied (storage blocked, CORS, or opaque response) – retry like server errors, never sign out. */
 function isStorageOrSecurityError(err: any): boolean {
@@ -75,7 +75,8 @@ function isStorageOrSecurityError(err: any): boolean {
 
 function isProductionErpHost(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.hostname.includes('erp.dincouture.pk');
+  const h = window.location.hostname;
+  return h.includes('erp.ndmcore.com') || h.includes('erp.dincouture.pk');
 }
 
 interface SupabaseContextType {

@@ -27,7 +27,7 @@ function storageApiOrigin(): string {
   if (configured && !configured.includes('localhost') && !configured.includes('127.0.0.1')) {
     return configured;
   }
-  return 'https://supabase.dincouture.pk';
+  return 'https://api.ndmcore.com';
 }
 
 export function storageRefForPersistence(bucket: string, path: string): string {

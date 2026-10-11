@@ -31,7 +31,25 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
         ws: true,
+        timeout: 120000,
+        proxyTimeout: 120000,
         rewrite: (path) => path.replace(/^\/supabase/, ''),
+        configure: (proxy) => {
+          // Kong may reject when Origin is localhost; set Host/Origin on the Node→Kong leg only.
+          const setUpstreamHeaders = (proxyReq: { setHeader: (n: string, v: string) => void }) => {
+            proxyReq.setHeader('Host', 'supabase.dincouture.pk')
+            proxyReq.setHeader('Origin', 'https://erp.dincouture.pk')
+          }
+          proxy.on('proxyReq', (proxyReq) => {
+            setUpstreamHeaders(proxyReq)
+          })
+          proxy.on('proxyReqWs', (proxyReq) => {
+            setUpstreamHeaders(proxyReq)
+          })
+          proxy.on('error', (err) => {
+            console.warn('[Vite] /supabase proxy error:', err?.message ?? err)
+          })
+        },
       },
     },
   },

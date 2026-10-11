@@ -115,37 +115,27 @@ function getSaleBillableAmount(sale: Sale): number {
 }
 
 /** List search: invoice / customer / branch / notes (includes optional REF #) / stage numbers / line SKU or product name. */
-function saleMatchesSearchTerm(sale: Sale, raw: string): boolean {
-  const search = raw.trim().toLowerCase();
-  if (!search) return true;
-  const fields = [
-    sale.invoiceNo,
-    sale.customer,
-    sale.customerName,
-    sale.contactNumber || '',
-    sale.location || '',
-    (sale as Sale & { draftNo?: string }).draftNo,
-    (sale as Sale & { quotationNo?: string }).quotationNo,
-    (sale as Sale & { orderNo?: string }).orderNo,
-    (sale as Sale & { notes?: string }).notes,
-  ];
-  if (fields.some((f) => String(f || '').toLowerCase().includes(search))) return true;
-  const items = sale.items || [];
-  for (const it of items as Array<{ sku?: string; productName?: string; name?: string }>) {
-    const sku = String(it.sku || '').toLowerCase();
-    const name = String(it.productName || it.name || '').toLowerCase();
-    if (sku.includes(search) || name.includes(search)) return true;
-  }
-  return false;
-}
-
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
   const { openDrawer, openSaleIdForView, setOpenSaleIdForView } = useNavigation();
   const { canEditSale, canDeleteSale, canCancelSale, canCreateSale } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
-  const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading, totalCount, page, pageSize: contextPageSize, setPage } = useSales();
+  const {
+    sales,
+    deleteSale,
+    updateSale,
+    recordPayment,
+    updateShippingStatus,
+    refreshSales,
+    loading,
+    totalCount,
+    page,
+    pageSize: contextPageSize,
+    setPage,
+    setPageSize,
+    setListSearch,
+  } = useSales();
   const { companyId, branchId, user } = useSupabase();
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, setCurrentModule } = globalFilter;
@@ -155,6 +145,16 @@ export const SalesPage = () => {
   }, [setCurrentModule]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  // Debounce toolbar search into server-side listSearch (immediate clear).
+  useEffect(() => {
+    const trimmed = searchTerm.trim();
+    if (!trimmed) {
+      setListSearch('');
+      return;
+    }
+    const t = window.setTimeout(() => setListSearch(trimmed), 300);
+    return () => window.clearTimeout(t);
+  }, [searchTerm, setListSearch]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [statusPopoverSaleId, setStatusPopoverSaleId] = useState<string | null>(null);
@@ -1051,8 +1051,8 @@ export const SalesPage = () => {
       }
       // If no date range, show all (no filter applied)
 
-      // Search filter (invoice, customer, branch, REF in notes, draft/quote/order #, SKU / product on lines)
-      if (searchTerm && !saleMatchesSearchTerm(sale, searchTerm)) return false;
+      // Search is applied server-side via SalesContext.listSearch (cross-page). Do not
+      // re-filter here when search is active — that would hide valid page-2+ matches.
 
       // Date filter (local filter - can be removed if using global date range only)
       if (dateFilter !== 'all') {
@@ -1097,7 +1097,6 @@ export const SalesPage = () => {
     activeMainTab,
     startDate,
     endDate,
-    searchTerm,
     dateFilter,
     customerFilter,
     paymentStatusFilter,
@@ -1167,10 +1166,11 @@ export const SalesPage = () => {
     invoiceCount: finalSalesForSummary.length,
   }), [finalSalesForSummary, getEffectiveDue]);
 
-  // Server-paginated: context holds one page; client filters/sorts within that page
+  // Server-paginated: context holds one page (or All); client filters/sorts within that page
   const pageSize = contextPageSize ?? 50;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const currentPage = Math.min(page + 1, totalPages);
+  const isAllPageSize = pageSize < 0;
+  const totalPages = isAllPageSize ? 1 : Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = isAllPageSize ? 1 : Math.min(page + 1, totalPages);
 
   const paginatedSales = useMemo(() => sortedSales, [sortedSales]);
 
@@ -1229,8 +1229,14 @@ export const SalesPage = () => {
     setPage(Math.max(0, p - 1));
   };
 
-  const handlePageSizeChange = (_size: number) => {
-    setPage(0);
+  const handlePageSizeChange = (size: number) => {
+    // Footer All passes -1. Toolbar "All (N)" passes totalCount (not in 50/100/200/500).
+    const fixedSizes = [50, 100, 200, 500];
+    if (size === -1 || (totalCount > 0 && size === totalCount && !fixedSizes.includes(size))) {
+      setPageSize(-1);
+      return;
+    }
+    setPageSize(size);
   };
 
   const clearAllFilters = () => {
@@ -1822,9 +1828,11 @@ export const SalesPage = () => {
           placeholder: "Search invoice #, customer, REF (in notes), draft/quote/order #, SKU, product, branch..."
         }}
         rowsSelector={{
-          value: pageSize,
+          value: isAllPageSize ? totalCount : pageSize,
           onChange: handlePageSizeChange,
-          totalItems: filteredSales.length
+          totalItems: totalCount,
+          options: [50, 100, 200, 500],
+          showAllOption: true,
         }}
         columnsManager={{
           columns,
@@ -2592,6 +2600,8 @@ export const SalesPage = () => {
         totalItems={totalCount}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
+        pageSizeOptions={[50, 100, 200, 500]}
+        showAllOption
       />
       )}
 

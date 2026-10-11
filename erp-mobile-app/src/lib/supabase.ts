@@ -30,6 +30,7 @@ const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
 });
 
 /**
+ * Production PWA + native Capacitor: https://api.ndmcore.com (CORS allows capacitor://localhost).
  * Production PWA + native Capacitor: https://api.ndmcore.com (see resolveSupabaseApiUrl).
  * Vite dev browser: same-origin localhost → Vite proxy → Kong (auth, REST, storage, Realtime WS).
  * @see resolveSupabaseApiUrl.ts
@@ -38,11 +39,15 @@ const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
 const hasConfig = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.startsWith('http://placeholder'));
 if (!hasConfig) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const onProduction =
-    typeof window !== 'undefined' &&
-    (window.location.hostname.includes('ndmcore.com') || window.location.hostname.includes('dincouture.pk'));
+    origin.includes('erp.ndmcore.com') || origin.includes('api.ndmcore.com');
   console.warn(
     onProduction
+      ? '[ERP Mobile] Missing Supabase config on production. Redeploy so build gets VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from .env.production.'
+      : '[ERP Mobile] Set VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env (copy from main project .env.production or .env.local). Restart dev server after editing .env.'
+    typeof window !== 'undefined' &&
+    (window.location.hostname.includes('ndmcore.com') || window.location.hostname.includes('dincouture.pk'));
       ? '[ERP Mobile] Missing Supabase config on production. Rebuild with VITE_SUPABASE_URL=https://api.ndmcore.com and Mini PC ANON_KEY in .env.production.'
       : '[ERP Mobile] Set VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env (copy from Mini PC Kong ANON_KEY). Restart dev server after editing .env.'
   );

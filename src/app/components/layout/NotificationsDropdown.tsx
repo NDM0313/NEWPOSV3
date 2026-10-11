@@ -56,8 +56,9 @@ export const NotificationsDropdown: React.FC = () => {
   const [duePurchases, setDuePurchases] = useState<DuePurchase[]>([]);
   const [pendingExpenses, setPendingExpenses] = useState<PendingExpense[]>([]);
 
+  // Fetch badge data only when the bell opens — avoids due-list storm on every page.
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId || !open) return;
     let cancelled = false;
     const rpcBranch = safeRpcBranchId(branchId ?? null);
     const mark = import.meta.env?.DEV ? `notif-badge:${companyId}` : '';
@@ -128,7 +129,7 @@ export const NotificationsDropdown: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId]);
+  }, [companyId, branchId, open]);
 
   const notifications = useMemo((): NotificationItem[] => {
     const notifs: NotificationItem[] = [];

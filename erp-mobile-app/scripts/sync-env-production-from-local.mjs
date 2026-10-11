@@ -29,6 +29,7 @@ function parse(text) {
 
 let merged = {
   VITE_TARGET: 'capacitor',
+  VITE_SUPABASE_URL: 'https://api.ndmcore.com',
   VITE_SUPABASE_URL: CANONICAL_URL,
   VITE_DISABLE_REALTIME: 'true',
 };
