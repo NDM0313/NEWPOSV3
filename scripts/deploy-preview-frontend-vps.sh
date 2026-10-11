@@ -42,13 +42,21 @@ fi
 
 # Isolate compose project so we never remove shared deploy_default (prod Traefik/ERP).
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-erp-preview}"
-COMPOSE="docker compose -p \"$COMPOSE_PROJECT_NAME\" -f deploy/docker-compose.preview.yml --env-file .env.production"
-$COMPOSE build erp-preview
+COMPOSE=(docker compose -p "${COMPOSE_PROJECT_NAME}" -f deploy/docker-compose.preview.yml --env-file .env.production)
+"${COMPOSE[@]}" build erp-preview
 
 # Recreate only this container; do not prune shared networks.
 docker rm -f erp-frontend-preview 2>/dev/null || true
-$COMPOSE up -d --no-deps --force-recreate erp-preview
-
+if ! "${COMPOSE[@]}" up -d --no-deps --force-recreate erp-preview; then
+  echo "[preview] compose up failed — falling back to docker run on erp-preview_net"
+  docker network create erp-preview_net 2>/dev/null || true
+  docker run -d \
+    --name erp-frontend-preview \
+    --restart unless-stopped \
+    --network erp-preview_net \
+    -p 3002:80 \
+    erp-frontend-preview:latest
+fi
 
 echo "[preview] Health:"
 curl -sI http://127.0.0.1:3002/ | head -5 || true
@@ -59,5 +67,7 @@ docker exec erp-frontend-preview sh -c '
   cd /usr/share/nginx/html/assets &&
   if grep -rl "erp_sidebar_open" . >/dev/null 2>&1; then echo "FOUND:erp_sidebar_open"; else echo "MISSING:erp_sidebar_open"; fi
 ' || true
+
+docker ps --filter name=erp-frontend --format 'table {{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}' || true
 
 echo "[preview] DONE — :3002 live. Tunnel: ssh -N -L 3002:127.0.0.1:3002 dincouture-vps"
