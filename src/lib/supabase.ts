@@ -21,25 +21,138 @@ import {
 // IMPORTANT: Vite inlines these at BUILD time. For production Docker build,
 // pass VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as build args (see deploy/Dockerfile).
 let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
-/** Baked env host — used for direct Realtime WSS in Vite dev while REST uses /supabase proxy. */
-const configuredSupabaseHost = supabaseUrl.replace(/\/$/, '');
 const NDMCORE_API = 'https://api.ndmcore.com';
+const SUPABASE_API_BASE_MARKER = 'erp_supabase_api_base';
+
 function isLegacyDincoutureApiUrl(url: string): boolean {
   return /(?:erp|supabase)\.dincouture\.pk/i.test(url);
 }
+
+/** http://192.168.x / 10.x / 172.16–31.x — causes Mixed Content on https://erp.ndmcore.com */
+function isInsecureLanApiUrl(url: string): boolean {
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+  if (/192\.168\.86\.235(?::8000)?/i.test(raw)) return true;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:') return false;
+    const h = u.hostname;
+    return (
+      /^192\.168\./.test(h) ||
+      /^10\./.test(h) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Drop GoTrue keys from a prior LAN/Kong bake when the resolved API base changes.
+ * Stale sb-*-auth-token entries otherwise keep auto-refresh pointed at http://192.168…:8000.
+ */
+function purgeStaleAuthStorageIfEndpointMismatch(expectedBase: string): void {
+  if (typeof window === 'undefined') return;
+  const expected = expectedBase.replace(/\/$/, '');
+  const prev = (() => {
+    try {
+      return window.localStorage.getItem(SUPABASE_API_BASE_MARKER);
+    } catch {
+      return null;
+    }
+  })();
+  const endpointChanged = Boolean(prev && prev !== expected);
+
+  const storages: Storage[] = [];
+  try {
+    storages.push(window.localStorage);
+  } catch {
+    /* blocked */
+  }
+  try {
+    storages.push(window.sessionStorage);
+  } catch {
+    /* blocked */
+  }
+
+  const looksLikeLanAuth = (key: string, value: string | null): boolean =>
+    /192\.168\.86\.235|192\.168\.|sb-192168/i.test(key) ||
+    /192\.168\.86\.235|http:\/\/192\.168\./i.test(value || '');
+
+  for (const storage of storages) {
+    let keys: string[] = [];
+    try {
+      keys = Object.keys(storage);
+    } catch {
+      continue;
+    }
+    for (const key of keys) {
+      if (!/^sb-/i.test(key) && key !== SUPABASE_API_BASE_MARKER) continue;
+      let value: string | null = null;
+      try {
+        value = storage.getItem(key);
+      } catch {
+        value = null;
+      }
+      if (endpointChanged || looksLikeLanAuth(key, value)) {
+        try {
+          storage.removeItem(key);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  try {
+    window.localStorage.setItem(SUPABASE_API_BASE_MARKER, expected);
+  } catch {
+    /* ignore */
+  }
+}
+
+// Never ship a LAN Kong URL into a production/HTTPS client (Mixed Content → stuck on Loading…).
+if (
+  isInsecureLanApiUrl(supabaseUrl) &&
+  (!import.meta.env.DEV ||
+    (typeof window !== 'undefined' && window.location.protocol === 'https:'))
+) {
+  supabaseUrl = NDMCORE_API;
+}
+
+/** Baked env host — used for direct Realtime WSS in Vite dev while REST uses /supabase proxy. */
+const configuredSupabaseHost = supabaseUrl.replace(/\/$/, '');
 // Vite dev: same-origin `/supabase` proxy.
 // Production on erp.ndmcore.com: call Kong directly at https://api.ndmcore.com (Cloudflare Tunnel).
+// Staging erp-stage.ndmcore.com: same-origin (nginx → erp-stage-gateway → erp_core).
 // Do NOT use same-origin erp.ndmcore.com/auth (nginx upstream 502). Legacy VPS host keeps same-origin.
 if (typeof window !== 'undefined') {
+  const hostname = window.location.hostname;
   if (import.meta.env.DEV) {
     supabaseUrl = `${window.location.origin}/supabase`;
-  } else if (window.location.origin.includes('erp.ndmcore.com')) {
-    supabaseUrl = NDMCORE_API;
-  } else if (window.location.origin.includes('erp.dincouture.pk')) {
+  } else if (hostname === 'erp-stage.ndmcore.com') {
+    // Strict same-origin — never call api-stage.ndmcore.com from the browser
     supabaseUrl = window.location.origin;
-  } else if (isLegacyDincoutureApiUrl(supabaseUrl) || /api\.ndmcore\.com/i.test(supabaseUrl)) {
+  } else if (hostname === 'erp.ndmcore.com') {
+    supabaseUrl = NDMCORE_API;
+  } else if (hostname === 'erp.dincouture.pk' || window.location.origin.includes('erp.dincouture.pk')) {
+    supabaseUrl = window.location.origin;
+  } else if (isLegacyDincoutureApiUrl(supabaseUrl) || /(^|[/.])api\.ndmcore\.com([/:?]|$)/i.test(supabaseUrl)) {
+    // Exact api.ndmcore.com only — do not match api-stage.ndmcore.com
+    supabaseUrl = NDMCORE_API;
+  } else if (isInsecureLanApiUrl(supabaseUrl)) {
     supabaseUrl = NDMCORE_API;
   }
+  // Belt-and-suspenders: neutralize any baked api-stage URL on the stage host
+  if (hostname === 'erp-stage.ndmcore.com' || /api-stage\.ndmcore\.com/i.test(supabaseUrl)) {
+    if (hostname === 'erp-stage.ndmcore.com') {
+      supabaseUrl = window.location.origin;
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  purgeStaleAuthStorageIfEndpointMismatch(supabaseUrl);
 }
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||

@@ -40,6 +40,13 @@ export function resolveSupabaseApiUrl(
   if (/erp\.ndmcore\.com/i.test(trimmed) || /api\.ndmcore\.com/i.test(trimmed)) {
     return PRODUCTION_API;
   }
+  // Hardcoded office LAN Kong (Mixed Content on https://erp.ndmcore.com).
+  if (
+    /192\.168\.86\.235(?::8000)?/i.test(trimmed) ||
+    /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(trimmed)
+  ) {
+    return PRODUCTION_API;
+  }
   // Dev .env often sets localhost for Vite proxy; only keep localhost when isDev proxy mode is active.
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
     return isDev ? trimmed : PRODUCTION_API;
