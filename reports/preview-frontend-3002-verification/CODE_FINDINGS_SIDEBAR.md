@@ -1,39 +1,29 @@
-# Sidebar collapse — code findings (verify-only)
+# Sidebar collapse — code findings (updated)
 
-**Scope:** 2A — document current in-memory 260↔80 icon rail. No persistence changes.
+**Status:** Persistence + breakpoint fix implemented (2026-10-11).
 
-## Live path
+## Root cause of inconsistent behavior
 
-1. [`Layout.tsx`](../../src/app/components/layout/Layout.tsx) mounts desktop `Sidebar`, `TopHeader`, `MobileNavDrawer`, `BottomNav`.
-2. [`NavigationContext.tsx`](../../src/app/context/NavigationContext.tsx):
-   - `isSidebarOpen` initialized with `useState(true)` (always expanded after full remount/refresh).
-   - `toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), [])`.
-3. [`Sidebar.tsx`](../../src/app/components/layout/Sidebar.tsx):
-   - `motion.aside` width: `isSidebarOpen ? 260 : 80`.
-   - Chevron button `onClick={toggleSidebar}`.
-   - Collapsed parent navigation auto-expands before showing children.
+1. **No persistence** — `isSidebarOpen` was session-only `useState(true)`, so refresh/nav remount always re-expanded.
+2. **Breakpoint mismatch** — desktop `Sidebar` is `hidden md:flex` and `BottomNav` is `md:hidden`, but header hamburger was `lg:hidden`, so between `md` and `lg` both rails competed and `toggleSidebar` was unused in `TopHeader`.
 
-## Not on live path
+## Live path (current)
 
-- [`ui/sidebar.tsx`](../../src/app/components/ui/sidebar.tsx): shadcn `SidebarProvider` writes cookie `sidebar_state` but is never imported by `Layout`. Ignore for QA unless wiring is added later (out of scope).
+| Piece | Behavior |
+|-------|----------|
+| [`sidebarOpenPreference.ts`](../../src/app/lib/sidebarOpenPreference.ts) | Key `erp_sidebar_open` (`1`/`0`) via `safeLocalStorage*` |
+| [`NavigationContext.tsx`](../../src/app/context/NavigationContext.tsx) | Default `true`; hydrate after mount; persist after hydrate |
+| [`Sidebar.tsx`](../../src/app/components/layout/Sidebar.tsx) | Framer width **260 ↔ 80**; chevron + `aria-*` |
+| [`TopHeader.tsx`](../../src/app/components/layout/TopHeader.tsx) | Mobile menu `md:hidden`; desktop Menu toggle `hidden md:inline-flex` → `toggleSidebar` |
 
-## Hydration / console
+## Hydration
 
-- Open state is React memory only → no localStorage read during render for collapse → no hydration mismatch from persisted sidebar width.
-- `Sidebar` uses `typeof window !== 'undefined' ? window.location.pathname : ''` for some active-route highlighting (guarded).
+Initial render always expanded; client `useEffect` applies stored collapse. Avoids SSR/CSR mismatch. First paint may briefly show expanded if preference was collapsed (acceptable).
 
-## Browser expectations
+## Browser expectations (after preview rebuild)
 
 | Action | Expected |
 |--------|----------|
-| Collapse chevron | Width ~80, labels hidden |
-| Expand chevron | Width ~260, labels visible |
-| Hard refresh | Expanded again |
-| Toggle spam | No React hydration errors in console |
-
-## Ledger smoke entry points (optional)
-
-| URL | View |
-|-----|------|
-| `http://localhost:3002/?view=accounting` | Accounting dashboard / tabs |
-| `http://localhost:3002/?view=party-ledger` | Effective party ledger |
+| Header Menu (desktop) or chevron | Toggle 260 ↔ 80 |
+| Hard refresh | Restores last state from `localStorage` |
+| Console | No hydration errors from sidebar pref |

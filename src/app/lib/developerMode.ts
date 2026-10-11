@@ -9,6 +9,7 @@ import {
   safeLocalStorageSetItem,
   safeSessionStorageClear,
 } from '@/app/lib/safeBrowserStorage';
+import { SIDEBAR_OPEN_STORAGE_KEY } from '@/app/lib/sidebarOpenPreference';
 
 export const DEVELOPER_MODE_STORAGE_KEY = 'erp_developer_mode_unlocked';
 export const DEVELOPER_VERBOSE_API_ERRORS_KEY = 'erp_developer_verbose_api_errors';
@@ -27,7 +28,11 @@ const CHANGE_EVENT = 'erp-developer-mode-changed';
 const AUTH_TOKEN_KEY_RE = /^sb-.+-auth-token$/;
 
 function isPreservedKey(key: string): boolean {
-  if (key === DEVELOPER_MODE_STORAGE_KEY || key === DEVELOPER_VERBOSE_API_ERRORS_KEY) {
+  if (
+    key === DEVELOPER_MODE_STORAGE_KEY ||
+    key === DEVELOPER_VERBOSE_API_ERRORS_KEY ||
+    key === SIDEBAR_OPEN_STORAGE_KEY
+  ) {
     return true;
   }
   return AUTH_TOKEN_KEY_RE.test(key);

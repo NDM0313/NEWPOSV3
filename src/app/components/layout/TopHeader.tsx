@@ -184,11 +184,21 @@ export const TopHeader = () => {
     <header className="h-14 md:h-16 bg-sidebar/95 backdrop-blur-md border-b border-sidebar-border flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shadow-sm text-sidebar-foreground">
       {/* LEFT SECTION: Mobile Menu + Branch Selector */}
       <div className="flex items-center gap-4">
-        {/* Mobile Menu Toggle - opens full nav drawer */}
+        {/* Mobile: open full nav drawer (matches Sidebar hidden below md / BottomNav md:hidden) */}
         <button 
           onClick={() => setMobileNavOpen?.(true)}
-          className="lg:hidden p-2.5 rounded-xl text-muted-foreground hover:text-header-foreground hover:bg-accent transition-all duration-200 touch-manipulation"
+          className="md:hidden p-2.5 rounded-xl text-muted-foreground hover:text-header-foreground hover:bg-accent transition-all duration-200 touch-manipulation"
           aria-label="Open menu"
+        >
+          <Menu size={22} strokeWidth={2} />
+        </button>
+
+        {/* Desktop: collapse / expand icon-rail sidebar (260 ↔ 80) */}
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="hidden md:inline-flex p-2.5 rounded-xl text-muted-foreground hover:text-header-foreground hover:bg-accent transition-all duration-200"
+          aria-label="Toggle sidebar"
         >
           <Menu size={22} strokeWidth={2} />
         </button>
