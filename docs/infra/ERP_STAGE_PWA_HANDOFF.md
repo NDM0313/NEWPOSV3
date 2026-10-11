@@ -26,7 +26,11 @@ Router `erp-stage.ndmcore.com` → Docker service `erp-frontend-preview:80`
 
 ```bash
 curl -skI https://erp-stage.ndmcore.com/          # expect 200
-# JS bundle must contain api-stage.ndmcore.com (not api.ndmcore.com)
+# Origin (bypass CF) should match preview index + serve staging chunk:
+curl -sk --resolve erp-stage.ndmcore.com:443:72.62.254.176 \
+  https://erp-stage.ndmcore.com/assets/paymentAttachmentUrl-WR-rBwYF.js \
+  | grep -o api-stage.ndmcore.com
+# If Cloudflare HTML index differs from origin, purge CF cache for erp-stage.
 ```
 
 ## Mobile PWA test steps
