@@ -16,15 +16,15 @@ function isStagingApiUrl(url: string): boolean {
   return /api-stage\.ndmcore\.com/i.test(url) || /erp-stage\.ndmcore\.com/i.test(url);
 }
 
+function isLegacyOrBlockedHost(url: string): boolean {
+  return LEGACY_HOST_RE.test(url);
+}
+
 /**
  * Production (PWA + native Capacitor): https://api.ndmcore.com
  * Staging bake (VITE_SUPABASE_URL=https://api-stage.ndmcore.com): keep staging on native too.
  * Vite dev browser: same-origin → proxy (avoids CORS). Never on native Capacitor.
-function isLegacyOrBlockedHost(url: string): boolean {
-  return LEGACY_HOST_RE.test(url);
-
- * Option A (ndmcore): production + native always resolve to CANONICAL_SUPABASE_API_URL.
- * Vite dev browser on localhost/LAN may use same-origin proxy; never return VPS hosts.
+ * Legacy VPS / blocked hosts always rewrite to CANONICAL_SUPABASE_API_URL.
  */
 export function resolveSupabaseApiUrl(
   raw?: string,
@@ -39,7 +39,6 @@ export function resolveSupabaseApiUrl(
 
   if (opts?.isNativeCapacitor) {
     return CANONICAL_SUPABASE_API_URL;
-    return PRODUCTION_API;
   }
 
   const isDev =
@@ -49,36 +48,56 @@ export function resolveSupabaseApiUrl(
         (import.meta as { env?: { DEV?: boolean } }).env?.DEV,
     );
 
-  if (!isDev) {
+  // Legacy / blocked hosts never win — even in Vite DEV.
+  if (trimmed && isLegacyOrBlockedHost(trimmed)) {
     return CANONICAL_SUPABASE_API_URL;
   }
 
-  // Vite dev browser: same-origin → proxy (avoids CORS). Never on native Capacitor.
+  if (!isDev) {
+    if (!trimmed) return CANONICAL_SUPABASE_API_URL;
+    if (/erp\.ndmcore\.com/i.test(trimmed) || /(^|[/.])api\.ndmcore\.com([/:?]|$)/i.test(trimmed)) {
+      return CANONICAL_SUPABASE_API_URL;
+    }
+    if (
+      /192\.168\.86\.235(?::8000)?/i.test(trimmed) ||
+      /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(trimmed)
+    ) {
+      return CANONICAL_SUPABASE_API_URL;
+    }
+    return trimmed || CANONICAL_SUPABASE_API_URL;
+  }
+
+  // Vite DEV browser: same-origin → proxy (avoids CORS).
   if (typeof window !== 'undefined' && !opts?.isNativeCapacitor) {
     const origin = window.location.origin.replace(/\/$/, '');
     if (/^https?:\/\/(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?$/i.test(origin)) {
+      // Prefer same-origin when the baked URL is empty / production host; keep explicit localhost bake.
+      if (!trimmed || /(^|[/.])api\.ndmcore\.com([/:?]|$)/i.test(trimmed) || /erp\.ndmcore\.com/i.test(trimmed)) {
+        return origin;
+      }
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
+        return trimmed;
+      }
       return origin;
     }
   }
 
   if (!trimmed) return PRODUCTION_API;
-  // Treat ERP web host / exact api.ndmcore.com as canonical production API.
-  // Do not match api-stage.ndmcore.com (handled above).
+
   if (/erp\.ndmcore\.com/i.test(trimmed) || /(^|[/.])api\.ndmcore\.com([/:?]|$)/i.test(trimmed)) {
     return PRODUCTION_API;
   }
-  // Hardcoded office LAN Kong (Mixed Content on https://erp.ndmcore.com).
+
   if (
     /192\.168\.86\.235(?::8000)?/i.test(trimmed) ||
     /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(trimmed)
   ) {
-  // Dev .env often sets localhost for Vite proxy; only keep localhost when isDev proxy mode is active.
+    return PRODUCTION_API;
+  }
+
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
-    return isDev ? trimmed : PRODUCTION_API;
-  const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
-  if (!trimmed || isLegacyOrBlockedHost(trimmed)) {
-    return CANONICAL_SUPABASE_API_URL;
     return trimmed;
   }
+
   return trimmed;
 }

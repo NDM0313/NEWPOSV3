@@ -810,17 +810,13 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 px-4 w-full max-w-sm">
-          <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
-          <div className="text-[#9CA3AF] animate-pulse">Loading...</div>
-          <ApiEnvironmentBadge className="w-full" />
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex flex-col">
         {stagingBanner}
         <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4 px-4 w-full max-w-sm">
             <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
             <div className="text-[#9CA3AF] animate-pulse">Loading...</div>
+            <ApiEnvironmentBadge className="w-full" />
           </div>
         </div>
       </div>
@@ -1156,9 +1152,17 @@ export default function App() {
 
   const staging = isStagingMobileBuild();
   const syncBar = user && selectedBranch ? (
-    <header className="erp-app-header flex flex-col gap-1.5 px-3 py-2 border-b border-[#374151]/50 bg-[#111827]">
+    <header
+      className={
+        staging
+          ? 'erp-app-header flex flex-col gap-1.5 px-3 py-2 border-b border-amber-700 bg-amber-500 min-h-[44px]'
+          : 'erp-app-header flex flex-col gap-1.5 px-3 py-2 border-b border-[#374151]/50 bg-[#111827]'
+      }
+    >
       <div className="flex items-center justify-between gap-2 min-h-[28px]">
-        <span className="text-sm font-semibold text-white truncate">Din Collection</span>
+        <span className={`text-sm font-semibold truncate ${staging ? 'text-[#1C1917]' : 'text-white'}`}>
+          {staging ? 'ERP Stage' : 'Din Collection'}
+        </span>
         <SyncStatusBar
           status={status}
           onSyncClick={() => {
@@ -1169,24 +1173,6 @@ export default function App() {
         />
       </div>
       <ApiEnvironmentBadge />
-    <header
-      className={
-        staging
-          ? 'erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-amber-700 bg-amber-500 min-h-[44px]'
-          : 'erp-app-header flex items-center justify-between gap-2 px-3 py-2 border-b border-[#374151]/50 bg-[#111827] min-h-[44px]'
-      }
-    >
-      <span className={`text-sm font-semibold truncate ${staging ? 'text-[#1C1917]' : 'text-white'}`}>
-        {staging ? 'ERP Stage' : 'Din Collection'}
-      </span>
-      <SyncStatusBar
-        status={status}
-        onSyncClick={() => {
-          if (!online) return;
-          setStatus('syncing');
-          runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
-        }}
-      />
     </header>
   ) : user ? (
     <div className="px-3 pt-2">
