@@ -114,8 +114,15 @@ stage = pathlib.Path(sys.argv[1])
 network_name = sys.argv[2]
 kong_p, studio_p, pg_p = sys.argv[3], sys.argv[4], sys.argv[5]
 
-def rewrite(text: str) -> str:
-    # container_name: supabase-foo -> stage-supabase-foo (idempotent)
+# Host ports we intentionally publish for staging (avoid colliding with prod extras).
+# Prefer publishing Postgres on db; if only pooler exposes it, keep that mapping.
+ALLOWED_PUBLISH = {
+    "kong": [f"{kong_p}:8000", f"8444:8443"],
+    "studio": [f"{studio_p}:3000"],
+    "db": [f"{pg_p}:5432"],
+}
+
+def rewrite_container_names(text: str) -> str:
     lines = []
     for line in text.splitlines():
         m = re.match(r"^(\s*)container_name:\s*['\"]?([^'\"#\n]+)['\"]?\s*$", line)
@@ -129,19 +136,76 @@ def rewrite(text: str) -> str:
             lines.append(f"{indent}container_name: {name}")
         else:
             lines.append(line)
-    text = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
-    # Replace default network name references if present
+def rewrite_ports_for_service(text: str) -> str:
+    """Rewrite each top-level service ports: keep only staging-allowed publishes."""
+    lines = text.splitlines(keepends=True)
+    out = []
+    i = 0
+    current_svc = None
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r"^([a-zA-Z0-9][\w-]*):\s*$", line)
+        if m and not line.startswith(" "):
+            current_svc = m.group(1)
+            out.append(line)
+            i += 1
+            continue
+        # Detect ports: block under current service
+        pm = re.match(r"^(\s{2})ports:\s*$", line)
+        if pm and current_svc:
+            i += 1
+            # Skip existing port list items / published stubs
+            while i < len(lines) and (
+                re.match(r"^\s+-\s+", lines[i])
+                or re.match(r"^\s+#", lines[i])
+                or lines[i].strip() == ""
+            ):
+                # stop blank-line skip if next non-empty is not a list item
+                if lines[i].strip() == "":
+                    # peek ahead
+                    j = i + 1
+                    while j < len(lines) and lines[j].strip() == "":
+                        j += 1
+                    if j < len(lines) and not re.match(r"^\s+-\s+", lines[j]):
+                        break
+                i += 1
+            allowed = ALLOWED_PUBLISH.get(current_svc, [])
+            if allowed:
+                out.append(line)  # keep ports:
+                for p in allowed:
+                    out.append(f'    - "{p}"\n')
+            # else: drop host ports entirely for this service
+            continue
+        out.append(line)
+        i += 1
+    text2 = "".join(out)
+
+    def ensure_ports(svc: str, ports: list[str]) -> str:
+        nonlocal text2
+        if f"{ports[0]}" in text2 and re.search(rf"(?m)^  {svc}:\n(?:.*\n)*?    ports:\n", text2):
+            return text2
+        block = "    ports:\n" + "".join(f'      - "{p}"\n' for p in ports)
+        if re.search(rf"(?m)^  {svc}:\n", text2):
+            text2 = re.sub(
+                rf"(?m)^(  {svc}:\n(?:    .+\n)*?)(?=  [a-zA-Z]|\Z)",
+                rf"\1{block}",
+                text2,
+                count=1,
+            )
+        return text2
+
+    text2 = ensure_ports("studio", [f"{studio_p}:3000"])
+    text2 = ensure_ports("kong", [f"{kong_p}:8000", "8444:8443"])
+    text2 = ensure_ports("db", [f"{pg_p}:5432"])
+    return text2
+
+def rewrite(text: str) -> str:
+    text = rewrite_container_names(text)
     text = re.sub(r"\bname:\s*supabase_default\b", f"name: {network_name}", text)
     text = re.sub(r"\bname:\s*supabase-network\b", f"name: {network_name}", text)
-
-    # Force host port maps for kong/studio/db when hardcoded
-    text = re.sub(r'(?m)^(\s*-\s*["\']?)8000:8000(["\']?\s*)$', rf"\g<1>{kong_p}:8000\2", text)
-    text = re.sub(r'(?m)^(\s*-\s*["\']?)8443:8443(["\']?\s*)$', rf"\g<1>8444:8443\2", text)
-    text = re.sub(r'(?m)^(\s*-\s*["\']?)3000:3000(["\']?\s*)$', rf"\g<1>{studio_p}:3000\2", text)
-    text = re.sub(r'(?m)^(\s*-\s*["\']?)5432:5432(["\']?\s*)$', rf"\g<1>{pg_p}:5432\2", text)
-
-    # Env-style port maps: "${KONG_HTTP_PORT}:8000" left as-is (set in .env)
+    text = rewrite_ports_for_service(text)
     return text
 
 for name in ("docker-compose.yml", "docker-compose.override.yml", "docker-compose.s3.yml"):
@@ -365,31 +429,37 @@ fi
 # ---------------------------------------------------------------------------
 # Phase 3: HTTP checks
 # ---------------------------------------------------------------------------
+log "Applying updated port publishes (studio/kong/db; drop analytics/pooler host binds)"
+docker compose -p "$COMPOSE_PROJECT" up -d --remove-orphans || true
+docker compose -p "$COMPOSE_PROJECT" up -d --force-recreate --no-deps studio kong db 2>/dev/null || true
+
 log "Waiting for Studio on :${STUDIO_HOST_PORT} and Kong on :${KONG_HOST_PORT}"
 STUDIO_CODE="000"
 KONG_CODE="000"
 KONG_HEADERS=""
+set +e
 for i in $(seq 1 36); do
-  STUDIO_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I "http://127.0.0.1:${STUDIO_HOST_PORT}" 2>/dev/null || echo 000)"
-  KONG_HEADERS="$(curl -sSI "http://127.0.0.1:${KONG_HOST_PORT}/rest/v1/" 2>/dev/null || true)"
-  KONG_CODE="$(printf '%s\n' "$KONG_HEADERS" | head -1 | awk '{print $2}')"
+  STUDIO_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -I "http://127.0.0.1:${STUDIO_HOST_PORT}" 2>/dev/null)"
+  STUDIO_CODE="${STUDIO_CODE:-000}"
+  KONG_HEADERS="$(curl -sSI "http://127.0.0.1:${KONG_HOST_PORT}/rest/v1/" 2>/dev/null)"
+  KONG_CODE="$(printf '%s\n' "$KONG_HEADERS" | awk 'NR==1{print $2; exit}')"
   KONG_CODE="${KONG_CODE:-000}"
   if [[ "$STUDIO_CODE" =~ ^(200|301|302|307|308)$ ]] && [[ "$KONG_CODE" == "401" ]]; then
     break
   fi
-  # If studio container exists but port not published, show once
-  if [[ $i -eq 6 ]]; then
-    log "compose ps (debug):"
+  if [[ $i -eq 6 || $i -eq 18 ]]; then
+    log "compose ps (debug iter=$i):"
     docker compose -p "$COMPOSE_PROJECT" ps || true
     docker ps --filter name=stage-supabase --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' || true
   fi
   sleep 5
 done
+set -e
 
 log "HTTP health checks"
 log "Studio HTTP: $STUDIO_CODE (expect 200/301/302/307/308)"
 log "Kong /rest/v1/ HTTP: $KONG_CODE (expect 401)"
-printf '%s\n' "$KONG_HEADERS" | head -20
+printf '%s\n' "$KONG_HEADERS" | awk 'NR<=20'
 
 # ---------------------------------------------------------------------------
 # Phase 4: summary
