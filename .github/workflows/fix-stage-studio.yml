@@ -73,8 +73,13 @@ jobs:
           echo "runner https://db-stage.ndmcore.com/ → $CODE (follow $FOLLOW)"
           [[ "$CODE" =~ ^(200|301|302|307|308)$ ]]
           [[ "$FOLLOW" == "200" ]]
-          BODY="$(curl -skS --connect-timeout 15 https://db-stage.ndmcore.com/project/default | head -c 200)"
-          echo "$BODY" | grep -qi 'supabase\|html' 
+          # Avoid curl|head SIGPIPE (exit 23) under pipefail
+          BODY="$(curl -skS --connect-timeout 15 --range 0-199 https://db-stage.ndmcore.com/project/default || true)"
+          if [[ -z "$BODY" ]]; then
+            BODY="$(curl -skS --connect-timeout 15 https://db-stage.ndmcore.com/project/default)"
+            BODY="${BODY:0:200}"
+          fi
+          echo "$BODY" | grep -qiE 'supabase|html|DOCTYPE'
           echo "EXTERNAL: OK — https://db-stage.ndmcore.com loads without SSH tunnel"
 
       - name: Cleanup key
