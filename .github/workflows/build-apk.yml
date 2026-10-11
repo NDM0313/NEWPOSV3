@@ -15,9 +15,6 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: erp-mobile-app
 
     steps:
       - name: Checkout
@@ -36,14 +33,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses >/dev/null || true
-        working-directory: ${{ github.workspace }}
+      - name: Configure Android SDK (preinstalled on ubuntu-latest)
+        run: |
+          set -euo pipefail
+          # GitHub-hosted runners ship the SDK under /usr/local/lib/android/sdk
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
+          # cmdline-tools version folder may be numbered (e.g. 16.0)
+          CMDLINE=$(ls -d /usr/local/lib/android/sdk/cmdline-tools/*/bin 2>/dev/null | head -1 || true)
+          if [ -n "$CMDLINE" ]; then
+            echo "$CMDLINE" >> "$GITHUB_PATH"
+          fi
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" || \
+            sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Write production env (locked api.ndmcore.com)
+        working-directory: erp-mobile-app
         env:
           ANON_FROM_SECRET: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
@@ -84,18 +92,19 @@ jobs:
           echo "Wrote .env.production (URL=https://api.ndmcore.com, anon_len=${#ANON})"
 
       - name: Install dependencies
+        working-directory: erp-mobile-app
         run: npm ci
 
       - name: Build web bundle
+        working-directory: erp-mobile-app
         run: npm run build:mobile || npm run build
 
       - name: Capacitor sync (android)
+        working-directory: erp-mobile-app
         run: npx cap sync android
 
       - name: Assemble debug APK
         working-directory: erp-mobile-app/android
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
           set -euo pipefail
           chmod +x ./gradlew
@@ -103,12 +112,12 @@ jobs:
 
       - name: Locate APK
         id: apk
-        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
           APK=$(find erp-mobile-app/android/app/build/outputs/apk -name '*.apk' -type f | head -1)
           if [ -z "$APK" ]; then
             echo "::error::No APK found under android/app/build/outputs/apk"
+            find erp-mobile-app/android/app/build/outputs -type f || true
             exit 1
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
