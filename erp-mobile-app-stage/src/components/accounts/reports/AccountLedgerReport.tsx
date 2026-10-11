@@ -1,0 +1,723 @@
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronRight, ArrowDownLeft, ArrowUpRight, Wallet, Search } from 'lucide-react';
+import type { User } from '../../../types';
+import * as accountsApi from '../../../api/accounts';
+import { getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
+import {
+  getCustomerArGlLedgerLinesForContact,
+  getSupplierApGlLedgerLinesForContact,
+  isPartyGlLedgerEmptySuccess,
+} from '../../../api/partyGlLedger';
+import { ReportHeader } from './_shared/ReportHeader';
+import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
+import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
+import {
+  LedgerPeriodEmptyCard,
+  allTimeDateRange,
+  isOpeningOnlyPeriod,
+  isTrulyEmptyLedger,
+} from './_shared/LedgerPeriodEmptyCard';
+import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
+import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
+import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
+import { usePdfPreview } from '../../shared/usePdfPreview';
+import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
+import type { TransactionReferenceType } from '../../../api/transactionDetail';
+import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
+import { rpcGetUnifiedAccountLedger } from '../../../api/unifiedLedgerRpc';
+import {
+  effectiveReportLoaderSource,
+  resolveReportMainLoaderSource,
+} from '../../../lib/reportLoaderSource';
+import { LoaderSourceBadge } from './_shared/LoaderSourceBadge';
+import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
+import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../utils/transactionDisplayDate';
+import { formatLedgerLinePresentation, toLedgerPreviewRow } from '../../../lib/ledgerLinePresentation';
+import { effectiveNetLedgerPresentation } from '../../../lib/ledgerEffectiveNet';
+import { ACCOUNT_LEDGER_ALL_BRANCHES } from '../../../lib/ledgerBranchScope';
+
+interface AccountLedgerReportProps {
+  onBack: () => void;
+  companyId: string | null;
+  initialAccountId?: string | null;
+  user: User;
+  /** App branch — used for DateRangeBar FY resolution only; GL loaders use all-branches (web parity). */
+  branchId?: string | null;
+  filterTypes?: ('cash' | 'bank' | 'mobile_wallet' | 'asset' | 'liability' | 'equity' | 'income' | 'expense')[];
+  titleOverride?: string;
+  reportRefreshEpoch?: number;
+}
+
+export function AccountLedgerReport({
+  onBack,
+  companyId,
+  initialAccountId,
+  user,
+  branchId,
+  filterTypes,
+  titleOverride,
+  reportRefreshEpoch = 0,
+}: AccountLedgerReportProps) {
+  const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
+  const [loading, setLoading] = useState(!!companyId);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<accountsApi.AccountRow | null>(null);
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange());
+
+  const [lines, setLines] = useState<LedgerLine[]>([]);
+  const [opening, setOpening] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedLine, setSelectedLine] = useState<LedgerLine | null>(null);
+  const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
+  const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
+  /** Shown when party GL RPC fails and we fall back to raw sub-account lines. */
+  const [ledgerFallbackNotice, setLedgerFallbackNotice] = useState<string | null>(null);
+  const [ledgerLoaderSource, setLedgerLoaderSource] = useState<'legacy' | 'unified'>('legacy');
+  /** Display order only — running balances stay chronological. Default newest-first. */
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('desc');
+  const preview = usePdfPreview(companyId);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+
+  const handleLineAttachmentPreview = async (l: LedgerLine) => {
+    if (!companyId) return;
+    const items = await loadMergedAttachmentsForJournalEntry(companyId, {
+      journalEntryId: l.journalEntryId,
+      referenceType: l.referenceType,
+      referenceId: l.sourceReferenceId,
+      paymentId: l.paymentId,
+    });
+    if (items.length) openAttachmentPreview(items, 0);
+  };
+
+  useEffect(() => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data } = await accountsApi.getAccounts(companyId);
+      if (cancelled) return;
+      const filtered = (data || [])
+        .filter((a) => !a.isGroup)
+        .filter((a) => !filterTypes || filterTypes.includes(a.type as never));
+      const list = await accountsApi.overlayAccountBalancesFromJournal(companyId, filtered);
+      if (cancelled) return;
+      setAccounts(list);
+      setLoading(false);
+      if (initialAccountId) {
+        const found = list.find((a) => a.id === initialAccountId);
+        if (found) setSelected(found);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, initialAccountId, filterTypes, reportRefreshEpoch]);
+
+  useEffect(() => {
+    if (reportRefreshEpoch === 0) return;
+    setLedgerRefreshNonce((n) => n + 1);
+  }, [reportRefreshEpoch]);
+
+  useEffect(() => {
+    if (!companyId || !selected) {
+      setLines([]);
+      setOpening(0);
+      setLedgerFallbackNotice(null);
+      setManualLedgerRefresh(false);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setLedgerFallbackNotice(null);
+
+    const cid = selected.linkedContactId ?? null;
+    /** Party AP sub-accounts are often stored as `liability` (not only `payable`) under the COA. */
+    const useSupplierAp =
+      !!cid &&
+      (selected.type === 'payable' || selected.type === 'liability');
+    const useCustomerAr = selected.type === 'receivable' && !!cid;
+
+    (async () => {
+      try {
+        if (useSupplierAp && cid) {
+          const rpcRes = await getSupplierApGlLedgerLinesForContact(
+            companyId,
+            cid,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
+            range.from || undefined,
+            range.to || undefined,
+          );
+          if (cancelled) return;
+          if (!rpcRes.error && !isPartyGlLedgerEmptySuccess(rpcRes)) {
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setLedgerFallbackNotice(null);
+            return;
+          }
+          const fb = await getAccountLedgerLines(
+            companyId,
+            selected.id,
+            range.from || undefined,
+            range.to || undefined,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
+          );
+          if (cancelled) return;
+          const fbHasData = fb.lines.length > 0 || Math.abs(fb.openingBalance) >= 0.005;
+          if (fbHasData) {
+            setOpening(fb.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
+            setLedgerFallbackNotice(
+              rpcRes.error
+                ? `Party AP GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`
+                : 'Party AP GL empty for this contact — showing lines posted to this sub-account.',
+            );
+            return;
+          }
+          setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+          setLines([]);
+          setLedgerFallbackNotice(rpcRes.error ? `Party AP GL unavailable (${rpcRes.error}).` : null);
+          return;
+        }
+
+        if (useCustomerAr && cid) {
+          const rpcRes = await getCustomerArGlLedgerLinesForContact(
+            companyId,
+            cid,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
+            range.from || undefined,
+            range.to || undefined,
+          );
+          if (cancelled) return;
+          if (!rpcRes.error && !isPartyGlLedgerEmptySuccess(rpcRes)) {
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setLedgerFallbackNotice(null);
+            return;
+          }
+          const fb = await getAccountLedgerLines(
+            companyId,
+            selected.id,
+            range.from || undefined,
+            range.to || undefined,
+            ACCOUNT_LEDGER_ALL_BRANCHES,
+          );
+          if (cancelled) return;
+          const fbHasData = fb.lines.length > 0 || Math.abs(fb.openingBalance) >= 0.005;
+          if (fbHasData) {
+            setOpening(fb.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
+            setLedgerFallbackNotice(
+              rpcRes.error
+                ? `Party AR GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`
+                : 'Party AR GL empty for this contact — showing lines posted to this sub-account.',
+            );
+            return;
+          }
+          setOpening(rpcRes.error ? 0 : rpcRes.openingBalance);
+          setLines([]);
+          setLedgerFallbackNotice(rpcRes.error ? `Party AR GL unavailable (${rpcRes.error}).` : null);
+          return;
+        }
+
+        const resolved = await resolveReportMainLoaderSource(companyId, 'account_statement', {
+          legacyAvailable: true,
+        });
+        if (effectiveReportLoaderSource(resolved) === 'unified') {
+          const unified = await rpcGetUnifiedAccountLedger({
+            companyId,
+            accountId: selected.id,
+            branchId: ACCOUNT_LEDGER_ALL_BRANCHES,
+            dateFrom: range.from,
+            dateTo: range.to,
+            basis: 'official_gl',
+          });
+          if (cancelled) return;
+          if (!unified.error && unified.rows.length >= 0) {
+            const mapped: LedgerLine[] = unified.rows.map((r) => ({
+              id: r.journalEntryLineId,
+              journalEntryId: r.journalEntryId,
+              sourceReferenceId: null,
+              date: r.entryDate,
+              createdAt: r.entryDate,
+              entryNo: r.entryNo || '',
+              description: r.description,
+              reference: r.entryNo || '',
+              referenceType: r.referenceType || '',
+              debit: r.debit,
+              credit: r.credit,
+              runningBalance: r.runningBalance,
+              paymentId: r.paymentId,
+            }));
+            setOpening(unified.openingBalance);
+            setLines(mapped);
+            setLedgerLoaderSource('unified');
+            setLedgerFallbackNotice(null);
+            return;
+          }
+        }
+
+        const res = await getAccountLedgerLines(
+          companyId,
+          selected.id,
+          range.from || undefined,
+          range.to || undefined,
+          ACCOUNT_LEDGER_ALL_BRANCHES,
+        );
+        if (cancelled) return;
+        setOpening(res.openingBalance);
+        setLines(sortLedgerLinesAndRebuildRunningBalance(res.lines, res.openingBalance));
+        setLedgerLoaderSource('legacy');
+        setLedgerFallbackNotice(null);
+      } catch {
+        if (!cancelled) {
+          setOpening(0);
+          setLines([]);
+          setLedgerFallbackNotice(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+          setManualLedgerRefresh(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, selected, range.from, range.to, ledgerRefreshNonce]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') setLedgerRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selected?.id]);
+
+  const apLiabilityStyle =
+    selected?.type === 'payable' || selected?.type === 'liability';
+
+  const presentedLedger = useMemo(
+    () => effectiveNetLedgerPresentation(lines, opening, apLiabilityStyle),
+    [lines, opening, apLiabilityStyle],
+  );
+
+  /** Prefer net presentation; if net hid every row, fall back to raw so activity is not falsely "opening only". */
+  const netViewHidAll = lines.length > 0 && presentedLedger.lines.length === 0;
+  const displayLines = netViewHidAll ? lines : presentedLedger.lines;
+  const displayClosing = netViewHidAll
+    ? lines[lines.length - 1]?.runningBalance ?? opening
+    : presentedLedger.closingBalance;
+
+  const totals = useMemo(() => {
+    const debit = displayLines.reduce((s, l) => s + l.debit, 0);
+    const credit = displayLines.reduce((s, l) => s + l.credit, 0);
+    return { debit, credit, closing: displayClosing };
+  }, [displayLines, displayClosing]);
+
+  type Granularity = 'none' | 'week' | 'month';
+  const granularity: Granularity = useMemo(() => {
+    if (!range.from || !range.to) return lines.length > 30 ? 'week' : 'none';
+    const from = new Date(range.from);
+    const to = new Date(range.to);
+    const days = Math.round((to.getTime() - from.getTime()) / 86400000);
+    if (days > 60) return 'month';
+    if (days > 7) return 'week';
+    return 'none';
+  }, [range.from, range.to, lines.length]);
+
+  const groupedLines = useMemo(() => {
+    const chronologic = displayLines;
+    const ordered = dateSort === 'desc' ? [...chronologic].reverse() : chronologic;
+    if (ordered.length === 0) {
+      return [{ key: 'all', label: '', lines: [], closingBalance: totals.closing }];
+    }
+    if (granularity === 'none') {
+      const dayMap = new Map<string, LedgerLine[]>();
+      for (const line of ordered) {
+        const key = getTransactionEventDateKey(line.date, line.createdAt) || 'unknown';
+        const arr = dayMap.get(key) ?? [];
+        arr.push(line);
+        dayMap.set(key, arr);
+      }
+      return Array.from(dayMap.entries())
+        .sort((a, b) => (dateSort === 'desc' ? b[0].localeCompare(a[0]) : a[0].localeCompare(b[0])))
+        .map(([key, groupLines]) => ({
+          key,
+          label: key === 'unknown' ? 'Unknown date' : formatEventDateGroupLabel(key),
+          lines: groupLines,
+          closingBalance:
+            dateSort === 'desc'
+              ? groupLines[0]?.runningBalance ?? totals.closing
+              : groupLines[groupLines.length - 1]?.runningBalance ?? totals.closing,
+        }));
+    }
+    const groups = new Map<string, { key: string; label: string; lines: LedgerLine[]; closingBalance: number }>();
+    const labelForKey = (key: string) => {
+      if (granularity === 'month') {
+        const [y, m] = key.split('-').map((n) => parseInt(n, 10));
+        const d = new Date(y, m - 1, 1);
+        return d.toLocaleDateString('en-PK', { month: 'long', year: 'numeric' });
+      }
+      const [y, w] = key.split('-W');
+      return `Week ${w}, ${y}`;
+    };
+
+    const weekKey = (dateStr: string): string => {
+      const ymd = getTransactionEventDateKey(dateStr, null) || dateStr.slice(0, 10);
+      const d = new Date(`${ymd}T00:00:00Z`);
+      const yr = d.getUTCFullYear();
+      const jan1 = new Date(Date.UTC(yr, 0, 1));
+      const dayOfYear = Math.floor((d.getTime() - jan1.getTime()) / 86400000) + 1;
+      const week = Math.ceil((dayOfYear + ((jan1.getUTCDay() + 6) % 7)) / 7);
+      return `${yr}-W${String(week).padStart(2, '0')}`;
+    };
+
+    const monthKey = (dateStr: string): string => {
+      const ymd = getTransactionEventDateKey(dateStr, null) || dateStr.slice(0, 10);
+      return ymd.slice(0, 7);
+    };
+
+    for (const line of ordered) {
+      const eventDate = getTransactionEventDateKey(line.date, line.createdAt) || line.date;
+      const key = granularity === 'month' ? monthKey(eventDate) : weekKey(eventDate);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.lines.push(line);
+        existing.closingBalance = line.runningBalance;
+      } else {
+        groups.set(key, { key, label: labelForKey(key), lines: [line], closingBalance: line.runningBalance });
+      }
+    }
+    const arr = Array.from(groups.values());
+    return dateSort === 'desc' ? arr : [...arr].reverse();
+  }, [displayLines, granularity, totals.closing, dateSort]);
+
+  const filteredAccounts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return accounts;
+    return accounts.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        (a.code ?? '').toLowerCase().includes(q) ||
+        (a.type ?? '').toLowerCase().includes(q),
+    );
+  }, [accounts, search]);
+
+  if (!selected) {
+    return (
+      <div className="min-h-screen bg-[#111827] pb-24">
+        <ReportHeader
+          onBack={onBack}
+          title={titleOverride ?? 'Account Ledger'}
+          subtitle="Select an account"
+        >
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" size={16} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search accounts..."
+              className="w-full pl-9 pr-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm placeholder-white/60"
+            />
+          </div>
+        </ReportHeader>
+
+        <ReportShell loading={loading} empty={!loading && filteredAccounts.length === 0} emptyLabel="No accounts found.">
+          <ul className="space-y-2">
+            {filteredAccounts.map((a) => (
+              <li key={a.id}>
+                <button
+                  onClick={() => setSelected(a)}
+                  className="w-full bg-[#1F2937] border border-[#374151] hover:border-[#6366F1] rounded-xl p-3.5 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center">
+                      <Wallet className="w-4 h-4 text-[#9CA3AF]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">
+                        <span className="text-[#9CA3AF] font-mono text-[11px] mr-2">{a.code}</span>
+                        {a.name}
+                      </p>
+                      <p className="text-[11px] text-[#9CA3AF] capitalize">{a.type}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-bold ${a.balance >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        Rs. {formatAmount(a.balance, 0)}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#6B7280] shrink-0" />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </ReportShell>
+      </div>
+    );
+  }
+
+  const stats = [
+    { label: 'Opening', value: `Rs. ${formatAmount(opening, 0)}` },
+    { label: 'Debit', value: `Rs. ${formatAmount(totals.debit, 0)}`, color: 'text-[#FDE68A]' },
+    { label: 'Credit', value: `Rs. ${formatAmount(totals.credit, 0)}`, color: 'text-[#BBF7D0]' },
+    { label: 'Closing', value: `Rs. ${formatAmount(totals.closing, 0)}` },
+  ];
+
+  const detailSubtitle =
+    `${selected.code} · ${selected.type} · all branches` +
+    (selected.linkedContactId &&
+    !ledgerFallbackNotice &&
+    (selected.type === 'payable' || selected.type === 'liability')
+      ? ' · Party AP (GL)'
+      : selected.type === 'receivable' && selected.linkedContactId && !ledgerFallbackNotice
+        ? ' · Party AR (GL)'
+        : '');
+
+  return (
+    <div className="min-h-screen bg-[#111827] pb-28">
+      <ReportHeader
+        onBack={() => setSelected(null)}
+        title={selected.name}
+        subtitle={detailSubtitle}
+        stats={stats}
+        onShare={preview.openPreview}
+        sharing={preview.loading}
+        onRefresh={() => {
+          setManualLedgerRefresh(true);
+          setLedgerRefreshNonce((n) => n + 1);
+        }}
+        refreshing={manualLedgerRefresh && detailLoading}
+        rightExtras={<LoaderSourceBadge source={ledgerLoaderSource} />}
+      >
+        <DateRangeBar
+          value={range}
+          onChange={setRange}
+          companyId={companyId}
+          branchId={branchId}
+          pinPresets={['all']}
+        />
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80">
+          <span>Date order</span>
+          <button
+            type="button"
+            onClick={() => setDateSort('desc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'desc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Newest
+          </button>
+          <button
+            type="button"
+            onClick={() => setDateSort('asc')}
+            className={`px-2 py-0.5 rounded ${dateSort === 'asc' ? 'bg-[#3B82F6] text-white' : 'bg-white/10'}`}
+          >
+            Oldest
+          </button>
+        </div>
+        {range.preset !== 'all' ? (
+          <button
+            type="button"
+            onClick={() => setRange(allTimeDateRange())}
+            className="mt-1.5 text-[11px] font-medium text-white/80 underline underline-offset-2 hover:text-white"
+          >
+            Show full history (All time)
+          </button>
+        ) : null}
+      </ReportHeader>
+
+      {/* Floating running balance footer so the current balance is always visible. */}
+      {!detailLoading && displayLines.length > 0 && (
+        <div className="fixed left-3 right-3 bottom-3 z-40 rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur shadow-lg px-4 py-2 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-[#9CA3AF]">Running balance</p>
+            <p className={`text-sm font-bold ${totals.closing >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+              Rs. {formatAmount(totals.closing, 0)}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="text-[#10B981]">+ Rs. {formatAmount(totals.debit, 0)}</span>
+            <span className="text-[#EF4444]">− Rs. {formatAmount(totals.credit, 0)}</span>
+          </div>
+        </div>
+      )}
+
+      {ledgerFallbackNotice && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            {ledgerFallbackNotice}
+          </div>
+        </div>
+      )}
+      {netViewHidAll && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            Net view hid paired reversal rows — showing full GL activity for this period.
+          </div>
+        </div>
+      )}
+
+      <ReportShell
+        loading={detailLoading}
+        empty={!detailLoading && isTrulyEmptyLedger(lines.length, opening)}
+        emptyLabel="No ledger activity for this period."
+      >
+        {isOpeningOnlyPeriod(lines.length, opening) ? (
+          <LedgerPeriodEmptyCard
+            opening={opening}
+            periodLabel={dateRangeLabel(range.from, range.to)}
+            onShowAllTime={() => setRange(allTimeDateRange())}
+          />
+        ) : (
+        <ReportCard>
+          <ReportSectionTitle
+            title="Ledger activity"
+            subtitle={dateRangeLabel(range.from, range.to)}
+            right={`${displayLines.length} entries`}
+          />
+          <ul className="divide-y divide-[#374151]">
+            {groupedLines.map((group) => (
+              <li key={group.key}>
+                {group.label && (
+                  <div className="px-4 py-2 bg-[#111827]/60 border-b border-[#374151]">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{group.label}</p>
+                  </div>
+                )}
+                <ul className="divide-y divide-[#374151]">
+                  {group.lines.map((l) => {
+                    // For asset-style accounts (cash/bank) we display debit as
+                    // money IN (green) and credit as money OUT (red). This
+                    // matches the on-screen semantics users expect.
+                    const isIn = l.debit > 0;
+                    const amount = isIn ? l.debit : l.credit;
+                    const time = l.createdAt ? new Date(l.createdAt).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }) : '';
+                    const refLabel = displayReferenceNumber(l.entryNo, l.referenceType);
+                    const pres = formatLedgerLinePresentation(l, { viewedAccountName: selected.name });
+                    return (
+                      <li key={l.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLine(l)}
+                          className="w-full text-left px-4 py-3 hover:bg-[#111827]/60 transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                                isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
+                              }`}
+                            >
+                              {isIn ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">{pres.title}</p>
+                              {pres.subline ? (
+                                <p className="text-[11px] text-[#9CA3AF] truncate">{pres.subline}</p>
+                              ) : null}
+                              <p className="text-[11px] text-[#9CA3AF] truncate">
+                                {formatDate(l.date)}{time ? ` · ${time}` : ''} · {refLabel} · {(l.referenceType || '').replace(/_/g, ' ') || '—'}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="flex items-center justify-end gap-0.5">
+                                {l.hasAttachments ? (
+                                  <AttachmentIndicatorButton
+                                    onClick={() => void handleLineAttachmentPreview(l)}
+                                    size="sm"
+                                  />
+                                ) : null}
+                                <span className={`inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded mb-0.5 ${
+                                  isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
+                                }`}>
+                                  {isIn ? 'IN' : 'OUT'}
+                                </span>
+                              </div>
+                              <p className={`text-sm font-bold ${isIn ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                {isIn ? '+' : '−'} Rs. {formatAmount(amount, 0)}
+                              </p>
+                              <p className="text-[10px] text-[#9CA3AF]">Bal Rs. {formatAmount(l.runningBalance, 0)}</p>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {granularity !== 'none' && (
+                  <div className="flex items-center justify-between px-4 py-2 bg-[#0F172A] border-t border-[#374151]">
+                    <span className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">Closing balance</span>
+                    <span className={`text-sm font-bold ${group.closingBalance >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      Rs. {formatAmount(group.closingBalance, 0)}
+                    </span>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </ReportCard>
+        )}
+      </ReportShell>
+
+      {preview.brand && (
+        <PdfPreviewModal
+          open={preview.open}
+          title={titleOverride ?? 'Account Ledger'}
+          filename={`Account_Ledger_${selected.code}_${range.from || 'all'}_${range.to || 'now'}.pdf`}
+          onClose={preview.close}
+          whatsAppFallbackText={`${selected.code} — ${selected.name} · ${dateRangeLabel(range.from, range.to)}`}
+        >
+          <LedgerPreviewPdf
+            brand={preview.brand}
+            title={titleOverride ?? 'Account Ledger'}
+            subtitle={dateRangeLabel(range.from, range.to)}
+            partyName={`${selected.code} — ${selected.name}`}
+            partyMeta={selected.type}
+            openingBalance={opening}
+            closingBalance={totals.closing}
+            totals={{ debit: totals.debit, credit: totals.credit }}
+            rows={presentedLedger.lines.map((l) =>
+              toLedgerPreviewRow(l, displayReferenceNumber(l.entryNo, l.referenceType), {
+                viewedAccountName: selected.name,
+              }),
+            )}
+            generatedBy={user.name || user.email || 'User'}
+            generatedAt={new Date().toLocaleString('en-PK')}
+          />
+        </PdfPreviewModal>
+      )}
+
+      {selectedLine && (() => {
+        const knownTypes: TransactionReferenceType[] = [
+          'sale', 'purchase', 'payment', 'expense', 'expense_payment',
+          'rental', 'journal', 'on_account', 'worker_payment', 'studio',
+        ];
+        const refType: TransactionReferenceType = (
+          knownTypes.includes(selectedLine.referenceType as TransactionReferenceType)
+            ? (selectedLine.referenceType as TransactionReferenceType)
+            : 'journal'
+        );
+        const refId = refType === 'journal'
+          ? selectedLine.journalEntryId
+          : (selectedLine.sourceReferenceId ?? selectedLine.journalEntryId);
+        return (
+          <TransactionDetailSheet
+            open
+            onClose={() => setSelectedLine(null)}
+            companyId={companyId}
+            referenceType={refType}
+            referenceId={refId}
+            fallbackTitle={`${displayReferenceNumber(selectedLine.entryNo, selectedLine.referenceType)} · ${(selectedLine.referenceType || '').replace(/_/g, ' ')}`}
+          />
+        );
+      })()}
+
+      {AttachmentPreviewPortal}
+    </div>
+  );
+}

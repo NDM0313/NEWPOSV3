@@ -1,0 +1,47 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// Gradle 9.1 + AGP 9.0 support Java 25 (fixes "Unsupported class file major version 69").
+
+buildscript {
+    ext.kotlin_version = '2.2.20'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:9.0.0'
+        classpath 'com.google.gms:google-services:4.4.4'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// Capacitor 8's @capacitor/android (and generated capacitor.build.gradle) default to Java 21.
+// JDK 17 then fails with: invalid source release: 21. Pin all Android modules to 17 to match
+// app/build.gradle and android/README_BUILD.md.
+subprojects { subproject ->
+    subproject.afterEvaluate {
+        if (!subproject.plugins.hasPlugin('com.android.library') &&
+                !subproject.plugins.hasPlugin('com.android.application')) {
+            return
+        }
+        subproject.android.compileOptions {
+            sourceCompatibility JavaVersion.VERSION_17
+            targetCompatibility JavaVersion.VERSION_17
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

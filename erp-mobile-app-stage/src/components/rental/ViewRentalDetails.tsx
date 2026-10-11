@@ -1,0 +1,581 @@
+/**
+ * Full-screen rental details + actions (Return, Add Payment, Mark Picked Up, Delete, Cancel).
+ * Mirrors web ViewRentalDetailsDrawer behavior for mobile.
+ */
+
+import { useState, useEffect } from 'react';
+import {
+  ArrowLeft,
+  Package,
+  DollarSign,
+  Calendar,
+  User,
+  Loader2,
+  CornerDownLeft,
+  CreditCard,
+  Truck,
+  Trash2,
+  Ban,
+  FileText,
+  Pencil,
+  ChevronRight,
+  Paperclip,
+} from 'lucide-react';
+import type { RentalDetail } from '../../api/rentals';
+import * as rentalsApi from '../../api/rentals';
+import { RentalReturnModal } from './RentalReturnModal';
+import { RentalAddPaymentModal } from './RentalAddPaymentModal';
+import { RentalPickupModal } from './RentalPickupModal';
+import { RentalAddAttachmentsSheet } from './RentalAddAttachmentsSheet';
+import { RentalWorkflowBadges } from './RentalWorkflowBadges';
+import { rentalPrimaryStaffName, rentalShowCreatedBySecondary } from '../../lib/rentalWorkflowDisplay';
+import { formatDate } from '../accounts/reports/_shared/format';
+import { TransactionDetailSheet } from '../accounts/reports/TransactionDetailSheet';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { useAttachmentPreview } from '../../hooks/useAttachmentPreview';
+
+export type RentalDetailInitialAction = 'pickup' | 'return' | 'payment';
+
+interface ViewRentalDetailsProps {
+  rentalId: string;
+  companyId: string | null;
+  userId: string | null;
+  initialAction?: RentalDetailInitialAction | null;
+  onConsumedInitialAction?: () => void;
+  onBack: () => void;
+  onRefresh: () => void;
+  /** Open full booking editor (draft/booked). */
+  onEditBooking?: (rentalId: string) => void;
+}
+
+
+function DetailStaffHeader({
+  salesmanName,
+  createdByName,
+}: {
+  salesmanName?: string | null;
+  createdByName?: string | null;
+}) {
+  const primary = rentalPrimaryStaffName(salesmanName, createdByName);
+  const showSecondary = rentalShowCreatedBySecondary(salesmanName, createdByName);
+  return (
+    <div className="mt-1 px-1">
+      <p className="text-xs text-[#9CA3AF]">
+        Salesman: <span className="text-[#D1D5DB]">{primary}</span>
+      </p>
+      {showSecondary && createdByName ? (
+        <p className="text-[10px] text-[#6B7280]">Created: {createdByName}</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function ViewRentalDetails({
+  rentalId,
+  companyId,
+  userId,
+  initialAction,
+  onConsumedInitialAction,
+  onBack,
+  onRefresh,
+  onEditBooking,
+}: ViewRentalDetailsProps) {
+  const effectiveUserId = useEffectiveWorkerId(userId ?? '');
+  const [rental, setRental] = useState<RentalDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [pickupOpen, setPickupOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [billRefEdit, setBillRefEdit] = useState(false);
+  const [billRefDraft, setBillRefDraft] = useState('');
+  const [metaSaving, setMetaSaving] = useState(false);
+  const [viewPaymentId, setViewPaymentId] = useState<string | null>(null);
+  const [attachmentsSheetOpen, setAttachmentsSheetOpen] = useState(false);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+
+  const load = () => {
+    if (!rentalId) return;
+    setLoading(true);
+    setError(null);
+    rentalsApi.getRentalById(rentalId).then(({ data, error: err }) => {
+      setLoading(false);
+      if (err) setError(err);
+      else setRental(data ?? null);
+    });
+  };
+
+  useEffect(() => load(), [rentalId]);
+
+  useEffect(() => {
+    if (!rental || !initialAction) return;
+    if (initialAction === 'pickup' && rental.status === 'booked') setPickupOpen(true);
+    if (initialAction === 'return' && ['rented', 'overdue'].includes(rental.status)) setReturnOpen(true);
+    if (initialAction === 'payment' && rental.dueAmount > 0) setPaymentOpen(true);
+    onConsumedInitialAction?.();
+  }, [rental, initialAction, onConsumedInitialAction]);
+
+  const saveBillRef = async () => {
+    if (!rental) return;
+    setMetaSaving(true);
+    const { error: err } = await rentalsApi.updateRentalMeta(rental.id, {
+      documentNumber: billRefDraft,
+    });
+    setMetaSaving(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    setBillRefEdit(false);
+    load();
+    onRefresh();
+  };
+
+  const handleReturn = async (payload: {
+    actualReturnDate: string;
+    notes?: string;
+    conditionType: string;
+    damageNotes?: string;
+    penaltyAmount: number;
+    penaltyPaid: boolean;
+    documentReturned: boolean;
+    penaltyPaymentAccountId?: string | null;
+  }) => {
+    if (!companyId) return;
+    setActionLoading(true);
+    const { error: err } = await rentalsApi.receiveReturn(rentalId, companyId, payload, effectiveUserId || null);
+    setActionLoading(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    setReturnOpen(false);
+    load();
+    onRefresh();
+  };
+
+  const handlePaymentSuccess = () => {
+    setPaymentOpen(false);
+    load();
+    onRefresh();
+  };
+
+  const handlePickup = async (payload: rentalsApi.MarkRentalPickedUpPayload) => {
+    if (!companyId) return;
+    setActionLoading(true);
+    const { error: err } = await rentalsApi.markRentalPickedUp(rentalId, companyId, payload, effectiveUserId || null);
+    setActionLoading(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    setPickupOpen(false);
+    load();
+    onRefresh();
+  };
+
+  const handleDelete = async () => {
+    if (!companyId || !window.confirm('Delete this rental? This cannot be undone.')) return;
+    setActionLoading(true);
+    const { error: err } = await rentalsApi.deleteRental(rentalId, companyId);
+    setActionLoading(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    onBack();
+    onRefresh();
+  };
+
+  const handleCancel = async () => {
+    if (!companyId || !window.confirm('Cancel this rental?')) return;
+    setActionLoading(true);
+    const { error: err } = await rentalsApi.cancelRental(rentalId, companyId);
+    setActionLoading(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    load();
+    onRefresh();
+  };
+
+  if (loading && !rental) {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center">
+        <Loader2 className="w-10 h-10 text-[#8B5CF6] animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !rental) {
+    return (
+      <div className="min-h-screen bg-[#111827] p-4">
+        <button onClick={onBack} className="p-2 text-[#9CA3AF] hover:text-white">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <p className="text-red-400 mt-4">{error ?? 'Rental not found.'}</p>
+      </div>
+    );
+  }
+
+  const canReturn = ['rented', 'overdue'].includes(rental.status);
+  const canPickup = rental.status === 'booked';
+  const canDelete = ['draft', 'booked'].includes(rental.status);
+  const canCancel = ['draft', 'booked'].includes(rental.status);
+  const canEditBillRef = ['draft', 'booked'].includes(rental.status);
+  const canEditBooking = ['draft', 'booked'].includes(rental.status) && Boolean(onEditBooking);
+  const hasSecurityDoc =
+    !!(rental.securityDocumentType || rental.securityDocumentNumber || rental.securityDocumentImageUrl);
+  const bookingAttachments = normalizeAttachments(rental.attachments);
+  const canAddAttachments = ['draft', 'booked', 'rented', 'overdue', 'returned'].includes(rental.status);
+
+  return (
+    <div className="min-h-screen bg-[#111827] pb-32">
+      <div className="sticky top-0 z-10 flow-screen-header bg-[#1F2937] border-b border-[#374151] px-4 py-3">
+        <div className="flex items-center justify-between">
+          <button onClick={onBack} className="p-2 text-[#F9FAFB] hover:bg-[#374151] rounded-lg">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <span className="font-semibold text-white truncate">{rental.bookingNo}</span>
+          <div className="w-9" />
+        </div>
+        {rental.documentNumber && !billRefEdit && (
+          <p className="text-[13.8px] font-bold text-white mt-1 px-1">Bill: {rental.documentNumber}</p>
+        )}
+        <DetailStaffHeader salesmanName={rental.salesmanName} createdByName={rental.createdByName} />
+      </div>
+
+      <div className="p-4 space-y-4">
+        {canEditBooking && (
+          <button
+            type="button"
+            onClick={() => onEditBooking?.(rental.id)}
+            className="w-full py-3 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-xl text-white font-medium"
+          >
+            Edit Booking
+          </button>
+        )}
+        {canEditBillRef && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-[#9CA3AF]">Bill / manual ref #</h3>
+              {!billRefEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillRefDraft(rental.documentNumber ?? '');
+                    setBillRefEdit(true);
+                  }}
+                  className="p-1.5 text-[#9CA3AF] hover:text-white"
+                  aria-label="Edit bill reference"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {billRefEdit ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={billRefDraft}
+                  onChange={(e) => setBillRefDraft(e.target.value)}
+                  className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+                  placeholder="e.g. A 109"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBillRefEdit(false)}
+                    className="flex-1 py-2 border border-[#374151] rounded-lg text-sm text-[#9CA3AF]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={metaSaving}
+                    onClick={() => void saveBillRef()}
+                    className="flex-1 py-2 bg-[#8B5CF6] rounded-lg text-sm text-white font-medium disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-white text-sm">{rental.documentNumber || '—'}</p>
+            )}
+          </div>
+        )}
+
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <div className="mb-3">
+            <RentalWorkflowBadges status={rental.status} due={rental.dueAmount} />
+          </div>
+          <div className="flex items-center gap-2 text-[#9CA3AF] mb-1">
+            <User className="w-4 h-4" />
+            <span className="text-white font-medium">{rental.customerName}</span>
+          </div>
+          {rental.customerPhone && (
+            <p className="text-sm text-[#9CA3AF] ml-6">{rental.customerPhone}</p>
+          )}
+          <div className="flex gap-4 mt-3 text-sm text-[#9CA3AF]">
+            <span className="flex items-center gap-1">
+              <Calendar className="w-4 h-4" />
+              {formatDate(rental.pickupDate)} → {formatDate(rental.returnDate)}
+            </span>
+          </div>
+          {rental.branchName && (
+            <p className="text-xs text-[#6B7280] mt-1">{rental.branchName}</p>
+          )}
+        </div>
+
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
+            <Package className="w-4 h-4" /> Items
+          </h3>
+          <ul className="space-y-2">
+            {rental.items.map((i) => (
+              <li key={i.id} className="flex justify-between text-sm">
+                <span className="text-white">{i.productName} × {i.quantity}</span>
+                <span className="text-[#10B981]">Rs. {i.total.toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
+            <DollarSign className="w-4 h-4" /> Amounts
+          </h3>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-[#9CA3AF]">Total</span>
+            <span className="text-white">Rs. {rental.totalAmount.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-[#9CA3AF]">Paid</span>
+            <span className="text-[#10B981]">Rs. {rental.paidAmount.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-[#9CA3AF]">Due</span>
+            <span className="text-[#F59E0B]">Rs. {rental.dueAmount.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <AttachmentsSection items={bookingAttachments} onOpenPreview={openAttachmentPreview} />
+        {canAddAttachments && companyId && (
+          <button
+            type="button"
+            onClick={() => setAttachmentsSheetOpen(true)}
+            className="w-full py-3 bg-[#1F2937] border border-[#374151] hover:border-[#8B5CF6]/50 rounded-xl text-[#C4B5FD] font-medium flex items-center justify-center gap-2"
+          >
+            <Paperclip className="w-4 h-4" />
+            {bookingAttachments.length > 0 ? 'Add / update attachments' : 'Add attachments'}
+          </button>
+        )}
+
+        {hasSecurityDoc && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Documents received
+            </h3>
+            {rental.securityDocumentType && (
+              <p className="text-sm text-white">
+                Type: <span className="text-[#D1D5DB]">{rental.securityDocumentType}</span>
+              </p>
+            )}
+            {rental.securityDocumentNumber && (
+              <p className="text-sm text-white mt-1">
+                Number: <span className="text-[#D1D5DB]">{rental.securityDocumentNumber}</span>
+              </p>
+            )}
+            {rental.securityStatus && (
+              <p className="text-xs text-[#6B7280] mt-1 capitalize">Status: {rental.securityStatus}</p>
+            )}
+            {rental.securityDocumentImageUrl && (
+              <a
+                href={rental.securityDocumentImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-2 text-xs text-[#3B82F6] underline"
+              >
+                View document image
+              </a>
+            )}
+          </div>
+        )}
+
+        {rental.payments.length > 0 && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
+              <CreditCard className="w-4 h-4" /> Payments
+            </h3>
+            <ul className="space-y-2">
+              {rental.payments.map((p) => {
+                const editTargetId = p.sourcePaymentId || p.journalEntryId || null;
+                const rowBody = (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
+                      <p className="text-xs text-[#9CA3AF]">{p.method} • {p.paymentDate}</p>
+                      {p.referenceNo && p.referenceNo !== '—' && (
+                        <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>
+                      )}
+                      {p.notes && (
+                        <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>
+                      )}
+                      {!p.referenceNo && p.reference && (
+                        <p className="text-xs text-[#6B7280]">{p.reference}</p>
+                      )}
+                      {editTargetId ? (
+                        <p className="text-[10px] text-[#6B7280] mt-0.5">Tap to view / edit</p>
+                      ) : null}
+                    </div>
+                    {editTargetId ? (
+                      <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0 mt-0.5" />
+                    ) : null}
+                  </>
+                );
+                return (
+                  <li key={p.id} className="border-b border-[#374151] last:border-0">
+                    {editTargetId ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewPaymentId(editTargetId)}
+                        className="w-full flex justify-between items-start text-sm py-2 gap-2 text-left hover:bg-[#374151]/40 rounded-lg -mx-1 px-1 transition-colors"
+                      >
+                        {rowBody}
+                      </button>
+                    ) : (
+                      <div className="flex justify-between items-start text-sm py-2 gap-2">{rowBody}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex flex-wrap gap-2 pt-4">
+          {canReturn && (
+            <button
+              onClick={() => setReturnOpen(true)}
+              disabled={actionLoading}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-white rounded-lg font-medium"
+            >
+              <CornerDownLeft className="w-4 h-4" /> Receive Return
+            </button>
+          )}
+          {canPickup && (
+            <button
+              onClick={() => setPickupOpen(true)}
+              disabled={actionLoading}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
+            >
+              <Truck className="w-4 h-4" /> Mark Picked Up
+            </button>
+          )}
+          {!['returned', 'cancelled'].includes(rental.status) && rental.dueAmount > 0 && (
+            <button
+              onClick={() => setPaymentOpen(true)}
+              disabled={actionLoading}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-50 text-white rounded-lg font-medium"
+            >
+              <CreditCard className="w-4 h-4" /> Add Payment
+            </button>
+          )}
+          {canCancel && (
+            <button
+              onClick={handleCancel}
+              disabled={actionLoading}
+              className="flex items-center gap-2 px-4 py-2.5 border border-[#F59E0B] text-[#F59E0B] hover:bg-[#F59E0B]/10 rounded-lg font-medium"
+            >
+              <Ban className="w-4 h-4" /> Cancel
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={actionLoading}
+              className="flex items-center gap-2 px-4 py-2.5 border border-red-500 text-red-400 hover:bg-red-500/10 rounded-lg font-medium"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+          )}
+        </div>
+      </div>
+
+      {returnOpen && (
+        <RentalReturnModal
+          rental={rental}
+          companyId={companyId}
+          branchId={rental.branchId ?? null}
+          onClose={() => setReturnOpen(false)}
+          onConfirm={handleReturn}
+          loading={actionLoading}
+        />
+      )}
+      {paymentOpen && companyId && (
+        <RentalAddPaymentModal
+          rentalId={rentalId}
+          companyId={companyId}
+          branchId={rental.branchId ?? null}
+          userId={effectiveUserId || null}
+          bookingNo={rental.bookingNo}
+          customerName={rental.customerName}
+          customerPhone={rental.customerPhone ?? null}
+          totalAmount={rental.totalAmount}
+          paidAmount={rental.paidAmount}
+          dueAmount={rental.dueAmount}
+          onClose={() => setPaymentOpen(false)}
+          onSuccess={handlePaymentSuccess}
+        />
+      )}
+      {pickupOpen && companyId && (
+        <RentalPickupModal
+          rental={rental}
+          companyId={companyId}
+          onClose={() => setPickupOpen(false)}
+          onConfirm={handlePickup}
+          onAddPayment={() => setPaymentOpen(true)}
+          loading={actionLoading}
+        />
+      )}
+      {attachmentsSheetOpen && companyId && (
+        <RentalAddAttachmentsSheet
+          open={attachmentsSheetOpen}
+          companyId={companyId}
+          rentalId={rental.id}
+          existingRaw={rental.attachments}
+          bookingLabel={rental.bookingNo}
+          onClose={() => setAttachmentsSheetOpen(false)}
+          onSaved={(merged) => {
+            setRental((prev) => (prev ? { ...prev, attachments: merged } : prev));
+            onRefresh();
+          }}
+        />
+      )}
+      {AttachmentPreviewPortal}
+      {viewPaymentId && companyId && (
+        <TransactionDetailSheet
+          paymentId={viewPaymentId}
+          companyId={companyId}
+          branchId={rental.branchId ?? null}
+          onClose={() => {
+            setViewPaymentId(null);
+            load();
+            onRefresh();
+          }}
+          onCancelled={() => {
+            setViewPaymentId(null);
+            load();
+            onRefresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}

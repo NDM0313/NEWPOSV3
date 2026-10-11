@@ -1,0 +1,2334 @@
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { invalidateSalesListCache, listCacheKeys } from '../lib/listCache';
+import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
+import { readThroughCache } from '../lib/offlineData';
+import { getNextDocumentNumber, getNextDocumentNumberGlobal } from './documentNumber';
+import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
+import { localNowDateString } from '../utils/localDate';
+import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import type { ExtraExpense } from '../types/saleExtras';
+import { persistSaleChargesAfterCreate } from './saleCharges';
+import { resolveSaleCommissionFields, applySaleCommissionPatch } from '../lib/saleCommission';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeCustomerPaymentNotesForRpc,
+  composeSalePaymentNotes,
+} from '../utils/saleNotesComposition';
+import { dispatchMobileAccountingInvalidated } from '../lib/dataInvalidationBus';
+import { readSaleBillRef } from '../utils/saleBillRef';
+import { buildBespokeMetadataForPersist } from '../types/bespoke';
+
+export interface CreateSaleInput {
+  companyId: string;
+  branchId: string;
+  customerId: string | null;
+  customerName: string;
+  contactNumber?: string;
+  items: {
+    productId: string;
+    variationId?: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    unitPrice: number;
+    discountAmount?: number;
+    taxAmount?: number;
+    total: number;
+    /** Packing: { total_boxes, total_pieces } for sale_items.packing_details + stock_movements */
+    packingDetails?: { total_boxes?: number; total_pieces?: number };
+    /** Bespoke parent line metadata (measurements, notes — not fabric/charges). */
+    customizationDetails?: Record<string, unknown> | null;
+    bespokeParentItemId?: string | null;
+    parentLineIndex?: number | null;
+  }[];
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  expenses: number;
+  total: number;
+  paymentMethod: string;
+  /** For split payment: paid = cash + bank, due = credit */
+  paidAmount?: number;
+  dueAmount?: number;
+  /** Account ID for payment (required when paidAmount > 0, for accounting) */
+  paymentAccountId?: string | null;
+  notes?: string;
+  /** Customer bill book / REF # — `sales.customer_bill_ref` (separate from notes). */
+  billRef?: string | null;
+  isStudio: boolean;
+  userId: string;
+  /** public.users.id — for salesman commission auto-assign (not auth UUID). */
+  profileUserId?: string | null;
+  actorRole?: string | null;
+  salesmanId?: string | null;
+  commissionPercent?: number | null;
+  /** Document / invoice date (YYYY-MM-DD, local). Regular + studio `sales.invoice_date`. */
+  invoiceDate?: string;
+  /** Studio: order date (YYYY-MM-DD) */
+  orderDate?: string;
+  /** Studio: deadline (YYYY-MM-DD) */
+  deadline?: string;
+  /** Studio: replica / outfit title → studio_productions.design_name */
+  studioDesignName?: string;
+  /** Payment date when paid > 0 (YYYY-MM-DD). */
+  paymentDate?: string;
+  /** Composed payment row notes when paid > 0 (includes Bill/REF auto description). */
+  paymentNotes?: string | null;
+  /** Point of sale — PS- invoice sequence (web parity). */
+  isPOS?: boolean;
+  /** Regular sale lifecycle (default order). Studio always order. POS always final. */
+  targetStatus?: 'draft' | 'quotation' | 'order' | 'final';
+  /** Document type: quotation for non-final; invoice when final (web parity). */
+  documentType?: 'invoice' | 'quotation';
+  /** Line-level extra expenses (stitching, etc.) — persisted to sale_charges + extra_expenses. */
+  extraExpenses?: ExtraExpense[];
+  /** Customer shipping charge (shipment_charges + sale_charges type shipping). */
+  shippingCharge?: number;
+  /** When true, extras on customer bill (ON). When false, package-inclusive (OFF). */
+  chargeExtrasToCustomer?: boolean;
+  /** @deprecated use chargeExtrasToCustomer */
+  excludeExtraExpensesFromCustomerBill?: boolean;
+}
+
+export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final' | 'cancelled';
+
+function isPostedSaleStatus(status: string | null | undefined): boolean {
+  return String(status ?? '').toLowerCase() === 'final';
+}
+
+function isPreFinalSaleStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? '').toLowerCase();
+  return s === 'draft' || s === 'quotation' || s === 'order';
+}
+
+/** True when document number is a pre-final lifecycle stage (not SL/INV/POS). */
+function isPreFinalSaleDocumentNo(no: string | null | undefined): boolean {
+  const n = String(no ?? '').trim().toUpperCase();
+  if (!n) return false;
+  return (
+    n.startsWith('DRAFT-') ||
+    n.startsWith('SDR-') ||
+    n.startsWith('QT-') ||
+    n.startsWith('SQT-') ||
+    n.startsWith('SO-') ||
+    n.startsWith('SOR-')
+  );
+}
+
+function saleRowNeedsFinalInvoiceAllocation(row: Record<string, unknown>): boolean {
+  const inv = String(row.invoice_no ?? '').trim();
+  if (!inv) return true;
+  return isPreFinalSaleDocumentNo(inv);
+}
+
+function finalSaleDocumentSequenceKey(row: Record<string, unknown>): 'SL' | 'STD' | 'PS' {
+  const isStudio =
+    row.is_studio === true ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('STD-') ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('ST-');
+  if (isStudio) return 'STD';
+  const inv = String(row.invoice_no ?? '').trim();
+  if (/^POS-/i.test(inv)) return 'PS';
+  return 'SL';
+}
+
+function isSalesInvoiceNoUniqueViolation(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err || err.code !== '23505') return false;
+  const m = String(err.message || '');
+  return m.includes('idx_sales_company_invoice_no_when_set') || (m.includes('invoice_no') && m.includes('duplicate key'));
+}
+
+/** Allocate SL/STD/PS invoice_no when finalizing if missing or still SDR/SQT/SOR. */
+async function ensureFinalSaleInvoiceNoAllocated(
+  saleId: string,
+  row: Record<string, unknown>,
+): Promise<{ row: Record<string, unknown>; error: string | null }> {
+  if (!saleRowNeedsFinalInvoiceAllocation(row)) return { row, error: null };
+  const companyId = String(row.company_id ?? '');
+  if (!companyId) return { row, error: 'Cannot finalize: company_id missing.' };
+  const seq = finalSaleDocumentSequenceKey(row);
+  const maxAttempts = 12;
+  let lastDup: string | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let nextNo: string;
+    try {
+      nextNo = await getNextDocumentNumberGlobal(companyId, seq);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { row, error: `Cannot finalize: could not allocate invoice number (${seq}). ${msg}` };
+    }
+    const { data: patched, error } = await supabase
+      .from('sales')
+      .update({ invoice_no: nextNo, type: 'invoice' })
+      .eq('id', saleId)
+      .select()
+      .single();
+    if (!error) {
+      return { row: (patched ?? { ...row, invoice_no: nextNo, type: 'invoice' }) as Record<string, unknown>, error: null };
+    }
+    if (isSalesInvoiceNoUniqueViolation(error)) {
+      lastDup = nextNo;
+      continue;
+    }
+    return { row, error: `Cannot finalize: failed to save invoice number: ${error.message}` };
+  }
+  return {
+    row,
+    error: `Cannot finalize: invoice number still conflicts after ${maxAttempts} attempts (last tried: ${lastDup ?? 'n/a'}).`,
+  };
+}
+
+export { readSaleBillRef } from '../utils/saleBillRef';
+
+/** Persist customer bill ref; tries customer_bill_ref then legacy column names. */
+export async function patchSaleBillRef(
+  saleId: string,
+  billRef: string | null | undefined,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const v = billRef != null ? String(billRef).trim() : '';
+  const payload = v ? v : null;
+  const attempts: Record<string, string | null>[] = [
+    { customer_bill_ref: payload },
+    { reference: payload },
+    { ref_no: payload },
+  ];
+  for (const upd of attempts) {
+    const { error } = await supabase.from('sales').update(upd).eq('id', saleId);
+    if (!error) return { error: null };
+    if (error.code !== '42703' && !String(error.message || '').toLowerCase().includes('column')) {
+      return { error: error.message };
+    }
+  }
+  return { error: null };
+}
+
+const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
+export const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+export const MAX_SALE_ATTACHMENTS_COUNT = 5;
+
+export type SaleAttachmentMeta = { url: string; name: string };
+
+/** Merge attachment lists; dedupe by url; cap at MAX_SALE_ATTACHMENTS_COUNT. */
+export function mergeSaleAttachments(
+  existing: SaleAttachmentMeta[],
+  uploaded: SaleAttachmentMeta[],
+): SaleAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: SaleAttachmentMeta[] = [];
+  const push = (a: SaleAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_SALE_ATTACHMENTS_COUNT);
+}
+
+async function fetchSaleAttachments(saleId: string): Promise<SaleAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('sales').select('attachments').eq('id', saleId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Upload new files and merge onto existing sale.attachments (max 5 total). */
+export async function appendSaleAttachments(
+  companyId: string,
+  saleId: string,
+  files: File[],
+  existing?: SaleAttachmentMeta[],
+): Promise<{ data: SaleAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchSaleAttachments(saleId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchSaleAttachments(saleId));
+  const slotsLeft = MAX_SALE_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_SALE_ATTACHMENTS_COUNT} attachments per sale.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadSaleAttachments(companyId, saleId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergeSaleAttachments(prior, upload.data);
+  const upd = await updateSaleAttachments(saleId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
+}
+
+/** Upload files to sale-attachments bucket (path: companyId/saleId/...). */
+export async function uploadSaleAttachments(
+  companyId: string,
+  saleId: string,
+  files: File[]
+): Promise<{ data: { url: string; name: string }[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) return { data: [], error: null };
+
+  const uploaded: { url: string; name: string }[] = [];
+  const prefix = `${companyId}/${saleId}/${Date.now()}`;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    if (file.size > MAX_SALE_ATTACHMENT_BYTES) {
+      return { data: uploaded, error: `File "${file.name}" is too large. Max 10MB per file.` };
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    try {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: SALE_ATTACHMENTS_BUCKET,
+          path,
+          file,
+          upsert: true,
+          logTag: 'sale-attachments',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+      uploaded.push({ url: ref, name: file.name });
+    } catch (err) {
+      console.warn('[uploadSaleAttachments]', (err as Error)?.message ?? err);
+      const classified = classifyStorageUploadError(err, file.name);
+      if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+        return { data: uploaded, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG };
+      }
+      const bucketMissing = classified.kind === 'bucket';
+      return {
+        data: uploaded,
+        error: bucketMissing
+          ? 'Storage bucket "sale-attachments" not found. Create it in Supabase Storage first.'
+          : classified.userMessage,
+      };
+    }
+  }
+
+  return { data: uploaded, error: null };
+}
+
+/** Persist attachment metadata on the sale row (after upload). */
+export async function updateSaleAttachments(
+  saleId: string,
+  attachments: { url: string; name: string }[]
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('sales')
+    .update({ attachments: attachments.length > 0 ? attachments : null })
+    .eq('id', saleId);
+  if (error) {
+    if (error.code === 'PGRST204' && String(error.message || '').includes('attachments')) {
+      return { error: null };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Change sale lifecycle status (draft / quotation / order / final / cancelled). */
+export async function updateSaleStatus(
+  saleId: string,
+  status: SaleDocumentStatus,
+): Promise<{ data: { id: string; status: string; invoice_no?: string | null } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data: prior } = await supabase
+    .from('sales')
+    .select('id, status, company_id, invoice_no, order_no, is_studio, type')
+    .eq('id', saleId)
+    .maybeSingle();
+  if (!prior) return { data: null, error: 'Sale not found.' };
+  const prev = String((prior as { status?: string }).status ?? '').toLowerCase();
+  const next = String(status ?? '').toLowerCase();
+
+  // Web parity: posted (final) sales cannot demote to draft/quotation/order — cancel instead.
+  if (isPostedSaleStatus(prev) && isPreFinalSaleStatus(next)) {
+    return {
+      data: null,
+      error: 'Final sale cannot be moved back. Cancel it instead.',
+    };
+  }
+
+  // Finalize path: allocate SL/STD/PS before status flip so JE references the invoice number.
+  if (isPostedSaleStatus(status) && !isPostedSaleStatus(prev)) {
+    const alloc = await ensureFinalSaleInvoiceNoAllocated(saleId, prior as Record<string, unknown>);
+    if (alloc.error) return { data: null, error: alloc.error };
+
+    const { data, error } = await supabase
+      .from('sales')
+      .update({ status: 'final', type: 'invoice' })
+      .eq('id', saleId)
+      .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+      .single();
+    if (error) {
+      // Best-effort: leave allocated invoice_no; do not flip status.
+      return { data: null, error: error.message };
+    }
+
+    const stockErr = await ensureSaleStockPosted(saleId);
+    if (stockErr) {
+      await supabase.from('sales').update({ status: prev }).eq('id', saleId);
+      return { data: null, error: stockErr };
+    }
+    const { error: postErr } = await supabase.rpc('record_sale_with_accounting', { p_sale_id: saleId });
+    if (postErr) {
+      return { data: null, error: `Sale accounting failed: ${postErr.message}` };
+    }
+
+    const { data: saleRow } = await supabase
+      .from('sales')
+      .select('subtotal, salesman_id, commission_percent, created_by')
+      .eq('id', saleId)
+      .maybeSingle();
+    if (saleRow) {
+      const subtotal = Number((saleRow as { subtotal?: number }).subtotal) || 0;
+      const existingSalesman = (saleRow as { salesman_id?: string | null }).salesman_id;
+      let profileUserId: string | null = null;
+      let actorRole: string | null = null;
+      const createdBy = (saleRow as { created_by?: string | null }).created_by;
+      if (createdBy) {
+        const { data: prof } = await supabase
+          .from('users')
+          .select('id, role')
+          .or(`id.eq.${createdBy},auth_user_id.eq.${createdBy}`)
+          .maybeSingle();
+        profileUserId = (prof as { id?: string } | null)?.id ?? null;
+        actorRole = (prof as { role?: string } | null)?.role ?? null;
+      }
+      const commissionPatch = await resolveSaleCommissionFields({
+        profileUserId,
+        subtotal,
+        actorRole,
+        explicitSalesmanId: existingSalesman ?? undefined,
+        explicitCommissionPercent: (saleRow as { commission_percent?: number | null }).commission_percent,
+      });
+      const commissionErr = await applySaleCommissionPatch(saleId, commissionPatch);
+      if (commissionErr) {
+        console.warn('[sales] Commission patch on finalize:', commissionErr);
+      }
+    }
+
+    return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from('sales')
+    .update({ status })
+    .eq('id', saleId)
+    .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+    .single();
+  if (error) return { data: null, error: error.message };
+
+  return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
+}
+
+async function ensureSaleStockPosted(saleId: string): Promise<string | null> {
+  const { data: stockRaw, error: movErr } = await supabase.rpc('ensure_sale_stock_movements', {
+    p_sale_id: saleId,
+  });
+  if (movErr) return `Inventory update failed: ${movErr.message}`;
+  const stockResult = stockRaw as { success?: boolean; error?: string } | null;
+  if (stockResult?.success === false) {
+    return `Inventory update failed: ${stockResult.error ?? 'Unknown error'}`;
+  }
+  return null;
+}
+
+export async function createSale(input: CreateSaleInput): Promise<{ data: { id: string; invoiceNo: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: 'App not configured.' };
+  }
+
+  const {
+    companyId,
+    branchId,
+    customerId,
+    customerName,
+    contactNumber,
+    items,
+    subtotal,
+    discountAmount,
+    taxAmount,
+    expenses,
+    total,
+    paymentMethod,
+    notes,
+    billRef,
+    isStudio,
+    userId,
+    profileUserId,
+    actorRole,
+    salesmanId: explicitSalesmanId,
+    commissionPercent: explicitCommissionPercent,
+    paidAmount,
+    dueAmount,
+    paymentAccountId,
+    invoiceDate,
+    orderDate,
+    deadline,
+    studioDesignName,
+    paymentDate,
+    paymentNotes,
+    isPOS,
+    targetStatus: targetStatusInput,
+    documentType,
+    extraExpenses,
+    shippingCharge,
+    chargeExtrasToCustomer: chargeExtrasToCustomerInput,
+    excludeExtraExpensesFromCustomerBill,
+  } = input;
+  const chargeExtrasToCustomer =
+    chargeExtrasToCustomerInput ??
+    (excludeExtraExpensesFromCustomerBill === true ? false : true);
+
+  if (!companyId || !branchId || !userId) {
+    return { data: null, error: 'Missing company, branch, or user.' };
+  }
+  if (!items.length) {
+    return { data: null, error: 'No items in sale.' };
+  }
+
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch on the Branch screen or in Settings to create sales.',
+    );
+  } catch (err) {
+    return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
+  }
+
+  const totalNum = Number(total) || 0;
+  const targetStatus: SaleDocumentStatus = isStudio
+    ? 'order'
+    : isPOS
+      ? 'final'
+      : (targetStatusInput ?? 'order');
+  const postStockAndAccounting = isPostedSaleStatus(targetStatus);
+  const isCredit = String(paymentMethod || '').toLowerCase() === 'credit';
+  const isSplit = paidAmount != null && dueAmount != null;
+  const paidNonStudio = postStockAndAccounting
+    ? isSplit
+      ? Number(paidAmount)
+      : isCredit
+        ? 0
+        : totalNum
+    : 0;
+  const dueNonStudio = postStockAndAccounting
+    ? isSplit
+      ? Number(dueAmount)
+      : isCredit
+        ? totalNum
+        : 0
+    : totalNum;
+  /** Web parity: new studio sale is customer order only — no payments, no GL/stock until finalize (Generate Bill). */
+  const paid = isStudio ? 0 : paidNonStudio;
+  const due = isStudio ? totalNum : dueNonStudio;
+  /** Web parity: defer paid_amount on header when payment posts via record_payment_with_accounting. */
+  const paymentToRecord = !isStudio && paid > 0 ? paid : 0;
+  const headerPaid = paymentToRecord > 0 ? 0 : paid;
+  const headerDue = paymentToRecord > 0 ? totalNum : due;
+  const headerPaymentStatus =
+    paymentToRecord > 0 ? 'unpaid' : due > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid';
+
+  const defaultDay = localNowDateString();
+  const invoiceFromInput =
+    invoiceDate != null && String(invoiceDate).trim() !== '' ? String(invoiceDate).trim().slice(0, 10) : null;
+
+  let saleId = '';
+  /** Invoice / order ref shown after save (SL-… for regular, STD-… for studio, PS-… for POS). */
+  let docNo = '';
+
+  if (isStudio) {
+    /**
+     * Web parity: SalesContext uses `get_next_document_number_global('STD')` + direct `sales` insert
+     * (`order_no`, `invoice_no` null). Mobile previously used `create_sale_document_header`, which allocates via
+     * `generate_document_number('studio')` inside Postgres — a different allocator than web’s global STD counter.
+     */
+    const invoiceDateStr =
+      invoiceFromInput ??
+      (orderDate != null && String(orderDate).trim() !== ''
+        ? String(orderDate).trim().slice(0, 10)
+        : defaultDay);
+    const deadlineVal =
+      deadline != null && String(deadline).trim() !== '' ? String(deadline).trim().slice(0, 10) : null;
+
+    let orderNo: string;
+    try {
+      orderNo = await getNextDocumentNumber(companyId, effectiveBranchId, 'studio');
+    } catch (e) {
+      return { data: null, error: (e as Error).message ?? 'Failed to allocate studio order number.' };
+    }
+
+    const baseStudioRow = (): Record<string, unknown> => ({
+      company_id: companyId,
+      branch_id: effectiveBranchId,
+      invoice_no: null,
+      order_no: orderNo,
+      invoice_date: invoiceDateStr,
+      customer_id: customerId || null,
+      customer_name: customerName || 'Walk-in',
+      contact_number: contactNumber ?? null,
+      type: 'quotation',
+      status: 'order',
+      payment_status: 'unpaid',
+      payment_method: paymentMethod || 'Credit',
+      subtotal: Number(subtotal) || 0,
+      discount_amount: Number(discountAmount) || 0,
+      tax_amount: Number(taxAmount) || 0,
+      expenses: Number(expenses) || 0,
+      total: totalNum,
+      paid_amount: 0,
+      due_amount: totalNum,
+      notes: notes ?? null,
+      created_by: userId,
+      ...(deadlineVal ? { deadline: deadlineVal } : {}),
+    });
+
+    const insertStudio = (row: Record<string, unknown>) =>
+      supabase.from('sales').insert(row).select('id').single();
+
+    let row: Record<string, unknown> = { ...baseStudioRow(), is_studio: true };
+    let ins = await insertStudio(row);
+
+    const isUniqueOrderNo = (err: { code?: string; message?: string } | null) =>
+      !!err && (err.code === '23505' || String(err.message || '').includes('sales_company_branch_order_unique'));
+
+    const colMissing = (err: { code?: string; message?: string } | null) =>
+      !!err && (err.code === '42703' || String(err.message || '').toLowerCase().includes('is_studio'));
+
+    if (ins.error && colMissing(ins.error)) {
+      ins = await insertStudio(baseStudioRow());
+      if (!ins.error && ins.data?.id) {
+        await supabase.from('sales').update({ is_studio: true }).eq('id', (ins.data as { id: string }).id);
+      }
+    }
+
+    if (ins.error && isUniqueOrderNo(ins.error)) {
+      try {
+        orderNo = await getNextDocumentNumber(companyId, effectiveBranchId, 'studio');
+        row = { ...baseStudioRow(), order_no: orderNo, is_studio: true };
+        ins = await insertStudio(row);
+        if (ins.error && colMissing(ins.error)) {
+          ins = await insertStudio({ ...baseStudioRow(), order_no: orderNo });
+          if (!ins.error && ins.data?.id) {
+            await supabase.from('sales').update({ is_studio: true }).eq('id', (ins.data as { id: string }).id);
+          }
+        }
+      } catch (e) {
+        return { data: null, error: (e as Error).message ?? 'Failed to retry studio order.' };
+      }
+    }
+
+    if (ins.error) {
+      return { data: null, error: ins.error.message ?? 'Failed to create studio sale.' };
+    }
+    if (!ins.data?.id) {
+      return { data: null, error: 'Failed to create studio sale.' };
+    }
+    saleId = (ins.data as { id: string }).id;
+    docNo = orderNo;
+  } else {
+    const invDate = invoiceFromInput ?? defaultDay;
+    const salePayload: Record<string, unknown> = {
+      invoice_date: invDate,
+      customer_id: customerId || null,
+      customer_name: customerName || 'Walk-in',
+      contact_number: contactNumber || null,
+      subtotal: Number(subtotal) || 0,
+      discount_amount: Number(discountAmount) || 0,
+      tax_amount: Number(taxAmount) || 0,
+      expenses: Number(expenses) || 0,
+      total: totalNum,
+      notes: notes || null,
+    };
+    if (deadline != null && deadline !== '') salePayload.deadline = deadline;
+
+    salePayload.type = documentType ?? 'invoice';
+    salePayload.status = targetStatus;
+    salePayload.payment_status = postStockAndAccounting ? headerPaymentStatus : 'unpaid';
+    salePayload.payment_method = paymentMethod || 'Cash';
+    salePayload.paid_amount = headerPaid;
+    salePayload.due_amount = headerDue;
+
+    if (isPOS) {
+      let posInserted = false;
+      for (let posTry = 0; posTry < 12 && !posInserted; posTry++) {
+        docNo = await getNextDocumentNumber(companyId, effectiveBranchId, 'pos');
+        const { data: posIns, error: posErr } = await supabase
+          .from('sales')
+          .insert({
+            company_id: companyId,
+            branch_id: effectiveBranchId,
+            invoice_no: docNo,
+            invoice_date: invDate,
+            customer_id: customerId || null,
+            customer_name: customerName || 'Walk-in',
+            contact_number: contactNumber || null,
+            type: 'invoice',
+            status: 'final',
+            payment_status: headerPaymentStatus,
+            payment_method: paymentMethod || 'Cash',
+            subtotal: Number(subtotal) || 0,
+            discount_amount: Number(discountAmount) || 0,
+            tax_amount: Number(taxAmount) || 0,
+            expenses: Number(expenses) || 0,
+            total: totalNum,
+            paid_amount: headerPaid,
+            due_amount: headerDue,
+            notes: notes || null,
+            created_by: userId,
+          })
+          .select('id')
+          .single();
+
+        if (!posErr && posIns?.id) {
+          saleId = (posIns as { id: string }).id;
+          posInserted = true;
+          break;
+        }
+        const dup =
+          posErr?.code === '23505' ||
+          String(posErr?.message || '').includes('duplicate key') ||
+          String(posErr?.message || '').includes('idx_sales_company_invoice_no');
+        if (!dup) {
+          return { data: null, error: posErr?.message ?? 'Failed to create POS sale.' };
+        }
+      }
+      if (!posInserted) {
+        return { data: null, error: 'Failed to allocate POS invoice number after retries.' };
+      }
+    } else if (!postStockAndAccounting) {
+      /**
+       * Web parity (SalesContext): non-final regular sales use global SDR/SQT/SOR into
+       * draft_no / quotation_no / order_no with invoice_no null — never create_sale_document_header (SL).
+       */
+      const stageSeq =
+        targetStatus === 'draft' ? 'SDR' : targetStatus === 'quotation' ? 'SQT' : 'SOR';
+      const stageCol =
+        targetStatus === 'draft' ? 'draft_no' : targetStatus === 'quotation' ? 'quotation_no' : 'order_no';
+      const deadlineVal =
+        deadline != null && String(deadline).trim() !== '' ? String(deadline).trim().slice(0, 10) : null;
+
+      const isUniqueDocNo = (err: { code?: string; message?: string } | null) =>
+        !!err &&
+        (err.code === '23505' ||
+          String(err.message || '').includes('duplicate key') ||
+          String(err.message || '').includes('sales_company_branch_'));
+
+      let stageInserted = false;
+      for (let tryN = 0; tryN < 12 && !stageInserted; tryN++) {
+        let stageNo: string;
+        try {
+          stageNo = await getNextDocumentNumberGlobal(companyId, stageSeq);
+        } catch (e) {
+          return {
+            data: null,
+            error: (e as Error).message ?? `Failed to allocate ${stageSeq} document number.`,
+          };
+        }
+
+        const row: Record<string, unknown> = {
+          company_id: companyId,
+          branch_id: effectiveBranchId,
+          invoice_no: null,
+          [stageCol]: stageNo,
+          invoice_date: invDate,
+          customer_id: customerId || null,
+          customer_name: customerName || 'Walk-in',
+          contact_number: contactNumber || null,
+          type: 'quotation',
+          status: targetStatus,
+          payment_status: 'unpaid',
+          payment_method: paymentMethod || 'Cash',
+          subtotal: Number(subtotal) || 0,
+          discount_amount: Number(discountAmount) || 0,
+          tax_amount: Number(taxAmount) || 0,
+          expenses: Number(expenses) || 0,
+          total: totalNum,
+          paid_amount: 0,
+          due_amount: totalNum,
+          notes: notes || null,
+          created_by: userId,
+          ...(deadlineVal ? { deadline: deadlineVal } : {}),
+        };
+
+        const { data: stageIns, error: stageErr } = await supabase
+          .from('sales')
+          .insert(row)
+          .select('id')
+          .single();
+
+        if (!stageErr && stageIns?.id) {
+          saleId = (stageIns as { id: string }).id;
+          docNo = stageNo;
+          stageInserted = true;
+          break;
+        }
+        if (!isUniqueDocNo(stageErr)) {
+          return { data: null, error: stageErr?.message ?? 'Failed to create sale.' };
+        }
+      }
+      if (!stageInserted) {
+        return { data: null, error: `Failed to allocate ${stageSeq} number after retries.` };
+      }
+    } else {
+      // Final regular invoice: keep create_sale_document_header (SL + invoice_no + stock/GL path).
+      salePayload.type = 'invoice';
+      salePayload.status = 'final';
+
+      const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
+        p_company_id: companyId,
+        p_branch_id: effectiveBranchId,
+        p_is_studio: false,
+        p_sale: salePayload,
+        p_created_by: userId,
+      });
+
+      if (hdrErr) {
+        return { data: null, error: hdrErr.message };
+      }
+
+      const hdr = hdrRaw as { success?: boolean; sale_id?: string; document_no?: string; error?: string } | null;
+      if (!hdr?.success || !hdr.sale_id) {
+        return { data: null, error: hdr?.error ?? 'Failed to create sale.' };
+      }
+
+      saleId = hdr.sale_id;
+      docNo = String(hdr.document_no ?? '');
+    }
+  }
+
+  if (!saleId) {
+    return { data: null, error: 'Failed to create sale document.' };
+  }
+
+  if (billRef != null && String(billRef).trim() !== '') {
+    const billErr = await patchSaleBillRef(saleId, billRef);
+    if (billErr.error) {
+      return { data: null, error: billErr.error };
+    }
+  }
+
+  /**
+   * Web parity (`insertSaleItemsOrdered`): never send `parent_line_index` to Postgres —
+   * that column does not exist on `sales_items`. Resolve index → `bespoke_parent_item_id` after insert.
+   */
+  type PreparedItem = {
+    row: Record<string, unknown>;
+    parentIdx: number | null;
+  };
+  const prepared: PreparedItem[] = items.map((item) => {
+    const row: Record<string, unknown> = {
+      sale_id: saleId,
+      product_id: item.productId,
+      variation_id: item.variationId || null,
+      product_name: item.productName,
+      sku: item.sku || '—',
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      discount_amount: item.discountAmount ?? 0,
+      tax_amount: item.taxAmount ?? 0,
+      total: item.total,
+    };
+    if (item.packingDetails && (item.packingDetails.total_boxes != null || item.packingDetails.total_pieces != null)) {
+      row.packing_details = item.packingDetails;
+    }
+    if (item.customizationDetails != null) {
+      row.customization_details =
+        buildBespokeMetadataForPersist(item.customizationDetails) ?? item.customizationDetails;
+    }
+    const parentIdx =
+      item.parentLineIndex != null && Number.isFinite(Number(item.parentLineIndex))
+        ? Number(item.parentLineIndex)
+        : null;
+    if (parentIdx != null && parentIdx >= 0) {
+      // Parent id resolved after batch insert
+    } else if (item.bespokeParentItemId != null) {
+      row.bespoke_parent_item_id = item.bespokeParentItemId;
+    }
+    return { row, parentIdx };
+  });
+
+  let itemsError: { message: string } | null = null;
+  let insertedIds: (string | null)[] = [];
+  {
+    const payload = prepared.map((p) => p.row);
+    let res = await supabase.from('sales_items').insert(payload).select('id');
+    if (res.error) {
+      if (res.error.code === '42P01' || String(res.error.message).includes('does not exist')) {
+        res = await supabase.from('sale_items').insert(payload).select('id');
+      }
+    }
+    if (res.error) {
+      itemsError = res.error;
+    } else {
+      insertedIds = (res.data ?? []).map((r: { id?: string }) => r.id ?? null);
+    }
+  }
+
+  if (!itemsError && insertedIds.length === prepared.length) {
+    const parentPatches: { id: string; bespoke_parent_item_id: string }[] = [];
+    prepared.forEach((p, idx) => {
+      const parentIdx = p.parentIdx;
+      if (parentIdx == null || parentIdx < 0 || parentIdx >= insertedIds.length) return;
+      const childId = insertedIds[idx];
+      const parentId = insertedIds[parentIdx];
+      if (childId && parentId) {
+        parentPatches.push({ id: childId, bespoke_parent_item_id: parentId });
+      }
+    });
+    if (parentPatches.length > 0) {
+      const patchResults = await Promise.all(
+        parentPatches.map((patch) =>
+          supabase
+            .from('sales_items')
+            .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+            .eq('id', patch.id),
+        ),
+      );
+      const patchFail = patchResults.find((r) => r.error);
+      if (patchFail?.error) {
+        // Retry on legacy table name if needed
+        const retry = await Promise.all(
+          parentPatches.map((patch) =>
+            supabase
+              .from('sale_items')
+              .update({ bespoke_parent_item_id: patch.bespoke_parent_item_id })
+              .eq('id', patch.id),
+          ),
+        );
+        const retryFail = retry.find((r) => r.error);
+        if (retryFail?.error) itemsError = retryFail.error;
+      }
+    }
+  } else if (!itemsError && prepared.length > 0 && insertedIds.length !== prepared.length) {
+    itemsError = { message: 'Sale items insert returned incomplete ids; cannot resolve fabric parent links.' };
+  }
+
+  if (itemsError) {
+    await supabase.from('sales').delete().eq('id', saleId);
+    return { data: null, error: `Failed to save items: ${itemsError.message}` };
+  }
+
+  const commissionPatch = await resolveSaleCommissionFields({
+    profileUserId,
+    subtotal: Number(subtotal) || 0,
+    actorRole,
+    explicitSalesmanId,
+    explicitCommissionPercent,
+  });
+  if (commissionPatch) {
+    const commissionErr = await applySaleCommissionPatch(saleId, commissionPatch);
+    if (commissionErr) {
+      await supabase.from('sales').delete().eq('id', saleId);
+      return { data: null, error: `Failed to save commission: ${commissionErr}` };
+    }
+  }
+
+  const shipCharge = Number(shippingCharge) || 0;
+  const hasExtraLines = extraExpenses?.some((e) => Number(e.amount) > 0) ?? false;
+  const hasChargeLines =
+    hasExtraLines || shipCharge > 0 || (Number(discountAmount) || 0) > 0;
+  if (hasChargeLines) {
+    const chargeErr = await persistSaleChargesAfterCreate({
+      saleId,
+      companyId,
+      userId,
+      extraExpenses,
+      shippingCharge: shipCharge,
+      discountAmount,
+      chargeExtrasToCustomer,
+      saleTotal: totalNum,
+    });
+    if (chargeErr.error) {
+      await supabase.from('sales').delete().eq('id', saleId);
+      return { data: null, error: `Failed to save sale charges: ${chargeErr.error}` };
+    }
+  }
+
+  // Stock OUT only when status is final (order/quotation/draft defer — web + bespoke parity).
+  if (!isStudio && postStockAndAccounting) {
+    const hasStockLines = items.some((item) => item.productId && item.quantity > 0);
+    if (hasStockLines) {
+      const { data: stockRaw, error: movErr } = await supabase.rpc('ensure_sale_stock_movements', {
+        p_sale_id: saleId,
+      });
+      if (movErr) {
+        await supabase.from('sales').delete().eq('id', saleId);
+        return { data: null, error: `Inventory update failed: ${movErr.message}` };
+      }
+      const stockResult = stockRaw as { success?: boolean; error?: string; movements_inserted?: number } | null;
+      if (stockResult?.success === false) {
+        await supabase.from('sales').delete().eq('id', saleId);
+        return {
+          data: null,
+          error: `Inventory update failed: ${stockResult.error ?? 'Unknown error'}`,
+        };
+      }
+    }
+  }
+
+  // Accounting: sale JE only when final.
+  if (!isStudio && postStockAndAccounting) {
+    const { data: postData, error: postErr } = await supabase.rpc(
+      'record_sale_with_accounting',
+      { p_sale_id: saleId },
+    );
+    if (postErr) {
+      return { data: null, error: `Sale accounting failed: ${postErr.message}` };
+    }
+    if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+      const msg = (postData as { error?: string }).error ?? 'Sale accounting failed.';
+      return { data: null, error: msg };
+    }
+  }
+
+  // Post payment via RPC when final and paid > 0.
+  if (postStockAndAccounting && paymentToRecord > 0) {
+    if (!paymentAccountId) {
+      return { data: null, error: 'Payment account required for accounting.' };
+    }
+    const payDate =
+      paymentDate != null && String(paymentDate).trim() !== ''
+        ? String(paymentDate).trim().slice(0, 10)
+        : localNowDateString();
+    const paymentAccountName = paymentAccountId
+      ? await resolvePaymentAccountDisplayName(paymentAccountId)
+      : '';
+    const composedPaymentNotes =
+      paymentNotes?.trim() ||
+      composeSalePaymentNotes({
+        autoNotes: buildCustomerSalePaymentAutoNotes({
+          partyName: customerName,
+          invoiceRef: docNo,
+          customerBillRef: billRef,
+          paymentAccountName,
+          paymentMethod: paymentMethod || 'Cash',
+        }),
+        userNotes: notes,
+      });
+    const { data: payData, error: payErr } = await recordSalePayment({
+      companyId,
+      branchId: effectiveBranchId,
+      saleId,
+      amount: paymentToRecord,
+      paymentMethod: paymentMethod || 'Cash',
+      paymentAccountId,
+      paymentDate: payDate,
+      notes: composedPaymentNotes || undefined,
+      userId,
+    });
+    if (payErr) {
+      return { data: null, error: payErr };
+    }
+    if (!payData?.payment_id) {
+      return { data: null, error: 'Payment failed — no payment id returned.' };
+    }
+  }
+
+  // One unified studio production per sale (single pipeline; sale total is one bill).
+  if (isStudio && items.length > 0) {
+    const productionDate = localNowDateString();
+    const first = items[0];
+    const qtySum = items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+    const quantity = qtySum > 0 ? qtySum : Number(first.quantity) || 1;
+    const designTrim = (studioDesignName ?? '').trim() || null;
+    const { error: prodErr } = await supabase.from('studio_productions').insert({
+      company_id: companyId,
+      branch_id: effectiveBranchId,
+      sale_id: saleId,
+      production_no: docNo,
+      production_date: productionDate,
+      product_id: first.productId,
+      variation_id: first.variationId || null,
+      quantity,
+      status: 'draft' as const,
+      created_by: userId,
+      ...(designTrim ? { design_name: designTrim } : {}),
+    });
+    if (prodErr) {
+      console.warn('[SALES API] Studio production(s) insert failed (sale saved):', prodErr);
+    }
+  }
+
+  await invalidateSalesListCache(companyId);
+  dispatchMobileInvalidated({
+    domain: 'sales',
+    companyId,
+    reason: 'sale-created',
+  });
+
+  return {
+    data: { id: saleId, invoiceNo: docNo },
+    error: null,
+  };
+}
+
+/** Get all sales – matches web saleService.getAllSales (company + optional branch filter) */
+export async function getAllSales(
+  companyId: string,
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
+): Promise<{ data: Array<Record<string, unknown>>; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!companyId) return { data: [], error: 'Company ID required.' };
+
+  const branchKey =
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? branchId
+      : options?.accessibleBranchIds?.length
+        ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
+        : 'all';
+  const cacheKey = listCacheKeys.sales(companyId, branchKey, 'all');
+
+  const onlineFetch = async (): Promise<{
+    data: Array<Record<string, unknown>>;
+    error: string | null;
+  }> => fetchAllSalesOnline(companyId, branchId, options?.accessibleBranchIds);
+
+  const cached = await readThroughCache(cacheKey, onlineFetch, []);
+  return { data: cached.data, error: cached.error };
+}
+
+function applySalesBranchFilter<T extends { eq: (col: string, val: string) => T; in: (col: string, vals: string[]) => T }>(
+  query: T,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): T {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    return query.eq('branch_id', branchId);
+  }
+  if (accessibleBranchIds?.length) {
+    return query.in('branch_id', accessibleBranchIds);
+  }
+  return query;
+}
+
+async function fetchAllSalesOnline(
+  companyId: string,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): Promise<{ data: Array<Record<string, unknown>>; error: string | null }> {
+  let query = supabase
+    .from('sales')
+    .select(`
+      *,
+      customer:contacts(id, name, phone),
+      branch:branches(id, name, code),
+      items:sales_items(*, product:products(*), variation:product_variations(*))
+    `)
+    .eq('company_id', companyId)
+    .order('invoice_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  query = applySalesBranchFilter(query, branchId, accessibleBranchIds);
+
+  const { data, error } = await query;
+
+  if (error) {
+    if (error.code === '42P01' || String(error.message || '').includes('sales_items')) {
+      const retryQuery = supabase
+        .from('sales')
+        .select(`
+          *,
+          customer:contacts(id, name, phone),
+          branch:branches(id, name, code),
+          items:sale_items(*, product:products(*), variation:product_variations(*))
+        `)
+        .eq('company_id', companyId)
+        .order('invoice_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      const retry = applySalesBranchFilter(retryQuery, branchId, accessibleBranchIds);
+      const { data: retryData, error: retryError } = await retry;
+      if (retryError) return { data: [], error: retryError.message };
+      const retryList = (retryData || []) as Array<Record<string, unknown>>;
+      await enrichRowsWithCreatorNames(retryList);
+      const withStudioRetry = await enrichSalesWithStudioChargesBatch(retryList);
+      const withPaymentsRetry = await enrichSalesWithPayments(companyId, withStudioRetry);
+      const enrichedRetry = await enrichSalesWithShipping(withPaymentsRetry);
+      return { data: enrichedRetry, error: null };
+    }
+    return { data: [], error: error.message };
+  }
+
+  const list = (data || []) as Array<Record<string, unknown>>;
+  await enrichRowsWithCreatorNames(list);
+  const withStudio = await enrichSalesWithStudioChargesBatch(list);
+  const withPayments = await enrichSalesWithPayments(companyId, withStudio);
+  const enriched = await enrichSalesWithShipping(withPayments);
+  return { data: enriched, error: null };
+}
+
+/** One sale with the same payment / shipping / studio enrichment as getAllSales (timeline → edit invoice). */
+export async function getSaleEnrichedById(
+  companyId: string,
+  saleId: string,
+): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (!companyId || !saleId) return { data: null, error: 'Company and sale id required.' };
+
+  let row: Record<string, unknown> | null = null;
+
+  const q1 = await supabase
+    .from('sales')
+    .select(
+      `*,
+      customer:contacts(id, name, phone),
+      branch:branches(id, name, code),
+      items:sales_items(*, product:products(*), variation:product_variations(*))`,
+    )
+    .eq('company_id', companyId)
+    .eq('id', saleId)
+    .maybeSingle();
+
+  if (q1.error) {
+    if (q1.error.code === '42P01' || String(q1.error.message || '').includes('sales_items')) {
+      const q2 = await supabase
+        .from('sales')
+        .select(
+          `*,
+          customer:contacts(id, name, phone),
+          branch:branches(id, name, code),
+          items:sale_items(*, product:products(*), variation:product_variations(*))`,
+        )
+        .eq('company_id', companyId)
+        .eq('id', saleId)
+        .maybeSingle();
+      if (q2.error) return { data: null, error: q2.error.message };
+      row = (q2.data || null) as Record<string, unknown> | null;
+    } else {
+      return { data: null, error: q1.error.message };
+    }
+  } else {
+    row = (q1.data || null) as Record<string, unknown> | null;
+  }
+
+  if (!row) return { data: null, error: 'Sale not found.' };
+
+  await enrichRowsWithCreatorNames([row]);
+  const withStudio = await enrichSalesWithStudioChargesBatch([row]);
+  const withPayments = await enrichSalesWithPayments(companyId, withStudio);
+  const enriched = await enrichSalesWithShipping(withPayments);
+  const base = (enriched[0] as Record<string, unknown>) ?? null;
+  if (!base) return { data: null, error: null };
+  const { getSaleChargesBySaleId } = await import('./saleCharges');
+  const { data: charges } = await getSaleChargesBySaleId(saleId);
+  if (charges.length > 0) {
+    return { data: { ...base, charges, sale_charges: charges }, error: null };
+  }
+  return { data: base, error: null };
+}
+
+/** Same as web saleService.getAllSales — studio worker cost from productions (RPC). */
+export async function enrichSalesWithStudioChargesBatch(
+  sales: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!sales.length) return sales;
+  const saleIds = sales.map((s) => s.id as string).filter(Boolean);
+  try {
+    const { data: studioRows } = await supabase.rpc('get_sale_studio_charges_batch', {
+      p_sale_ids: saleIds,
+    });
+    if (studioRows && Array.isArray(studioRows)) {
+      const studioBySale = new Map<string, number>();
+      (studioRows as { sale_id: string; studio_cost: number }[]).forEach((row: { sale_id?: string; studio_cost?: number }) => {
+        const id = row.sale_id;
+        if (id) studioBySale.set(String(id), Number(row.studio_cost) || 0);
+      });
+      return sales.map((s) => {
+        const cost = studioBySale.get(String(s.id));
+        if (cost != null && cost > 0) {
+          return { ...s, studio_charges: cost };
+        }
+        return s;
+      });
+    }
+  } catch {
+    // RPC missing on older DBs — keep sales.studio_charges from row if any
+  }
+  return sales;
+}
+
+/**
+ * Paid / balance same basis as web SalesPage + ViewSaleDetailsDrawer:
+ * - Sum payments.reference_type=sale for this company (do not filter payment.branch_id — receipts often post without matching branch).
+ * - Exclude voided payments.
+ * - Add payment_allocations (manual receipt) where parent payment is not voided.
+ */
+export async function enrichSalesWithPayments(
+  companyId: string,
+  sales: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!sales.length) return sales;
+  const saleIds = sales.map((s) => s.id as string).filter(Boolean);
+  const { data: payData } = await supabase
+    .from('payments')
+    .select('reference_id, amount')
+    .eq('reference_type', 'sale')
+    .eq('company_id', companyId)
+    .in('reference_id', saleIds)
+    .is('voided_at', null);
+
+  const bySale: Record<string, number> = {};
+  for (const p of payData || []) {
+    const refId = String((p as Record<string, unknown>).reference_id || '');
+    if (refId) {
+      bySale[refId] = (bySale[refId] || 0) + Number((p as Record<string, unknown>).amount ?? 0);
+    }
+  }
+
+  try {
+    const { data: allocs } = await supabase
+      .from('payment_allocations')
+      .select('sale_id, allocated_amount, payment_id')
+      .in('sale_id', saleIds);
+    const allocPayIds = [...new Set((allocs || []).map((a: { payment_id?: string }) => a.payment_id).filter(Boolean))] as string[];
+    if (allocPayIds.length > 0) {
+      const { data: parents } = await supabase.from('payments').select('id, voided_at').in('id', allocPayIds);
+      const voidedParent = new Set(
+        (parents || [])
+          .filter((x: { voided_at?: string | null }) => x.voided_at != null && String(x.voided_at).length > 0)
+          .map((x: { id: string }) => String(x.id))
+      );
+      for (const a of allocs || []) {
+        const row = a as { sale_id?: string; payment_id?: string; allocated_amount?: number };
+        const sid = String(row.sale_id || '');
+        if (!sid || voidedParent.has(String(row.payment_id || ''))) continue;
+        bySale[sid] = (bySale[sid] || 0) + (Number(row.allocated_amount) || 0);
+      }
+    }
+  } catch {
+    // payment_allocations may be missing
+  }
+
+  return sales.map((s) => {
+    const id = String(s.id || '');
+    const saleTotal = Number(s.total ?? 0);
+    const studioCharges = Number(s.studio_charges ?? 0);
+    const grandTotal = saleTotal + studioCharges;
+    const totalReceived = bySale[id] || 0;
+    const overpaid = totalReceived > grandTotal + 0.005;
+    const balanceDue = overpaid ? 0 : Math.max(0, grandTotal - totalReceived);
+    const creditBalance = overpaid ? Math.max(0, totalReceived - grandTotal) : 0;
+    return {
+      ...s,
+      total_amount: saleTotal,
+      studio_charges: studioCharges,
+      grand_total: grandTotal,
+      total_received: totalReceived,
+      balance_due: balanceDue,
+      credit_balance: creditBalance,
+    };
+  });
+}
+
+/** Attach first shipment status from sales_with_shipping view (avoids N+1). */
+async function enrichSalesWithShipping(
+  sales: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!sales.length) return sales;
+  const saleIds = sales.map((s) => s.id as string).filter(Boolean);
+  try {
+    const { data: rows } = await supabase
+      .from('sales_with_shipping')
+      .select('id, shipment_status, first_shipment_id')
+      .in('id', saleIds);
+    if (!rows?.length) return sales;
+    const byId = new Map(rows.map((r: Record<string, unknown>) => [(r.id as string), r]));
+    return sales.map((s) => {
+      const row = byId.get(s.id as string);
+      if (!row) return s;
+      return {
+        ...s,
+        shipment_status: row.shipment_status,
+        first_shipment_id: row.first_shipment_id,
+      };
+    });
+  } catch {
+    return sales;
+  }
+}
+
+/** Get studio cost summary for a sale (production status, total studio cost, breakdown, workers). */
+export async function getSaleStudioSummary(
+  saleId: string
+): Promise<{
+  data: {
+    has_studio: boolean;
+    production_status: string;
+    total_studio_cost: number;
+    tasks_completed: number;
+    tasks_total: number;
+    production_duration_days: number | null;
+    completed_at: string | null;
+    breakdown: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>;
+    tasks_with_workers: Array<{
+      task_type: string;
+      cost: number;
+      worker_id?: string;
+      worker_name?: string;
+      created_by?: string;
+      completed_by?: string;
+      completed_at?: string | null;
+    }>;
+  } | null;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured || !saleId) {
+    return { data: null, error: 'Not configured or missing sale ID.' };
+  }
+  const { data, error } = await supabase.rpc('get_sale_studio_summary', {
+    p_sale_id: saleId,
+  });
+  if (error) return { data: null, error: error.message };
+  const raw = data as Record<string, unknown> | null;
+  if (!raw) return { data: null, error: null };
+  return {
+    data: {
+      has_studio: Boolean(raw.has_studio),
+      production_status: String(raw.production_status ?? 'none'),
+      total_studio_cost: Number(raw.total_studio_cost ?? 0),
+      tasks_completed: Number(raw.tasks_completed ?? 0),
+      tasks_total: Number(raw.tasks_total ?? 0),
+      production_duration_days: raw.production_duration_days != null ? Number(raw.production_duration_days) : null,
+      completed_at: raw.completed_at != null ? String(raw.completed_at) : null,
+      breakdown: Array.isArray(raw.breakdown) ? (raw.breakdown as Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>) : [],
+      tasks_with_workers: Array.isArray(raw.tasks_with_workers)
+        ? (raw.tasks_with_workers as Array<{
+            task_type: string;
+            cost: number;
+            worker_id?: string;
+            worker_name?: string;
+            created_by?: string;
+            completed_by?: string;
+            completed_at?: string | null;
+          }>)
+        : [],
+    },
+    error: null,
+  };
+}
+
+/**
+ * Cancel a sale (full void): reverses stock, creates sale_reversal journal entry,
+ * sets status='cancelled'. Idempotent — safe to call again on already-cancelled sales.
+ * Server-side: public.cancel_sale_full_void RPC.
+ */
+export async function cancelSale(
+  saleId: string,
+  opts?: { userId?: string | null; reason?: string | null },
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { data, error } = await supabase.rpc('cancel_sale_full_void', {
+    p_sale_id: saleId,
+    p_user_id: opts?.userId ?? null,
+    p_reason: opts?.reason ?? null,
+  });
+  if (error) return { error: error.message };
+  const res = data as { success?: boolean; error?: string } | null;
+  if (res && res.success === false) return { error: res.error ?? 'Cancel failed' };
+  return { error: null };
+}
+
+/** Record a payment against a sale (Dr Cash/Bank, Cr A/R) via RPC. Respects company_id and branch_id. */
+export async function recordSalePayment(params: {
+  companyId: string;
+  branchId: string;
+  saleId: string;
+  amount: number;
+  paymentMethod: string;
+  paymentAccountId: string;
+  paymentDate?: string;
+  referenceNumber?: string;
+  notes?: string;
+  userId?: string | null;
+}): Promise<{ data: { payment_id: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const {
+    companyId,
+    branchId,
+    saleId,
+    amount,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    referenceNumber,
+    notes,
+    userId,
+  } = params;
+  if (!companyId || !saleId || amount <= 0 || !paymentAccountId) {
+    return { data: null, error: 'Company, sale, amount and payment account are required.' };
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'Branch required for payment.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
+  const normalized = String(paymentMethod || 'cash').toLowerCase();
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    cheque: 'other',
+    'mobile wallet': 'other',
+    mobile_wallet: 'other',
+    wallet: 'other',
+  };
+  const enumMethod = methodMap[normalized] || 'cash';
+  const bankTraceId = referenceNumber?.trim() ?? '';
+  const baseNotes = notes?.trim() ?? '';
+  const composedNotes = bankTraceId
+    ? composeSalePaymentNotes({ autoNotes: baseNotes, bankTraceId })
+    : baseNotes;
+  const dateVal = paymentDate || localNowDateString();
+  const { data: authData } = await supabase.auth.getUser();
+  const createdBy = userId ?? authData?.user?.id ?? null;
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'received',
+    p_reference_type: 'sale',
+    p_reference_id: saleId,
+    p_amount: amount,
+    p_payment_method: enumMethod,
+    p_payment_date: dateVal,
+    p_payment_account_id: paymentAccountId,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
+    p_created_by: createdBy,
+    p_worker_stage_id: null,
+  });
+  if (error) return { data: null, error: error.message };
+  const res = data as { success?: boolean; payment_id?: string; error?: string } | null;
+  if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id }, error: null };
+  return { data: null, error: res?.error ?? 'Payment failed.' };
+}
+
+/** Record customer payment via RPC (atomic: payment + journal Dr Cash/Bank Cr A/R + update sale). Used by mobile Receive Payment screen. */
+export async function recordCustomerPayment(params: {
+  companyId: string;
+  /** Sale branch; resolves like web — same PAY-* numbering as record_payment_with_accounting. */
+  branchId: string | null;
+  customerId: string | null;
+  referenceId: string; // sale id
+  amount: number;
+  accountId: string;
+  paymentMethod: string;
+  paymentDate: string; // YYYY-MM-DD
+  paymentAt?: string | null;
+  notes?: string | null;
+  referenceNumber?: string | null;
+  createdBy?: string | null;
+}): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const {
+    companyId,
+    branchId,
+    customerId,
+    referenceId,
+    amount,
+    accountId,
+    paymentMethod,
+    paymentDate,
+    notes,
+    referenceNumber,
+    createdBy,
+  } = params;
+  if (!companyId || !referenceId || amount <= 0 || !accountId) {
+    return { data: null, error: 'Company, reference (sale), amount and account are required.' };
+  }
+  if (customerId) {
+    const { data: contactRow } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('id', customerId)
+      .maybeSingle();
+    const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+    if (contactName) {
+      await supabase
+        .from('sales')
+        .update({ customer_id: customerId, customer_name: contactName })
+        .eq('id', referenceId);
+    }
+  }
+  const { data: saleMetaRow } = await supabase
+    .from('sales')
+    .select('branch_id, customer_name, invoice_no, customer_bill_ref, notes, reference, ref_no, bill_ref')
+    .eq('id', referenceId)
+    .maybeSingle();
+  const saleMeta = (saleMetaRow ?? {}) as Record<string, unknown>;
+  let branchForResolve = branchId;
+  if (!isRealBranchUuid(branchForResolve)) {
+    const saleBranch = saleMeta.branch_id as string | null | undefined;
+    if (isRealBranchUuid(saleBranch)) {
+      branchForResolve = saleBranch;
+    }
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(companyId, branchForResolve, 'Branch required for payment.');
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
+  const dateVal = paymentDate || localNowDateString();
+  const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
+  const customerBillRef = readSaleBillRef(saleMeta);
+  const partyName = String(saleMeta.customer_name ?? '').trim() || 'Customer';
+  const invoiceRef = String(saleMeta.invoice_no ?? '').trim() || undefined;
+  const paymentAccountName = await resolvePaymentAccountDisplayName(accountId);
+  const composedNotes = composeCustomerPaymentNotesForRpc({
+    partyName,
+    invoiceRef,
+    customerBillRef,
+    paymentAccountName,
+    paymentMethod: paymentMethodLabelForNotes(paymentMethod),
+    combinedNotes: notes,
+    bankTraceId: refTrim || null,
+  });
+  const normalized = String(paymentMethod || 'cash').toLowerCase();
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    cheque: 'other',
+    'mobile wallet': 'other',
+    mobile_wallet: 'other',
+    wallet: 'other',
+  };
+  const enumMethod = methodMap[normalized] || 'cash';
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'received',
+    p_reference_type: 'sale',
+    p_reference_id: referenceId,
+    p_amount: amount,
+    p_payment_method: enumMethod,
+    p_payment_date: dateVal,
+    p_payment_account_id: accountId,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
+    p_created_by: createdBy ?? null,
+    p_worker_stage_id: null,
+  });
+  if (error) return { data: null, error: error.message };
+  const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
+  if (res?.success && res.payment_id) {
+    if (customerId) {
+      const { data: contactRow } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', customerId)
+        .maybeSingle();
+      const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+      if (contactName) {
+        await supabase
+          .from('payments')
+          .update({ contact_id: customerId, contact_name: contactName })
+          .eq('id', res.payment_id);
+      }
+    }
+    if (params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
+    return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
+  }
+  return { data: null, error: res?.error ?? 'Payment failed.' };
+}
+
+function mapPaymentMethodToRpc(paymentMethod: string): 'cash' | 'bank' | 'card' | 'other' {
+  const normalized = String(paymentMethod || 'cash').toLowerCase();
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    cheque: 'other',
+    'mobile wallet': 'other',
+    mobile_wallet: 'other',
+    wallet: 'other',
+  };
+  return methodMap[normalized] || 'cash';
+}
+
+function paymentMethodLabelForNotes(method: string): string {
+  const m = String(method || 'cash').toLowerCase();
+  if (m === 'bank' || m === 'card') return 'Bank';
+  if (m === 'wallet' || m === 'mobile_wallet') return 'Mobile Wallet';
+  return 'Cash';
+}
+
+async function resolvePaymentAccountDisplayName(accountId: string): Promise<string> {
+  const { data } = await supabase.from('accounts').select('name').eq('id', accountId).maybeSingle();
+  return String((data as { name?: string } | null)?.name ?? '').trim();
+}
+
+/**
+ * On-account customer receipt (no invoice): Dr Cash/Bank, Cr AR sub-ledger.
+ * Post-RPC patch mirrors web AddEntryV2 createCustomerReceiptEntry (manual_receipt + JE description).
+ */
+export async function recordOnAccountCustomerPayment(params: {
+  companyId: string;
+  branchId: string | null;
+  contactId: string;
+  contactName: string;
+  amount: number;
+  accountId: string;
+  paymentMethod: string;
+  paymentDate: string;
+  paymentAt?: string | null;
+  notes?: string | null;
+  bankTraceId?: string | null;
+  paymentAccountName?: string | null;
+  createdBy?: string | null;
+  attachments?: PaymentAttachment[] | null;
+}): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const {
+    companyId,
+    branchId,
+    contactId,
+    contactName,
+    amount,
+    accountId,
+    paymentMethod,
+    paymentDate,
+    notes,
+    bankTraceId,
+    createdBy,
+    paymentAccountName: paymentAccountNameParam,
+  } = params;
+  if (!companyId || !contactId?.trim() || amount <= 0 || !accountId) {
+    return { data: null, error: 'Company, customer, amount and account are required.' };
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(companyId, branchId, 'Branch required for payment.');
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
+  const dateVal = paymentDate || localNowDateString();
+  const paymentAccountName =
+    String(paymentAccountNameParam ?? '').trim() ||
+    (await resolvePaymentAccountDisplayName(accountId));
+  const composedNotes = composeCustomerPaymentNotesForRpc({
+    partyName: contactName,
+    paymentAccountName,
+    combinedNotes: notes,
+    bankTraceId,
+  });
+  const enumMethod = mapPaymentMethodToRpc(paymentMethod);
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'received',
+    p_reference_type: 'on_account',
+    p_reference_id: contactId.trim(),
+    p_amount: amount,
+    p_payment_method: enumMethod,
+    p_payment_date: dateVal,
+    p_payment_account_id: accountId,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
+    p_created_by: createdBy ?? null,
+    p_worker_stage_id: null,
+  });
+  if (error) return { data: null, error: error.message };
+  const res = data as {
+    success?: boolean;
+    payment_id?: string;
+    journal_entry_id?: string;
+    reference_number?: string;
+    error?: string;
+  } | null;
+  if (!res?.success || !res.payment_id) {
+    return { data: null, error: res?.error ?? 'Payment failed.' };
+  }
+  const paymentId = res.payment_id;
+  const { paymentPatch, jePatch } = onAccountCustomerReceiptPostRpcPatches({
+    contactId,
+    contactName,
+    composedNotes,
+    createdBy,
+    attachments: params.attachments,
+  });
+  let payUpd = await supabase.from('payments').update(paymentPatch).eq('id', paymentId);
+  if (payUpd.error?.code === 'PGRST204' && String(payUpd.error.message || '').includes('attachments')) {
+    const { attachments: _a, ...rest } = paymentPatch;
+    payUpd = await supabase.from('payments').update(rest).eq('id', paymentId);
+  }
+  if (payUpd.error) {
+    return {
+      data: null,
+      error: `Payment recorded but contact link failed: ${payUpd.error.message}. Reconcile contact_id on payment ${paymentId}.`,
+    };
+  }
+
+  let journalEntryId = res.journal_entry_id ?? null;
+  if (!journalEntryId) {
+    const { data: jeRow } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    journalEntryId = (jeRow as { id?: string } | null)?.id ?? null;
+  }
+  if (journalEntryId) {
+    const jeUpd = await supabase
+      .from('journal_entries')
+      .update(jePatch)
+      .eq('id', journalEntryId);
+    if (jeUpd.error) {
+      console.warn('[recordOnAccountCustomerPayment] manual receipt JE patch:', jeUpd.error.message);
+    }
+  }
+
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
+  }
+
+  dispatchMobileAccountingInvalidated({
+    companyId,
+    branchId: branchResolved,
+    reason: 'mobile-on-account-receipt',
+  });
+
+  return {
+    data: { payment_id: paymentId, reference_number: res.reference_number },
+    error: null,
+  };
+}
+
+export type PaymentAttachment = { url: string; name: string };
+
+/** Post-RPC client patches for on-account customer receipt (web AddEntryV2 parity). */
+export function onAccountCustomerReceiptPostRpcPatches(params: {
+  contactId: string;
+  contactName: string;
+  composedNotes: string;
+  createdBy?: string | null;
+  attachments?: PaymentAttachment[] | null;
+}): {
+  paymentPatch: Record<string, unknown>;
+  jePatch: { reference_type: string; reference_id: string; description: string };
+} {
+  const contactIdTrim = params.contactId.trim();
+  const paymentPatch: Record<string, unknown> = {
+    contact_id: contactIdTrim,
+    contact_name: params.contactName.trim(),
+    received_by: params.createdBy ?? null,
+    reference_type: 'manual_receipt',
+    reference_id: null,
+  };
+  if (params.attachments?.length) {
+    paymentPatch.attachments = params.attachments;
+  }
+  return {
+    paymentPatch,
+    jePatch: {
+      reference_type: 'manual_receipt',
+      reference_id: contactIdTrim,
+      description: params.composedNotes,
+    },
+  };
+}
+
+/** Get payment history for a sale (including attachments for preview) */
+export async function getSalePayments(saleId: string): Promise<{
+  data: Array<{
+    id: string;
+    /** payments.id to open TransactionDetailSheet (parent payment for alloc rows). */
+    editTargetId: string;
+    date: string;
+    amount: number;
+    method: string;
+    referenceNo: string;
+    notes?: string;
+    attachments?: PaymentAttachment[];
+  }>;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at')
+    .eq('reference_type', 'sale')
+    .eq('reference_id', saleId)
+    .is('voided_at', null)
+    .order('payment_date', { ascending: false });
+  if (error) return { data: [], error: error.message };
+  const direct = (data || [])
+    .filter((p: Record<string, unknown>) => !p.voided_at)
+    .map((p: Record<string, unknown>) => {
+    let attachments: PaymentAttachment[] | undefined;
+    const raw = p.attachments;
+    if (Array.isArray(raw) && raw.length > 0) {
+      attachments = raw.map((a: unknown) => {
+        const o = a as Record<string, unknown>;
+        return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+      }).filter((a) => a.url);
+    }
+    const payId = String(p.id ?? '');
+    return {
+      id: payId,
+      editTargetId: payId,
+      date: p.payment_date ? new Date(String(p.payment_date)).toLocaleDateString('en-PK') : '—',
+      amount: Number(p.amount ?? 0),
+      method: String(p.payment_method ?? '—'),
+      referenceNo: String(p.reference_number ?? '—'),
+      notes: p.notes != null && String(p.notes).trim() !== '' ? String(p.notes) : undefined,
+      attachments: attachments?.length ? attachments : undefined,
+    };
+  });
+
+  const allocRows: Array<{
+    id: string;
+    editTargetId: string;
+    date: string;
+    amount: number;
+    method: string;
+    referenceNo: string;
+    notes?: string;
+    attachments?: PaymentAttachment[];
+  }> = [];
+  try {
+    const { data: allocs } = await supabase
+      .from('payment_allocations')
+      .select('id, allocated_amount, allocation_date, payment_id, allocation_order')
+      .eq('sale_id', saleId);
+    const payIds = [...new Set((allocs || []).map((a: { payment_id?: string }) => a.payment_id).filter(Boolean))] as string[];
+    if (payIds.length > 0) {
+      const { data: parents } = await supabase
+        .from('payments')
+        .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at')
+        .in('id', payIds);
+      const parentById = new Map((parents || []).map((pr: Record<string, unknown>) => [String(pr.id), pr]));
+      for (const a of allocs || []) {
+        const row = a as { id?: string; payment_id?: string; allocated_amount?: number; allocation_date?: string; allocation_order?: number };
+        const parentId = String(row.payment_id ?? '');
+        const pr = parentById.get(parentId);
+        if (!pr || pr.voided_at || !parentId) continue;
+        let attachments: PaymentAttachment[] | undefined;
+        const raw = pr.attachments;
+        if (Array.isArray(raw) && raw.length > 0) {
+          attachments = raw.map((x: unknown) => {
+            const o = x as Record<string, unknown>;
+            return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+          }).filter((x) => x.url);
+        }
+        const ord = Number(row.allocation_order) || 0;
+        allocRows.push({
+          id: `alloc:${row.id}`,
+          editTargetId: parentId,
+          date: pr.payment_date ? new Date(String(pr.payment_date)).toLocaleDateString('en-PK') : '—',
+          amount: Number(row.allocated_amount ?? 0),
+          method: String(pr.payment_method ?? '—'),
+          referenceNo: `${String(pr.reference_number ?? '—')} (alloc #${ord || '—'})`,
+          notes: pr.notes != null && String(pr.notes).trim() !== '' ? String(pr.notes) : undefined,
+          attachments: attachments?.length ? attachments : undefined,
+        });
+      }
+    }
+  } catch {
+    // no payment_allocations
+  }
+
+  const combined = [...direct, ...allocRows].sort((x, y) => {
+    const dx = new Date(x.date).getTime();
+    const dy = new Date(y.date).getTime();
+    if (dy !== dx) return dy - dx;
+    return String(y.referenceNo).localeCompare(String(x.referenceNo));
+  });
+  return { data: combined, error: null };
+}
+
+/** Log share action for audit (whatsapp / pdf / link) */
+export async function logShare(saleId: string, shareType: 'whatsapp' | 'pdf' | 'link', userId?: string | null): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    await supabase.rpc('log_share', {
+      p_sale_id: saleId,
+      p_share_type: shareType,
+      p_user_id: userId ?? null,
+      p_metadata: {},
+    });
+  } catch {
+    // RPC may not exist
+  }
+}
+
+/** Log print action (A4 / Thermal) */
+export async function logPrint(saleId: string, printType: 'A4' | 'Thermal' | 'thermal_80mm' | 'thermal_58mm', userId?: string | null): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    await supabase.rpc('log_print', {
+      p_sale_id: saleId,
+      p_print_type: printType,
+      p_user_id: userId ?? null,
+      p_metadata: {},
+    });
+  } catch {
+    // RPC may not exist
+  }
+}
+
+export type SaleReturnCandidateItem = {
+  saleItemId: string | null;
+  productId: string;
+  variationId: string | null;
+  productName: string;
+  sku: string;
+  soldQty: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+export async function getSaleReturnCandidateItems(saleId: string): Promise<{
+  data: SaleReturnCandidateItem[];
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!saleId) return { data: [], error: 'Sale id is required.' };
+
+  // Already-returned qty by sale_item_id / product+variation (final returns only)
+  const alreadyBySaleItem = new Map<string, number>();
+  const alreadyByProductKey = new Map<string, number>();
+  try {
+    const { data: priorReturns } = await supabase
+      .from('sale_returns')
+      .select('id, status')
+      .eq('original_sale_id', saleId);
+    const finalIds = (priorReturns || [])
+      .filter((r: { status?: string }) => {
+        const st = String(r.status || '').toLowerCase();
+        return st === 'final' || st === 'completed' || st === 'posted';
+      })
+      .map((r: { id: string }) => r.id);
+    if (finalIds.length > 0) {
+      const { data: priorItems } = await supabase
+        .from('sale_return_items')
+        .select('sale_item_id, product_id, variation_id, quantity')
+        .in('sale_return_id', finalIds);
+      for (const row of priorItems || []) {
+        const qty = Number((row as { quantity?: number }).quantity) || 0;
+        const saleItemId = (row as { sale_item_id?: string | null }).sale_item_id;
+        if (saleItemId) {
+          alreadyBySaleItem.set(String(saleItemId), (alreadyBySaleItem.get(String(saleItemId)) || 0) + qty);
+        }
+        const pk = `${(row as { product_id?: string }).product_id || ''}:${(row as { variation_id?: string | null }).variation_id || ''}`;
+        alreadyByProductKey.set(pk, (alreadyByProductKey.get(pk) || 0) + qty);
+      }
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  const mapRows = (rows: Record<string, unknown>[]) =>
+    rows
+      .map((r) => {
+        const saleItemId = r.id ? String(r.id) : null;
+        const productId = String(r.product_id ?? '');
+        const variationId = r.variation_id ? String(r.variation_id) : null;
+        const sold = Number(r.quantity ?? 0);
+        const already =
+          (saleItemId ? alreadyBySaleItem.get(saleItemId) : undefined) ??
+          alreadyByProductKey.get(`${productId}:${variationId || ''}`) ??
+          0;
+        const remaining = Math.max(0, sold - already);
+        return {
+          saleItemId,
+          productId,
+          variationId,
+          productName: String(r.product_name ?? 'Item'),
+          sku: String(r.sku ?? '—'),
+          soldQty: remaining,
+          unitPrice: Number(r.unit_price ?? 0),
+          lineTotal: Number(r.total ?? 0),
+        };
+      })
+      .filter((r) => r.soldQty > 0);
+
+  const sourceTables = ['sales_items', 'sale_items'] as const;
+  let lastError: string | null = null;
+  for (const table of sourceTables) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
+      .eq('sale_id', saleId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (error.code === '42P01' || String(error.message).toLowerCase().includes('does not exist')) {
+        lastError = error.message;
+        continue;
+      }
+      lastError = error.message;
+      continue;
+    }
+    const mapped = mapRows((data || []) as Record<string, unknown>[]);
+    if (mapped.length > 0) return { data: mapped, error: null };
+  }
+  return { data: [], error: lastError };
+}
+
+/** Line-item + header update (RPC). Blocked when sale has a finalized return; total must stay >= paid_amount. */
+export async function updateSaleWithItems(params: {
+  saleId: string;
+  userId: string | null;
+  customerId?: string | null;
+  items: Array<{
+    productId: string;
+    variationId?: string | null;
+    productName: string;
+    sku?: string | null;
+    quantity: number;
+    unitPrice: number;
+    discountAmount?: number;
+    taxAmount?: number;
+    total: number;
+    customizationDetails?: Record<string, unknown> | null;
+    bespokeParentItemId?: string | null;
+    parentLineIndex?: number | null;
+  }>;
+  discountAmount: number;
+  taxAmount: number;
+  shipmentCharges: number;
+  extraExpenses: number;
+  notes?: string | null;
+  customerName?: string | null;
+  contactNumber?: string | null;
+  paymentMethod?: string | null;
+  invoiceDate?: string | null;
+  deadline?: string | null;
+}): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const p_items = params.items.map((i) => ({
+    product_id: i.productId,
+    variation_id: i.variationId ?? null,
+    product_name: i.productName,
+    sku: i.sku ?? '—',
+    quantity: i.quantity,
+    unit_price: i.unitPrice,
+    discount_amount: i.discountAmount ?? 0,
+    tax_amount: i.taxAmount ?? 0,
+    total: i.total,
+    customization_details: i.customizationDetails ?? null,
+    bespoke_parent_item_id: i.bespokeParentItemId ?? null,
+    parent_line_index: i.parentLineIndex ?? null,
+  }));
+  const { data, error } = await supabase.rpc('update_sale_with_items', {
+    p_sale_id: params.saleId,
+    p_user_id: params.userId,
+    p_items: p_items,
+    p_discount_amount: params.discountAmount,
+    p_tax_amount: params.taxAmount,
+    p_shipment_charges: params.shipmentCharges,
+    p_extra_expenses: params.extraExpenses,
+    p_notes: params.notes ?? null,
+    p_customer_name: params.customerName ?? null,
+    p_contact_number: params.contactNumber ?? null,
+    p_payment_method: params.paymentMethod ?? null,
+    p_invoice_date: params.invoiceDate && params.invoiceDate.length >= 10 ? params.invoiceDate.slice(0, 10) : null,
+    p_deadline: params.deadline && params.deadline.length >= 10 ? params.deadline.slice(0, 10) : null,
+    p_customer_id: params.customerId ?? null,
+  });
+  if (error) return { error: error.message };
+  const row = data as { success?: boolean; error?: string } | null;
+  if (row && row.success === false) return { error: row.error || 'Update failed' };
+  return { error: null };
+}
+
+export type CreateSaleReturnPayload = {
+  companyId: string;
+  branchId: string;
+  saleId: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  userId?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  /** Header-level discount on the return (flat amount). Persists to sale_returns.discount_amount. */
+  discountAmount?: number;
+  items: Array<{
+    saleItemId?: string | null;
+    productId: string;
+    variationId?: string | null;
+    productName: string;
+    sku?: string | null;
+    quantity: number;
+    unitPrice: number;
+  }>;
+};
+
+export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPayload): Promise<{
+  data: { returnId: string; returnNo: string } | null;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (!payload.companyId || !payload.saleId) {
+    return { data: null, error: 'Company and sale are required.' };
+  }
+
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      payload.companyId,
+      payload.branchId,
+      'Branch required for sale return.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for sale return.' };
+  }
+
+  const items = payload.items
+    .map((i) => ({ ...i, quantity: Number(i.quantity) || 0, unitPrice: Number(i.unitPrice) || 0 }))
+    .filter((i) => i.productId && i.quantity > 0);
+  if (items.length === 0) return { data: null, error: 'Select at least one return item.' };
+
+  let returnNo = '';
+  try {
+    const { data: numData, error: numErr } = await supabase.rpc('generate_document_number', {
+      p_company_id: payload.companyId,
+      p_branch_id: effectiveBranchId,
+      p_document_type: 'sale_return',
+      p_include_year: false,
+    });
+    if (numErr || !numData) throw new Error(numErr?.message || 'Numbering failed');
+    returnNo = String(numData);
+  } catch {
+    returnNo = `SRET-${localNowDateString().replace(/-/g, '')}-${Math.floor(Math.random() * 9000) + 1000}`;
+  }
+
+  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const discountAmount = Math.max(0, Math.min(Number(payload.discountAmount ?? 0) || 0, subtotal));
+  const total = Math.max(0, subtotal - discountAmount);
+  const normalizedDate = localNowDateString();
+
+  // Client-side cap guard: return total must not exceed remaining returnable amount on original sale.
+  try {
+    const { data: origSale } = await supabase
+      .from('sales')
+      .select('total')
+      .eq('id', payload.saleId)
+      .maybeSingle();
+    const originalTotal = Number((origSale as { total?: number } | null)?.total ?? 0) || 0;
+    if (originalTotal > 0) {
+      const { data: priorRets } = await supabase
+        .from('sale_returns')
+        .select('total, status')
+        .eq('original_sale_id', payload.saleId);
+      const priorSum = (priorRets || [])
+        .filter((r: { status?: string }) => r.status !== 'voided' && r.status !== 'cancelled')
+        .reduce((s: number, r: { total?: number }) => s + (Number(r.total) || 0), 0);
+      const remaining = Math.max(0, originalTotal - priorSum);
+      if (total > remaining + 0.005) {
+        return {
+          data: null,
+          error: `Return amount (Rs. ${total.toLocaleString()}) exceeds remaining returnable on this invoice (Rs. ${remaining.toLocaleString()}). Original total was Rs. ${originalTotal.toLocaleString()}.`,
+        };
+      }
+    }
+  } catch {
+    /* non-fatal: server RPC also guards */
+  }
+
+  const { data: saleReturn, error: headerErr } = await supabase
+    .from('sale_returns')
+    .insert({
+      company_id: payload.companyId,
+      branch_id: payload.branchId,
+      original_sale_id: payload.saleId,
+      return_no: returnNo,
+      return_date: normalizedDate,
+      customer_id: payload.customerId ?? null,
+      customer_name: payload.customerName || 'Walk-in',
+      status: 'draft',
+      subtotal,
+      discount_amount: discountAmount,
+      tax_amount: 0,
+      total,
+      reason: payload.reason ?? null,
+      notes: payload.notes ?? null,
+      created_by: payload.userId ?? null,
+    })
+    .select('id, return_no')
+    .single();
+  if (headerErr || !saleReturn) return { data: null, error: headerErr?.message ?? 'Failed to create sale return.' };
+
+  const returnItems = items.map((i) => ({
+    sale_return_id: saleReturn.id,
+    sale_item_id: i.saleItemId ?? null,
+    product_id: i.productId,
+    variation_id: i.variationId ?? null,
+    product_name: i.productName,
+    sku: i.sku || '—',
+    quantity: i.quantity,
+    unit: 'piece',
+    unit_price: i.unitPrice,
+    total: i.quantity * i.unitPrice,
+  }));
+
+  const { error: itemsErr } = await supabase.from('sale_return_items').insert(returnItems);
+  if (itemsErr) return { data: null, error: itemsErr.message };
+
+  const { data: finalizeData, error: finalizeErr } = await supabase.rpc('finalize_sale_return', {
+    p_sale_return_id: saleReturn.id,
+    p_company_id: payload.companyId,
+    p_created_by: payload.userId ?? null,
+  });
+
+  if (finalizeErr) {
+    const msg = finalizeErr.message || 'Failed to finalize sale return.';
+    if (msg.includes('Could not find the function')) {
+      return {
+        data: null,
+        error: `${msg} Apply sale return finalization migration on Postgres and retry.`,
+      };
+    }
+    return { data: null, error: msg };
+  }
+
+  const finalizeRes = (finalizeData || {}) as { success?: boolean; error?: string };
+  if (finalizeRes.success === false) return { data: null, error: finalizeRes.error || 'Failed to finalize sale return.' };
+
+  return { data: { returnId: String(saleReturn.id), returnNo: String(saleReturn.return_no || returnNo) }, error: null };
+}
