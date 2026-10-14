@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Download, Warehouse, Loader2, Upload, BarChart3
+  Download, Warehouse, Loader2, Upload, BarChart3, ClipboardList
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -257,6 +257,10 @@ export const InventoryDesignTestPage = () => {
           <ErpPageDescription>Track and manage your stock efficiently</ErpPageDescription>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setCurrentView('inventory-count')}>
+            <ClipboardList size={16} />
+            Inventory Count
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => setCurrentView('stock-report')}>
             <BarChart3 size={16} />
             Stock Report
