@@ -28,6 +28,11 @@ function attachSupabaseProxyOrigin(proxy: ProxyWithEvents) {
   const setCommonHeaders = (proxyReq: ProxyReqLike) => {
     proxyReq.setHeader('Origin', supabaseProxyOrigin);
     proxyReq.setHeader('Host', supabaseProxyHost);
+    // Cloudflare bot rules (error 1010) reject bare Node clients without a browser UA.
+    proxyReq.setHeader(
+      'User-Agent',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    );
   };
   proxy.on('proxyReq', (...args: unknown[]) => {
     const proxyReq = args[0] as ProxyReqLike;

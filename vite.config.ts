@@ -25,32 +25,59 @@ export default defineConfig({
     host: true, // Expose on 0.0.0.0 for mobile/network access
     hmr: true,  // Explicitly enable Hot Module Replacement
     proxy: {
-      // Local dev CORS bypass for self-hosted Supabase/Kong
-      '/supabase': {
-        target: 'https://supabase.dincouture.pk',
-        changeOrigin: true,
-        secure: true,
-        ws: true,
-        timeout: 120000,
-        proxyTimeout: 120000,
-        rewrite: (path) => path.replace(/^\/supabase/, ''),
-        configure: (proxy) => {
-          // Kong may reject when Origin is localhost; set Host/Origin on the Node→Kong leg only.
-          const setUpstreamHeaders = (proxyReq: { setHeader: (n: string, v: string) => void }) => {
-            proxyReq.setHeader('Host', 'supabase.dincouture.pk')
-            proxyReq.setHeader('Origin', 'https://erp.dincouture.pk')
-          }
-          proxy.on('proxyReq', (proxyReq) => {
-            setUpstreamHeaders(proxyReq)
-          })
-          proxy.on('proxyReqWs', (proxyReq) => {
-            setUpstreamHeaders(proxyReq)
-          })
-          proxy.on('error', (err) => {
-            console.warn('[Vite] /supabase proxy error:', err?.message ?? err)
-          })
-        },
-      },
+      // Local dev CORS bypass for self-hosted Supabase/Kong.
+      // Default: production Mini PC API (api.ndmcore.com). Override with VITE_SUPABASE_PROXY_ORIGIN
+      // if pointing at a different Kong (must match VITE_SUPABASE_ANON_KEY issuer).
+      '/supabase': (() => {
+        const proxyOrigin = (
+          process.env.VITE_SUPABASE_PROXY_ORIGIN ||
+          process.env.VITE_SUPABASE_URL ||
+          'https://api.ndmcore.com'
+        ).replace(/\/$/, '')
+        let proxyHost = 'api.ndmcore.com'
+        let browserOrigin = 'https://erp.ndmcore.com'
+        try {
+          proxyHost = new URL(proxyOrigin).host
+          if (/ndmcore\.com$/i.test(proxyHost)) browserOrigin = 'https://erp.ndmcore.com'
+          else if (/dincouture\.pk$/i.test(proxyHost)) browserOrigin = 'https://erp.dincouture.pk'
+          else browserOrigin = proxyOrigin
+        } catch {
+          /* keep defaults */
+        }
+        return {
+          target: proxyOrigin,
+          changeOrigin: true,
+          secure: true,
+          ws: true,
+          timeout: 120000,
+          proxyTimeout: 120000,
+          rewrite: (path: string) => path.replace(/^\/supabase/, ''),
+          configure: (proxy: {
+            on: (event: string, fn: (...args: unknown[]) => void) => void
+          }) => {
+            // Kong may reject when Origin is localhost; set Host/Origin on the Node→Kong leg only.
+            const setUpstreamHeaders = (proxyReq: { setHeader: (n: string, v: string) => void }) => {
+              proxyReq.setHeader('Host', proxyHost)
+              proxyReq.setHeader('Origin', browserOrigin)
+              // Cloudflare bot rules (error 1010) reject bare Node clients without a browser UA.
+              proxyReq.setHeader(
+                'User-Agent',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              )
+            }
+            proxy.on('proxyReq', (...args: unknown[]) => {
+              setUpstreamHeaders(args[0] as { setHeader: (n: string, v: string) => void })
+            })
+            proxy.on('proxyReqWs', (...args: unknown[]) => {
+              setUpstreamHeaders(args[0] as { setHeader: (n: string, v: string) => void })
+            })
+            proxy.on('error', (...args: unknown[]) => {
+              const err = args[0] as { message?: string } | undefined
+              console.warn('[Vite] /supabase proxy error:', err?.message ?? err)
+            })
+          },
+        }
+      })(),
     },
   },
   build: {
