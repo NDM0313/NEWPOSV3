@@ -62,6 +62,7 @@ const InventoryDesignTestPage = lazy(() => import('./components/inventory/Invent
 const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
 const StockReportPage = lazy(() => import('./components/reports/StockReportPage').then(m => ({ default: m.StockReportPage })));
 const StockMovementHistoryReportPage = lazy(() => import('./components/reports/stock-movement-history/StockMovementHistoryReportPage').then(m => ({ default: m.StockMovementHistoryReportPage })));
+const InventoryCountPage = lazy(() => import('./components/inventory/InventoryCountPage').then(m => ({ default: m.InventoryCountPage })));
 const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
 const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
 const ErpPermissionArchitecturePage = lazy(() => import('./components/erp-permissions/ErpPermissionArchitecturePage').then(m => ({ default: m.ErpPermissionArchitecturePage })));
@@ -410,6 +411,7 @@ const AppContent = () => {
       {currentView === 'inventory-analytics-test' && <InventoryAnalyticsTestPage />}
       {currentView === 'stock-report' && <StockReportPage />}
       {currentView === 'stock-movement-history' && <StockMovementHistoryReportPage />}
+      {currentView === 'inventory-count' && <InventoryCountPage />}
 
       <GlobalDrawer />
     </Layout>

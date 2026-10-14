@@ -61,6 +61,7 @@ export const MobileNavDrawer = () => {
       isHidden: !hasPermission('inventory.view'),
       children: [
         { id: 'inventory', label: 'Stock Overview' },
+        { id: 'inventory-count', label: 'Inventory Count' },
         { id: 'stock-report', label: 'Stock Report' },
         { id: 'stock-movement-history', label: 'Stock Ledger by Product' },
       ],

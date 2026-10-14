@@ -1,6 +1,7 @@
 import {
   ShoppingCart, ShoppingBag, Shirt, Camera, DollarSign, Receipt, Package, User as UserIcon,
   LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store, ListChecks, Building2, Scissors,
+  ClipboardList,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { User, Branch, Screen } from '../types';
@@ -15,7 +16,11 @@ import {
   useEffectiveWorkerProfile,
   useEffectiveWorkerProfileId,
 } from '../context/CounterWorkerContext';
-import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
+import {
+  canAccessInventoryCount,
+  getPermissionModuleForScreen,
+  screenSkipsModuleViewPermission,
+} from '../utils/permissionModules';
 import { isDeveloperModeUnlocked, subscribeDeveloperMode } from '../lib/developerMode';
 import { getFunctionalRoleLabel } from '../config/functionalRoles';
 import { useBespokeEnabled } from '../hooks/useBespokeEnabled';
@@ -44,11 +49,12 @@ const MODULES: ModuleCard[] = [
   { id: 'workorders', title: 'Work Orders', icon: <Scissors className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
   { id: 'purchase', title: 'Purchase', icon: <ShoppingBag className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
   { id: 'rental', title: 'Rental', icon: <Shirt className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
+  { id: 'inventory', title: 'Inventory', icon: <Package className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
+  { id: 'inventory-count', title: 'Stock Count', icon: <ClipboardList className="w-8 h-8" />, color: '#14B8A6', bgColor: 'bg-[#14B8A6]/10', enabled: true },
   { id: 'studio', title: 'Studio', icon: <Camera className="w-8 h-8" />, color: '#EC4899', bgColor: 'bg-[#EC4899]/10', enabled: true },
   { id: 'accounts', title: 'Accounts', icon: <DollarSign className="w-8 h-8" />, color: '#F59E0B', bgColor: 'bg-[#F59E0B]/10', enabled: true },
   { id: 'expense', title: 'Expense', icon: <Receipt className="w-8 h-8" />, color: '#EF4444', bgColor: 'bg-[#EF4444]/10', enabled: true },
   { id: 'products', title: 'Products', icon: <Package className="w-8 h-8" />, color: '#3B82F6', bgColor: 'bg-[#3B82F6]/10', enabled: true },
-  { id: 'inventory', title: 'Inventory', icon: <Package className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
   { id: 'pos', title: 'Point of Sale', icon: <Store className="w-8 h-8" />, color: '#059669', bgColor: 'bg-[#059669]/10', enabled: true },
   { id: 'contacts', title: 'Contacts', icon: <UserIcon className="w-8 h-8" />, color: '#6366F1', bgColor: 'bg-[#6366F1]/10', enabled: true },
   { id: 'reports', title: 'Reports', icon: <TrendingUp className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
@@ -116,6 +122,9 @@ export function HomeScreen({
   const enabled = MODULES.filter((m) => {
     if (m.id === 'workorders' && !bespokeEnabled) return false;
     if (!isModuleEnabled(m.id)) return false;
+    if (m.id === 'inventory-count') {
+      return !FEATURE_MOBILE_PERMISSION_V2 || canAccessInventoryCount(hasPermission);
+    }
     if (m.id === 'ledger' && FEATURE_MOBILE_PERMISSION_V2 && !canUseFullAccounting) {
       if (screenSkipsModuleViewPermission('accounts')) return false;
       const code = getPermissionModuleForScreen('accounts');
@@ -138,7 +147,7 @@ export function HomeScreen({
   }
 
   return (
-    <div className="min-h-screen erp-content-above-nav">
+    <div className="min-h-screen erp-content-above-nav pb-4">
       <div className="bg-gradient-to-br from-[#1F2937] to-[#111827] p-6 pb-8 flow-screen-header">
         <div className="flex items-start justify-between mb-6">
           <div>

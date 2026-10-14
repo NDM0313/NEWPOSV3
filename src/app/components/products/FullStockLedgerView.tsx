@@ -28,6 +28,7 @@ import { supabase } from '@/lib/supabase';
 import { isEditableManualStockAdjustment } from '@/app/lib/stockMovementEditPolicy';
 import { EditStockAdjustmentDialog } from '../inventory/EditStockAdjustmentDialog';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { summarizeStockMovements } from '@/app/lib/stockLedgerSummary';
 
 interface StockMovement {
   id: string;
@@ -428,83 +429,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     }
   };
 
-  // Calculate totals - Include ALL movement types (purchase, sale, adjustment, etc.)
-  // PART 1 FIX: Proper categorization of movements; packing box/piece when enablePacking
-  const totals = React.useMemo(() => {
-    let totalPurchased = 0;
-    let totalSold = 0;
-    let totalRented = 0;
-    let totalReturned = 0;
-    let totalAdjustmentPositive = 0;
-    let totalAdjustmentNegative = 0;
-    let currentBalance = 0;
-    let totalPurchasedBox = 0;
-    let totalPurchasedPiece = 0;
-    let totalSoldBox = 0;
-    let totalSoldPiece = 0;
-    let totalAdjustmentBox = 0;
-    let totalAdjustmentPiece = 0;
-    let currentBox = 0;
-    let currentPiece = 0;
-
-    movements.forEach((movement) => {
-      const qty = Number(movement.quantity || 0);
-      const boxCh = Number((movement as any).box_change ?? 0);
-      const pieceCh = Number((movement as any).piece_change ?? 0);
-      const movementType = ((movement.movement_type || movement.type || '') as string).toLowerCase();
-
-      if (movementType === 'purchase') {
-        totalPurchased += qty;
-        totalPurchasedBox += boxCh;
-        totalPurchasedPiece += pieceCh;
-      } else if (movementType === 'sale') {
-        totalSold += Math.abs(qty);
-        totalSoldBox += Math.abs(boxCh);
-        totalSoldPiece += Math.abs(pieceCh);
-      } else if (movementType === 'rental_out') {
-        totalRented += Math.abs(qty);
-      } else if (movementType === 'return' || movementType === 'sell_return' || movementType === 'rental_return') {
-        totalReturned += qty;
-      } else if (movementType === 'adjustment') {
-        if (qty > 0) {
-          totalAdjustmentPositive += qty;
-        } else if (qty < 0) {
-          totalAdjustmentNegative += Math.abs(qty);
-        }
-        totalAdjustmentBox += boxCh;
-        totalAdjustmentPiece += pieceCh;
-      }
-
-      currentBalance += qty;
-      currentBox += boxCh;
-      currentPiece += pieceCh;
-    });
-
-    const totalIn = totalPurchased + totalReturned + totalAdjustmentPositive;
-    const totalOut = totalSold + totalAdjustmentNegative;
-    const totalAdjustments = totalAdjustmentPositive - totalAdjustmentNegative;
-
-    return {
-      totalPurchased,
-      totalSold,
-      totalRented,
-      totalReturned,
-      totalAdjustmentPositive,
-      totalAdjustmentNegative,
-      totalAdjustments,
-      totalIn,
-      totalOut,
-      currentBalance,
-      totalPurchasedBox,
-      totalPurchasedPiece,
-      totalSoldBox,
-      totalSoldPiece,
-      totalAdjustmentBox,
-      totalAdjustmentPiece,
-      currentBox,
-      currentPiece,
-    };
-  }, [movements]);
+  // Shared summary (same engine as Inventory Count history). Includes rental_in returns.
+  const totals = React.useMemo(() => summarizeStockMovements(movements), [movements]);
 
   const formatDate = (dateString: string) => {
     return formatRelativeListDateTime(dateString, 'en-US');
@@ -525,6 +451,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       'sell_return': 'Sell Return',
       'purchase_return': 'Purchase Return',
       'rental_out': 'Rental Out',
+      'rental_in': 'Rental Return',
       'rental_return': 'Rental Return',
       'sale_cancelled': 'SALE CANCELLED',
       'purchase_cancelled': 'PURCHASE CANCELLED',
@@ -790,10 +717,18 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             <div className="bg-card border border-pink-800 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <Shirt size={16} className="text-pink-400" />
-                <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Rented</span>
+                <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Rentals</span>
               </div>
-              <span className="text-2xl font-bold text-pink-400 tabular-nums">{formatQty(totals.totalRented)}</span>
-              <div className="text-xs text-muted-foreground mt-1">Qty rented out</div>
+              <span className="text-2xl font-bold text-pink-400 tabular-nums">
+                {formatQty(totals.currentlyOutOnRent)}
+              </span>
+              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div>Currently out (from listed movements)</div>
+                <div className="tabular-nums">
+                  Rent out {formatQty(totals.rentOutGross)} · Returns{' '}
+                  {formatQty(totals.rentalReturnsGross)}
+                </div>
+              </div>
             </div>
           )}
           <div className="bg-card border border-yellow-800 p-4 rounded-lg">

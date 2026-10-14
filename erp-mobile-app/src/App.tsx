@@ -14,7 +14,11 @@ import { usePermissions } from './context/PermissionContext';
 import { useCounterWorker, useEffectiveWorkerProfile } from './context/CounterWorkerContext';
 import { useSettings } from './context/SettingsContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
-import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from './utils/permissionModules';
+import {
+  canAccessInventoryCount,
+  getPermissionModuleForScreen,
+  screenSkipsModuleViewPermission,
+} from './utils/permissionModules';
 import { AccessDenied } from './components/AccessDenied';
 
 const BRANCH_STORAGE_KEY = 'erp_mobile_branch';
@@ -68,6 +72,9 @@ const StudioModule = lazy(() => import('./components/studio/StudioModule').then(
 const AccountsModule = lazy(() => import('./components/accounts/AccountsModule').then((m) => ({ default: m.AccountsModule })));
 const ExpenseModule = lazy(() => import('./components/expense/ExpenseModule').then((m) => ({ default: m.ExpenseModule })));
 const InventoryModule = lazy(() => import('./components/inventory/InventoryModule').then((m) => ({ default: m.InventoryModule })));
+const InventoryCountModule = lazy(() =>
+  import('./components/inventory/InventoryCountModule').then((m) => ({ default: m.InventoryCountModule }))
+);
 const DashboardModule = lazy(() => import('./components/dashboard/DashboardModule').then((m) => ({ default: m.DashboardModule })));
 const PackingListModule = lazy(() => import('./components/packing/PackingListModule').then((m) => ({ default: m.PackingListModule })));
 
@@ -94,6 +101,7 @@ const MODULE_TITLES: Record<Screen, string> = {
   accounts: 'Accounts',
   expense: 'Expense',
   inventory: 'Inventory',
+  'inventory-count': 'Stock Count',
   products: 'Products',
   pos: 'POS',
   contacts: 'Contacts',
@@ -751,9 +759,13 @@ export default function App() {
       return true;
     }
     if (!isPermissionLoaded) return false;
-    const module = getPermissionModuleForScreen(screen);
-    if (!module) return screen === 'login' || screen === 'branch-selection';
-    if (!hasPermission(`${module}.view`)) return false;
+    if (screen === 'inventory-count') {
+      if (!canAccessInventoryCount(hasPermission)) return false;
+    } else {
+      const module = getPermissionModuleForScreen(screen);
+      if (!module) return screen === 'login' || screen === 'branch-selection';
+      if (!hasPermission(`${module}.view`)) return false;
+    }
     if (!branchId || branchId === 'all' || branchId === 'default') return true;
     if (hasBranchAccess(branchId)) return true;
     // Shared counter tablet: admin-selected branch may differ from worker assignments; modules scope data client-side.
@@ -1109,6 +1121,18 @@ export default function App() {
           ? <AccessDenied onBack={navigateHome} />
           : <InventoryModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
+      {currentScreen === 'inventory-count' && user && (
+        !canAccessScreen('inventory-count', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : (
+            <InventoryCountModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branch={selectedBranch}
+            />
+          )
+      )}
       {currentScreen === 'packing' && user && (
         !canAccessScreen('sales', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
@@ -1142,7 +1166,7 @@ export default function App() {
               onNewPurchase={() => navigateToModule('purchase')}
             />
       )}
-      {currentScreen !== 'home' && currentScreen !== 'dashboard' && currentScreen !== 'sales' && currentScreen !== 'workorders' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && currentScreen !== 'rental' && currentScreen !== 'studio' && currentScreen !== 'accounts' && currentScreen !== 'expense' && currentScreen !== 'inventory' && currentScreen !== 'packing' && currentScreen !== 'ledger' && user && (
+      {currentScreen !== 'home' && currentScreen !== 'dashboard' && currentScreen !== 'sales' && currentScreen !== 'workorders' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && currentScreen !== 'rental' && currentScreen !== 'studio' && currentScreen !== 'accounts' && currentScreen !== 'expense' && currentScreen !== 'inventory' && currentScreen !== 'inventory-count' && currentScreen !== 'packing' && currentScreen !== 'ledger' && user && (
         <PlaceholderModule title={MODULE_TITLES[currentScreen] || currentScreen} onBack={navigateHome} />
       )}
     </>

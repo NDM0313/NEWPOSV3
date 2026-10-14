@@ -307,7 +307,7 @@ export function canViewModule(perms: RolePermissionRow[], module: string): boole
     studio: VIEW_ACTIONS,
     rentals: VIEW_ACTIONS,
     reports: ['view'],
-    inventory: VIEW_ACTIONS.concat(['adjust', 'transfer']),
+    inventory: VIEW_ACTIONS.concat(['adjust', 'transfer', 'count', 'post_count']),
     ledger: ['view_full_accounting', 'view_customer', 'view_supplier', ...VIEW_ACTIONS],
     contacts: VIEW_ACTIONS,
     payments: ['receive', ...VIEW_ACTIONS],

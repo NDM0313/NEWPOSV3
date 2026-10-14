@@ -12,6 +12,7 @@ export type Screen =
   | 'accounts'
   | 'expense'
   | 'inventory'
+  | 'inventory-count'
   | 'products'
   | 'pos'
   | 'contacts'

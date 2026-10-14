@@ -103,7 +103,8 @@ input[type="number"] {
 
 /* Home / scroll content above fixed bottom nav */
 .erp-content-above-nav {
-  padding-bottom: calc(var(--erp-bottom-nav-height, 64px) + max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px)) + 8px);
+  /* Extra clearance so the last Home Modules row clears fixed BottomNav + safe area */
+  padding-bottom: calc(var(--erp-bottom-nav-height, 64px) + max(env(safe-area-inset-bottom, 0px), var(--erp-inset-bottom, 0px)) + 24px);
 }
 
 /* Flow toolbars (Back, Save, report headers) — clear status bar on phone, minimal on tablet/desktop. */
