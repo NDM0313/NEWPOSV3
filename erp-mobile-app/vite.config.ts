@@ -108,14 +108,15 @@ export default defineConfig(({ mode }) => {
     base,
     resolve: {
       // Prefer specific @/app/* aliases so mobile can share stock-count pure libs from web src.
+      // Use trailing-slash finds so `@/app/lib/foo` is a prefix match (exact `@/app/lib` alone is not).
       alias: [
         {
-          find: '@/app/lib',
-          replacement: path.resolve(__dirname, '../src/app/lib'),
+          find: '@/app/lib/',
+          replacement: `${path.resolve(__dirname, '../src/app/lib')}/`,
         },
         {
-          find: '@/app/utils',
-          replacement: path.resolve(__dirname, '../src/app/utils'),
+          find: '@/app/utils/',
+          replacement: `${path.resolve(__dirname, '../src/app/utils')}/`,
         },
         { find: '@', replacement: path.resolve(__dirname, './src') },
         ...(useMlKitStub
