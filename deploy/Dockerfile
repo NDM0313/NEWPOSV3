@@ -35,6 +35,7 @@ COPY src/app/lib/stockCountDisplay.ts \
      src/app/lib/stockCountVarianceWarning.ts \
      src/app/lib/stockCountMath.ts \
      src/app/lib/stockCountDrift.ts \
+     src/app/lib/stockLedgerSummary.ts \
      /app/src/app/lib/
 COPY src/app/utils/variationFieldMap.ts /app/src/app/utils/
 RUN cp -a /app/src/app/lib/. /src/app/lib/ && cp -a /app/src/app/utils/. /src/app/utils/
