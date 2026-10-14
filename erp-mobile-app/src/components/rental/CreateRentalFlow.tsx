@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { ProductImage } from '../products/ProductImage';
 import { DateInputField } from '../shared/DateTimePicker';
 import { CustomerPickerList } from '../shared/CustomerPickerList';
@@ -13,10 +13,13 @@ import * as productsApi from '../../api/products';
 import * as rentalsApi from '../../api/rentals';
 import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts } from '../../api/settings';
+import { resolveDefaultPaymentAccountId } from '../../utils/resolveDefaultPaymentAccount';
 import * as usersApi from '../../api/users';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { CustomSelect, CustomSearchableSheet, NumericInput } from '../common';
-import { localNowDateString, formatLocalDateTimeDisplay } from '../../utils/localDate';
+import { localNowDateString, formatLocalDateTimeDisplay, formatLocalDateYYYYMMDD } from '../../utils/localDate';
 import type { User } from '../../types';
 import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
@@ -25,6 +28,9 @@ import { isRealBranchUuid } from '../../utils/branchId';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
+import { canAssignSaleCommission } from '../../lib/saleCommission';
+import { SaleAttachmentEditor } from '../sales/SaleAttachmentEditor';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -33,10 +39,12 @@ interface CreateRentalFlowProps {
   userRole?: User['role'];
   onBack: () => void;
   onSuccess: () => void;
+  /** When set, open in full edit mode (web parity) for draft/booked rentals. */
+  editRentalId?: string | null;
 }
 
-/** Step order: customer → products (qty + variation) → duration → rent → salesman → advance → payment_confirm (if advance > 0) → documents (NSC) → confirm */
-type Step = 'customer' | 'products' | 'duration' | 'rent' | 'salesman' | 'advance' | 'payment_confirm' | 'documents' | 'confirm';
+/** Step order: customer → products → duration → rent → salesman → advance → payment_confirm (optional) → confirm */
+type Step = 'customer' | 'products' | 'duration' | 'rent' | 'salesman' | 'advance' | 'payment_confirm' | 'confirm';
 
 interface SelectedRentalItem {
   key: string; // product.id + optional variationId
@@ -46,7 +54,21 @@ interface SelectedRentalItem {
   quantity: number;
 }
 
-const SECURITY_DOC_TYPES = ['CNIC', 'Passport', 'Driver License', 'Other'] as const;
+
+function addDaysToYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setDate(d.getDate() + days);
+  return formatLocalDateYYYYMMDD(d);
+}
+
+function daysBetweenYmd(start: string, end: string): number {
+  const a = new Date(`${start}T12:00:00`);
+  const b = new Date(`${end}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  const diff = Math.ceil((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  return diff > 0 ? diff : 0;
+}
 
 type RentalCreateDraft = {
   step: Step;
@@ -55,20 +77,30 @@ type RentalCreateDraft = {
   lineRateMap: Record<string, string>;
   pickupDate: string;
   returnDate: string;
+  durationDays: number;
+  bookingDate: string;
   advancePaid: string;
   advancePaymentAccountId: string | null;
   salesmanId: string | null;
   commissionPct: string;
-  securityDocType: string;
-  securityDocNumber: string;
-  securityDocImageUrl: string;
   notes: string;
   documentNumber: string;
   pickedBranchId: string;
 };
 
-export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
+export function CreateRentalFlow({
+  companyId,
+  branchId,
+  userId,
+  userRole,
+  onBack,
+  onSuccess,
+  editRentalId = null,
+}: CreateRentalFlowProps) {
   const responsive = useResponsive();
+  /** Local calendar "today" for date pickers (not UTC). */
+  const today = localNowDateString();
+  const isEditMode = Boolean(editRentalId);
   const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const effectiveProfileId = useEffectiveWorkerProfileId();
   const effectiveRole = useEffectiveWorkerRole(userRole ?? 'admin');
@@ -86,11 +118,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     profileId: effectiveProfileId,
   });
   const { canViewBalances } = usePermissions();
-  const [step, setStep] = useState<Step>('customer');
+  const [step, setStep] = useState<Step>(() => (editRentalId ? 'confirm' : 'customer'));
   const [customers, setCustomers] = useState<RentalCustomer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<RentalCustomer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const walkingInitRef = useRef(false);
+  const editHydratedRef = useRef(false);
+  const [editHydrated, setEditHydrated] = useState(!editRentalId);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerPickView, setCustomerPickView] = useState<'pick' | 'addContact'>('pick');
@@ -104,24 +138,25 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [lineRateMap, setLineRateMap] = useState<Record<string, string>>({});
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
+  const [durationDays, setDurationDays] = useState(3);
+  const [bookingDate, setBookingDate] = useState(today);
   const [advancePaid, setAdvancePaid] = useState('');
   const [advancePaymentAccountId, setAdvancePaymentAccountId] = useState<string | null>(null);
   const [paymentAccounts, setPaymentAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [salesmen, setSalesmen] = useState<usersApi.SalesmanRow[]>([]);
   const [salesmanId, setSalesmanId] = useState<string | null>(null);
   const [commissionPct, setCommissionPct] = useState('');
-  const [securityDocType, setSecurityDocType] = useState<string>('');
-  const [securityDocNumber, setSecurityDocNumber] = useState('');
-  const [securityDocImageUrl, setSecurityDocImageUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [savedAttachments, setSavedAttachments] = useState<{ url: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
-  const canPickSalesman = effectiveRole === 'admin' || effectiveRole === 'owner';
+  const [editBookingNo, setEditBookingNo] = useState<string | null>(null);
+  const [editPaidLocked, setEditPaidLocked] = useState(0);
+  const canPickSalesman = canAssignSaleCommission(effectiveRole);
   const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
-  /** Local calendar "today" for date pickers (not UTC). */
-  const today = localNowDateString();
 
   const {
     showRestoredBanner: showRentalDraftBanner,
@@ -131,7 +166,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     companyId,
     ownerUserId: effectiveUserId,
     draftId: 'rental-create',
-    enabled: !confirmationData,
+    enabled: !confirmationData && !isEditMode,
     getSnapshot: () => ({
       step,
       selectedCustomerId,
@@ -139,31 +174,31 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       lineRateMap,
       pickupDate,
       returnDate,
+      durationDays,
+      bookingDate,
       advancePaid,
       advancePaymentAccountId,
       salesmanId,
       commissionPct,
-      securityDocType,
-      securityDocNumber,
-      securityDocImageUrl,
       notes,
       documentNumber,
       pickedBranchId: pickedBranchId ?? '',
     }),
     applySnapshot: (d) => {
-      setStep(d.step);
+      const normalizedStep =
+        String(d.step) === 'documents' ? 'confirm' : (d.step as Step);
+      setStep(normalizedStep);
       setSelectedCustomerId(d.selectedCustomerId);
       setSelectedItems(d.selectedItems);
       setLineRateMap(d.lineRateMap);
       setPickupDate(d.pickupDate);
       setReturnDate(d.returnDate);
+      setDurationDays(typeof d.durationDays === 'number' && d.durationDays > 0 ? d.durationDays : 3);
+      setBookingDate(d.bookingDate || today);
       setAdvancePaid(d.advancePaid);
       setAdvancePaymentAccountId(d.advancePaymentAccountId);
       setSalesmanId(d.salesmanId);
       setCommissionPct(d.commissionPct);
-      setSecurityDocType(d.securityDocType);
-      setSecurityDocNumber(d.securityDocNumber);
-      setSecurityDocImageUrl(d.securityDocImageUrl);
       setNotes(d.notes);
       setDocumentNumber(d.documentNumber);
       if (d.pickedBranchId) setPickedBranchId(d.pickedBranchId);
@@ -173,7 +208,14 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products;
     const q = productSearch.trim().toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
+    return products.filter((p) => {
+      if (p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)) return true;
+      return (p.variations || []).some(
+        (v) =>
+          (v.label || '').toLowerCase().includes(q) ||
+          (v.sku || '').toLowerCase().includes(q),
+      );
+    });
   }, [products, productSearch]);
 
   useEffect(() => {
@@ -208,7 +250,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         setCustomers(list);
       }
       setDefaultCustomer(walking);
-      if (walking && !walkingInitRef.current) {
+      if (walking && !walkingInitRef.current && !isEditMode) {
         walkingInitRef.current = true;
         setSelectedCustomerId(walking.id);
       }
@@ -216,7 +258,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId]);
+  }, [companyId, branchId, isEditMode]);
 
   const handleAddRentalCustomer = async (data: AddContactFormData) => {
     if (!companyId) return;
@@ -269,16 +311,135 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     return () => { c = true; };
   }, [companyId, step]);
 
+  // Prefetch products for edit hydrate (without waiting for products step).
+  useEffect(() => {
+    if (!companyId || !isEditMode || products.length > 0) return;
+    let c = false;
+    void (async () => {
+      const { data } = await productsApi.getRentalProducts(companyId);
+      if (c) return;
+      setProducts(data || []);
+    })();
+    return () => { c = true; };
+  }, [companyId, isEditMode, products.length]);
+
+  // Hydrate edit form once products + customers are available.
+  useEffect(() => {
+    if (!isEditMode || !editRentalId || !companyId || editHydratedRef.current) return;
+    if (products.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error: err } = await rentalsApi.getRentalById(editRentalId);
+      if (cancelled) return;
+      if (err || !data) {
+        setError(err ?? 'Rental not found.');
+        setEditHydrated(true);
+        return;
+      }
+      const st = String(data.status || '').toLowerCase();
+      if (!['draft', 'booked'].includes(st)) {
+        setError('Only draft or booked rentals can be edited.');
+        setEditHydrated(true);
+        return;
+      }
+      editHydratedRef.current = true;
+      setEditBookingNo(data.bookingNo);
+      setEditPaidLocked(Number(data.paidAmount) || 0);
+      setBookingDate(data.bookingDate || today);
+      setPickupDate(data.pickupDate || '');
+      setReturnDate(data.returnDate || '');
+      const days = data.pickupDate && data.returnDate
+        ? daysBetweenYmd(data.pickupDate, data.returnDate) || 1
+        : 3;
+      setDurationDays(days);
+      setDocumentNumber(data.documentNumber || '');
+      setNotes(data.notes || '');
+      setSavedAttachments(
+        Array.isArray(data.attachments)
+          ? data.attachments.filter((a) => a?.url).map((a) => ({ url: a.url, name: a.name || 'Attachment' }))
+          : [],
+      );
+      setAttachmentFiles([]);
+      setSalesmanId(data.salesmanId || null);
+      if (data.customerId) {
+        setSelectedCustomerId(data.customerId);
+        const fromList = customers.find((c) => c.id === data.customerId);
+        setSelectedCustomer(
+          fromList || {
+            id: data.customerId,
+            name: data.customerName || 'Customer',
+            phone: data.customerPhone || '—',
+            balance: 0,
+          },
+        );
+      }
+      const rates: Record<string, string> = {};
+      const mapped: SelectedRentalItem[] = data.items.map((item) => {
+        const catalog = products.find((p) => p.id === item.productId);
+        const variation = item.variationId
+          ? catalog?.variations?.find((v) => v.id === item.variationId)
+          : null;
+        const product: productsApi.RentalProduct = catalog || {
+          id: item.productId,
+          name: item.productName,
+          sku: item.sku || '',
+          rentPricePerDay: item.rate,
+          isRentable: true,
+          hasVariations: Boolean(item.variationId),
+          variations: [],
+        };
+        const key = item.variationId ? `${item.productId}:${item.variationId}` : item.productId;
+        rates[key] = String(item.rate || 0);
+        return {
+          key,
+          product,
+          variationId: item.variationId ?? null,
+          variationLabel: variation?.label ?? null,
+          quantity: item.quantity || 1,
+        };
+      });
+      setLineRateMap(rates);
+      setSelectedItems(mapped);
+      setStep('confirm');
+      setEditHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, editRentalId, companyId, products, customers, today]);
+
   useEffect(() => {
     if (!companyId || (step !== 'advance' && step !== 'payment_confirm' && step !== 'confirm')) return;
     let c = false;
-    accountsApi.getPaymentAccounts(companyId).then(({ data }) => {
+    void (async () => {
+      const [{ data }, defaultsRes, branchDefs] = await Promise.all([
+        accountsApi.getPaymentAccounts(companyId),
+        getDefaultAccounts(companyId),
+        writeBranchId ? getBranchPaymentDefaults(writeBranchId) : Promise.resolve(null),
+      ]);
       if (c) return;
-      setPaymentAccounts(data || []);
-      if (data?.length === 1 && !advancePaymentAccountId) setAdvancePaymentAccountId(data[0].id);
-    });
-    return () => { c = true; };
-  }, [companyId, step, advancePaymentAccountId]);
+      const list = data || [];
+      setPaymentAccounts(list);
+      if (!advancePaymentAccountId && list.length > 0) {
+        const picks = list.map((a) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          balance: a.balance ?? 0,
+          code: a.code ?? '',
+          isDefaultCash: a.isDefaultCash,
+          isDefaultBank: a.isDefaultBank,
+        }));
+        const resolved =
+          resolveDefaultPaymentAccountId('cash', picks, defaultsRes.data, branchDefs) ??
+          resolveDefaultPaymentAccountId('bank', picks, defaultsRes.data, branchDefs);
+        if (resolved) setAdvancePaymentAccountId(resolved);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, [companyId, step, writeBranchId]);
 
   useEffect(() => {
     if (!companyId || salesmen.length > 0) return;
@@ -294,18 +455,35 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   useEffect(() => {
     if (canPickSalesman || salesmanId) return;
-    if (!effectiveUserId) return;
-    const me = salesmen.find((s) => s.id === effectiveUserId);
+    const selfId = effectiveProfileId ?? effectiveUserId;
+    if (!selfId) return;
+    const me = salesmen.find((s) => s.id === selfId);
     if (!me) return;
     setSalesmanId(me.id);
     const defPct = me.rentalCommissionPercent ?? me.defaultCommissionPercent ?? null;
     if (defPct != null) setCommissionPct(String(defPct));
-  }, [canPickSalesman, salesmanId, effectiveUserId, salesmen]);
+  }, [canPickSalesman, salesmanId, effectiveProfileId, effectiveUserId, salesmen]);
 
   const goFromRent = () => {
-    if (canPickSalesman) setStep('salesman');
+    if (isEditMode) setStep('confirm');
+    else if (canPickSalesman) setStep('salesman');
     else setStep('advance');
   };
+
+  const goFromSalesman = () => {
+    if (isEditMode) setStep('confirm');
+    else setStep('advance');
+  };
+
+  /** In edit mode every forward step returns to the confirm hub. */
+  const nextAfter = (createNext: Step): Step => (isEditMode ? 'confirm' : createNext);
+
+  useEffect(() => {
+    if (!isEditMode) return;
+    if (step === 'advance' || step === 'payment_confirm') setStep('confirm');
+  }, [isEditMode, step]);
+
+  const effectivePaidAmount = isEditMode ? editPaidLocked : parseFloat(advancePaid) || 0;
 
   const itemKey = (productId: string, variationId?: string | null) =>
     variationId ? `${productId}:${variationId}` : productId;
@@ -363,7 +541,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   const pickup = pickupDate ? new Date(pickupDate) : null;
   const ret = returnDate ? new Date(returnDate) : null;
-  const durationDays = pickup && ret && ret >= pickup ? Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1 : 0;
+  const effectiveDurationDays =
+    pickupDate && returnDate && ret && pickup && ret >= pickup
+      ? durationDays || daysBetweenYmd(pickupDate, returnDate) || 1
+      : durationDays;
   const itemsRentAmount = selectedItems.reduce((sum, item) => {
     const lineRate = Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0;
     return sum + lineRate * item.quantity;
@@ -371,7 +552,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const extraExpense = 0;
   /** Line rent only (posted as rental_charges); devaluation posts Dr Rental Expense / Cr Rental Income, not added into rental_charges. */
   const customerRentTotal = Math.max(0, itemsRentAmount);
-  const paidAmount = parseFloat(advancePaid) || 0;
+  const paidAmount = effectivePaidAmount;
   const balanceDue = Math.max(0, customerRentTotal - paidAmount);
   const commissionBasePreview = Math.max(0, customerRentTotal - extraExpense);
 
@@ -396,27 +577,109 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Select pickup and return dates.');
       return;
     }
+    if (!bookingDate) {
+      setError('Select booking date.');
+      return;
+    }
     if (ret && pickup && ret < pickup) {
       setError('Return date must be after pickup date.');
       return;
     }
-    if (paidAmount > 0 && !advancePaymentAccountId) {
+    if (paidAmount > 0 && !advancePaymentAccountId && !isEditMode) {
       setError('Select payment account (Receive Advance Into).');
       return;
     }
 
-    await runSave('Creating booking...', async () => {
+    await runSave(isEditMode ? 'Updating booking...' : 'Creating booking...', async () => {
     setError('');
     const items = selectedItems.map((item) => ({
       productId: item.product.id,
       productName: item.product.name,
       quantity: item.quantity,
       ratePerDay: Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0,
-      durationDays,
+      durationDays: effectiveDurationDays,
       total: (Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0) * item.quantity,
       variationId: item.variationId,
       variationLabel: item.variationLabel,
     }));
+
+    const availability = await rentalsApi.checkRentalAvailabilityForItems({
+      companyId,
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
+      startDate: pickupDate,
+      endDate: returnDate,
+      branchId: writeBranchId,
+      excludeRentalId: isEditMode && editRentalId ? editRentalId : undefined,
+    });
+
+    let skipAvailabilityCheck = false;
+    if (!availability.available) {
+      if (availability.requiresConfirmation) {
+        const ok = window.confirm(
+          `${availability.message ?? 'This item overlaps an existing booking.'}\n\nBook this item again anyway?`,
+        );
+        if (!ok) {
+          setError(availability.message ?? 'Booking cancelled.');
+          return;
+        }
+        skipAvailabilityCheck = true;
+      } else {
+        setError(availability.message ?? 'Failed to check availability.');
+        return;
+      }
+    }
+
+    if (isEditMode && editRentalId) {
+      const { error: err } = await rentalsApi.updateBooking(editRentalId, companyId, {
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        bookingDate: bookingDate || today,
+        pickupDate,
+        returnDate,
+        rentalCharges: customerRentTotal,
+        securityDeposit: 0,
+        notes: notes.trim() || null,
+        documentNumber: documentNumber.trim() || null,
+        salesmanId: salesmanId || null,
+        items,
+        skipAvailabilityCheck,
+      });
+      if (err) {
+        setError(err);
+        return;
+      }
+      if (attachmentFiles.length > 0 && companyId && editRentalId) {
+        const att = await rentalsApi.appendRentalAttachments(
+          companyId,
+          editRentalId,
+          attachmentFiles,
+          savedAttachments,
+        );
+        if (att.error) {
+          setError(`Booking updated but attachments failed: ${att.error}`);
+          return;
+        }
+        setSavedAttachments(att.data);
+        setAttachmentFiles([]);
+      }
+      clearRentalDraft();
+      setConfirmationData({
+        type: 'rental',
+        title: 'Booking Updated Successfully',
+        transactionNo: editBookingNo,
+        amount: customerRentTotal,
+        partyName: selectedCustomer.name,
+        date: undefined,
+        dateDisplay: formatLocalDateTimeDisplay(new Date()),
+        branch: pickerBranches.find((b) => b.id === writeBranchId)?.name ?? undefined,
+        entityId: editRentalId,
+      });
+      return;
+    }
 
     const commissionPctNum = commissionPct.trim() ? parseFloat(commissionPct) : NaN;
 
@@ -426,7 +689,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       userId: effectiveUserId || null,
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.name,
-      bookingDate: localNowDateString(),
+      bookingDate: bookingDate || today,
       pickupDate,
       returnDate,
       rentalCharges: customerRentTotal,
@@ -438,15 +701,23 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       documentNumber: documentNumber.trim() || null,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
-      securityDocumentType: securityDocType || null,
-      securityDocumentNumber: securityDocNumber.trim() || null,
-      securityDocumentImageUrl: securityDocImageUrl.trim() || null,
       items,
+      skipAvailabilityCheck,
     });
 
     if (err) {
       setError(err);
       return;
+    }
+    if (createResult?.id && attachmentFiles.length > 0 && companyId) {
+      const att = await rentalsApi.appendRentalAttachments(companyId, createResult.id, attachmentFiles, []);
+      if (att.error) {
+        setError(`Booking saved but attachments failed: ${att.error}`);
+        // still show success for booking itself
+      } else {
+        setAttachmentFiles([]);
+        setSavedAttachments(att.data);
+      }
     }
     let branchName: string | null = pickerBranches.find((b) => b.id === writeBranchId)?.name ?? null;
     if (!branchName && companyId) {
@@ -473,7 +744,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Select payment account (Receive Advance Into).');
       return;
     }
-    setStep('documents');
+    setStep('confirm');
   };
 
   const closeRentalSuccessModal = () => {
@@ -497,16 +768,37 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     );
   }
 
+  if (isEditMode && !editHydrated) {
+    return (
+      <div className="flex flex-col min-h-[50vh] items-center justify-center gap-3 bg-[#111827] p-6">
+        <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />
+        <p className="text-sm text-[#9CA3AF]">Loading booking…</p>
+        {error ? <p className="text-sm text-[#FCA5A5] text-center">{error}</p> : null}
+        {error ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-2 px-4 py-2 rounded-lg bg-[#374151] text-white text-sm"
+          >
+            Back
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
   // ─── Step: Customer ─────────────────────────────────────────────────────
   if (step === 'customer') {
     if (responsive.isTablet && companyId) {
       return (
         <SelectRentalCustomerTablet
           companyId={companyId}
-          onBack={onBack}
+          initialSelectedCustomerId={selectedCustomerId}
+          onBack={isEditMode ? () => setStep('confirm') : onBack}
           onSelect={(c: RentalCustomer) => {
             setSelectedCustomer(c);
-            setStep('products');
+            setSelectedCustomerId(c.id);
+            setStep(nextAfter('products'));
           }}
         />
       );
@@ -537,12 +829,23 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
           <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] px-4 pt-4 pb-3">
             <div className="flex items-center gap-3">
-              <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white">
+              <button
+                onClick={isEditMode ? () => setStep('confirm') : onBack}
+                className="p-2 hover:bg-white/10 rounded-lg text-white"
+              >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-lg font-semibold text-white">New Booking</h1>
-                <p className="text-xs text-white/80">Select customer</p>
+                <h1 className="text-lg font-semibold text-white">
+                  {isEditMode ? 'Edit Booking' : 'New Booking'}
+                </h1>
+                <p className="text-xs text-white/80">
+                  {isEditMode
+                    ? editBookingNo
+                      ? `${editBookingNo} · Change customer`
+                      : 'Change customer'
+                    : 'Select customer'}
+                </p>
               </div>
             </div>
           </div>
@@ -566,7 +869,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             searchQuery={customerSearch}
             onSelect={(c) => {
               setSelectedCustomer(c);
-              setStep('products');
+              setSelectedCustomerId(c.id);
+              setStep(nextAfter('products'));
             }}
             canViewBalances={canViewBalances}
             accent="purple"
@@ -591,11 +895,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step 1: Product Selection ──────────────────────────────────────────
   if (step === 'products') {
     return (
-      <div className={`flex flex-col min-h-0 w-full bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
+      <div className={`flex flex-col min-h-0 flex-1 w-full bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <button onClick={() => setStep('customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+            <button onClick={() => setStep(isEditMode ? 'confirm' : 'customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="min-w-0">
@@ -604,7 +908,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
           </div>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {/* Product search bar at top */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
@@ -765,10 +1069,12 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         {selectedItems.length > 0 && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
             <button
-              onClick={() => setStep('duration')}
+              onClick={() => setStep(nextAfter('duration'))}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              Next ({selectedItems.length} item{selectedItems.length === 1 ? '' : 's'}) →
+              {isEditMode
+                ? 'Done'
+                : `Next (${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'}) →`}
             </button>
           </div>
         )}
@@ -778,14 +1084,14 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 2: Duration Selection ──────────────────────────────────────────
   if (step === 'duration') {
-    const datesValid = pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
+    const datesValid = bookingDate && pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
     return (
       <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('products')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep(isEditMode ? 'confirm' : 'products')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -795,10 +1101,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             {datesValid && (
               <button
-                onClick={() => setStep('rent')}
+                onClick={() => setStep(nextAfter('rent'))}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
-                Next
+                {isEditMode ? 'Done' : 'Next'}
               </button>
             )}
           </div>
@@ -815,39 +1121,52 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DateInputField
+              label="Booking Date"
+              value={bookingDate}
+              accent="rental"
+              onChange={setBookingDate}
+              required
+            />
+            <DateInputField
               label="Pickup Date"
               value={pickupDate}
-              min={today}
               accent="rental"
               onChange={(value) => {
-                const v = value && value < today ? today : value;
-                setPickupDate(v);
-                if (returnDate && v && returnDate < v) setReturnDate(v);
+                setPickupDate(value);
+                if (value) {
+                  setReturnDate(addDaysToYmd(value, durationDays));
+                }
               }}
               required
             />
             <DateInputField
               label="Return Date"
               value={returnDate}
-              min={pickupDate || today}
+              min={pickupDate || undefined}
               accent="rental"
               onChange={(value) => {
-                const minReturn = pickupDate || today;
-                const v = value && value < minReturn ? minReturn : value;
+                const minReturn = pickupDate;
+                const v = minReturn && value && value < minReturn ? minReturn : value;
                 setReturnDate(v);
+                if (pickupDate && v) {
+                  const d = daysBetweenYmd(pickupDate, v);
+                  if (d > 0) setDurationDays(d);
+                }
               }}
               required
             />
           </div>
-          <p className="text-xs text-[#6B7280]">Dates are for booking period and availability. Rent amount is entered in the next step.</p>
+          <p className="text-xs text-[#6B7280]">
+            Booking date is when the reservation is recorded. Pickup/return dates control availability. Booking # (REN-*) is assigned automatically; optional bill ref is on the rent step.
+          </p>
         </div>
         {datesValid && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
             <button
-              onClick={() => setStep('rent')}
+              onClick={() => setStep(nextAfter('rent'))}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              Next: Rent Amount →
+              {isEditMode ? 'Done' : 'Next: Rent Amount →'}
             </button>
           </div>
         )}
@@ -864,7 +1183,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('duration')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep(isEditMode ? 'confirm' : 'duration')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -877,7 +1196,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
                 onClick={goFromRent}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
-                Next
+                {isEditMode ? 'Done' : 'Next'}
               </button>
             )}
           </div>
@@ -886,7 +1205,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <p className="text-sm text-[#9CA3AF]">Dates</p>
             <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
-            <p className="text-xs text-[#6B7280]">{durationDays} days (for reservation only)</p>
+            <p className="text-xs text-[#6B7280]">{effectiveDurationDays} days (for reservation only)</p>
           </div>
           <div className="space-y-3">
             <label className="block text-sm font-medium text-[#9CA3AF]">Set rent per selected dress *</label>
@@ -938,8 +1257,17 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               type="text"
               value={documentNumber}
               onChange={(e) => setDocumentNumber(e.target.value)}
-              placeholder="e.g. A 109"
+              placeholder="e.g. A 109 — not the auto REN booking #"
               className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+            />
+            <p className="text-xs text-[#6B7280] mt-2">System booking number (REN-*) is assigned on save; this field is only for your paper bill book reference.</p>
+          </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <SaleAttachmentEditor
+              existing={normalizeAttachments(savedAttachments)}
+              pendingFiles={attachmentFiles}
+              onPendingChange={setAttachmentFiles}
+              maxTotal={rentalsApi.MAX_RENTAL_ATTACHMENTS_COUNT}
             />
           </div>
         </div>
@@ -949,7 +1277,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               onClick={goFromRent}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              {canPickSalesman ? 'Next: Salesman →' : 'Next: Advance →'}
+              {isEditMode
+                ? 'Done'
+                : canPickSalesman
+                  ? 'Next: Salesman →'
+                  : 'Next: Advance →'}
             </button>
           </div>
         )}
@@ -967,7 +1299,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('rent')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep(isEditMode ? 'confirm' : 'rent')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -977,7 +1309,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             <button
               disabled={!commissionValid}
-              onClick={() => setStep('advance')}
+              onClick={goFromSalesman}
               className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 disabled:opacity-60 rounded-lg font-medium text-sm shadow"
             >
               Next
@@ -1040,10 +1372,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
           <button
             disabled={!commissionValid}
-            onClick={() => setStep('advance')}
+            onClick={goFromSalesman}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white"
           >
-            Next: Advance →
+            {isEditMode ? 'Done' : 'Next: Advance →'}
           </button>
         </div>
       </div>
@@ -1052,6 +1384,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 4: Advance Entry ───────────────────────────────────────────────
   if (step === 'advance') {
+    if (isEditMode) {
+      return null;
+    }
     return (
       <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
         <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
@@ -1125,81 +1460,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             onClick={goNextFromAdvance}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
           >
-            Next: Documents →
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Step: Documents (NSC security doc) ──────────────────────────────────
-  if (step === 'documents') {
-    return (
-      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
-        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-white">Security Document</h1>
-                <p className="text-xs text-white/80 truncate">Optional — collected at booking</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setStep('confirm')}
-              className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-        <div className="p-4 space-y-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-start gap-2">
-            <FileText className="w-5 h-5 text-[#8B5CF6] shrink-0 mt-0.5" />
-            <p className="text-xs text-[#9CA3AF]">
-              Record the customer’s identity document held as security (CNIC, Passport, etc.). You can also skip and capture it at pickup.
-            </p>
-          </div>
-          <div>
-            <CustomSelect
-              label="Document Type"
-              value={securityDocType}
-              onChange={setSecurityDocType}
-              options={[{ value: '', label: '— None —' }, ...SECURITY_DOC_TYPES.map((t) => ({ value: t, label: t }))]}
-              zIndexClass="z-[100]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Document Number</label>
-            <input
-              type="text"
-              value={securityDocNumber}
-              onChange={(e) => setSecurityDocNumber(e.target.value)}
-              placeholder="e.g. 42101-1234567-8"
-              disabled={!securityDocType}
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Document Image URL (optional)</label>
-            <input
-              type="url"
-              value={securityDocImageUrl}
-              onChange={(e) => setSecurityDocImageUrl(e.target.value)}
-              placeholder="https://…"
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white"
-            />
-            <p className="text-xs text-[#6B7280] mt-1">Paste a link to an uploaded scan (Supabase storage etc.).</p>
-          </div>
-        </div>
-        <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
-          <button
-            onClick={() => setStep('confirm')}
-            className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
-          >
             Next: Confirm Booking →
           </button>
         </div>
@@ -1209,6 +1469,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 5: Payment Confirmation (Receive Advance Into) ─────────────────
   if (step === 'payment_confirm') {
+    if (isEditMode) {
+      return null;
+    }
     const needAccount = paidAmount > 0;
     const canNext = !needAccount || advancePaymentAccountId;
     return (
@@ -1227,7 +1490,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             {canNext && (
               <button
-                onClick={() => setStep('documents')}
+                onClick={() => setStep('confirm')}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
                 Next
@@ -1267,11 +1530,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         </div>
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
           <button
-            onClick={() => setStep('documents')}
+            onClick={() => setStep('confirm')}
             disabled={needAccount && !advancePaymentAccountId}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white"
           >
-            Next: Documents →
+            Next: Confirm Booking →
           </button>
         </div>
       </div>
@@ -1284,12 +1547,15 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3">
-          <button onClick={() => setStep('documents')} className="p-2 hover:bg-white/10 rounded-lg text-white">
+          <button
+            onClick={isEditMode ? onBack : () => setStep(canPickSalesman ? 'salesman' : 'advance')}
+            className="p-2 hover:bg-white/10 rounded-lg text-white"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-lg font-semibold text-white">Confirm Booking</h1>
-            <p className="text-xs text-white/80">{selectedCustomer?.name}</p>
+            <h1 className="text-lg font-semibold text-white">{isEditMode ? 'Confirm Update' : 'Confirm Booking'}</h1>
+            <p className="text-xs text-white/80">{selectedCustomer?.name}{editBookingNo ? ` · ${editBookingNo}` : ''}</p>
           </div>
         </div>
       </div>
@@ -1306,44 +1572,143 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             />
           </div>
         )}
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-sm text-[#9CA3AF]">Customer</p>
-          <p className="font-medium text-white">{selectedCustomer?.name}</p>
-        </div>
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-sm text-[#9CA3AF]">Dates</p>
-          <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
-          <p className="text-xs text-[#6B7280]">{durationDays} days</p>
-        </div>
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('customer')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-[#9CA3AF]">Customer</p>
+              <p className="font-medium text-white truncate">{selectedCustomer?.name}</p>
+              <p className="text-xs text-[#6B7280] mt-0.5">Tap to change</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF]">Customer</p>
+            <p className="font-medium text-white">{selectedCustomer?.name}</p>
+          </div>
+        )}
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('duration')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-[#9CA3AF]">Dates</p>
+              <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
+              <p className="text-xs text-[#6B7280] mt-0.5">{effectiveDurationDays} rental days · Tap to change</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF]">Dates</p>
+            <p className="font-medium text-white">Booked {bookingDate} · {pickupDate} → {returnDate}</p>
+            <p className="text-xs text-[#6B7280]">{effectiveDurationDays} rental days · Booking # (REN-*) assigned on save</p>
+          </div>
+        )}
         {documentNumber.trim() && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <p className="text-sm text-[#9CA3AF]">Bill / manual ref #</p>
             <p className="font-medium text-white">{documentNumber.trim()}</p>
           </div>
         )}
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-sm text-[#9CA3AF] mb-2">Selected items</p>
-          {selectedItems.map((i) => (
-            <div key={i.key} className="flex justify-between text-sm">
-              <span className="text-white">
-                {i.product.name}
-                {i.variationLabel ? <span className="text-[#8B5CF6]"> ({i.variationLabel})</span> : null}
-                {' × '}{i.quantity}
-              </span>
-              <span className="text-[#6B7280]">{i.product.sku}</span>
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('products')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-sm text-[#9CA3AF]">Selected items</p>
+              <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
             </div>
-          ))}
-        </div>
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
-          <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
-          {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
-          <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
-        </div>
-        {salesmanId && (
+            {selectedItems.map((i) => (
+              <div key={i.key} className="flex justify-between text-sm">
+                <span className="text-white">
+                  {i.product.name}
+                  {i.variationLabel ? <span className="text-[#8B5CF6]"> ({i.variationLabel})</span> : null}
+                  {' × '}{i.quantity}
+                </span>
+                <span className="text-[#6B7280]">{i.product.sku}</span>
+              </div>
+            ))}
+            <p className="text-xs text-[#6B7280] mt-2">Tap to change items</p>
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF] mb-2">Selected items</p>
+            {selectedItems.map((i) => (
+              <div key={i.key} className="flex justify-between text-sm">
+                <span className="text-white">
+                  {i.product.name}
+                  {i.variationLabel ? <span className="text-[#8B5CF6]"> ({i.variationLabel})</span> : null}
+                  {' × '}{i.quantity}
+                </span>
+                <span className="text-[#6B7280]">{i.product.sku}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {isEditMode ? (
+          <button
+            type="button"
+            onClick={() => setStep('rent')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors space-y-2"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex justify-between flex-1"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
+              <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+            </div>
+            <div className="flex justify-between"><span className="text-[#9CA3AF]">Paid (locked)</span><span className="text-white">Rs. {editPaidLocked.toLocaleString()}</span></div>
+            <p className="text-[11px] text-[#6B7280]">Change paid amount via Add Payment / View Payments. Tap rent to edit charges.</p>
+            <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {Math.max(0, customerRentTotal - editPaidLocked).toLocaleString()}</span></div>
+          </button>
+        ) : (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
+            <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
+            {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
+            <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
+          </div>
+        )}
+        {canPickSalesman ? (
+          <button
+            type="button"
+            onClick={() => setStep('salesman')}
+            className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors flex items-center justify-between gap-3"
+          >
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm text-[#9CA3AF]">Salesman</p>
+              <p className="text-white font-medium truncate">
+                {salesmanId
+                  ? (salesmen.find((s) => s.id === salesmanId)?.name ?? '—')
+                  : '— None —'}
+              </p>
+              {salesmanId &&
+                commissionPct.trim() !== '' &&
+                Number.isFinite(parseFloat(commissionPct)) && (
+                  <p className="text-xs text-[#10B981]">
+                    Commission: {commissionPct}% → Rs.{' '}
+                    {Math.round(
+                      commissionBasePreview * (parseFloat(commissionPct) / 100),
+                    ).toLocaleString()}
+                  </p>
+                )}
+              <p className="text-xs text-[#6B7280] mt-0.5">Tap to change</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0" />
+          </button>
+        ) : salesmanId ? (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-1">
             <p className="text-sm text-[#9CA3AF]">Salesman</p>
-            <p className="text-white font-medium">{salesmen.find((s) => s.id === salesmanId)?.name ?? '—'}</p>
+            <p className="text-white font-medium">
+              {salesmen.find((s) => s.id === salesmanId)?.name ?? '—'}
+            </p>
             {commissionPct.trim() !== '' && Number.isFinite(parseFloat(commissionPct)) && (
               <p className="text-xs text-[#10B981]">
                 Commission: {commissionPct}% → Rs.{' '}
@@ -1351,17 +1716,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               </p>
             )}
           </div>
-        )}
-        {securityDocType && (
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-1">
-            <p className="text-sm text-[#9CA3AF]">Security Document</p>
-            <p className="text-white font-medium">
-              {securityDocType}
-              {securityDocNumber ? ` — ${securityDocNumber}` : ''}
-            </p>
-            {securityDocImageUrl && <p className="text-xs text-[#6B7280] truncate">{securityDocImageUrl}</p>}
-          </div>
-        )}
+        ) : null}
         <div>
           <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
           <textarea
@@ -1376,11 +1731,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
         <button
           onClick={handleSave}
-          disabled={saving || !writeBranchId || (paidAmount > 0 && !advancePaymentAccountId)}
+          disabled={saving || !writeBranchId || (!isEditMode && paidAmount > 0 && !advancePaymentAccountId)}
           className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-          {saving ? 'Saving...' : 'Create Booking'}
+          {saving ? 'Saving...' : isEditMode ? 'Update Booking' : 'Create Booking'}
         </button>
       </div>
     </div>

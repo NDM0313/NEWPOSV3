@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-30T12:10:00.000Z",
+  "file_edited": "/root/supabase/docker/.env",
+  "variable_changed": "SMTP_SENDER_NAME",
+  "old_value": "DIN Collection ERP",
+  "new_value": "NDM ERP SYSTEM",
+  "other_variables_unchanged": true,
+  "running_container_value": "NDM ERP SYSTEM"
+}

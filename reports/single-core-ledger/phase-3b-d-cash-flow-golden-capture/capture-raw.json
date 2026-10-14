@@ -1,0 +1,192 @@
+{
+  "phase": "3B-D",
+  "run": "Cash Flow candidate golden capture",
+  "productionUrl": "https://erp.dincouture.pk",
+  "capturedAt": "2026-06-29T12:16:53.046Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "companies": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "userEmail": "din@yahoo.com",
+      "availability": {
+        "cashFlowLoads": true,
+        "toggleVisible": true,
+        "toggleDefaultOff": true,
+        "legacyLoads": true,
+        "previewLabelsPresent": true
+      },
+      "cashFlow": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29",
+        "branchScope": "Selected branch",
+        "liquidityFilter": "all",
+        "sourceModuleFilter": "all",
+        "auditMode": false,
+        "previewBasis": "effective_party",
+        "legacy": {
+          "opening": 0,
+          "cashIn": 104176812,
+          "cashOut": 67042426,
+          "netMovement": 37134386,
+          "closing": 37134386,
+          "rowCount": 323
+        },
+        "unifiedPreview": {
+          "opening": 0,
+          "cashIn": 118313121,
+          "cashOut": 126854008,
+          "netMovement": -8540887,
+          "closing": -8540887,
+          "rowCount": 405
+        },
+        "compareDeltas": {
+          "openingDelta": 0,
+          "cashInDelta": -14136309,
+          "cashOutDelta": -59811582,
+          "netMovementDelta": 45675273,
+          "closingDelta": 45675273,
+          "rowCountDelta": -82
+        },
+        "pass": false,
+        "zeroDiff": false,
+        "reversalWarning": true,
+        "runningBalanceWarning": false,
+        "needsAccountingRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+          "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+          "Cash Flow screen does not use unified Roznamcha main loader when ON — preview-only parity compare.",
+          "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap."
+        ],
+        "screenshot": "screenshots/din-china-cash-flow-preview.png",
+        "export": "exports/din-china-cash-flow-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "userEmail": "ndm313@yahoo.com",
+      "availability": {
+        "cashFlowLoads": true,
+        "toggleVisible": true,
+        "toggleDefaultOff": true,
+        "legacyLoads": true,
+        "previewLabelsPresent": true
+      },
+      "cashFlow": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29",
+        "branchScope": "All branches",
+        "liquidityFilter": "all",
+        "sourceModuleFilter": "all",
+        "auditMode": false,
+        "previewBasis": "effective_party",
+        "legacy": {
+          "opening": 0,
+          "cashIn": 1836350,
+          "cashOut": 917780,
+          "netMovement": 918570,
+          "closing": 918570,
+          "rowCount": 51
+        },
+        "unifiedPreview": {
+          "opening": 0,
+          "cashIn": 1916350,
+          "cashOut": 942780,
+          "netMovement": 973570,
+          "closing": 973570,
+          "rowCount": 53
+        },
+        "compareDeltas": {
+          "openingDelta": 0,
+          "cashInDelta": -80000,
+          "cashOutDelta": -25000,
+          "netMovementDelta": -55000,
+          "closingDelta": -55000,
+          "rowCountDelta": -2
+        },
+        "pass": false,
+        "zeroDiff": false,
+        "reversalWarning": true,
+        "runningBalanceWarning": false,
+        "needsAccountingRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+          "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+          "Cash Flow screen does not use unified Roznamcha main loader when ON — preview-only parity compare.",
+          "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap."
+        ],
+        "screenshot": "screenshots/din-bridal-cash-flow-preview.png",
+        "export": "exports/din-bridal-cash-flow-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "companyId": "2ab65903-62a3-4bcf-bced-076b681e9b74",
+      "userEmail": "zhd@dincouture.pk",
+      "availability": {
+        "cashFlowLoads": true,
+        "toggleVisible": true,
+        "toggleDefaultOff": true,
+        "legacyLoads": true,
+        "previewLabelsPresent": true
+      },
+      "cashFlow": {
+        "status": "CAPTURED",
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29",
+        "branchScope": "Selected branch",
+        "liquidityFilter": "all",
+        "sourceModuleFilter": "all",
+        "auditMode": false,
+        "previewBasis": "effective_party",
+        "legacy": {
+          "opening": 0,
+          "cashIn": 85000,
+          "cashOut": 34500,
+          "netMovement": 50500,
+          "closing": 50500,
+          "rowCount": 6
+        },
+        "unifiedPreview": {
+          "opening": 0,
+          "cashIn": 85000,
+          "cashOut": 34500,
+          "netMovement": 50500,
+          "closing": 50500,
+          "rowCount": 6
+        },
+        "compareDeltas": {
+          "openingDelta": 0,
+          "cashInDelta": 0,
+          "cashOutDelta": 0,
+          "netMovementDelta": 0,
+          "closingDelta": 0,
+          "rowCountDelta": 0
+        },
+        "pass": true,
+        "zeroDiff": true,
+        "reversalWarning": true,
+        "runningBalanceWarning": false,
+        "needsAccountingRuleConfirmation": false,
+        "accountingRuleNotes": [
+          "PREVIEW_ONLY — not finance-approved golden totals.",
+          "Derived from get_unified_cash_bank_ledger (unified Roznamcha preview path).",
+          "Legacy getCashFlowReport → roznamchaService.getRoznamcha remains main.",
+          "Cash Flow screen does not use unified Roznamcha main loader when ON — preview-only parity compare.",
+          "NEEDS_FINANCE_GOLDEN_APPROVAL before any loader swap."
+        ],
+        "screenshot": "screenshots/din-couture-cash-flow-preview.png",
+        "export": "exports/din-couture-cash-flow-preview.json",
+        "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+      }
+    }
+  }
+}

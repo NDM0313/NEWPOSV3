@@ -12,10 +12,17 @@ import { ViewPurchaseDetailsDrawer } from '../purchases/ViewPurchaseDetailsDrawe
 import { productService } from '@/app/services/productService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { formatStockReference } from '@/app/utils/formatters';
+import {
+  buildStockMovementEnrichment,
+  isPurchaseReferenceType,
+  isSaleReferenceType,
+  resolveMovementInvoiceNo,
+  resolveMovementPartyName,
+  type StockMovementEnrichment,
+} from '@/app/lib/stockMovementReferenceEnrichment';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useSales } from '@/app/context/SalesContext';
-import { usePurchases } from '@/app/context/PurchaseContext';
 import { toast } from 'sonner';
+import { formatQty } from '@/app/utils/quantity';
 
 interface StockMovement {
   id: string;
@@ -56,8 +63,6 @@ export const ProductStockHistoryDrawer = ({
   currentStock
 }: ProductStockHistoryDrawerProps) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
-  const { getSaleById } = useSales();
-  const { getPurchaseById } = usePurchases();
   const [showFullLedger, setShowFullLedger] = useState(false);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,7 +80,8 @@ export const ProductStockHistoryDrawer = ({
   const [viewSaleOpen, setViewSaleOpen] = useState(false);
   const [viewPurchaseOpen, setViewPurchaseOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
-  const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+  const [refEnrichment, setRefEnrichment] = useState<StockMovementEnrichment | null>(null);
 
   // Load variations for the product
   const loadVariations = useCallback(async () => {
@@ -183,6 +189,13 @@ export const ProductStockHistoryDrawer = ({
       // No client-side filtering needed - service handles it
       const movementsData = data || [];
       setMovements(movementsData);
+      try {
+        const enrichment = await buildStockMovementEnrichment(movementsData);
+        setRefEnrichment(enrichment);
+      } catch (enrichErr) {
+        console.warn('[STOCK DRAWER] Reference enrichment failed:', enrichErr);
+        setRefEnrichment(null);
+      }
       
       // Log for debugging and consistency check
       const calculatedTotals = calculateTotals(movementsData);
@@ -333,26 +346,24 @@ export const ProductStockHistoryDrawer = ({
 
   // Get movement reference (short format – never show UUID in UI)
   const getMovementReference = (movement: StockMovement) => {
-    const sale = movement.reference_type && movement.reference_id && String(movement.reference_type).toLowerCase().includes('sale') ? getSaleById(movement.reference_id) : null;
-    const purchase = movement.reference_type && movement.reference_id && String(movement.reference_type).toLowerCase().includes('purchase') ? getPurchaseById(movement.reference_id) : null;
+    const enrichedInvoiceNo = resolveMovementInvoiceNo(refEnrichment, movement);
     return formatStockReference({
       referenceType: movement.reference_type,
       referenceId: movement.reference_id,
       movementId: movement.id,
-      saleInvoiceNo: sale?.invoiceNo,
-      purchaseInvoiceNo: purchase?.purchaseNo,
+      saleInvoiceNo: isSaleReferenceType(movement.reference_type) ? enrichedInvoiceNo : undefined,
+      purchaseInvoiceNo: isPurchaseReferenceType(movement.reference_type) ? enrichedInvoiceNo : undefined,
       notes: movement.notes,
     });
   };
 
   // Handle reference click to open sale/purchase detail or show adjustment info
   const handleReferenceClick = async (movement: StockMovement) => {
-    const refType = movement.reference_type?.toLowerCase();
+    const refType = movement.reference_type?.toLowerCase() ?? '';
     const refId = movement.reference_id;
 
     if (!refId) {
-      // Movements like adjustment often have no reference_id – show friendly message
-      if (refType?.includes('adjustment') || refType?.includes('audit')) {
+      if (refType.includes('adjustment') || refType.includes('audit')) {
         toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Stock adjustment – no linked document.');
       } else {
         toast.info('This movement has no linked document to open.');
@@ -361,27 +372,21 @@ export const ProductStockHistoryDrawer = ({
     }
 
     try {
-      if (refType === 'sale' || refType?.includes('sale') || refType?.includes('invoice')) {
-        const sale = getSaleById(refId);
-        if (sale) {
-          setSelectedSaleId(sale.id);
-          setViewSaleOpen(true);
-        } else {
-          toast.info('Opening sale record...');
-        }
-      } else if (refType === 'purchase' || refType?.includes('purchase') || refType?.includes('order')) {
-        const purchase = getPurchaseById(refId);
-        if (purchase) {
-          setSelectedPurchase(purchase);
-          setViewPurchaseOpen(true);
-        } else {
-          toast.info('Opening purchase record...');
-        }
-      } else if (refType === 'adjustment' || refType?.includes('adjustment') || refType?.includes('audit')) {
-        toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Adjustment – no additional details.');
-      } else {
-        toast.info(`Reference type: ${refType || 'N/A'}`);
+      if (isSaleReferenceType(refType)) {
+        setSelectedSaleId(refId);
+        setViewSaleOpen(true);
+        return;
       }
+      if (isPurchaseReferenceType(refType)) {
+        setSelectedPurchaseId(refId);
+        setViewPurchaseOpen(true);
+        return;
+      }
+      if (refType.includes('adjustment') || refType.includes('audit')) {
+        toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Adjustment – no additional details.');
+        return;
+      }
+      toast.info(`Reference type: ${refType || 'N/A'}`);
     } catch (error) {
       console.error('[STOCK DRAWER] Error opening reference:', error);
       toast.error('Failed to open reference');
@@ -392,7 +397,7 @@ export const ProductStockHistoryDrawer = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm flex justify-end animate-in fade-in duration-200"
       onClick={(e) => {
         // Close on backdrop click
         if (e.target === e.currentTarget) {
@@ -401,34 +406,34 @@ export const ProductStockHistoryDrawer = ({
       }}
     >
       <div 
-        className="w-full max-w-md bg-[#0B0F17] h-screen max-h-screen shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300 overflow-hidden"
+        className="w-full max-w-md bg-background h-screen max-h-screen shadow-2xl flex flex-col border-l border-border animate-in slide-in-from-right duration-300 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         style={{ height: '100vh', maxHeight: '100vh' }}
       >
         
         {/* Header - Fixed */}
-        <div className="flex-shrink-0 px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between">
+        <div className="flex-shrink-0 px-6 py-5 border-b border-border bg-background flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Stock Movement</h2>
+            <h2 className="text-lg font-bold text-foreground tracking-tight">Stock Movement</h2>
             <p className="text-sm text-blue-400 font-medium">{productName}</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white hover:bg-gray-800">
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground hover:bg-muted">
             <X className="h-5 w-5" />
           </Button>
         </div>
 
         {/* Filters - Fixed (if product has variations or multiple branches) */}
         {(variations.length > 0 || branches.length > 1) && (
-          <div className="flex-shrink-0 px-6 py-4 border-b border-gray-800 bg-[#111827]/50 space-y-3">
+          <div className="flex-shrink-0 px-6 py-4 border-b border-border bg-background/50 space-y-3">
             {/* Only show variation filter if variations exist AND column exists in database */}
             {variations.length > 0 && variationColumnExists !== false && (
               <div>
-                <Label className="text-xs text-gray-400 mb-1.5 block">Variation</Label>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Variation</Label>
                 <Select
                   value={selectedVariationId || 'all'}
                   onValueChange={(value) => setSelectedVariationId(value === 'all' ? undefined : value)}
                 >
-                  <SelectTrigger className="h-8 bg-gray-900 border-gray-700 text-white text-xs">
+                  <SelectTrigger className="h-8 bg-card border-border text-foreground text-xs">
                     <SelectValue placeholder="All Variations" />
                   </SelectTrigger>
                   <SelectContent>
@@ -444,12 +449,12 @@ export const ProductStockHistoryDrawer = ({
             )}
             {branches.length > 1 && (
               <div>
-                <Label className="text-xs text-gray-400 mb-1.5 block">Branch / Location</Label>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Branch / Location</Label>
                 <Select
                   value={selectedBranchId || 'all'}
                   onValueChange={(value) => setSelectedBranchId(value === 'all' ? undefined : value)}
                 >
-                  <SelectTrigger className="h-8 bg-gray-900 border-gray-700 text-white text-xs">
+                  <SelectTrigger className="h-8 bg-card border-border text-foreground text-xs">
                     <SelectValue placeholder="All Branches" />
                   </SelectTrigger>
                   <SelectContent>
@@ -467,52 +472,52 @@ export const ProductStockHistoryDrawer = ({
         )}
 
         {/* PART 4: Summary Cards - Fixed (4 cards: Sold, Purchased, Adjustments, Current) - Aligned with ledger */}
-        <div className="flex-shrink-0 p-6 grid grid-cols-4 gap-3 border-b border-gray-800 bg-[#1F2937]/30">
-           <div className="bg-gray-900 border border-red-800 p-3 rounded-lg flex flex-col items-center justify-center text-center">
-              <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Sold</span>
-              <span className="text-xl font-bold text-red-400 mt-1">{totals.totalSold.toFixed(2)}</span>
+        <div className="flex-shrink-0 p-6 grid grid-cols-4 gap-3 border-b border-border bg-muted/40">
+           <div className="bg-card border border-red-800 p-3 rounded-lg flex flex-col items-center justify-center text-center">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Sold</span>
+              <span className="text-xl font-bold text-red-400 mt-1 tabular-nums">{formatQty(totals.totalSold)}</span>
               <ArrowUpRight size={12} className="text-red-400 mt-1" />
            </div>
-           <div className="bg-gray-900 border border-green-800 p-3 rounded-lg flex flex-col items-center justify-center text-center">
-              <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Purchased</span>
-              <span className="text-xl font-bold text-green-400 mt-1">{totals.totalPurchased.toFixed(2)}</span>
-              <ArrowDownRight size={12} className="text-green-400 mt-1" />
+           <div className="bg-card border border-green-800 p-3 rounded-lg flex flex-col items-center justify-center text-center">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Purchased</span>
+              <span className="text-xl font-bold text-[var(--erp-money-positive)] mt-1 tabular-nums">{formatQty(totals.totalPurchased)}</span>
+              <ArrowDownRight size={12} className="text-[var(--erp-money-positive)] mt-1" />
            </div>
-           <div className="bg-gray-900 border border-yellow-800 p-3 rounded-lg flex flex-col items-center justify-center text-center">
-              <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Adjustments</span>
+           <div className="bg-card border border-yellow-800 p-3 rounded-lg flex flex-col items-center justify-center text-center">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Adjustments</span>
               <span className={cn(
                 "text-xl font-bold mt-1",
                 totals.totalAdjustments >= 0 ? "text-yellow-400" : "text-orange-400"
               )}>
-                {totals.totalAdjustments >= 0 ? '+' : ''}{totals.totalAdjustments.toFixed(2)}
+                {totals.totalAdjustments >= 0 ? '+' : ''}{formatQty(totals.totalAdjustments)}
               </span>
-              <div className="text-[9px] text-gray-500 mt-1">
-                +{totals.totalAdjustmentPositive.toFixed(2)} / -{totals.totalAdjustmentNegative.toFixed(2)}
+              <div className="text-[9px] text-muted-foreground mt-1 tabular-nums">
+                +{formatQty(totals.totalAdjustmentPositive)} / -{formatQty(totals.totalAdjustmentNegative)}
               </div>
            </div>
-           <div className="bg-gray-900 border border-blue-800 p-3 rounded-lg flex flex-col items-center justify-center text-center relative overflow-hidden">
+           <div className="bg-card border border-blue-800 p-3 rounded-lg flex flex-col items-center justify-center text-center relative overflow-hidden">
               <div className="absolute inset-0 bg-blue-900/10 z-0"></div>
               <span className="text-[10px] text-blue-300 uppercase font-bold tracking-wider relative z-10">Current</span>
-              <span className="text-xl font-bold text-blue-400 mt-1 relative z-10">{totals.currentBalance.toFixed(2)}</span>
+              <span className="text-xl font-bold text-blue-400 mt-1 relative z-10 tabular-nums">{formatQty(totals.currentBalance)}</span>
               <Package size={12} className="text-blue-500 mt-1 relative z-10" />
            </div>
         </div>
 
         {/* Timeline List - Scrollable Body (flex-1 with min-h-0 for proper scrolling) */}
-        <div className="flex-1 min-h-0 overflow-hidden bg-[#0B0F17]" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+        <div className="flex-1 min-h-0 overflow-hidden bg-background" style={{ maxHeight: 'calc(100vh - 400px)' }}>
           <ScrollArea className="h-full p-6" style={{ height: '100%' }}>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : sortedMovements.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Package className="h-12 w-12 text-gray-600 mb-3" />
-              <p className="text-sm text-gray-400">No stock movements found</p>
-              <p className="text-xs text-gray-500 mt-1">Stock movements will appear here</p>
+              <Package className="h-12 w-12 text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">No stock movements found</p>
+              <p className="text-xs text-muted-foreground mt-1">Stock movements will appear here</p>
             </div>
           ) : (
-            <div className="relative border-l border-gray-800 ml-3 space-y-8">
+            <div className="relative border-l border-border ml-3 space-y-8">
               {sortedMovements.map((move) => {
                 const qty = Number(move.quantity || 0);
                 const isPositive = qty > 0;
@@ -520,13 +525,14 @@ export const ProductStockHistoryDrawer = ({
                 const typeLower = movementType.toLowerCase();
                 const reference = getMovementReference(move);
                 const { date, time } = formatDate(move.created_at);
+                const partyName = resolveMovementPartyName(refEnrichment, move);
                 
                 let icon = <ShoppingCart size={14} />;
                 let badgeColor = "text-red-400 bg-red-900/20 border-red-900/50";
 
                 if (typeLower === 'purchase') {
                   icon = <Truck size={14} />;
-                  badgeColor = "text-green-400 bg-green-900/20 border-green-900/50";
+                  badgeColor = "text-[var(--erp-money-positive)] bg-green-900/20 border-green-900/50";
                 } else if (typeLower === 'return' || typeLower === 'sell_return' || typeLower === 'rental_return') {
                   icon = <RefreshCw size={14} />;
                   badgeColor = "text-orange-400 bg-orange-900/20 border-orange-900/50";
@@ -571,8 +577,8 @@ export const ProductStockHistoryDrawer = ({
                                 className={cn(
                                   "text-sm font-bold hover:underline transition-colors",
                                   (typeLower === 'sale' || typeLower === 'purchase' || typeLower === 'adjustment')
-                                    ? "text-white hover:text-blue-400 cursor-pointer"
-                                    : "text-white cursor-default"
+                                    ? "text-foreground hover:text-blue-400 cursor-pointer"
+                                    : "text-foreground cursor-default"
                                 )}
                                 title={
                                   typeLower === 'sale' ? 'Click to view sale details' :
@@ -584,16 +590,19 @@ export const ProductStockHistoryDrawer = ({
                                 {reference}
                               </button>
                            </div>
-                           <p className="text-xs text-gray-500">{date} • {time}</p>
+                           <p className="text-xs text-muted-foreground">{date} • {time}</p>
+                           {partyName ? (
+                             <p className="text-xs text-muted-foreground mt-0.5">{partyName}</p>
+                           ) : null}
                            {move.notes && (
-                             <p className="text-xs text-gray-600 mt-1 italic">{move.notes}</p>
+                             <p className="text-xs text-muted-foreground mt-1 italic">{move.notes}</p>
                            )}
                         </div>
                         <div className={cn(
                           "font-mono font-bold text-sm ml-4",
-                          isPositive ? "text-green-400" : "text-red-400"
+                          isPositive ? "text-[var(--erp-money-positive)]" : "text-red-400"
                         )}>
-                           {isPositive ? "+" : ""}{qty} Units
+                           {isPositive ? "+" : ""}{formatQty(qty)} Units
                         </div>
                      </div>
                   </div>
@@ -605,18 +614,18 @@ export const ProductStockHistoryDrawer = ({
         </div>
 
         {/* Footer - Fixed */}
-        <div className="flex-shrink-0 p-5 border-t border-gray-800 bg-gray-950">
-          <div className="text-xs text-gray-500 mb-3 text-center">
+        <div className="flex-shrink-0 p-5 border-t border-border bg-input-background">
+          <div className="text-xs text-muted-foreground mb-3 text-center">
             {sortedMovements.length} {sortedMovements.length === 1 ? 'movement' : 'movements'}
             {process.env.NODE_ENV === 'development' && totals.currentBalance !== currentStock && (
               <span className="ml-2 text-yellow-500">
-                (Balance: {totals.currentBalance} vs Dashboard: {currentStock})
+                (Balance: {formatQty(totals.currentBalance)} vs Dashboard: {formatQty(currentStock)})
               </span>
             )}
           </div>
            <Button 
              variant="outline" 
-             className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+             className="w-full border-border text-muted-foreground hover:text-foreground hover:bg-muted"
              onClick={() => {
                if (productId) {
                  setShowFullLedger(true);
@@ -670,14 +679,14 @@ export const ProductStockHistoryDrawer = ({
       )}
 
       {/* Purchase Details Drawer */}
-      {selectedPurchase && (
+      {selectedPurchaseId && (
         <ViewPurchaseDetailsDrawer
           isOpen={viewPurchaseOpen}
           onClose={() => {
             setViewPurchaseOpen(false);
-            setSelectedPurchase(null);
+            setSelectedPurchaseId(null);
           }}
-          purchaseId={selectedPurchase.id}
+          purchaseId={selectedPurchaseId}
           onEdit={() => {
             setViewPurchaseOpen(false);
             toast.info('Edit purchase functionality');

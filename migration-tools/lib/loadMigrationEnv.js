@@ -65,11 +65,14 @@ export function loadMigrationEnv(argv = process.argv.slice(2)) {
   loadEnvFiles();
 
   const dryRun = argv.includes('--dry-run');
-  const confirm = argv.includes('--confirm');
+  const apply = argv.includes('--apply');
+  const confirm = argv.includes('--confirm') || apply;
   const phase = readArg(argv, 'phase') || 'all';
   const batchSize = Math.max(1, Number(readArg(argv, 'batch-size') || 100) || 100);
   const targetCompanyId = validateTargetCompanyId(
-    readArg(argv, 'target-company-id') || process.env.TARGET_COMPANY_ID
+    readArg(argv, 'company-id') ||
+      readArg(argv, 'target-company-id') ||
+      process.env.TARGET_COMPANY_ID
   );
 
   const validPhases = new Set(['all', 'contacts', 'accounts', 'products', 'ledgers']);
@@ -78,14 +81,17 @@ export function loadMigrationEnv(argv = process.argv.slice(2)) {
   }
 
   if (!dryRun && !confirm) {
-    throw new Error('Live import blocked. Pass --confirm to write, or use --dry-run to preview only.');
+    throw new Error(
+      'Live import blocked. Pass --confirm or --apply to write, or use --dry-run to preview only.'
+    );
   }
 
   const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '')
     .replace(/\/+$/, '');
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const requireSupabaseForDryRun = argv.includes('--require-supabase');
 
-  if (!dryRun) {
+  if (!dryRun || requireSupabaseForDryRun) {
     if (!supabaseUrl || !serviceRoleKey) {
       const hasViteAnon = Boolean(process.env.VITE_SUPABASE_ANON_KEY);
       const hint = hasViteAnon
@@ -105,6 +111,7 @@ export function loadMigrationEnv(argv = process.argv.slice(2)) {
 
   return {
     dryRun,
+    apply,
     confirm,
     phase,
     batchSize,

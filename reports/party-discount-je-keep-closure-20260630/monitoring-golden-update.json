@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-06-30T08:00:00.000Z",
+  "party": "MR JALIL",
+  "company": "DIN CHINA",
+  "old_expected_closing_pkr": 216300,
+  "new_expected_closing_pkr": 216299,
+  "delta_pkr": -1,
+  "reason": "Operator retained approved PKR 1 party_discount QA JE-0003",
+  "files_changed": [
+    {
+      "path": "scripts/single-core-ledger/monitoring-company-profiles.json",
+      "field": "profiles.din-china.golden.mr_jalil_closing_pkr",
+      "old": 216300,
+      "new": 216299
+    },
+    {
+      "path": "reports/single-core-ledger/din-china/golden-fixtures.json",
+      "fields": [
+        "fixtures.mr_jalil_closing_pkr",
+        "fixtures.ledger_v2_mr_jalil_closing_pkr",
+        "fixtures.account_statement_mr_jalil_closing_pkr",
+        "fixtures.party_ledger_mr_jalil_closing_pkr"
+      ],
+      "old": 216300,
+      "new": 216299
+    },
+    {
+      "path": "src/app/lib/unifiedLedgerGoldenFixtures.ts",
+      "field": "MR_JALIL_EXPECTED_BALANCE",
+      "old": 216300,
+      "new": 216299,
+      "note": "Admin Compare pilot batch golden (din-china monitoring)"
+    },
+    {
+      "path": "scripts/single-core-ledger/unifiedLedgerBrowserQaHelpers.mjs",
+      "field": "MR_JALIL_GOLDEN",
+      "old": 216300,
+      "new": 216299
+    }
+  ],
+  "unchanged": ["din-bridal golden", "din-couture golden", "loaders", "flags", "GL data"]
+}

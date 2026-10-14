@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -13,12 +13,17 @@ import {
   Upload,
   FileText,
   Loader2,
+  ScanText,
 } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
-import { getBranches } from '../../api/branches';
+import { getBranches, getBranchPaymentDefaults } from '../../api/branches';
+import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/settings';
 import { MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from './MediaSourcePicker';
+import { ReceiptOcrReviewSheet } from './ReceiptOcrReviewSheet';
+import { useReceiptOcrAfterAttach } from '../../hooks/useReceiptOcrAfterAttach';
+import { isImageFile } from '../../lib/ocr/receiptOcrTypes';
 import { TransactionSuccessModal, type TransactionSuccessData } from './TransactionSuccessModal';
 import {
   buildPaymentReferenceLabels,
@@ -28,10 +33,33 @@ import { PdfPreviewModal } from './PdfPreviewModal';
 import { ReceiptPreviewPdf } from './ReceiptPreviewPdf';
 import { usePdfPreview } from './usePdfPreview';
 import { usePermissions } from '../../context/PermissionContext';
+import {
+  buildCustomerSalePaymentAutoNotes,
+  composeSalePaymentNotes,
+  readPaymentAutoDescriptionEnabled,
+  writePaymentAutoDescriptionEnabled,
+} from '../../utils/saleNotesComposition';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
-import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
-import { isBranchSentinel } from '../../utils/branchId';
+import {
+  localNowDateTimeString,
+  parsePaymentDateTimeLocal,
+  getCurrentLocalTimestamp,
+} from '../../utils/localDate';
+import { ocrDateTimeLocal } from '../../lib/ocr/receiptOcrTypes';
+import { isBranchSentinel, isRealBranchUuid } from '../../utils/branchId';
+import { DateTimeInputField } from './DateTimePicker';
+import {
+  filterPaymentAccountsByMethod,
+  mobilePaymentMethodToLabel,
+} from '../../lib/paymentAccountFilters';
 import { useSubmitLock } from '../../contexts/LoadingContext';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { WriteBranchPickerField } from './WriteBranchPickerField';
+import {
+  resolveDefaultPaymentAccountId,
+  type PaymentAccountPick,
+  type BranchPaymentDefaults,
+} from '../../utils/resolveDefaultPaymentAccount';
 
 function blurActiveInput(): void {
   const el = document.activeElement as HTMLElement | null;
@@ -53,6 +81,8 @@ export interface MobilePaymentSheetSubmitPayload {
   accountId: string;
   accountName: string;
   paymentDate: string;
+  /** Local timestamptz for payments.created_at when supported. */
+  paymentAt?: string;
   reference: string;
   notes: string;
   attachments: File[];
@@ -105,6 +135,23 @@ export interface MobilePaymentSheetProps {
   hidePayFull?: boolean;
   /** Hide the total/paid summary (e.g. for expense). */
   hideSummary?: boolean;
+  /** For branch=all resolution inside the sheet. */
+  userRole?: string;
+  profileId?: string | null;
+  /** When paying an existing document, its branch_id takes priority. */
+  documentBranchId?: string | null;
+  /** Customer bill book / REF # for sale receive-payment auto description. */
+  customerBillRef?: string | null;
+  /** Optional user add-on prefill for description field. */
+  defaultPaymentNotes?: string | null;
+  /** Prefill bank trace / reference from Scan Receipt OCR. */
+  initialReference?: string | null;
+  /** Prefill payment date YYYY-MM-DD (keeps current time-of-day unless initialPaymentTime set). */
+  initialPaymentDate?: string | null;
+  /** Prefill HH:mm with initialPaymentDate for datetime-local. */
+  initialPaymentTime?: string | null;
+  /** Prefill attachment files from Scan Receipt (upload on submit). */
+  initialAttachmentFiles?: File[] | null;
 
   onClose: () => void;
   onSuccess: () => void;
@@ -227,6 +274,15 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     partyKindLabel,
     hidePayFull = false,
     hideSummary = false,
+    userRole,
+    profileId,
+    documentBranchId,
+    customerBillRef,
+    defaultPaymentNotes,
+    initialReference,
+    initialPaymentDate,
+    initialPaymentTime,
+    initialAttachmentFiles,
     onClose,
     onSuccess,
     onSubmit,
@@ -243,16 +299,86 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [accountId, setAccountId] = useState('');
   const { canViewBalances } = usePermissions();
-  const [paymentDate, setPaymentDate] = useState(() => localNowDateString());
-  const [notes, setNotes] = useState('');
-  const [reference, setReference] = useState('');
-  const [showOptional, setShowOptional] = useState(false);
-  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [paymentDateTime, setPaymentDateTime] = useState(() =>
+    ocrDateTimeLocal(initialPaymentDate, initialPaymentTime) ?? localNowDateTimeString()
+  );
+  const [branchPickerModalOpen, setBranchPickerModalOpen] = useState(false);
+  const [notes, setNotes] = useState(() => String(defaultPaymentNotes ?? '').trim());
+  const [reference, setReference] = useState(() => String(initialReference ?? '').trim());
+  const [showOptional, setShowOptional] = useState(
+    () =>
+      Boolean(String(defaultPaymentNotes ?? '').trim()) ||
+      Boolean(String(initialReference ?? '').trim()) ||
+      Boolean(initialAttachmentFiles?.length)
+  );
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>(() =>
+    initialAttachmentFiles?.length ? [...initialAttachmentFiles] : []
+  );
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
-  const [accounts, setAccounts] = useState<
-    Array<{ id: string; name: string; type: string; balance: number }>
-  >([]);
+  const [paymentAutoEnabled, setPaymentAutoEnabled] = useState(readPaymentAutoDescriptionEnabled);
+
+  const setPaymentAutoDescriptionEnabled = (next: boolean) => {
+    setPaymentAutoEnabled(next);
+    writePaymentAutoDescriptionEnabled(next);
+  };
+
+  useEffect(() => {
+    const next = ocrDateTimeLocal(initialPaymentDate, initialPaymentTime);
+    if (next) setPaymentDateTime(next);
+  }, [initialPaymentDate, initialPaymentTime]);
+
+  const handleOcrApply = useCallback(
+    (patch: { amount?: number; date?: string; time?: string; reference?: string; notes?: string }) => {
+      if (patch.amount != null) setAmount(patch.amount);
+      if (patch.reference) setReference(patch.reference);
+      if (patch.notes != null) setNotes(patch.notes);
+      if (patch.date) {
+        const next =
+          ocrDateTimeLocal(patch.date, patch.time) ??
+          (() => {
+            const now = localNowDateTimeString();
+            const timePart = now.includes('T') ? now.split('T')[1] : '12:00';
+            return `${patch.date}T${timePart.slice(0, 5)}`;
+          })();
+        setPaymentDateTime(next);
+      }
+      setShowOptional(true);
+    },
+    []
+  );
+  const ocr = useReceiptOcrAfterAttach({
+    enabled: true,
+    onApply: handleOcrApply,
+    getExistingNotes: () => notes,
+  });
+  const [accounts, setAccounts] = useState<PaymentAccountPick[]>([]);
+  const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
+  const [branchPaymentDefaults, setBranchPaymentDefaults] = useState<BranchPaymentDefaults | null>(null);
   const [branchName, setBranchName] = useState<string | null>(null);
+
+  const needsInSheetBranchPicker = isBranchSentinel(branchId);
+  const {
+    effectiveBranchId: writeBranchId,
+    needsPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+  } = useWriteBranchSelection({
+    companyId: needsInSheetBranchPicker ? companyId : null,
+    globalBranchId: branchId,
+    documentBranchId,
+    userRole,
+    authUserId: userId,
+    profileId: profileId ?? null,
+  });
+
+  const submitBranchId = needsInSheetBranchPicker
+    ? writeBranchId && isRealBranchUuid(writeBranchId)
+      ? writeBranchId
+      : null
+    : branchId && !isBranchSentinel(branchId)
+      ? branchId
+      : null;
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { run: runSave, busy: submitting } = useSubmitLock();
@@ -279,40 +405,72 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         name: a.name,
         type: a.type,
         balance: a.balance ?? 0,
+        code: a.code,
+        isDefaultCash: a.isDefaultCash,
+        isDefaultBank: a.isDefaultBank,
       }));
       setAccounts(list);
     });
+    getDefaultAccounts(companyId).then(({ data }) => setDefaultAccounts(data));
   }, [companyId]);
 
   useEffect(() => {
+    if (!submitBranchId) {
+      setBranchPaymentDefaults(null);
+      return;
+    }
+    getBranchPaymentDefaults(submitBranchId).then(setBranchPaymentDefaults);
+  }, [submitBranchId]);
+
+  useEffect(() => {
     if (!companyId) return;
+    const lookupId = submitBranchId ?? branchId;
+    if (!lookupId || isBranchSentinel(lookupId)) {
+      setBranchName(null);
+      return;
+    }
     getBranches(companyId).then(({ data }) => {
-      const b = data?.find((x) => x.id === branchId);
+      const b = data?.find((x) => x.id === lookupId);
       setBranchName(b?.name ?? null);
     });
-  }, [companyId, branchId]);
+  }, [companyId, branchId, submitBranchId]);
 
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((a) => {
-      if (paymentMethod === 'cash') return a.type === 'cash';
-      if (paymentMethod === 'bank') return a.type === 'bank';
-      if (paymentMethod === 'card') return a.type === 'bank';
-      return a.type === 'mobile_wallet';
-    });
+    return filterPaymentAccountsByMethod(
+      accounts,
+      mobilePaymentMethodToLabel(paymentMethod),
+    ) as PaymentAccountPick[];
   }, [accounts, paymentMethod]);
 
   useEffect(() => {
-    const first = filteredAccounts[0];
-    if (first && !filteredAccounts.some((a) => a.id === accountId)) {
-      setAccountId(first.id);
+    if (filteredAccounts.length === 0) {
+      setAccountId('');
+      return;
     }
-  }, [filteredAccounts, accountId]);
+    const resolved = resolveDefaultPaymentAccountId(
+      paymentMethod,
+      filteredAccounts,
+      defaultAccounts,
+      branchPaymentDefaults,
+    );
+    if (resolved) setAccountId(resolved);
+  }, [paymentMethod, filteredAccounts, defaultAccounts, branchPaymentDefaults]);
 
   useEffect(() => {
     setAccountPickerOpen(false);
   }, [paymentMethod]);
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
+  const salePaymentAutoDescription = useMemo(() => {
+    if (mode !== 'receive') return '';
+    return buildCustomerSalePaymentAutoNotes({
+      partyName: partyName ?? 'Customer',
+      invoiceRef: referenceNo,
+      customerBillRef,
+      paymentAccountName: selectedAccount?.name ?? '',
+    });
+  }, [mode, partyName, referenceNo, customerBillRef, accountId, selectedAccount?.name]);
+
   const dueDisplay = outstandingAmount ?? 0;
   const amountExceedsBalance =
     canViewBalances &&
@@ -339,37 +497,39 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     setAttachmentFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleConfirm = async () => {
-    if (!isValid) {
-      if (amount <= 0) setToast({ message: 'Enter a valid amount.', type: 'error' });
-      else if (amountExceedsDue)
-        setToast({
-          message: `Amount cannot exceed outstanding (Rs. ${(outstandingAmount || 0).toLocaleString()}).`,
-          type: 'error',
-        });
-      else if (!accountId) setToast({ message: 'Select a payment account.', type: 'error' });
-      return;
-    }
-
-    if (isBranchSentinel(branchId)) {
-      setToast({ message: 'Select a specific branch (not All Branches) before recording payment.', type: 'error' });
-      return;
-    }
-
+  const executeSubmit = async (resolvedBranchId: string) => {
     const acct = accounts.find((a) => a.id === accountId);
+    const { paymentDate, paymentAt } = parsePaymentDateTimeLocal(paymentDateTime);
     await runSave('Processing payment...', async () => {
       try {
+      const composedNotes =
+        mode === 'receive'
+          ? composeSalePaymentNotes({
+              autoNotes: buildCustomerSalePaymentAutoNotes({
+                partyName: partyName ?? 'Customer',
+                invoiceRef: referenceNo,
+                customerBillRef,
+                paymentAccountName: acct?.name ?? '',
+              }),
+              userNotes: notes.trim(),
+              bankTraceId: reference.trim() || null,
+              includeAuto: paymentAutoEnabled,
+            })
+          : reference.trim()
+            ? composeSalePaymentNotes({ autoNotes: notes.trim(), bankTraceId: reference.trim() })
+            : notes.trim();
       const result = await onSubmit({
         amount,
         method: paymentMethod,
         accountId,
         accountName: acct?.name ?? '',
         paymentDate,
+        paymentAt,
         reference: reference.trim(),
-        notes: notes.trim(),
+        notes: composedNotes,
         attachments: attachmentFiles,
         companyId,
-        branchId,
+        branchId: resolvedBranchId,
         userId: userId ?? null,
       });
 
@@ -408,7 +568,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         referenceFull: refLabels.full || (result.referenceNumber ?? null),
         amount,
         partyName: partyName ?? null,
-        date: getCurrentLocalTimestamp(),
+        date: paymentAt,
         branch: branchName ?? undefined,
         entityId: result.paymentId ?? null,
         fromAccountName: acct?.name ?? '',
@@ -420,6 +580,32 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         setToast({ message: msg, type: 'error' });
       }
     });
+  };
+
+  const handleConfirm = async () => {
+    if (!isValid) {
+      if (amount <= 0) setToast({ message: 'Enter a valid amount.', type: 'error' });
+      else if (amountExceedsDue)
+        setToast({
+          message: `Amount cannot exceed outstanding (Rs. ${(outstandingAmount || 0).toLocaleString()}).`,
+          type: 'error',
+        });
+      else if (!accountId) setToast({ message: 'Select a payment account.', type: 'error' });
+      return;
+    }
+
+    if (!submitBranchId) {
+      setBranchPickerModalOpen(true);
+      return;
+    }
+
+    await executeSubmit(submitBranchId);
+  };
+
+  const handleBranchModalContinue = async () => {
+    if (!writeBranchId || !isRealBranchUuid(writeBranchId)) return;
+    setBranchPickerModalOpen(false);
+    await executeSubmit(writeBranchId);
   };
 
   const closeSuccess = () => {
@@ -478,6 +664,16 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 pb-24">
+        {needsInSheetBranchPicker && needsPicker && pickerBranches.length > 0 && (
+          <WriteBranchPickerField
+            branches={pickerBranches}
+            value={pickedBranchId}
+            onChange={setPickedBranchId}
+            helperText="Payment will be recorded under the selected branch."
+            zIndexClass="z-[75]"
+          />
+        )}
+
         {partyName && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
@@ -526,13 +722,16 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Payment date *</label>
-          <input
-            type="date"
-            max={localNowDateString()}
-            value={paymentDate}
-            onChange={(e) => setPaymentDate(e.target.value)}
-            className="w-full max-w-xs h-11 px-3 rounded-lg bg-[#1F2937] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+          <DateTimeInputField
+            label="Payment date & time"
+            required
+            value={paymentDateTime}
+            onChange={setPaymentDateTime}
+            max={(() => {
+              const now = localNowDateTimeString();
+              if (!paymentDateTime) return now.slice(0, 10);
+              return (paymentDateTime > now ? paymentDateTime : now).slice(0, 10);
+            })()}
           />
         </div>
 
@@ -680,21 +879,60 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             onClick={() => setShowOptional(!showOptional)}
             className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-medium text-[#9CA3AF] hover:bg-[#374151]/50"
           >
-            <span>Payment Date, Bank Trace ID, Description, Attachments</span>
+            <span>Bank Trace ID, Description, Attachments</span>
             {showOptional ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {showOptional && (
             <div className="px-4 pb-4 space-y-4 border-t border-[#374151] pt-4">
-              <div>
-                <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Payment Date</label>
-                <input
-                  type="date"
-                  max={localNowDateString()}
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full h-11 px-3 rounded-lg bg-[#111827] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
-                />
-              </div>
+              {mode === 'receive' && salePaymentAutoDescription && (
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-1">
+                    <label className="block text-xs font-medium text-[#9CA3AF]">Auto description</label>
+                    <div
+                      className="inline-flex rounded-lg border border-[#4B5563] overflow-hidden shrink-0"
+                      role="group"
+                      aria-label="Auto description on or off"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAutoDescriptionEnabled(true)}
+                        className={`px-3 py-1.5 text-xs font-bold tracking-wide transition-colors ${
+                          paymentAutoEnabled
+                            ? 'bg-[#4F46E5] text-white'
+                            : 'bg-[#374151] text-[#9CA3AF] hover:text-white'
+                        }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentAutoDescriptionEnabled(false)}
+                        className={`px-3 py-1.5 text-xs font-bold tracking-wide transition-colors border-l border-[#4B5563] ${
+                          !paymentAutoEnabled
+                            ? 'bg-[#6B7280] text-white'
+                            : 'bg-[#374151] text-[#9CA3AF] hover:text-white'
+                        }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+                  {paymentAutoEnabled ? (
+                    <>
+                      <p className="text-sm text-[#9CA3AF] leading-relaxed whitespace-pre-wrap break-words">
+                        {salePaymentAutoDescription}
+                      </p>
+                      <p className="text-[10px] text-[#6B7280] mt-1">
+                        Saved with your add-on and bank trace below.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[#6B7280] leading-relaxed">
+                      Auto description is OFF. Only Bank Trace and Description add-on are saved.
+                    </p>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Bank Trace ID (Optional)</label>
                 <input
@@ -733,6 +971,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                         compressionMessages.forEach((msg) => setToast({ message: msg, type: 'success' }));
                         if (processed.length > 0) {
                           setAttachmentFiles((prev) => [...prev, ...processed]);
+                          ocr.rememberImageFromFiles(processed);
+                          if (processed.some(isImageFile)) {
+                            void ocr.startOcrForFiles(processed);
+                          }
                         }
                       } finally {
                         setIsProcessingFiles(false);
@@ -762,6 +1004,30 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                 </button>
                   )}
                 </MediaSourcePicker>
+                {attachmentFiles.some(isImageFile) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const img = [...attachmentFiles].reverse().find(isImageFile);
+                      if (img) {
+                        ocr.rememberImageFromFiles([img]);
+                        void ocr.rescanLastImage();
+                      }
+                    }}
+                    className="mt-2 w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-[#3B82F6]"
+                  >
+                    <ScanText className="w-3.5 h-3.5" />
+                    Scan receipt fields (OCR)
+                  </button>
+                )}
+                <ReceiptOcrReviewSheet
+                  open={ocr.sheetOpen}
+                  loading={ocr.loading}
+                  draft={ocr.draft}
+                  onChangeDraft={ocr.setDraft}
+                  onConfirm={ocr.handleConfirm}
+                  onSkip={ocr.handleSkip}
+                />
                 {attachmentFiles.length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {attachmentFiles.map((file, idx) => (
@@ -791,6 +1057,48 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
           )}
         </div>
       </div>
+
+      {branchPickerModalOpen && needsInSheetBranchPicker && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-black/70"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="branch-picker-modal-title"
+        >
+          <div className="w-full max-w-lg bg-[#1F2937] border-t border-[#374151] rounded-t-2xl p-5 space-y-4 shadow-xl">
+            <h2 id="branch-picker-modal-title" className="text-base font-semibold text-white">
+              Select branch
+            </h2>
+            <p className="text-sm text-[#9CA3AF]">
+              Choose which branch this payment belongs to, then continue.
+            </p>
+            <WriteBranchPickerField
+              branches={pickerBranches}
+              value={pickedBranchId}
+              onChange={setPickedBranchId}
+              helperText=""
+              zIndexClass="z-[120]"
+            />
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setBranchPickerModalOpen(false)}
+                className="flex-1 py-3 rounded-lg border border-[#374151] text-[#9CA3AF] font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBranchModalContinue()}
+                disabled={!writeBranchId || !isRealBranchUuid(writeBranchId)}
+                className="flex-1 py-3 rounded-lg bg-[#3B82F6] text-white font-medium disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div

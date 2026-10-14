@@ -1,0 +1,15 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "git-push-result",
+  "generated_at": "2026-07-01T14:45:00.000Z",
+  "branch": "main",
+  "commit": "455bd28a61a3b82a773f656bef0ea0e8c5116f44",
+  "commit_short": "455bd28a",
+  "message": "test(accounting): refresh din bridal monitoring goldens for live activity",
+  "head": "455bd28a61a3b82a773f656bef0ea0e8c5116f44",
+  "origin_main": "455bd28a61a3b82a773f656bef0ea0e8c5116f44",
+  "push_result": "SUCCESS",
+  "push_range": "594ab11e..455bd28a",
+  "credentials_staged": false,
+  "apk_staged": false
+}

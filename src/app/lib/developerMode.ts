@@ -3,11 +3,11 @@
  */
 
 import {
-  getBrowserStorage,
   safeLocalStorageGetItem,
   safeLocalStorageKeys,
   safeLocalStorageRemoveItem,
   safeLocalStorageSetItem,
+  safeSessionStorageClear,
 } from '@/app/lib/safeBrowserStorage';
 
 export const DEVELOPER_MODE_STORAGE_KEY = 'erp_developer_mode_unlocked';
@@ -17,6 +17,10 @@ export const DEVELOPER_MODE_TAP_RESET_MS = 4000;
 
 export const APP_VERSION =
   (import.meta.env?.VITE_APP_VERSION as string | undefined) || '0.0.1';
+
+/** Git commit baked at build time (vite.config) — use to confirm office vs home bundle. */
+export const APP_BUILD_COMMIT =
+  (import.meta.env?.VITE_BUILD_COMMIT as string | undefined) || 'dev';
 
 const CHANGE_EVENT = 'erp-developer-mode-changed';
 
@@ -30,20 +34,16 @@ function isPreservedKey(key: string): boolean {
 }
 
 export function isDeveloperModeUnlocked(): boolean {
-  try {
-    return localStorage.getItem(DEVELOPER_MODE_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return safeLocalStorageGetItem(DEVELOPER_MODE_STORAGE_KEY) === '1';
 }
 
 export function setDeveloperModeUnlocked(unlocked: boolean): void {
   try {
     if (unlocked) {
-      localStorage.setItem(DEVELOPER_MODE_STORAGE_KEY, '1');
+      safeLocalStorageSetItem(DEVELOPER_MODE_STORAGE_KEY, '1');
     } else {
-      localStorage.removeItem(DEVELOPER_MODE_STORAGE_KEY);
-      localStorage.removeItem(DEVELOPER_VERBOSE_API_ERRORS_KEY);
+      safeLocalStorageRemoveItem(DEVELOPER_MODE_STORAGE_KEY);
+      safeLocalStorageRemoveItem(DEVELOPER_VERBOSE_API_ERRORS_KEY);
     }
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { unlocked } }));
   } catch {
@@ -53,19 +53,15 @@ export function setDeveloperModeUnlocked(unlocked: boolean): void {
 
 export function isVerboseApiErrorsEnabled(): boolean {
   if (!isDeveloperModeUnlocked()) return false;
-  try {
-    return localStorage.getItem(DEVELOPER_VERBOSE_API_ERRORS_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return safeLocalStorageGetItem(DEVELOPER_VERBOSE_API_ERRORS_KEY) === '1';
 }
 
 export function setVerboseApiErrorsEnabled(enabled: boolean): void {
   try {
     if (enabled) {
-      localStorage.setItem(DEVELOPER_VERBOSE_API_ERRORS_KEY, '1');
+      safeLocalStorageSetItem(DEVELOPER_VERBOSE_API_ERRORS_KEY, '1');
     } else {
-      localStorage.removeItem(DEVELOPER_VERBOSE_API_ERRORS_KEY);
+      safeLocalStorageRemoveItem(DEVELOPER_VERBOSE_API_ERRORS_KEY);
     }
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { verbose: enabled } }));
   } catch {
@@ -136,10 +132,6 @@ export function clearClientCaches(): { removedKeys: number } {
     safeLocalStorageRemoveItem(k);
     removedKeys += 1;
   });
-  try {
-    getBrowserStorage('session')?.clear();
-  } catch {
-    /* ignore */
-  }
+  safeSessionStorageClear();
   return { removedKeys };
 }

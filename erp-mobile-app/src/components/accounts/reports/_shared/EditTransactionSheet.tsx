@@ -26,6 +26,9 @@ import {
   resolvePolicyReferenceType,
   usesSingleAccountingAttachmentPolicy,
 } from '../../../../lib/accountingAttachmentPolicy';
+import { POSTING_FIELD_TITLES } from '../../../../lib/accountPostingInOutLabel';
+import { DateTimeInputField } from '../../../shared/DateTimePicker';
+import { localNowDateTimeString } from '../../../../utils/localDate';
 
 interface EditTransactionSheetProps {
   open: boolean;
@@ -33,8 +36,23 @@ interface EditTransactionSheetProps {
   branchId?: string | null;
   mode: 'payment' | 'journal';
   targetId: string;
+  /** Already-loaded payment detail — skip a second getTransactionDetail round-trip. */
+  initialDetail?: TransactionDetail | null;
   onClose: () => void;
   onSaved: () => void;
+}
+
+function toDateTimeLocalValue(datePart: string, eventTimestamp?: string | null): string {
+  const date = String(datePart || '').slice(0, 10);
+  if (!date) return localNowDateTimeString();
+  if (datePart.includes('T')) return datePart.slice(0, 16);
+  const ts = eventTimestamp ? new Date(eventTimestamp) : null;
+  if (ts && !Number.isNaN(ts.getTime())) {
+    const h = String(ts.getHours()).padStart(2, '0');
+    const m = String(ts.getMinutes()).padStart(2, '0');
+    return `${date}T${h}:${m}`;
+  }
+  return `${date}T${localNowDateTimeString().slice(11, 16)}`;
 }
 
 export function EditTransactionSheet({
@@ -43,6 +61,7 @@ export function EditTransactionSheet({
   branchId,
   mode,
   targetId,
+  initialDetail,
   onClose,
   onSaved,
 }: EditTransactionSheetProps) {
@@ -52,6 +71,8 @@ export function EditTransactionSheet({
   const [attachInfo, setAttachInfo] = useState<string | null>(null);
   const [paymentDetail, setPaymentDetail] = useState<TransactionDetail | null>(null);
   const [journalDetail, setJournalDetail] = useState<JournalEntryEditRow | null>(null);
+  /** May upgrade payment→journal when row is a fund transfer. */
+  const [effectiveMode, setEffectiveMode] = useState<'payment' | 'journal'>(mode);
   const [existingAttachments, setExistingAttachments] = useState<NormalizedAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [singleAttachPolicy, setSingleAttachPolicy] = useState(false);
@@ -78,13 +99,21 @@ export function EditTransactionSheet({
     setAttachInfo(null);
     setPendingFiles([]);
     setSingleAttachPolicy(false);
-    Promise.all([getAccounts(companyId), getPaymentAccounts(companyId)])
+    setEffectiveMode(mode);
+    Promise.all([getAccounts(companyId), getPaymentAccounts(companyId, { skipBalances: true })])
       .then(async ([accRes, payRes]) => {
         if (cancelled) return;
         setAccounts((accRes.data || []).map((a) => ({ id: a.id, name: a.name })));
         setPaymentAccounts((payRes.data || []).map((a) => ({ id: a.id, name: a.name })));
         if (mode === 'payment') {
-          const res = await getTransactionDetail(companyId, targetId);
+          const reused =
+            initialDetail &&
+            (initialDetail.paymentId === targetId || initialDetail.id === targetId)
+              ? initialDetail
+              : null;
+          const res = reused
+            ? { data: reused, error: null as string | null }
+            : await getTransactionDetail(companyId, targetId);
           if (cancelled) return;
           if (res.error || !res.data) {
             setError(res.error || 'Transaction not found.');
@@ -95,11 +124,67 @@ export function EditTransactionSheet({
             setError(lockCheck.reason || 'This transaction is locked.');
             return;
           }
+          if (lockCheck.kind === 'journal') {
+            const jeId = res.data.journalEntryId;
+            if (!jeId) {
+              setError('Linked journal entry missing — cannot edit Transfer From / To.');
+              return;
+            }
+            const jeRes = await getJournalEntryForEdit(companyId, jeId);
+            if (cancelled) return;
+            if (jeRes.error || !jeRes.data) {
+              setError(jeRes.error || 'Journal entry not found.');
+              return;
+            }
+            setEffectiveMode('journal');
+            setPaymentDetail(null);
+            setJournalDetail(jeRes.data);
+            const merged = await loadMergedAttachmentsForJournalEntry(companyId, {
+              journalEntryId: jeRes.data.id,
+              rowAttachments: jeRes.data.attachments,
+              referenceType: jeRes.data.referenceType,
+              referenceId: jeRes.data.referenceId,
+              paymentId: jeRes.data.paymentId,
+            });
+            if (!cancelled) {
+              setExistingAttachments(merged);
+              const target = await resolveAttachmentWriteTarget(companyId, {
+                paymentId: jeRes.data.paymentId,
+                journalEntryId: jeRes.data.id,
+                referenceType: jeRes.data.referenceType,
+                referenceId: jeRes.data.referenceId,
+              });
+              if (target && !cancelled) {
+                const refType = await resolvePolicyReferenceType(
+                  companyId,
+                  target,
+                  jeRes.data.referenceType,
+                );
+                if (!cancelled) setSingleAttachPolicy(usesSingleAccountingAttachmentPolicy(refType));
+              }
+            }
+            setForm({
+              date: toDateTimeLocalValue(jeRes.data.entryDate || '', null),
+              amount: String(jeRes.data.amount || ''),
+              description: jeRes.data.description || '',
+              paymentMethod: 'cash',
+              paymentAccountId: '',
+              referenceNumber: '',
+              debitAccountId: jeRes.data.debitAccountId || '',
+              creditAccountId: jeRes.data.creditAccountId || '',
+              notes: '',
+            });
+            return;
+          }
+          setEffectiveMode('payment');
           setPaymentDetail(res.data);
           setExistingAttachments(normalizeAttachments(res.data.attachments));
           setSingleAttachPolicy(usesSingleAccountingAttachmentPolicy(res.data.referenceType));
           setForm({
-            date: res.data.paymentDate ? String(res.data.paymentDate).slice(0, 10) : '',
+            date: toDateTimeLocalValue(
+              res.data.paymentDate ? String(res.data.paymentDate) : '',
+              res.data.createdAt,
+            ),
             amount: String(res.data.amount || ''),
             description: '',
             paymentMethod: res.data.method || 'cash',
@@ -121,6 +206,7 @@ export function EditTransactionSheet({
             setError(lockCheck.reason || 'This transaction is locked.');
             return;
           }
+          setEffectiveMode('journal');
           setJournalDetail(res.data);
           const merged = await loadMergedAttachmentsForJournalEntry(companyId, {
             journalEntryId: res.data.id,
@@ -147,7 +233,7 @@ export function EditTransactionSheet({
             }
           }
           setForm({
-            date: res.data.entryDate || '',
+            date: toDateTimeLocalValue(res.data.entryDate || '', null),
             amount: String(res.data.amount || ''),
             description: res.data.description || '',
             paymentMethod: 'cash',
@@ -165,25 +251,53 @@ export function EditTransactionSheet({
     return () => {
       cancelled = true;
     };
-  }, [companyId, mode, open, targetId]);
+  }, [companyId, initialDetail, mode, open, targetId]);
+
+  const refTypeLower = String(journalDetail?.referenceType || '').toLowerCase();
+  const showFromTo =
+    effectiveMode === 'journal' &&
+    ['transfer', 'expense', 'expense_payment', 'general', 'journal', 'manual'].includes(
+      refTypeLower,
+    );
+  const isTransferEdit = showFromTo && refTypeLower === 'transfer';
+
+  const journalAccountOptions = useMemo(() => {
+    if (isTransferEdit && paymentAccounts.length > 0) {
+      const byId = new Map(paymentAccounts.map((a) => [a.id, a]));
+      for (const id of [form.debitAccountId, form.creditAccountId]) {
+        if (id && !byId.has(id)) {
+          const fallback = accounts.find((a) => a.id === id);
+          if (fallback) byId.set(id, fallback);
+        }
+      }
+      return Array.from(byId.values());
+    }
+    return accounts;
+  }, [
+    isTransferEdit,
+    paymentAccounts,
+    accounts,
+    form.debitAccountId,
+    form.creditAccountId,
+  ]);
 
   const canSave = useMemo(() => {
     const amount = Number(form.amount || 0);
     if (amount <= 0 || !form.date) return false;
-    if (mode === 'payment') return !!form.paymentAccountId;
+    if (effectiveMode === 'payment') return !!form.paymentAccountId;
     return !!form.debitAccountId && !!form.creditAccountId && form.debitAccountId !== form.creditAccountId;
-  }, [form.amount, form.date, form.paymentAccountId, form.debitAccountId, form.creditAccountId, mode]);
+  }, [form.amount, form.date, form.paymentAccountId, form.debitAccountId, form.creditAccountId, effectiveMode]);
 
   const onSubmit = async () => {
     await runSave('Saving changes...', async () => {
       setError(null);
       setAttachInfo(null);
-      if (mode === 'payment' && paymentDetail) {
+      if (effectiveMode === 'payment' && paymentDetail) {
         const res = await updatePaymentTransactionInPlace({
           companyId,
           paymentId: paymentDetail.paymentId,
           amount: Number(form.amount || 0),
-          paymentDate: form.date,
+          paymentDate: form.date.slice(0, 10),
           paymentAccountId: form.paymentAccountId,
           paymentMethod: form.paymentMethod,
           referenceNumber: form.referenceNumber || null,
@@ -194,11 +308,11 @@ export function EditTransactionSheet({
           return;
         }
       }
-      if (mode === 'journal' && journalDetail) {
+      if (effectiveMode === 'journal' && journalDetail) {
         const res = await updateJournalEntryInPlace({
           companyId,
           journalEntryId: journalDetail.id,
-          entryDate: form.date,
+          entryDate: form.date.slice(0, 10),
           description: form.description || journalDetail.description || 'Entry update',
           debitAccountId: form.debitAccountId,
           creditAccountId: form.creditAccountId,
@@ -218,14 +332,14 @@ export function EditTransactionSheet({
         }
         const target = await resolveAttachmentWriteTarget(companyId, {
           paymentId:
-            mode === 'payment'
+            effectiveMode === 'payment'
               ? paymentDetail?.paymentId
               : journalDetail?.paymentId,
-          journalEntryId: mode === 'journal' ? journalDetail?.id : paymentDetail?.journalEntryId,
+          journalEntryId: effectiveMode === 'journal' ? journalDetail?.id : paymentDetail?.journalEntryId,
           referenceType:
-            mode === 'payment' ? paymentDetail?.referenceType : journalDetail?.referenceType,
+            effectiveMode === 'payment' ? paymentDetail?.referenceType : journalDetail?.referenceType,
           referenceId:
-            mode === 'payment' ? paymentDetail?.referenceId : journalDetail?.referenceId,
+            effectiveMode === 'payment' ? paymentDetail?.referenceId : journalDetail?.referenceId,
         });
         if (!target) {
           setError('Could not save attachments for this entry.');
@@ -234,7 +348,7 @@ export function EditTransactionSheet({
         const attachRes = await appendAccountingAttachments(companyId, target, pendingFiles, {
           branchId,
           referenceType:
-            mode === 'payment' ? paymentDetail?.referenceType : journalDetail?.referenceType,
+            effectiveMode === 'payment' ? paymentDetail?.referenceType : journalDetail?.referenceType,
         });
         if (!attachRes.ok) {
           setError(attachRes.error || 'Attachment upload failed.');
@@ -262,7 +376,9 @@ export function EditTransactionSheet({
         >
           <SaveBlockingOverlay active={saving} label="Saving changes..." />
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151]">
-            <h3 className="text-sm font-semibold text-white">Edit Transaction</h3>
+            <h3 className="text-sm font-semibold text-white">
+              {isTransferEdit ? 'Edit Fund Transfer' : 'Edit Transaction'}
+            </h3>
             <button
               type="button"
               onClick={onClose}
@@ -290,12 +406,16 @@ export function EditTransactionSheet({
             )}
             {!loading && !error && (
               <>
-                <label className="block text-xs text-[#9CA3AF]">Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm((s) => ({ ...s, date: e.target.value }))}
-                  className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                <DateTimeInputField
+                  label="Date"
+                  value={
+                    form.date.includes('T')
+                      ? form.date
+                      : form.date
+                        ? `${form.date}T${localNowDateTimeString().slice(11, 16)}`
+                        : localNowDateTimeString()
+                  }
+                  onChange={(date) => setForm((s) => ({ ...s, date }))}
                 />
                 <label className="block text-xs text-[#9CA3AF]">Amount</label>
                 <input
@@ -307,7 +427,7 @@ export function EditTransactionSheet({
                   className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
                 />
 
-                {mode === 'payment' && (
+                {effectiveMode === 'payment' && (
                   <>
                     <CustomSelect
                       label="Payment Account"
@@ -350,30 +470,61 @@ export function EditTransactionSheet({
                   </>
                 )}
 
-                {mode === 'journal' && (
+                {effectiveMode === 'journal' && (
                   <>
-                    <CustomSelect
-                      label="Debit Account"
-                      value={form.debitAccountId}
-                      onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
-                      options={[
-                        { value: '', label: 'Select debit account' },
-                        ...accounts.map((a) => ({ value: a.id, label: a.name })),
-                      ]}
-                      disabled={saving}
-                      zIndexClass="z-[100]"
-                    />
-                    <CustomSelect
-                      label="Credit Account"
-                      value={form.creditAccountId}
-                      onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
-                      options={[
-                        { value: '', label: 'Select credit account' },
-                        ...accounts.map((a) => ({ value: a.id, label: a.name })),
-                      ]}
-                      disabled={saving}
-                      zIndexClass="z-[100]"
-                    />
+                    {showFromTo ? (
+                      <>
+                        <CustomSelect
+                          label={
+                            isTransferEdit ? POSTING_FIELD_TITLES.transferFrom : 'From account'
+                          }
+                          value={form.creditAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select from account' },
+                            ...journalAccountOptions.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                        <CustomSelect
+                          label={isTransferEdit ? POSTING_FIELD_TITLES.transferTo : 'To account'}
+                          value={form.debitAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select to account' },
+                            ...journalAccountOptions.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <CustomSelect
+                          label={POSTING_FIELD_TITLES.journalDebit}
+                          value={form.debitAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select debit account' },
+                            ...accounts.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                        <CustomSelect
+                          label={POSTING_FIELD_TITLES.journalCredit}
+                          value={form.creditAccountId}
+                          onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
+                          options={[
+                            { value: '', label: 'Select credit account' },
+                            ...accounts.map((a) => ({ value: a.id, label: a.name })),
+                          ]}
+                          disabled={saving}
+                          zIndexClass="z-[100]"
+                        />
+                      </>
+                    )}
                     <label className="block text-xs text-[#9CA3AF]">Description</label>
                     <textarea
                       rows={3}

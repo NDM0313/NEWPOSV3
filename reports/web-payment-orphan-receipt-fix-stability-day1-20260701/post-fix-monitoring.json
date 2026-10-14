@@ -1,0 +1,13 @@
+{
+  "run": "POST_FIX_MONITORING",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T15-45-25-569Z.json",
+  "overall": "FAIL",
+  "din_china": "PASS",
+  "din_china_admin_compare_9_9": "PASS",
+  "din_bridal": "FAIL",
+  "din_couture": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "failure_classification": "din_bridal_roznamcha_golden_drift_minus_90000_after_orphan_void_correct_operational_effect"
+}

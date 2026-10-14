@@ -41,6 +41,8 @@ interface SearchableSelectProps {
   filterFn?: (option: SearchableSelectOption, search: string) => boolean;
   // Badge color for due balance (customer=red, supplier=orange)
   badgeColor?: 'red' | 'orange';
+  disabled?: boolean;
+  loading?: boolean;
 }
 
 export const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -58,6 +60,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   renderOption,
   filterFn,
   badgeColor = 'orange',
+  disabled = false,
+  loading = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,7 +91,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
       )
     : options;
 
-  const showAddNew = enableAddNew && searchTerm && filteredOptions.length === 0;
+  // Show Add New whenever enabled and there are no matches (including empty list / empty search).
+  const showAddNew = enableAddNew && filteredOptions.length === 0;
 
   const handleAddNew = () => {
     const currentSearch = searchTerm;
@@ -99,21 +104,26 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   return (
     <div ref={containerRef} className="w-full min-w-0 max-w-[750px]">
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn(
-            'w-full justify-between bg-gray-950 border-gray-700 text-white hover:bg-gray-900 h-10',
+            'w-full justify-between bg-input-background border-border text-foreground hover:bg-popover h-10',
             className
           )}
         >
           <div className="flex items-center gap-2 truncate flex-1 min-w-0">
             {icon}
             <span className="truncate text-sm font-medium">
-              {selectedOption ? selectedOption.name : placeholder}
+              {loading
+                ? 'Loading…'
+                : selectedOption
+                  ? selectedOption.name
+                  : placeholder}
             </span>
             {selectedOption && selectedOption.dueBalance > 0 && (
               <span
@@ -132,7 +142,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="!w-auto p-0 bg-gray-950 border-gray-800 text-white overflow-hidden z-[200]"
+        className="!w-auto p-0 bg-input-background border-border text-foreground overflow-hidden z-[200]"
         align="start"
         side="bottom"
         sideOffset={4}
@@ -147,7 +157,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }}
       >
         <Command
-          className="bg-gray-950 text-white"
+          className="bg-input-background text-foreground"
           shouldFilter={false}
           filter={() => 1}
         >
@@ -165,7 +175,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             }}
           >
             {!showAddNew && filteredOptions.length === 0 && (
-              <CommandEmpty>{emptyText}</CommandEmpty>
+              <CommandEmpty>{loading ? 'Loading…' : emptyText}</CommandEmpty>
             )}
             
             {showAddNew && (
@@ -191,7 +201,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       setOpen(false);
                       setSearchTerm('');
                     }}
-                    className="text-white hover:bg-gray-800 cursor-pointer"
+                    className="text-foreground hover:bg-muted cursor-pointer"
                   >
                     <Check
                       className={cn(

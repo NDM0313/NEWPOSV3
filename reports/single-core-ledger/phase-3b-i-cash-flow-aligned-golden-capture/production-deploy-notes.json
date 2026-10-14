@@ -1,0 +1,23 @@
+{
+  "phase": "3B-H-PROD",
+  "run": "production-frontend-deploy",
+  "deploy_command": "ssh dincouture-vps \"cd /root/NEWPOSV3 && git fetch origin main && git pull origin main && bash deploy/vps-build-erp-only.sh\"",
+  "started_at": "2026-06-29T14:37:00.000Z",
+  "ended_at": "2026-06-29T14:40:00.000Z",
+  "target_host": "dincouture-vps (72.62.254.176)",
+  "target_app": "erp.dincouture.pk",
+  "deployed_commit": "d2401b1f",
+  "deployed_message": "feat(accounting): align Cash Flow preview to finance rules",
+  "deploy_script": "deploy/vps-build-erp-only.sh",
+  "container_health": {
+    "erp-frontend": "Up (recreated, started)",
+    "erp-frontend-preview": "Up 2 days"
+  },
+  "bundle_evidence": "Docker image deploy-erp:latest built; erp-frontend force-recreate",
+  "migration_commands_run": false,
+  "supabase_migration_apply": false,
+  "database_containers_modified": false,
+  "feature_flags_changed": false,
+  "gl_mutations": false,
+  "result": "SUCCESS"
+}

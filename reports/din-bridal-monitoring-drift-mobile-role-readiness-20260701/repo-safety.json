@@ -1,0 +1,24 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "repo-safety",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "branch": "main",
+  "head": "7566d2943122380e1c108afec51574a9c64a6254",
+  "origin_main": "7566d2943122380e1c108afec51574a9c64a6254",
+  "behind_origin_main": false,
+  "ff_pull_required": false,
+  "mobile_qa_commits_present": {
+    "5bc7d128": true,
+    "7566d294": true
+  },
+  "apk_in_git": false,
+  "apk_local_only": true,
+  "apk_local_path": "erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk",
+  "apk_aab_staged": false,
+  "credentials_staged": false,
+  "env_staged": false,
+  "keystore_staged": false,
+  "graphify_out_staged": false,
+  "unrelated_dirty_remain_unstaged": true,
+  "safety_verdict": "PASS"
+}

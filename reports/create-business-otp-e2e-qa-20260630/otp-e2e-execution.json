@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-30T10:15:00.000Z",
+  "status": "OTP_E2E_BLOCKED_NO_OPERATOR_EMAIL",
+  "test_email_masked": "(not configured — placeholder REPLACE_WITH_OPERATOR_CONTROLLED_EMAIL)",
+  "business_name_planned": "OTP QA Business 2026-06-30",
+  "url": "https://erp.dincouture.pk",
+  "signup_attempted": false,
+  "otp_received": false,
+  "otp_verified": false,
+  "business_created": false,
+  "auth_user_id": null,
+  "company_id": null,
+  "branch_id": null,
+  "service_role_in_frontend": false,
+  "blocked_reason": "No operator-controlled test email configured in session (erp-mobile-app/.env has monitoring passwords only; approved placeholder not replaced). Inbox access required for OTP step.",
+  "prior_evidence": "reports/office-resume-20260630/create-business-otp-office-qa.json",
+  "admin_test_email_reused": false
+}

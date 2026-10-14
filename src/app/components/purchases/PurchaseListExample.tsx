@@ -106,7 +106,7 @@ const ActionMenu: React.FC<ActionMenuProps> = ({ purchase, onMakePayment, onView
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-lg transition-colors"
+        className="text-muted-foreground hover:text-foreground p-2 hover:bg-muted rounded-lg transition-colors"
       >
         <MoreVertical size={20} />
       </button>
@@ -120,13 +120,13 @@ const ActionMenu: React.FC<ActionMenuProps> = ({ purchase, onMakePayment, onView
           />
 
           {/* Menu */}
-          <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-20 overflow-hidden">
+          <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-xl shadow-2xl z-20 overflow-hidden">
             <button
               onClick={() => {
                 setIsOpen(false);
                 // View details action
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-muted transition-colors"
             >
               <Eye size={16} className="text-blue-400" />
               View Details
@@ -137,9 +137,9 @@ const ActionMenu: React.FC<ActionMenuProps> = ({ purchase, onMakePayment, onView
                 setIsOpen(false);
                 // Edit action
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-muted transition-colors"
             >
-              <Edit size={16} className="text-gray-400" />
+              <Edit size={16} className="text-muted-foreground" />
               Edit Purchase
             </button>
 
@@ -148,14 +148,14 @@ const ActionMenu: React.FC<ActionMenuProps> = ({ purchase, onMakePayment, onView
                 setIsOpen(false);
                 // Print action
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-muted transition-colors"
             >
-              <Printer size={16} className="text-gray-400" />
+              <Printer size={16} className="text-muted-foreground" />
               Print PO
             </button>
 
             {/* DIVIDER */}
-            <div className="border-t border-gray-800 my-1" />
+            <div className="border-t border-border my-1" />
 
             {/* 🎯 MAKE PAYMENT - Only show if there's a due amount */}
             {purchase.due > 0 && (
@@ -184,7 +184,7 @@ const ActionMenu: React.FC<ActionMenuProps> = ({ purchase, onMakePayment, onView
             </button>
 
             {/* DIVIDER */}
-            <div className="border-t border-gray-800 my-1" />
+            <div className="border-t border-border my-1" />
 
             <button
               onClick={() => {
@@ -226,13 +226,13 @@ export const PurchaseListExample = () => {
   const getStatusBadge = (status: Purchase['status']) => {
     switch (status) {
       case 'Received':
-        return 'bg-green-500/10 text-green-400 border-green-500/20';
+        return 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20';
       case 'Ordered':
         return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       case 'Partial':
         return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
       default:
-        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+        return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
     }
   };
 
@@ -240,69 +240,69 @@ export const PurchaseListExample = () => {
   const getPaymentBadge = (payment: Purchase['payment']) => {
     switch (payment) {
       case 'Paid':
-        return 'bg-green-500/10 text-green-400 border-green-500/20';
+        return 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20';
       case 'Partial':
         return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
       case 'Unpaid':
         return 'bg-red-500/10 text-red-400 border-red-500/20';
       default:
-        return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+        return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 p-8">
+    <div className="min-h-screen bg-input-background p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Purchases</h1>
-        <p className="text-gray-400">Manage purchase orders and supplier transactions</p>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Purchases</h1>
+        <p className="text-muted-foreground">Manage purchase orders and supplier transactions</p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-          <p className="text-sm text-gray-400 mb-1">TOTAL PURCHASE</p>
-          <p className="text-3xl font-bold text-white mb-1">$297,000</p>
-          <p className="text-xs text-gray-500">This month</p>
+        <div className="bg-card border border-border rounded-xl p-6">
+          <p className="text-sm text-muted-foreground mb-1">TOTAL PURCHASE</p>
+          <p className="text-3xl font-bold text-foreground mb-1">$297,000</p>
+          <p className="text-xs text-muted-foreground">This month</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-          <p className="text-sm text-gray-400 mb-1">AMOUNT DUE</p>
+        <div className="bg-card border border-border rounded-xl p-6">
+          <p className="text-sm text-muted-foreground mb-1">AMOUNT DUE</p>
           <p className="text-3xl font-bold text-red-400 mb-1">$185,000</p>
-          <p className="text-xs text-gray-500">Pending payments</p>
+          <p className="text-xs text-muted-foreground">Pending payments</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-          <p className="text-sm text-gray-400 mb-1">RETURNS</p>
+        <div className="bg-card border border-border rounded-xl p-6">
+          <p className="text-sm text-muted-foreground mb-1">RETURNS</p>
           <p className="text-3xl font-bold text-orange-400 mb-1">$2,500</p>
-          <p className="text-xs text-gray-500">2 items returned</p>
+          <p className="text-xs text-muted-foreground">2 items returned</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-          <p className="text-sm text-gray-400 mb-1">PURCHASE ORDERS</p>
+        <div className="bg-card border border-border rounded-xl p-6">
+          <p className="text-sm text-muted-foreground mb-1">PURCHASE ORDERS</p>
           <p className="text-3xl font-bold text-blue-400 mb-1">5</p>
-          <p className="text-xs text-gray-500">Active orders</p>
+          <p className="text-xs text-muted-foreground">Active orders</p>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-800">
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Location</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Status</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Items</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Total</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Due</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Payment</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Added By</th>
-                <th className="text-left p-4 text-sm font-medium text-gray-400 uppercase">Action</th>
+              <tr className="border-b border-border">
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Location</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Status</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Items</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Total</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Due</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Payment</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Added By</th>
+                <th className="text-left p-4 text-sm font-medium text-muted-foreground uppercase">Action</th>
               </tr>
             </thead>
             <tbody>
               {mockPurchases.map((purchase) => (
-                <tr key={purchase.id} className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors">
+                <tr key={purchase.id} className="border-b border-border hover:bg-accent/30 transition-colors">
                   <td className="p-4">
-                    <div className="flex items-center gap-2 text-gray-300">
+                    <div className="flex items-center gap-2 text-muted-foreground">
                       <div className="w-2 h-2 bg-gray-600 rounded-full" />
                       {purchase.location}
                     </div>
@@ -313,17 +313,17 @@ export const PurchaseListExample = () => {
                     </Badge>
                   </td>
                   <td className="p-4">
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <span className="text-gray-500">📦</span>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span className="text-muted-foreground">📦</span>
                       {purchase.items}
                     </div>
                   </td>
-                  <td className="p-4 text-white font-semibold">${purchase.total.toLocaleString()}</td>
+                  <td className="p-4 text-foreground font-semibold">${purchase.total.toLocaleString()}</td>
                   <td className="p-4">
                     {purchase.due > 0 ? (
                       <span className="text-red-400 font-semibold">${purchase.due.toLocaleString()}</span>
                     ) : (
-                      <span className="text-gray-500">-</span>
+                      <span className="text-muted-foreground">-</span>
                     )}
                   </td>
                   <td className="p-4">
@@ -331,7 +331,7 @@ export const PurchaseListExample = () => {
                       {purchase.payment}
                     </Badge>
                   </td>
-                  <td className="p-4 text-gray-300">{purchase.addedBy}</td>
+                  <td className="p-4 text-muted-foreground">{purchase.addedBy}</td>
                   <td className="p-4">
                     <ActionMenu
                       purchase={purchase}
@@ -349,10 +349,10 @@ export const PurchaseListExample = () => {
       {/* Info Box */}
       <div className="mt-8 p-6 bg-blue-500/10 border border-blue-500/20 rounded-xl">
         <h3 className="text-lg font-bold text-blue-400 mb-2">🎯 Unified Payment System Demo</h3>
-        <p className="text-sm text-gray-300 mb-3">
+        <p className="text-sm text-muted-foreground mb-3">
           Click on the three-dot menu (⋮) in the ACTION column to see:
         </p>
-        <ul className="space-y-2 text-sm text-gray-400">
+        <ul className="space-y-2 text-sm text-muted-foreground">
           <li className="flex items-center gap-2">
             <DollarSign size={14} className="text-yellow-400" />
             <span><strong className="text-yellow-400">Make Payment</strong> - Opens unified payment dialog (only shows if amount is due)</span>
@@ -362,7 +362,7 @@ export const PurchaseListExample = () => {
             <span><strong className="text-blue-400">View Ledger</strong> - Opens unified ledger view for supplier</span>
           </li>
         </ul>
-        <p className="text-xs text-gray-500 mt-4">
+        <p className="text-xs text-muted-foreground mt-4">
           💡 Both components are reused across Purchase, Sale, and Accounting modules with zero code duplication!
         </p>
       </div>

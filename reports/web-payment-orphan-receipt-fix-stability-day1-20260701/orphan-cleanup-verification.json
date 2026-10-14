@@ -1,0 +1,11 @@
+{
+  "run": "ORPHAN_CLEANUP_VERIFICATION",
+  "generated_at": "2026-07-01T15:45:27.645Z",
+  "rcv_0081": { "voided": true, "je_voided": true, "line_count": 0, "hidden_from_normal": true },
+  "rcv_0082": { "voided": true, "je_voided": true, "line_count": 0, "hidden_from_normal": true },
+  "je_0209": { "is_void": true, "line_count": 0 },
+  "je_0210": { "is_void": true, "line_count": 0 },
+  "gl_lines_created": 0,
+  "trial_balance_impact": false,
+  "roznamcha_impact": "phantom_cash_removed_90000_pkr_from_orphan_payment_rows"
+}

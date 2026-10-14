@@ -76,7 +76,7 @@ export function explainRoznamchaInclusion(
     }
     return {
       included: false,
-      reason: `Excluded — merged into higher-priority row (${shared.join(', ')})`,
+      reason: `Excluded duplicate — already counted via canonical row (${shared.join(', ')})`,
       winnerRef: winner.ref,
       winnerId: winner.id,
     };
@@ -112,6 +112,10 @@ export interface RoznamchaTraceCandidateView {
   journalEntryNo: string | null;
   details: string;
   winnerRef?: string;
+  sourcePaymentId?: string | null;
+  sourceRentalPaymentId?: string | null;
+  sourceJournalEntryId?: string | null;
+  paymentAccountId?: string | null;
 }
 
 export function buildRoznamchaTraceCandidates(
@@ -140,6 +144,10 @@ export function buildRoznamchaTraceCandidates(
       journalEntryNo: row.journalEntryNo ?? null,
       details: String(row.details || ''),
       winnerRef: outcome.winnerRef,
+      sourcePaymentId: row.sourcePaymentId ?? null,
+      sourceRentalPaymentId: row.sourceRentalPaymentId ?? null,
+      sourceJournalEntryId: row.sourceJournalEntryId ?? null,
+      paymentAccountId: row.paymentAccountId ?? null,
     };
   });
 }

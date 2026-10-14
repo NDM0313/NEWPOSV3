@@ -1,0 +1,18 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "repo-apk-safety",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "status": "PASS",
+  "branch": "main",
+  "head": "243c80f8c8995dafa23c3de05a3b166413293753",
+  "origin_main": "243c80f8c8995dafa23c3de05a3b166413293753",
+  "apk_evidence_commit": "2948e757",
+  "push_verify_commit": "243c80f8",
+  "apk_path": "erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk",
+  "apk_exists": true,
+  "apk_size_bytes": 38128283,
+  "apk_sha256": "8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00",
+  "apk_sha256_match": true,
+  "apk_staged_in_git": false,
+  "credentials_staged": false
+}

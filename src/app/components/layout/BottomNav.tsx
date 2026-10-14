@@ -16,7 +16,7 @@ export const BottomNav = () => {
 
   return (
     <div 
-      className="md:hidden fixed bottom-0 left-0 right-0 bg-[#1F2937] border-t border-[#374151] z-50"
+      className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar border-t border-sidebar-border z-50"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       <div className="flex justify-around items-center h-16 px-2">
@@ -38,7 +38,7 @@ export const BottomNav = () => {
             <div className="relative -top-6 flex justify-center">
               <button 
                 onClick={() => setCurrentView('pos')}
-                className="w-14 h-14 bg-[#3B82F6] hover:bg-[#2563EB] rounded-2xl flex items-center justify-center shadow-lg text-white active:scale-95 transition-transform touch-manipulation border-2 border-[#374151]"
+                className="w-14 h-14 bg-primary hover:bg-primary/90 rounded-2xl flex items-center justify-center shadow-lg text-primary-foreground active:scale-95 transition-transform touch-manipulation border-2 border-sidebar-border"
               >
                 <ScanLine size={24} strokeWidth={2.5} />
               </button>
@@ -67,7 +67,7 @@ const NavButton = ({ active, onClick, icon: Icon, label }: { active: boolean; on
     onClick={onClick}
     className={clsx(
       "flex flex-col items-center justify-center min-w-[56px] py-2 gap-1 transition-all touch-manipulation rounded-xl active:scale-95",
-      active ? "text-[#3B82F6]" : "text-[#9CA3AF] hover:text-white"
+      active ? "text-primary" : "text-muted-foreground hover:text-sidebar-foreground"
     )}
   >
     <Icon size={24} strokeWidth={active ? 2.5 : 2} />

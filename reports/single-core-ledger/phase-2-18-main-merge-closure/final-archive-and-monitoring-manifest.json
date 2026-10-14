@@ -1,0 +1,38 @@
+{
+  "status": "FINAL_ARCHIVE_COMPLETE",
+  "company": "DIN CHINA",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "production_url": "https://erp.dincouture.pk",
+  "pr_url": "https://github.com/NDM0313/NEWPOSV3/pull/21",
+  "pr_state": "closed",
+  "pr_merged": true,
+  "pr_merged_at": "2026-06-27T09:06:05Z",
+  "main_commit": "cdd3c21b",
+  "rollout_commit": "b92e6955",
+  "rollout_commit_reachable_from_main": true,
+  "tests": {
+    "command": "npm run test:unified-ledger",
+    "result": "PASS",
+    "count": 240,
+    "fail": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "result": "PASS"
+  },
+  "production_monitoring_rerun": false,
+  "monitoring_reason_if_skipped": "QA_BROWSER_PASSWORD not set; Phase 2.16 final-production-verify.md remains authoritative",
+  "production_monitoring_authoritative": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+  "stash_hygiene": {
+    "rollout_wip_stash": "stash@{0}: phase-2-18-pre-merge-wip",
+    "stash_applied": false,
+    "branches_deleted": false
+  },
+  "flags_changed": false,
+  "migrations_run": false,
+  "sql_executed": false,
+  "gl_mutations": false,
+  "other_company_expansion": false,
+  "fx_app_touched": false,
+  "generated_at": "2026-06-27T09:09:39Z"
+}

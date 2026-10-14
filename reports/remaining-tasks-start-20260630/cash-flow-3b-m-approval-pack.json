@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-30T13:15:00.000Z",
+  "status": "OPERATIONAL_LIVE_RE_SWAP_BLOCKED",
+  "phase": "3B-M",
+  "current_state": "Unified Cash Flow main loader LIVE for DIN CHINA, DIN BRIDAL, DIN COUTURE since 2026-06-29",
+  "finance_basis": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "flags_per_company": [
+    "unified_ledger_screen_cash_flow",
+    "unified_ledger_loader_cash_flow"
+  ],
+  "accepted_deltas": "DIN CHINA / DIN BRIDAL non-zero vs legacy per finance sign-off; DIN COUTURE zero-diff",
+  "rollback_sql": "scripts/single-core-ledger/phase-3b-m-cash-flow-loader-swap/rollback-loader-cash-flow-all-three.sql",
+  "monitoring": "npm run monitor:three-company-unified-ledger — Cash Flow unified main when flags ON",
+  "approval_required_for": "re-swap, rollback, or additional company enablement",
+  "written_approval_text": "I approve Cash Flow unified main loader [enable|rollback] for [company] per phase-3b-m runbook dated ______."
+}

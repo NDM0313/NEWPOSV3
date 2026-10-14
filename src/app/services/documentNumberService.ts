@@ -15,6 +15,7 @@ export type ErpDocumentType =
   | 'purchase'
   | 'purchase_return'   // P2: dedicated sequence with PRET- prefix (see 39_PURCHASE_RETURN_NUMBERING_DECISION.md)
   | 'payment'
+  /** @deprecated Phase B — use `payment` + RPC for new outgoing supplier payments; legacy counter only. */
   | 'supplier_payment'
   | 'customer_receipt'
   | 'expense'
@@ -221,9 +222,23 @@ export const documentNumberService = {
   /**
    * ERP Numbering Engine: get next document number (atomic, duplicate-free, multi-user safe).
    * Uses generate_document_number RPC → erp_document_sequences. PAY refs: use this only; do not use document_sequences for new payments.
+   * Always pass the real branch UUID; Postgres resolves global vs branch_based bucket. Expenses: prefer create_expense_document RPC.
    * @param includeYear - if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN
    */
   async getNextDocumentNumber(
+    companyId: string,
+    branchId: string | null,
+    documentType: ErpDocumentType,
+    includeYear?: boolean
+  ): Promise<string> {
+    return this.getEffectiveNextDocumentNumber(companyId, branchId, documentType, includeYear);
+  },
+
+  /**
+   * Next voucher ref using effective-max continuity (prefix/branch-code is display-only).
+   * Delegates to generate_document_number RPC after sequence-continuity migration.
+   */
+  async getEffectiveNextDocumentNumber(
     companyId: string,
     branchId: string | null,
     documentType: ErpDocumentType,

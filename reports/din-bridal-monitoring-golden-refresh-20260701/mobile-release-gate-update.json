@@ -1,0 +1,17 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "mobile-release-gate-update",
+  "generated_at": "2026-07-01T14:35:00.000Z",
+  "release_gate": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES",
+  "components": {
+    "monitoring": "PASS",
+    "device_qa": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES"
+  },
+  "admin_qa_valid": true,
+  "manager_qa": "MANAGER_QA_PENDING_CREDENTIALS",
+  "salesman_qa": "SALESMAN_QA_PENDING_CREDENTIALS",
+  "play_store_approved": false,
+  "apk_public_release": false,
+  "supplier_party_discount_pkr1": "NOT_APPROVED",
+  "r8_legacy_retirement": "BLOCKED"
+}

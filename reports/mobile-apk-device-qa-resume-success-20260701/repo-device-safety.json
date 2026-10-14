@@ -1,0 +1,21 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA_RESUME",
+  "task": "repo-device-safety",
+  "generated_at": "2026-07-01T11:35:00.000Z",
+  "status": "PASS",
+  "branch": "main",
+  "head": "61bfa27cc451e1392c1e65b0a18f12b324080b77",
+  "origin_main": "61bfa27cc451e1392c1e65b0a18f12b324080b77",
+  "evidence_commits": ["2948e757", "243c80f8", "61bfa27c"],
+  "adb_device_id": "24281FDEE0023P",
+  "device_model": "Pixel 6 Pro",
+  "android_version": "16",
+  "package_installed": "com.dincouture.erp",
+  "version_name": "1.0.5",
+  "version_code": 39,
+  "apk_path": "erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk",
+  "apk_sha256_match": true,
+  "apk_staged_in_git": false,
+  "credentials_staged": false,
+  "prior_install_fix": "uninstalled release-signed app then installed debug APK (signature mismatch resolved)"
+}

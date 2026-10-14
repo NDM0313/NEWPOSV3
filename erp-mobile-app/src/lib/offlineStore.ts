@@ -103,14 +103,20 @@ function upgradeV1ToV2(tx: IDBTransaction): void {
 function getDb(): Promise<IDBDatabase> {
   if (db) return Promise.resolve(db);
   return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
     req.onsuccess = () => {
       const database = req.result;
-      void recoverStaleSyncing(database).then(() => {
-        db = database;
-        resolve(database);
-      });
+      void recoverStaleSyncing(database)
+        .catch(() => undefined)
+        .then(() => {
+          db = database;
+          resolve(database);
+        });
     };
     req.onupgradeneeded = (e) => {
       const database = (e.target as IDBOpenDBRequest).result;
@@ -165,14 +171,19 @@ export async function addPending(
 }
 
 export async function getUnsynced(): Promise<PendingRecord[]> {
-  const database = await getDb();
-  const all = await new Promise<PendingRecord[]>((resolve, reject) => {
-    const tx = database.transaction(STORE_NAME, 'readonly');
-    const req = tx.objectStore(STORE_NAME).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-  return all.map(migrateRecord).filter((r) => needsSync(normalizeQueueStatus(r)));
+  try {
+    const database = await getDb();
+    const all = await new Promise<PendingRecord[]>((resolve, reject) => {
+      const tx = database.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    return all.map(migrateRecord).filter((r) => needsSync(normalizeQueueStatus(r)));
+  } catch (err) {
+    console.warn('[ERP Mobile] offline queue unavailable:', err);
+    return [];
+  }
 }
 
 /** Atomically move PENDING/ERROR → SYNCING. Returns false if row missing or not eligible. */
@@ -245,14 +256,18 @@ export async function getUnsyncedCount(): Promise<number> {
 }
 
 export async function hasSyncErrors(): Promise<boolean> {
-  const database = await getDb();
-  const all = await new Promise<PendingRecord[]>((resolve, reject) => {
-    const tx = database.transaction(STORE_NAME, 'readonly');
-    const req = tx.objectStore(STORE_NAME).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-  return all.some((r) => normalizeQueueStatus(migrateRecord(r)) === 'ERROR');
+  try {
+    const database = await getDb();
+    const all = await new Promise<PendingRecord[]>((resolve, reject) => {
+      const tx = database.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    return all.some((r) => normalizeQueueStatus(migrateRecord(r)) === 'ERROR');
+  } catch {
+    return false;
+  }
 }
 
 export async function getOfflineQueueMetrics(): Promise<{
@@ -260,42 +275,50 @@ export async function getOfflineQueueMetrics(): Promise<{
   error: number;
   syncing: number;
 }> {
-  const database = await getDb();
-  const all = await new Promise<PendingRecord[]>((resolve, reject) => {
-    const tx = database.transaction(STORE_NAME, 'readonly');
-    const req = tx.objectStore(STORE_NAME).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-  let pending = 0;
-  let error = 0;
-  let syncing = 0;
-  for (const raw of all) {
-    const r = migrateRecord(raw);
-    const s = normalizeQueueStatus(r);
-    if (s === 'PENDING') pending++;
-    else if (s === 'ERROR') error++;
-    else if (s === 'SYNCING') syncing++;
+  try {
+    const database = await getDb();
+    const all = await new Promise<PendingRecord[]>((resolve, reject) => {
+      const tx = database.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    let pending = 0;
+    let error = 0;
+    let syncing = 0;
+    for (const raw of all) {
+      const r = migrateRecord(raw);
+      const s = normalizeQueueStatus(r);
+      if (s === 'PENDING') pending++;
+      else if (s === 'ERROR') error++;
+      else if (s === 'SYNCING') syncing++;
+    }
+    return { pending, error, syncing };
+  } catch {
+    return { pending: 0, error: 0, syncing: 0 };
   }
-  return { pending, error, syncing };
 }
 
 /** Clear all pending records (synced + unsynced). Use with caution – unsynced data will be lost. */
 export async function clearAllPending(): Promise<number> {
-  const database = await getDb();
-  const all = await new Promise<PendingRecord[]>((resolve, reject) => {
-    const tx = database.transaction(STORE_NAME, 'readonly');
-    const req = tx.objectStore(STORE_NAME).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-  const count = all.length;
-  if (count === 0) return 0;
-  await new Promise<void>((resolve, reject) => {
-    const tx = database.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return count;
+  try {
+    const database = await getDb();
+    const all = await new Promise<PendingRecord[]>((resolve, reject) => {
+      const tx = database.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    const count = all.length;
+    if (count === 0) return 0;
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    return count;
+  } catch {
+    return 0;
+  }
 }

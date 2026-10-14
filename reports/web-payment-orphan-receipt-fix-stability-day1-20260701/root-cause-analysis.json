@@ -1,0 +1,26 @@
+{
+  "run": "ROOT_CAUSE_ANALYSIS",
+  "primary_paths": [
+    "src/app/services/addEntryV2Service.ts:createCustomerReceiptEntry",
+    "src/app/context/AccountingContext.tsx:manual receipt",
+    "src/app/services/accountingService.ts:createEntry"
+  ],
+  "root_causes": [
+    "payment_insert_before_journal_lines",
+    "no_duplicate_retry_guard",
+    "je_header_survives_line_insert_failure",
+    "cancel_payment_requires_posted_lines",
+    "list_amount_from_je_lines_not_payment"
+  ],
+  "fix_files": [
+    "src/app/services/addEntryV2Service.ts",
+    "src/app/services/accountingService.ts",
+    "src/app/services/orphanReceiptService.ts",
+    "src/app/lib/orphanReceiptPolicy.ts",
+    "src/app/lib/transactionActionRules.ts",
+    "src/app/context/AccountingContext.tsx",
+    "src/app/components/accounting/AccountingDashboard.tsx",
+    "src/app/components/accounting/TransactionDetailModal.tsx",
+    "src/app/components/accounting/JournalRowTransactionActions.tsx"
+  ]
+}

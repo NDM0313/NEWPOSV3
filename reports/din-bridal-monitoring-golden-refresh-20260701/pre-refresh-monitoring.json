@@ -1,0 +1,23 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "pre-refresh-monitoring",
+  "generated_at": "2026-07-01T14:04:13.374Z",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T13-53-24-973Z.json",
+  "overall": "FAIL",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "din_china": "PASS",
+  "din_couture": "PASS",
+  "din_bridal": {
+    "result": "FAIL",
+    "old_golden_tb_pkr": 22056075,
+    "actual_tb_pkr": 22390400,
+    "old_golden_cash_in_pkr": 1836350,
+    "actual_cash_in_pkr": 2116850,
+    "old_golden_cash_out_pkr": 917780,
+    "actual_cash_out_pkr": 917780,
+    "old_golden_closing_pkr": 918570,
+    "actual_closing_pkr": 1199070,
+    "mr_rehan_closing_pkr": 530000
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-06-30T12:09:45.000Z",
+  "backup_timestamp_utc": "20260630T120945Z",
+  "backup_paths": {
+    "env": "/root/supabase/docker/.env.bak.sender-name-ndm-20260630T120945Z",
+    "compose": "/root/supabase/docker/docker-compose.yml.bak.sender-name-ndm-20260630T120945Z"
+  }
+}

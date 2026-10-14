@@ -183,7 +183,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4 flex items-center gap-2 text-gray-400">
+      <div className="rounded-lg border border-border bg-accent/30 p-4 flex items-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-sm">Loading production cost…</span>
       </div>
@@ -191,28 +191,28 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
   }
 
   return (
-    <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4 space-y-4">
-      <div className="flex items-center gap-2 text-white font-medium">
+    <div className="rounded-lg border border-border bg-accent/30 p-4 space-y-4">
+      <div className="flex items-center gap-2 text-foreground font-medium">
         <FileText className="h-5 w-5 text-amber-400" />
         <span>Customer Billing</span>
       </div>
 
       <div className="grid gap-3 text-sm">
-        <div className="flex justify-between text-gray-300">
+        <div className="flex justify-between text-muted-foreground">
           <span>Production Cost</span>
-          <span className="font-medium text-white">{formatCurrency(productionCost)}</span>
+          <span className="font-medium text-foreground">{formatCurrency(productionCost)}</span>
         </div>
 
         {!customerInvoiceGenerated && completed && (
           <>
             {productId ? (
-              <div className="flex items-center gap-2 text-gray-300 py-1">
+              <div className="flex items-center gap-2 text-muted-foreground py-1">
                 <Package className="h-4 w-4 text-amber-500" />
-                <span>Product: {linkedProductName || '—'} {linkedProductSku && <span className="text-gray-500">({linkedProductSku})</span>}</span>
+                <span>Product: {linkedProductName || '—'} {linkedProductSku && <span className="text-muted-foreground">({linkedProductSku})</span>}</span>
               </div>
             ) : (
-              <div className="space-y-3 rounded border border-gray-700/50 p-3 bg-gray-900/50">
-                <Label className="text-gray-400 text-xs">Product (optional – manufactured item for invoice)</Label>
+              <div className="space-y-3 rounded border border-border p-3 bg-muted/40">
+                <Label className="text-muted-foreground text-xs">Product (optional – manufactured item for invoice)</Label>
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -237,7 +237,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
                 {productSourceMode === 'new' && (
                   <>
                     <Input
-                      className="bg-gray-900 border-gray-700 text-white"
+                      className="bg-card border-border text-foreground"
                       placeholder="e.g. Bridal Dress – Ayesha"
                       value={productNameInput}
                       onChange={(e) => setProductNameInput(e.target.value)}
@@ -259,7 +259,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
                   <>
                     <div className="flex gap-2">
                       <Input
-                        className="bg-gray-900 border-gray-700 text-white flex-1"
+                        className="bg-card border-border text-foreground flex-1"
                         placeholder="Search production products (name or SKU)"
                         value={existingSearchQuery}
                         onChange={(e) => setExistingSearchQuery(e.target.value)}
@@ -281,11 +281,11 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
                           <li key={p.id}>
                             <button
                               type="button"
-                              className="w-full text-left px-2 py-1.5 rounded border border-gray-700 hover:bg-gray-800 flex items-center justify-between gap-2"
+                              className="w-full text-left px-2 py-1.5 rounded border border-border hover:bg-muted flex items-center justify-between gap-2"
                               disabled={linkingExisting}
                               onClick={() => handleLinkExisting(p.id)}
                             >
-                              <span className="text-white truncate">{p.name}</span>
+                              <span className="text-foreground truncate">{p.name}</span>
                               <span className="text-amber-400 shrink-0 text-xs">[{p.sku}]</span>
                             </button>
                           </li>
@@ -293,7 +293,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
                       </ul>
                     )}
                     {existingSearchQuery && existingSearchResults.length === 0 && !searchingExisting && (
-                      <p className="text-xs text-gray-500">No production products found. Create a new one or try another search.</p>
+                      <p className="text-xs text-muted-foreground">No production products found. Create a new one or try another search.</p>
                     )}
                   </>
                 )}
@@ -305,21 +305,21 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
         {!customerInvoiceGenerated && (
           <>
             <div>
-              <Label className="text-gray-400 text-xs">Customer Price</Label>
+              <Label className="text-muted-foreground text-xs">Customer Price</Label>
               <Input
                 type="number"
                 min={0}
                 step={1}
-                className="mt-1 bg-gray-900 border-gray-700 text-white"
+                className="mt-1 bg-card border-border text-foreground"
                 placeholder="Enter amount"
                 value={customerPrice}
                 onChange={(e) => setCustomerPrice(e.target.value)}
               />
             </div>
             {customerPrice && Number(customerPrice) > 0 && (
-              <div className="flex justify-between text-gray-300">
+              <div className="flex justify-between text-muted-foreground">
                 <span>Profit</span>
-                <span className="font-medium text-green-400">{formatCurrency(profit)}</span>
+                <span className="font-medium text-[var(--erp-money-positive)]">{formatCurrency(profit)}</span>
               </div>
             )}
           </>
@@ -339,7 +339,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
       ) : (
         <Button
           size="sm"
-          className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto"
+          className="bg-amber-600 hover:bg-amber-700 text-foreground w-full sm:w-auto"
           disabled={!completed || generating || !customerPrice || Number(customerPrice) <= 0}
           onClick={handleGenerate}
         >
@@ -351,7 +351,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
       )}
 
       {!completed && !customerInvoiceGenerated && (
-        <p className="text-xs text-gray-500">Complete production to generate the customer invoice.</p>
+        <p className="text-xs text-muted-foreground">Complete production to generate the customer invoice.</p>
       )}
     </div>
   );

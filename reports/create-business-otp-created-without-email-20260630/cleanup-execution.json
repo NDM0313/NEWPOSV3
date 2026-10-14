@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-06-30T11:05:00.000Z",
+  "result": "DELETED",
+  "method": "scoped_sql_transaction_vps",
+  "scoped_auth_user_id": "a5ed7b79-0e25-4a1b-8c48-69113fec6ade",
+  "scoped_company_id": "845154ff-7c30-41b5-b69a-f1cd15c163a4",
+  "deleted": {
+    "user_branches": 1,
+    "contacts": 1,
+    "products": 4,
+    "product_categories": 4,
+    "units": 4,
+    "document_sequences": 11,
+    "document_sequences_global": 22,
+    "erp_document_sequences": 10,
+    "modules_config": 10,
+    "settings": 3,
+    "business_settings": 1,
+    "accounts": 36,
+    "branches": 1,
+    "public_users": 1,
+    "companies": 1,
+    "auth_identities": 1,
+    "auth_users": 1
+  }
+}

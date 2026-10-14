@@ -1,0 +1,9 @@
+{
+  "run": "PHASE_3B_F_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "branch": "main",
+  "head_commit": "1ea08c02",
+  "staged_files_count": 0,
+  "runtime_scope": "preview_diagnostic_export_only",
+  "deploy": "NOT_RUN"
+}

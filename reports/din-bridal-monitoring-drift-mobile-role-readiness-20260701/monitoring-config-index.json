@@ -1,0 +1,37 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "monitoring-config-index",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "company": "DIN BRIDAL",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "profile_id": "din-bridal",
+  "config_sources": {
+    "monitoring_profile": "scripts/single-core-ledger/monitoring-company-profiles.json",
+    "golden_fixtures": "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+    "monitoring_script": "scripts/single-core-ledger/run-phase-216-monitoring-verify.mjs",
+    "three_company_orchestrator": "scripts/single-core-ledger/run-three-company-operational-monitoring.mjs",
+    "browser_capture_evidence": "reports/single-core-ledger/din-bridal-monitoring/golden-capture/"
+  },
+  "monitoring_golden_pkr": {
+    "trial_balance_total": 22056075,
+    "roznamcha_cash_in": 1836350,
+    "roznamcha_cash_out": 917780,
+    "roznamcha_closing": 918570,
+    "mr_rehan_ali_closing": 530000
+  },
+  "golden_fixtures_notes": [
+    "TB refreshed 2026-06-30 after 1100 Option C apply (JV-000209/210)",
+    "Roznamcha figures from legacy browser capture 2026-06-27",
+    "rpc_proxy_baseline.roznamcha_cash_in_pkr = 1916350 (RPC method differs from browser capture)"
+  ],
+  "post_bs_pl_swap_expected": "BS/P&L mobile goldens verified on device 2026-07-01; monitoring TB/roznamcha goldens unchanged since post-1100 refresh",
+  "expected_unified_flags_count": 18,
+  "related_commits": [
+    { "sha": "95a041d7", "description": "DIN BRIDAL 1100 Option C apply" },
+    { "sha": "bc1a768d", "description": "Recapture DIN BRIDAL BS/P&L after 1100 correction" },
+    { "sha": "db499995", "description": "BS/P&L unified main loader wiring" },
+    { "sha": "98d2f4c8", "description": "BS/P&L controlled loader swap evidence" },
+    { "sha": "5bc7d128", "description": "Mobile manual admin device QA record" },
+    { "sha": "7566d294", "description": "Mobile manual admin QA push result" }
+  ]
+}

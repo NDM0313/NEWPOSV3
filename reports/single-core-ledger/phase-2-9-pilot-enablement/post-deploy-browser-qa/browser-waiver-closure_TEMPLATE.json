@@ -1,0 +1,28 @@
+{
+  "phase": "2.9A-3",
+  "checklist": "post-deploy-browser-waiver",
+  "accessUrl": "http://localhost:3002",
+  "tunnel": "ssh -N -L 3002:127.0.0.1:3002 dincouture-vps",
+  "tenant": "DIN CHINA",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "timestampUtc": null,
+  "tester": null,
+  "adminRole": null,
+  "items": {
+    "login": null,
+    "ledgerV2Loads": null,
+    "toggleVisible": null,
+    "toggleDefaultOff": null,
+    "bannerLegacy": null,
+    "noRpcToggleOff": null,
+    "mrJalil216300": null,
+    "previewJsonExport": null,
+    "exportParity": null,
+    "staffNoToggles": null,
+    "adminCompareLoads": null,
+    "killSwitch": null
+  },
+  "flagsStillOff": null,
+  "overall": null,
+  "signoffState": null
+}

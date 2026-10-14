@@ -1,0 +1,19 @@
+{
+  "id": "R7",
+  "status": "DESIGN_ONLY",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "design_doc": "docs/accounting/SINGLE_CORE_LEDGER_R7_ROZNAMCHA_PAYMENT_RPC_DESIGN.md",
+  "migration_exists": false,
+  "migration_applied": false,
+  "r7_applied_this_run": false,
+  "approvals_required": [
+    "design_review",
+    "finance_sign_off",
+    "migration_approval",
+    "clone_validation",
+    "production_backup",
+    "staged_apply",
+    "three_company_regression"
+  ],
+  "premature_apply_risk": "roznamcha_golden_drift_and_report_semantics_change"
+}

@@ -62,10 +62,16 @@ export async function getRolePermissionsByEngineRole(
   return (data ?? []) as RolePermissionRow[];
 }
 
-/** Admin/owner may pick any company branch (and "All Branches"). Others: user_branches only. */
+/** Admin/owner/platform operator may pick any company branch (and "All Branches"). Others: user_branches only. */
 export function canPickAllCompanyBranches(role: string | undefined): boolean {
-  const r = (role || '').toLowerCase();
-  return r === 'admin' || r === 'owner';
+  const r = (role || '').toLowerCase().trim().replace(/_/g, ' ');
+  return (
+    r === 'admin' ||
+    r === 'owner' ||
+    r === 'developer' ||
+    r === 'super admin' ||
+    r === 'superadmin'
+  );
 }
 
 export interface UserAccessibleBranchesResult {
@@ -301,7 +307,7 @@ export function canViewModule(perms: RolePermissionRow[], module: string): boole
     studio: VIEW_ACTIONS,
     rentals: VIEW_ACTIONS,
     reports: ['view'],
-    inventory: VIEW_ACTIONS.concat(['adjust', 'transfer']),
+    inventory: VIEW_ACTIONS.concat(['adjust', 'transfer', 'count', 'post_count']),
     ledger: ['view_full_accounting', 'view_customer', 'view_supplier', ...VIEW_ACTIONS],
     contacts: VIEW_ACTIONS,
     payments: ['receive', ...VIEW_ACTIONS],

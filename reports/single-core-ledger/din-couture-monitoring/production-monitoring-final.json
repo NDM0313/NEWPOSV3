@@ -1,0 +1,22 @@
+{
+  "type": "final",
+  "profile": "din-couture",
+  "capturedAt": "2026-06-27T13:19:25.231Z",
+  "overall": "PASS",
+  "accelerated_waiver": "reports/single-core-ledger/next-company-rollout/din-couture/din-couture-accelerated-soak-waiver.md",
+  "golden_checks": {
+    "ledger_v2_closing_pkr": 4488088,
+    "account_statement_closing_pkr": 4488088,
+    "party_ledger_closing_pkr": 4488088,
+    "trial_balance_debit_pkr": 49747104,
+    "trial_balance_credit_pkr": 49747104,
+    "roznamcha_cash_in_pkr": 85000,
+    "roznamcha_cash_out_pkr": 34500,
+    "roznamcha_closing_pkr": 50500
+  },
+  "din_couture_flags_on": 12,
+  "din_couture_loaders_on": 5,
+  "din_china_regression": "PASS",
+  "din_bridal_regression": "PASS",
+  "other_company_loaders": 0
+}

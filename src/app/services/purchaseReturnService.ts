@@ -348,7 +348,7 @@ export const purchaseReturnService = {
           {
             company_id: companyId,
             branch_id: prBranchId,
-            entry_date: localNowDateString(),
+            entry_date: String((purchaseReturn as { return_date?: string | null }).return_date || localNowDateString()).slice(0, 10),
             description: `Purchase Return Settlement: ${(purchaseReturn as any).return_no || returnId}`,
             reference_type: 'purchase_return',
             reference_id: returnId,

@@ -11,7 +11,9 @@ import {
   recoverStaleAuthSessionFromBootstrap,
   recoverStaleAuthSessionIfNeeded,
 } from './authSessionRecovery';
-import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
+import { CANONICAL_SUPABASE_API_URL, resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
+
+export { CANONICAL_SUPABASE_API_URL };
 import { clearStorageDisplayUrlCache } from '../utils/storageDisplayUrl';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
@@ -28,7 +30,8 @@ const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
 });
 
 /**
- * Production PWA: direct supabase.dincouture.pk. Native Capacitor: erp.dincouture.pk nginx proxy (CORS).
+ * Production PWA + native Capacitor: https://api.ndmcore.com (CORS allows capacitor://localhost).
+ * Production PWA + native Capacitor: https://api.ndmcore.com (see resolveSupabaseApiUrl).
  * Vite dev browser: same-origin localhost → Vite proxy → Kong (auth, REST, storage, Realtime WS).
  * @see resolveSupabaseApiUrl.ts
  */
@@ -36,11 +39,16 @@ const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
 const hasConfig = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.startsWith('http://placeholder'));
 if (!hasConfig) {
-  const onProduction = typeof window !== 'undefined' && window.location.origin.includes('erp.dincouture.pk');
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const onNdmcoreHost =
+    /(?:^|\.)ndmcore\.com$/i.test(origin.replace(/^https?:\/\//, '').split('/')[0] || '') ||
+    origin.includes('erp.ndmcore.com') ||
+    origin.includes('api.ndmcore.com') ||
+    origin.includes('api-stage.ndmcore.com');
   console.warn(
-    onProduction
-      ? '[ERP Mobile] Missing Supabase config on production. Redeploy: on VPS run git pull && bash deploy/deploy.sh so build gets VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from .env.production.'
-      : '[ERP Mobile] Set VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env (copy from main project .env.production or .env.local). Restart dev server after editing .env.'
+    onNdmcoreHost
+      ? '[ERP Mobile] Missing Supabase config on ndmcore host. Redeploy so build gets VITE_SUPABASE_URL (https://api.ndmcore.com or https://api-stage.ndmcore.com) and VITE_SUPABASE_ANON_KEY.'
+      : '[ERP Mobile] Set VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env (copy from main project .env.production, .env.staging, or .env.local). Restart dev server after editing .env.',
   );
 }
 
@@ -110,6 +118,8 @@ export const mobileRealtimeHealth = {
           : 'ok',
 } as const;
 
+import { getBrowserStorage } from './safeBrowserStorage';
+
 // ============================================
 // SAFE STORAGE (avoids SecurityError when localStorage is denied)
 // ============================================
@@ -154,18 +164,16 @@ function memoryFallback(): Storage {
 
 function safeStorage(): Storage {
   if (typeof window === 'undefined') return memoryFallback();
-  try {
-    if (probeStorage(localStorage)) {
-      authStorageKind = 'localStorage';
-      return localStorage;
-    }
-  } catch { /* ignore */ }
-  try {
-    if (probeStorage(sessionStorage)) {
-      authStorageKind = 'sessionStorage';
-      return sessionStorage;
-    }
-  } catch { /* ignore */ }
+  const ls = getBrowserStorage('local');
+  if (ls && probeStorage(ls)) {
+    authStorageKind = 'localStorage';
+    return ls;
+  }
+  const ss = getBrowserStorage('session');
+  if (ss && probeStorage(ss)) {
+    authStorageKind = 'sessionStorage';
+    return ss;
+  }
   return memoryFallback();
 }
 

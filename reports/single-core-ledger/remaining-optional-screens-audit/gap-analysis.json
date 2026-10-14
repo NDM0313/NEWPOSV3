@@ -1,0 +1,41 @@
+{
+  "run": "PHASE_3_REMAINING_OPTIONAL_SCREEN_AUDIT",
+  "generatedAt": "2026-06-29",
+  "gaps": [
+    { "id": "G-BS-01", "surface": "balance_sheet", "description": "BS uses legacy getTrialBalance while TB main may be unified", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-BS-02", "surface": "balance_sheet", "description": "No unified loader flag for balance sheet", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-BS-03", "surface": "balance_sheet", "description": "No unified preview/compare harness", "classification": "PREVIEW_ONLY_SAFE" },
+    { "id": "G-BS-04", "surface": "balance_sheet", "description": "No finance-approved BS golden totals", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "G-BS-05", "surface": "balance_sheet", "description": "reportVisibilityContract not applied to BS derivation", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-PL-01", "surface": "profit_loss", "description": "P&L uses legacy TB path", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-PL-02", "surface": "profit_loss", "description": "No unified loader flag for P&L", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-PL-03", "surface": "profit_loss", "description": "COGS mapping needs finance sign-off", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "G-PL-04", "surface": "profit_loss", "description": "No P&L preview/compare module", "classification": "PREVIEW_ONLY_SAFE" },
+    { "id": "G-PL-05", "surface": "profit_loss", "description": "No P&L golden capture", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "G-CF-01", "surface": "cash_flow", "description": "CF uses legacy roznamcha vs unified Roznamcha main", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-CF-02", "surface": "cash_flow", "description": "No unified loader flag for cash flow", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-CF-03", "surface": "cash_flow", "description": "Unified path not wired; contract partial", "classification": "PREVIEW_ONLY_SAFE" },
+    { "id": "G-CF-04", "surface": "cash_flow", "description": "No CF statement golden totals", "classification": "NEEDS_FINANCE_GOLDEN_APPROVAL" },
+    { "id": "G-CF-05", "surface": "cash_flow", "description": "R7 roznamcha_payment RPC design only", "classification": "BLOCKED_R7" },
+    { "id": "G-MOB-01", "surface": "mobile", "description": "No BS/P&L/TB/CF statement screens", "classification": "UI_ONLY_SAFE" },
+    { "id": "G-MOB-02", "surface": "mobile", "description": "No unified loader resolution in mobile", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-MOB-03", "surface": "mobile", "description": "Mobile roznamcha legacy API", "classification": "NEEDS_RUNTIME_CHANGE" },
+    { "id": "G-MOB-04", "surface": "mobile", "description": "No audit mode on mobile roznamcha", "classification": "UI_ONLY_SAFE" },
+    { "id": "G-MOB-05", "surface": "mobile", "description": "PDF export parity not golden-tested", "classification": "TEST_ONLY" },
+    { "id": "G-PRG-01", "surface": "program", "description": "R8 legacy retirement blocked", "classification": "BLOCKED_R8" },
+    { "id": "G-PRG-02", "surface": "program", "description": "Next company blocked", "classification": "BLOCKED_DATA_MUTATION" },
+    { "id": "G-PRG-03", "surface": "program", "description": "New loader flags need ops/DB approval", "classification": "NEEDS_MIGRATION_APPROVAL" }
+  ],
+  "classificationCounts": {
+    "DOC_ONLY": 2,
+    "TEST_ONLY": 1,
+    "PREVIEW_ONLY_SAFE": 3,
+    "UI_ONLY_SAFE": 2,
+    "NEEDS_RUNTIME_CHANGE": 9,
+    "NEEDS_MIGRATION_APPROVAL": 1,
+    "NEEDS_FINANCE_GOLDEN_APPROVAL": 4,
+    "BLOCKED_R7": 1,
+    "BLOCKED_R8": 1,
+    "BLOCKED_DATA_MUTATION": 2
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "apk-install",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "status": "BLOCKED_APK_INSTALL_NOT_ATTEMPTED",
+  "reason": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE",
+  "apk_installed": false,
+  "install_command": "adb install -r erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk"
+}

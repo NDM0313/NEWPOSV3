@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-30T12:00:00.000Z",
+  "classification": "LEGACY_FALLBACK_MISSING_PARTY_DISCOUNT",
+  "pilot_batch_path": {
+    "ui": "PilotBatchCompareTab → runDinChinaPilotBatchCompare",
+    "service": "unifiedLedgerPilotBatchCompareService.ts",
+    "tie_out": "comparePartyLedgerTieOut → loadLegacyPartyLedgerForTieOut (useHybridOldEngine: true) vs getUnifiedPartyLedger",
+    "legacy_engine": "accountingService.getCustomerLedger (hybrid)",
+    "unified_engine": "get_unified_party_ledger RPC (shadow)"
+  },
+  "legacy_closing_before_fix": 216300,
+  "unified_closing": 216299,
+  "diff_pkr": 1,
+  "root_cause": "arJournalLineMatchesCustomer in getCustomerLedger hybrid filter did not include reference_type party_discount with reference_id = contactId. Unified RPC includes JE-0003; hybrid legacy omitted the AR credit line.",
+  "golden_constant_status": "NOT_STALE — production bundle already has MR_JALIL_EXPECTED_BALANCE=216299"
+}

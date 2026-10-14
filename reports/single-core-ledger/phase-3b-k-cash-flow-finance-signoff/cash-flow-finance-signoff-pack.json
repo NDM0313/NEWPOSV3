@@ -1,0 +1,55 @@
+{
+  "phase": "3B-K",
+  "run": "cash-flow-finance-signoff-pack",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "signoffType": "ALIGNED_PREVIEW_FINANCE_BASIS_CANDIDATE_ONLY",
+  "loaderSwapApproved": false,
+  "officialLegacyCashFlowChanged": false,
+  "bsPlFinanceApproved": false,
+  "r7R8NextCompanyApproved": false,
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "selectedBasisOption": "B",
+  "basisApprovalText": "Option B approved: aligned Cash Flow preview is accepted as finance basis candidate under Q4=A, Q5=C, Q7=B. DIN CHINA and DIN BRIDAL deltas are accepted as expected rule differences vs legacy. Official legacy Cash Flow remains unchanged. Cash Flow loader swap is NOT APPROVED.",
+  "approvedPreviewRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "evidence": {
+    "phase3BI": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/",
+    "phase3BJ": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+  },
+  "companies": [
+    {
+      "company": "DIN CHINA",
+      "legacyClosing": 37134386,
+      "alignedPreviewClosing": -32503237,
+      "closingDelta": 69637623,
+      "financeStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "deltaExplanation": "Expected rule difference under Option B — Q5=C excludes 169 internal transfer rows from aligned preview normal totals; legacy still gross-presents transfers as period cash-in/out.",
+      "compareLabel": "NON-ZERO-DIFF_ACCEPTED"
+    },
+    {
+      "company": "DIN BRIDAL",
+      "legacyClosing": 918570,
+      "alignedPreviewClosing": 60720,
+      "closingDelta": 857850,
+      "financeStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "deltaExplanation": "Expected rule difference under Option B — Q4=A excludes 2 opening-balance rows from aligned preview period cash-in; legacy still counts opening/JE as period cash-in.",
+      "compareLabel": "NON-ZERO-DIFF_ACCEPTED"
+    },
+    {
+      "company": "DIN COUTURE",
+      "legacyClosing": 50500,
+      "alignedPreviewClosing": 50500,
+      "closingDelta": 0,
+      "financeStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "deltaExplanation": "Zero-diff — aligned preview matches legacy at summary; supports review confidence.",
+      "compareLabel": "ZERO-DIFF"
+    }
+  ],
+  "importantWording": [
+    "This sign-off approves aligned preview as finance basis candidate only.",
+    "This does not approve loader swap.",
+    "This does not change official legacy Cash Flow.",
+    "This does not approve BS/P&L.",
+    "This does not approve R7/R8/next company."
+  ]
+}

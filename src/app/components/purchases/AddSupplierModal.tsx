@@ -62,13 +62,13 @@ export const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ open, onClos
             />
             
             {/* Modal */}
-            <div className="relative bg-gray-900 border border-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 bg-gray-950/50 border-b border-gray-800">
-                    <h3 className="text-lg font-semibold text-white">Add New Supplier</h3>
+                <div className="flex items-center justify-between px-6 py-4 bg-muted/40 border-b border-border">
+                    <h3 className="text-lg font-semibold text-foreground">Add New Supplier</h3>
                     <button
                         onClick={handleClose}
-                        className="text-gray-400 hover:text-white transition-colors"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
                     >
                         <X size={20} />
                     </button>
@@ -82,12 +82,12 @@ export const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ open, onClos
                             Supplier Name <span className="text-red-500">*</span>
                         </Label>
                         <div className="relative">
-                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                             <Input
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Enter supplier name"
-                                className="pl-10 bg-gray-950 border-gray-700 text-white h-10"
+                                className="pl-10 bg-input-background border-border text-foreground h-10"
                                 autoFocus
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
@@ -100,66 +100,66 @@ export const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ open, onClos
 
                     {/* Phone */}
                     <div className="space-y-2">
-                        <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide">
+                        <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide">
                             Phone
                         </Label>
                         <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                             <Input
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
                                 placeholder="Enter phone number"
-                                className="pl-10 bg-gray-950 border-gray-700 text-white h-10"
+                                className="pl-10 bg-input-background border-border text-foreground h-10"
                             />
                         </div>
                     </div>
 
                     {/* Email */}
                     <div className="space-y-2">
-                        <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide">
+                        <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide">
                             Email
                         </Label>
                         <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                             <Input
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="Enter email address"
-                                className="pl-10 bg-gray-950 border-gray-700 text-white h-10"
+                                className="pl-10 bg-input-background border-border text-foreground h-10"
                             />
                         </div>
                     </div>
 
                     {/* Address */}
                     <div className="space-y-2">
-                        <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide">
+                        <Label className="text-muted-foreground font-medium text-xs uppercase tracking-wide">
                             Address
                         </Label>
                         <div className="relative">
-                            <MapPin className="absolute left-3 top-3 text-gray-500" size={16} />
+                            <MapPin className="absolute left-3 top-3 text-muted-foreground" size={16} />
                             <textarea
                                 value={address}
                                 onChange={(e) => setAddress(e.target.value)}
                                 placeholder="Enter address"
-                                className="w-full pl-10 pr-3 py-2 bg-gray-950 border border-gray-700 rounded-lg text-white text-sm min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                className="w-full pl-10 pr-3 py-2 bg-input-background border border-border rounded-lg text-foreground text-sm min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                             />
                         </div>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-950/50 border-t border-gray-800">
+                <div className="flex items-center justify-end gap-3 px-6 py-4 bg-muted/40 border-t border-border">
                     <Button
                         variant="outline"
                         onClick={handleClose}
-                        className="border-gray-700 text-gray-300 h-10"
+                        className="border-border text-muted-foreground h-10"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={handleSave}
-                        className="bg-orange-600 hover:bg-orange-500 text-white h-10"
+                        className="bg-orange-600 hover:bg-orange-500 text-foreground h-10"
                     >
                         Add Supplier
                     </Button>

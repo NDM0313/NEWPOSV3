@@ -1,0 +1,13 @@
+{
+  "run": "SINGLE_CORE_STABILITY_DAY8_REPO_SAFETY",
+  "run_local_datetime": "2026-07-02T17:03:03+05:00",
+  "stability_sample_label": 8,
+  "calendar_days_elapsed_since_window_start": 1,
+  "window_start": "2026-07-01",
+  "evidence_folder": "reports/single-core-engine-stability-daily-20260708",
+  "branch": "main",
+  "head": "3b16d9140a64a9dd33b9fb9b03faf0e837d48039",
+  "origin_main": "3b16d9140a64a9dd33b9fb9b03faf0e837d48039",
+  "day7_evidence_commit": "3b16d914",
+  "verdict": "SAFE"
+}

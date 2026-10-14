@@ -1,0 +1,20 @@
+{
+  "classification": "OPTION_A_FIXTURE_ONLY",
+  "company": "DIN BRIDAL",
+  "triggerArtifact": "three-company-monitoring-2026-07-05T10-48-55-625Z.json",
+  "appliedForCalendarDay": 6,
+  "priorGolden": {
+    "trial_balance_pkr": 23279377,
+    "roznamcha_cash_in_pkr": 2211350,
+    "roznamcha_closing_pkr": 1046743
+  },
+  "newGolden": {
+    "trial_balance_pkr": 23688377,
+    "roznamcha_cash_in_pkr": 2507350,
+    "roznamcha_closing_pkr": 1342743
+  },
+  "migrationsRun": false,
+  "glMutations": false,
+  "repairsRun": false,
+  "productionMutation": false
+}

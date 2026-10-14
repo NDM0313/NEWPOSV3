@@ -254,7 +254,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
           chargeLabel: 'Purchases / credits (AP)',
           paymentLabel: 'Payments / debits (AP)',
           balanceColor:
-            totals.closingBalance > 0 ? 'text-red-400' : totals.closingBalance < 0 ? 'text-green-400' : 'text-gray-300',
+            totals.closingBalance > 0 ? 'text-red-400' : totals.closingBalance < 0 ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground',
         };
       case 'customer':
         return {
@@ -264,7 +264,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
           chargeLabel: 'Total charges (debit AR)',
           paymentLabel: 'Total payments (credit AR)',
           balanceColor:
-            totals.closingBalance > 0 ? 'text-yellow-400' : totals.closingBalance < 0 ? 'text-green-400' : 'text-gray-300',
+            totals.closingBalance > 0 ? 'text-yellow-400' : totals.closingBalance < 0 ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground',
         };
       case 'worker':
         return {
@@ -274,7 +274,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
           chargeLabel: 'Total debits',
           paymentLabel: 'Total credits',
           balanceColor:
-            totals.closingBalance > 0 ? 'text-orange-400' : totals.closingBalance < 0 ? 'text-green-400' : 'text-gray-300',
+            totals.closingBalance > 0 ? 'text-orange-400' : totals.closingBalance < 0 ? 'text-[var(--erp-money-positive)]' : 'text-muted-foreground',
         };
     }
   };
@@ -287,10 +287,10 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
     if (doc.includes('opening')) return 'bg-slate-500/10 text-slate-300 border-slate-500/20';
     if (mod.includes('sales') || doc.includes('sale')) return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     if (mod.includes('rental')) return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-    if (mod.includes('payment')) return 'bg-green-500/10 text-green-400 border-green-500/20';
+    if (mod.includes('payment')) return 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20';
     if (mod.includes('purchase')) return 'bg-red-500/10 text-red-400 border-red-500/20';
     if (mod.includes('expense')) return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-    return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+    return 'bg-gray-500/10 text-muted-foreground border-gray-500/20';
   };
 
   const buildExportPayload = useCallback((): ExportData => {
@@ -357,33 +357,33 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
 
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div
-          className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-[95vw] lg:max-w-7xl max-h-[92vh] flex flex-col pointer-events-auto animate-in zoom-in-95 duration-200 print:shadow-none print:border-0"
+          className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-[95vw] lg:max-w-7xl max-h-[92vh] flex flex-col pointer-events-auto animate-in zoom-in-95 duration-200 print:shadow-none print:border-0"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between p-6 border-b border-gray-800">
+          <div className="flex items-center justify-between p-6 border-b border-border">
             <div>
-              <h2 className="text-2xl font-bold text-white">{labels.title}</h2>
-              <p className="text-sm text-gray-400 mt-1">Posted activity from the general ledger (filters apply)</p>
+              <h2 className="text-2xl font-bold text-foreground">{labels.title}</h2>
+              <p className="text-sm text-muted-foreground mt-1">Posted activity from the general ledger (filters apply)</p>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-gray-800 rounded-lg"
+              className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted rounded-lg"
             >
               <X size={20} />
             </button>
           </div>
 
-          <div className="p-6 border-b border-gray-800 bg-gray-950/30">
-            <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-6">
+          <div className="p-6 border-b border-border bg-muted/30">
+            <div className="bg-muted/40 border border-border rounded-xl p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-4 flex-wrap">
                     <Badge variant="outline" className={labels.badge}>
                       {entityType.toUpperCase()}
                     </Badge>
-                    <h3 className="text-3xl font-bold text-white">{entityName}</h3>
+                    <h3 className="text-3xl font-bold text-foreground">{entityName}</h3>
                     {entityId && (
-                      <span className="text-sm text-gray-500 font-mono break-all max-w-xl">ID: {entityId}</span>
+                      <span className="text-sm text-muted-foreground font-mono break-all max-w-xl">ID: {entityId}</span>
                     )}
                   </div>
 
@@ -396,19 +396,19 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                     <div>
-                      <p className="text-xs text-gray-500 uppercase mb-1">Transactions</p>
-                      <p className="text-2xl font-bold text-white">{totals.txnCount}</p>
+                      <p className="text-xs text-muted-foreground uppercase mb-1">Transactions</p>
+                      <p className="text-2xl font-bold text-foreground">{totals.txnCount}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 uppercase mb-1">{labels.chargeLabel}</p>
+                      <p className="text-xs text-muted-foreground uppercase mb-1">{labels.chargeLabel}</p>
                       <p className="text-2xl font-bold text-red-400">{formatCurrency(totals.chargeSide)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 uppercase mb-1">{labels.paymentLabel}</p>
-                      <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.paymentSide)}</p>
+                      <p className="text-xs text-muted-foreground uppercase mb-1">{labels.paymentLabel}</p>
+                      <p className="text-2xl font-bold text-[var(--erp-money-positive)]">{formatCurrency(totals.paymentSide)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 uppercase mb-1">{labels.balanceLabel}</p>
+                      <p className="text-xs text-muted-foreground uppercase mb-1">{labels.balanceLabel}</p>
                       <p className={`text-3xl font-bold ${labels.balanceColor}`}>
                         {formatCurrency(Math.abs(totals.closingBalance))}
                       </p>
@@ -423,14 +423,14 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
             </div>
           </div>
 
-          <div className="px-6 py-4 border-b border-gray-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gray-950/20">
+          <div className="px-6 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-input-background/20">
             <div className="flex items-center gap-1 flex-wrap">
               <button
                 type="button"
                 onClick={() => setActiveTab('summary')}
                 className={cn(
                   'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  activeTab === 'summary' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                  activeTab === 'summary' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 )}
               >
                 <BarChart3 size={16} className="inline mr-2" />
@@ -441,7 +441,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 onClick={() => setActiveTab('detailed')}
                 className={cn(
                   'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  activeTab === 'detailed' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                  activeTab === 'detailed' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 )}
               >
                 <FileText size={16} className="inline mr-2" />
@@ -452,7 +452,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 onClick={() => setActiveTab('statement')}
                 className={cn(
                   'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                  activeTab === 'statement' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                  activeTab === 'statement' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 )}
               >
                 <FileSpreadsheet size={16} className="inline mr-2" />
@@ -462,11 +462,11 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
 
             <div className="flex items-center gap-2 flex-wrap justify-end">
               <div className="flex items-center gap-2 mr-1">
-                <Calendar size={16} className="text-gray-400" />
+                <Calendar size={16} className="text-muted-foreground" />
                 <select
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value as 'all' | '7days' | '30days' | '90days')}
-                  className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="bg-input-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-blue-500"
                 >
                   <option value="all">All time</option>
                   <option value="7days">Last 7 days</option>
@@ -481,7 +481,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 size="sm"
                 onClick={() => void loadPartyLedger()}
                 disabled={ledgerLoading || !companyId || !entityId || idInvalid}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <RefreshCw size={14} className={cn('mr-2', ledgerLoading && 'animate-spin')} />
                 Refresh
@@ -492,7 +492,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handlePrint}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <Printer size={14} className="mr-2" />
                 Print
@@ -503,7 +503,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 size="sm"
                 onClick={handleExportPDF}
                 disabled={partyRows.length === 0}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <Download size={14} className="mr-2" />
                 PDF
@@ -514,7 +514,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 size="sm"
                 onClick={handleExportExcel}
                 disabled={partyRows.length === 0}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-muted"
               >
                 <FileSpreadsheet size={14} className="mr-2" />
                 Excel
@@ -525,7 +525,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 size="sm"
                 onClick={handleExportCsv}
                 disabled={partyRows.length === 0}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800 hidden sm:inline-flex"
+                className="border-border text-muted-foreground hover:bg-muted hidden sm:inline-flex"
               >
                 CSV
               </Button>
@@ -540,22 +540,22 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
             )}
 
             {ledgerLoading && (
-              <div className="flex items-center gap-2 text-gray-400 mb-4">
+              <div className="flex items-center gap-2 text-muted-foreground mb-4">
                 <Loader2 className="animate-spin" size={18} />
                 Loading ledger…
               </div>
             )}
 
             {shipmentLedgerRows.length > 0 && (
-              <div className="mb-6 rounded-xl border border-gray-800 bg-gray-950/50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
+              <div className="mb-6 rounded-xl border border-border bg-muted/40 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border flex items-center gap-2">
                   <Truck size={18} className="text-indigo-400" />
-                  <h4 className="font-semibold text-white">Shipment accounting</h4>
+                  <h4 className="font-semibold text-foreground">Shipment accounting</h4>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-gray-400 border-b border-gray-800">
+                      <tr className="text-left text-muted-foreground border-b border-border">
                         <th className="px-4 py-2">Date</th>
                         <th className="px-4 py-2">Shipping income</th>
                         <th className="px-4 py-2">Shipping expense</th>
@@ -565,14 +565,14 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                     </thead>
                     <tbody>
                       {shipmentLedgerRows.map((row, i) => (
-                        <tr key={row.shipment_id + (row.date || '') + i} className="border-b border-gray-800/50">
-                          <td className="px-4 py-2 text-gray-300">
+                        <tr key={row.shipment_id + (row.date || '') + i} className="border-b border-border">
+                          <td className="px-4 py-2 text-muted-foreground">
                             {row.date ? formatDate(new Date(row.date)) : '—'}
                           </td>
-                          <td className="px-4 py-2 text-green-400">{formatCurrency(Number(row.shipping_income) || 0)}</td>
+                          <td className="px-4 py-2 text-[var(--erp-money-positive)]">{formatCurrency(Number(row.shipping_income) || 0)}</td>
                           <td className="px-4 py-2 text-red-400">{formatCurrency(Number(row.shipping_expense) || 0)}</td>
                           <td className="px-4 py-2 text-amber-400">{formatCurrency(Number(row.courier_payable) || 0)}</td>
-                          <td className="px-4 py-2 text-gray-400 font-mono">{row.entry_no || '—'}</td>
+                          <td className="px-4 py-2 text-muted-foreground font-mono">{row.entry_no || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -583,9 +583,9 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
 
             {!ledgerLoading && !idInvalid && partyRows.length === 0 && (
               <div className="text-center py-16">
-                <Receipt className="mx-auto text-gray-600 mb-4" size={64} />
-                <p className="text-gray-500 text-lg">No ledger lines in this period</p>
-                <p className="text-sm text-gray-600 mt-2">Try &quot;All time&quot; or refresh after new postings.</p>
+                <Receipt className="mx-auto text-muted-foreground mb-4" size={64} />
+                <p className="text-muted-foreground text-lg">No ledger lines in this period</p>
+                <p className="text-sm text-muted-foreground mt-2">Try &quot;All time&quot; or refresh after new postings.</p>
               </div>
             )}
 
@@ -598,7 +598,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                       return (
                         <div
                           key={`${row.journal_entry_id}-${row.date}-${row.reference_number}-${row.running_balance}`}
-                          className="bg-gray-950/50 border border-gray-800 rounded-lg p-5 hover:bg-gray-800/30 transition-colors"
+                          className="bg-muted/40 border border-border rounded-lg p-5 hover:bg-accent/30 transition-colors"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
@@ -609,21 +609,21 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                                 <span className="text-blue-400 font-mono text-sm font-semibold truncate">
                                   {row.reference_number}
                                 </span>
-                                <span className="text-gray-500 text-sm whitespace-nowrap">
+                                <span className="text-muted-foreground text-sm whitespace-nowrap">
                                   <DateTimeDisplay date={new Date(row.date + 'T12:00:00')} />
                                 </span>
                               </div>
 
-                              <p className="text-gray-300 mb-3 break-words">{row.description}</p>
+                              <p className="text-muted-foreground mb-3 break-words">{row.description}</p>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                                <div className="text-gray-500">
+                                <div className="text-muted-foreground">
                                   Counterparty / account:{' '}
-                                  <span className="text-gray-300">{row.account_name || '—'}</span>
+                                  <span className="text-muted-foreground">{row.account_name || '—'}</span>
                                 </div>
                                 {row.notes ? (
-                                  <div className="text-gray-500">
-                                    Notes: <span className="text-gray-300">{row.notes}</span>
+                                  <div className="text-muted-foreground">
+                                    Notes: <span className="text-muted-foreground">{row.notes}</span>
                                   </div>
                                 ) : null}
                               </div>
@@ -633,12 +633,12 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                               <p
                                 className={cn(
                                   'text-2xl font-bold',
-                                  pres.isCharge ? 'text-red-400' : 'text-green-400'
+                                  pres.isCharge ? 'text-red-400' : 'text-[var(--erp-money-positive)]'
                                 )}
                               >
                                 {pres.isCharge ? '+' : '−'} {formatCurrency(pres.amount)}
                               </p>
-                              <p className="text-sm text-gray-500 mt-1">{pres.label}</p>
+                              <p className="text-sm text-muted-foreground mt-1">{pres.label}</p>
                             </div>
                           </div>
                         </div>
@@ -648,38 +648,38 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 )}
 
                 {activeTab === 'detailed' && (
-                  <div className="bg-gray-950/50 border border-gray-800 rounded-xl overflow-hidden overflow-x-auto">
+                  <div className="bg-muted/40 border border-border rounded-xl overflow-hidden overflow-x-auto">
                     <table className="w-full min-w-[880px]">
                       <thead>
-                        <tr className="bg-gray-950 border-b border-gray-800">
-                          <th className="text-left p-4 text-xs font-semibold text-gray-400 uppercase">Date</th>
-                          <th className="text-left p-4 text-xs font-semibold text-gray-400 uppercase">Ref</th>
-                          <th className="text-left p-4 text-xs font-semibold text-gray-400 uppercase">Description</th>
-                          <th className="text-left p-4 text-xs font-semibold text-gray-400 uppercase">Type</th>
-                          <th className="text-right p-4 text-xs font-semibold text-gray-400 uppercase">Debit</th>
-                          <th className="text-right p-4 text-xs font-semibold text-gray-400 uppercase">Credit</th>
-                          <th className="text-right p-4 text-xs font-semibold text-gray-400 uppercase">Balance</th>
+                        <tr className="bg-input-background border-b border-border">
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase">Date</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase">Ref</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase">Description</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase">Type</th>
+                          <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase">Debit</th>
+                          <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase">Credit</th>
+                          <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase">Balance</th>
                         </tr>
                       </thead>
                       <tbody>
                         {partyRows.map((row) => (
                           <tr
                             key={`${row.journal_entry_id}-${row.date}-${row.reference_number}-${row.running_balance}`}
-                            className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                            className="border-b border-border hover:bg-accent/30 transition-colors"
                           >
-                            <td className="p-4 text-gray-400 text-sm whitespace-nowrap">
+                            <td className="p-4 text-muted-foreground text-sm whitespace-nowrap">
                               <DateTimeDisplay date={new Date(row.date + 'T12:00:00')} />
                             </td>
                             <td className="p-4">
                               <span className="text-blue-400 font-mono text-sm">{row.reference_number}</span>
                             </td>
-                            <td className="p-4 text-gray-300 text-sm max-w-md">{row.description}</td>
+                            <td className="p-4 text-muted-foreground text-sm max-w-md">{row.description}</td>
                             <td className="p-4">
                               <Badge variant="outline" className={getTransactionBadge(row)}>
                                 {row.document_type || row.source_module}
                               </Badge>
                             </td>
-                            <td className="p-4 text-right text-green-400 text-sm">
+                            <td className="p-4 text-right text-[var(--erp-money-positive)] text-sm">
                               {row.debit ? formatCurrency(row.debit) : '—'}
                             </td>
                             <td className="p-4 text-right text-red-400 text-sm">
@@ -696,10 +696,10 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                 )}
 
                 {activeTab === 'statement' && (
-                  <div className="bg-gray-950/50 border border-gray-800 rounded-xl overflow-hidden overflow-x-auto">
-                    <div className="bg-gray-950 p-6 border-b border-gray-800">
-                      <h3 className="text-lg font-bold text-white mb-2">Account statement</h3>
-                      <p className="text-sm text-gray-400">
+                  <div className="bg-muted/40 border border-border rounded-xl overflow-hidden overflow-x-auto">
+                    <div className="bg-input-background p-6 border-b border-border">
+                      <h3 className="text-lg font-bold text-foreground mb-2">Account statement</h3>
+                      <p className="text-sm text-muted-foreground">
                         Period:{' '}
                         {dateFilter === 'all'
                           ? 'All time'
@@ -712,47 +712,47 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                     </div>
                     <table className="w-full min-w-[720px]">
                       <thead>
-                        <tr className="bg-gray-900 border-b border-gray-800">
-                          <th className="text-left p-4 text-xs font-semibold text-gray-400 uppercase">Date</th>
-                          <th className="text-left p-4 text-xs font-semibold text-gray-400 uppercase">Particulars</th>
-                          <th className="text-center p-4 text-xs font-semibold text-gray-400 uppercase">Ref</th>
-                          <th className="text-right p-4 text-xs font-semibold text-gray-400 uppercase">Debit</th>
-                          <th className="text-right p-4 text-xs font-semibold text-gray-400 uppercase">Credit</th>
-                          <th className="text-right p-4 text-xs font-semibold text-gray-400 uppercase">Balance</th>
+                        <tr className="bg-card border-b border-border">
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase">Date</th>
+                          <th className="text-left p-4 text-xs font-semibold text-muted-foreground uppercase">Particulars</th>
+                          <th className="text-center p-4 text-xs font-semibold text-muted-foreground uppercase">Ref</th>
+                          <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase">Debit</th>
+                          <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase">Credit</th>
+                          <th className="text-right p-4 text-xs font-semibold text-muted-foreground uppercase">Balance</th>
                         </tr>
                       </thead>
                       <tbody>
                         {statementRows.map((row, idx) => (
                           <tr
                             key={`stmt-${row.journal_entry_id}-${idx}-${row.reference_number}`}
-                            className="border-b border-gray-800 hover:bg-gray-800/20 transition-colors"
+                            className="border-b border-border hover:bg-accent/20 transition-colors"
                           >
-                            <td className="p-4 text-gray-400 text-sm whitespace-nowrap">
+                            <td className="p-4 text-muted-foreground text-sm whitespace-nowrap">
                               <DateTimeDisplay date={new Date(row.date + 'T12:00:00')} />
                             </td>
-                            <td className="p-4 text-gray-300 text-sm">{row.description}</td>
+                            <td className="p-4 text-muted-foreground text-sm">{row.description}</td>
                             <td className="p-4 text-center">
                               <span className="text-blue-400 font-mono text-xs">{row.reference_number}</span>
                             </td>
                             <td className="p-4 text-right">
                               {row.debit > 0 ? (
-                                <span className="text-green-400 font-semibold">{formatCurrency(row.debit)}</span>
+                                <span className="text-[var(--erp-money-positive)] font-semibold">{formatCurrency(row.debit)}</span>
                               ) : (
-                                <span className="text-gray-600">—</span>
+                                <span className="text-muted-foreground">—</span>
                               )}
                             </td>
                             <td className="p-4 text-right">
                               {row.credit > 0 ? (
                                 <span className="text-red-400 font-semibold">{formatCurrency(row.credit)}</span>
                               ) : (
-                                <span className="text-gray-600">—</span>
+                                <span className="text-muted-foreground">—</span>
                               )}
                             </td>
                             <td className="p-4 text-right">
                               <span
                                 className={cn(
                                   'font-bold',
-                                  row.running_balance > 0 ? 'text-yellow-400' : 'text-green-400'
+                                  row.running_balance > 0 ? 'text-yellow-400' : 'text-[var(--erp-money-positive)]'
                                 )}
                               >
                                 {formatCurrency(row.running_balance)}
@@ -760,11 +760,11 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-gray-950 font-bold border-t-2 border-blue-500/30">
-                          <td colSpan={3} className="p-4 text-right text-white uppercase">
+                        <tr className="bg-input-background font-bold border-t-2 border-blue-500/30">
+                          <td colSpan={3} className="p-4 text-right text-foreground uppercase">
                             Period totals / closing balance
                           </td>
-                          <td className="p-4 text-right text-green-400">{formatCurrency(rawPeriodSums.sumDb)}</td>
+                          <td className="p-4 text-right text-[var(--erp-money-positive)]">{formatCurrency(rawPeriodSums.sumDb)}</td>
                           <td className="p-4 text-right text-red-400">{formatCurrency(rawPeriodSums.sumCr)}</td>
                           <td className={`p-4 text-right text-2xl ${labels.balanceColor}`}>
                             {formatCurrency(Math.abs(totals.closingBalance))}
@@ -778,9 +778,9 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
             )}
           </div>
 
-          <div className="p-6 border-t border-gray-800 flex items-center justify-between bg-gray-950/50 flex-wrap gap-3">
-            <div className="text-sm text-gray-400">
-              Showing <span className="text-white font-semibold">{totals.txnCount}</span> activity line
+          <div className="p-6 border-t border-border flex items-center justify-between bg-muted/40 flex-wrap gap-3">
+            <div className="text-sm text-muted-foreground">
+              Showing <span className="text-foreground font-semibold">{totals.txnCount}</span> activity line
               {totals.txnCount !== 1 ? 's' : ''}
               {dateFilter !== 'all' && (
                 <span className="ml-2">
@@ -795,7 +795,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
               )}
             </div>
             <div className="flex items-center gap-3">
-              <div className="text-sm text-gray-500 mr-4">
+              <div className="text-sm text-muted-foreground mr-4">
                 Generated {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
               </div>
               <Button onClick={onClose} className="bg-blue-600 hover:bg-blue-500 text-white px-8">

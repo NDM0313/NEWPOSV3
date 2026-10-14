@@ -46,10 +46,12 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { AdaptiveCurrencyValue } from '@/app/components/shared/AdaptiveCurrencyValue';
 import { ReturnDressModal } from './ReturnDressModal';
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Label } from "../ui/label";
 import { CalendarDateRangePicker } from "../ui/CalendarDateRangePicker";
+import { DatePicker } from "../ui/DatePicker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Checkbox } from "../ui/checkbox";
@@ -173,6 +175,7 @@ export const RentalOrdersList = () => {
   // 🎯 Action Dialogs (TASK 4 FIX)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [extendReturnDate, setExtendReturnDate] = useState('');
   const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false);
   const [dispatchDialogOpen, setDispatchDialogOpen] = useState(false);
 
@@ -508,46 +511,46 @@ export const RentalOrdersList = () => {
       <div className="grid grid-cols-5 gap-4">
         <div className="bg-gradient-to-br from-blue-900/30 to-blue-900/10 border border-blue-900/50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase font-medium">Active Rentals</span>
+            <span className="text-xs text-muted-foreground uppercase font-medium">Active Rentals</span>
             <Package size={16} className="text-blue-400" />
           </div>
-          <p className="text-3xl font-bold text-white">{stats.activeRentals}</p>
+          <p className="text-3xl font-bold text-foreground">{stats.activeRentals}</p>
           <p className="text-xs text-blue-400 mt-1">Currently dispatched</p>
         </div>
 
         <div className="bg-gradient-to-br from-red-900/30 to-red-900/10 border border-red-900/50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase font-medium">Overdue Returns</span>
+            <span className="text-xs text-muted-foreground uppercase font-medium">Overdue Returns</span>
             <AlertTriangle size={16} className="text-red-400" />
           </div>
-          <p className="text-3xl font-bold text-white">{stats.overdueReturns}</p>
+          <p className="text-3xl font-bold text-foreground">{stats.overdueReturns}</p>
           <p className="text-xs text-red-400 mt-1">Need immediate action</p>
         </div>
 
-        <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-4">
+        <div className="bg-gradient-to-br from-green-900/30 to-green-900/10 border border-green-900/50 rounded-xl p-4 min-w-0">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase font-medium">Outstanding</span>
-            <DollarSign size={16} className="text-green-400" />
+            <span className="text-xs text-muted-foreground uppercase font-medium">Outstanding</span>
+            <DollarSign size={16} className="text-[var(--erp-money-positive)]" />
           </div>
-          <p className="text-3xl font-bold text-white">₹{(stats.totalOutstanding / 1000).toFixed(0)}k</p>
-          <p className="text-xs text-green-400 mt-1">Total balance due</p>
+          <AdaptiveCurrencyValue value={stats.totalOutstanding} className="text-3xl font-bold text-foreground" as="p" />
+          <p className="text-xs text-[var(--erp-money-positive)] mt-1">Total balance due</p>
         </div>
 
         <div className="bg-gradient-to-br from-purple-900/30 to-purple-900/10 border border-purple-900/50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase font-medium">Today's Dispatches</span>
+            <span className="text-xs text-muted-foreground uppercase font-medium">Today's Dispatches</span>
             <Truck size={16} className="text-purple-400" />
           </div>
-          <p className="text-3xl font-bold text-white">{stats.todayDispatches}</p>
+          <p className="text-3xl font-bold text-foreground">{stats.todayDispatches}</p>
           <p className="text-xs text-purple-400 mt-1">Scheduled pickups</p>
         </div>
 
         <div className="bg-gradient-to-br from-orange-900/30 to-orange-900/10 border border-orange-900/50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400 uppercase font-medium">Today's Returns</span>
+            <span className="text-xs text-muted-foreground uppercase font-medium">Today's Returns</span>
             <CalendarCheck size={16} className="text-orange-400" />
           </div>
-          <p className="text-3xl font-bold text-white">{stats.todayReturns}</p>
+          <p className="text-3xl font-bold text-foreground">{stats.todayReturns}</p>
           <p className="text-xs text-orange-400 mt-1">Expected back</p>
         </div>
       </div>
@@ -556,17 +559,17 @@ export const RentalOrdersList = () => {
       <div className="flex items-center justify-between gap-4">
         {/* LEFT: Search */}
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
           <Input 
             placeholder="Search order ID, customer, mobile, product..." 
-            className="bg-gray-900 border-gray-800 pl-10 text-white h-10"
+            className="bg-card border-border pl-10 text-foreground h-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
             <button 
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X size={14} />
             </button>
@@ -576,11 +579,11 @@ export const RentalOrdersList = () => {
         {/* MIDDLE: Rows Selector + Column Manager */}
         <div className="flex items-center gap-2">
           <Select value={rowsPerPage.toString()} onValueChange={(val) => setRowsPerPage(parseInt(val))}>
-            <SelectTrigger className="w-[120px] bg-gray-900 border-gray-800 text-white h-10">
+            <SelectTrigger className="w-[120px] bg-card border-border text-foreground h-10">
               <Eye size={14} className="mr-2" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-800 text-white">
+            <SelectContent className="bg-popover border-border text-popover-foreground">
               <SelectItem value="25">25 rows</SelectItem>
               <SelectItem value="50">50 rows</SelectItem>
               <SelectItem value="100">100 rows</SelectItem>
@@ -592,13 +595,13 @@ export const RentalOrdersList = () => {
 
           <Popover open={columnOpen} onOpenChange={setColumnOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="border-gray-800 text-gray-400 hover:bg-gray-800 h-10">
+              <Button variant="outline" className="border-border text-muted-foreground hover:bg-muted h-10">
                 <Columns size={16} className="mr-2" />
                 Columns
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[250px] bg-gray-900 border-gray-800 p-4" align="end">
-              <h4 className="font-semibold text-white mb-3 text-sm">Toggle Columns</h4>
+            <PopoverContent className="w-[250px] bg-card border-border p-4" align="end">
+              <h4 className="font-semibold text-foreground mb-3 text-sm">Toggle Columns</h4>
               <div className="space-y-2">
                 {allColumns.map((col) => (
                   <div key={col.id} className="flex items-center gap-2">
@@ -608,9 +611,9 @@ export const RentalOrdersList = () => {
                       onCheckedChange={(checked) => 
                         setColumnVisibility(prev => ({ ...prev, [col.id]: checked as boolean }))
                       }
-                      className="border-gray-700"
+                      className="border-border"
                     />
-                    <label htmlFor={col.id} className="text-sm text-gray-300 cursor-pointer">
+                    <label htmlFor={col.id} className="text-sm text-muted-foreground cursor-pointer">
                       {col.label}
                     </label>
                   </div>
@@ -627,22 +630,22 @@ export const RentalOrdersList = () => {
               <Button 
                 variant="outline" 
                 className={cn(
-                  "border-gray-800 hover:bg-gray-800 h-10",
-                  hasActiveFilters ? "text-pink-400 border-pink-900/50 bg-pink-900/10" : "text-gray-400"
+                  "border-border hover:bg-muted h-10",
+                  hasActiveFilters ? "text-pink-400 border-pink-900/50 bg-pink-900/10" : "text-muted-foreground"
                 )}
               >
                 <Filter size={16} className="mr-2" />
                 Filter
                 {hasActiveFilters && (
-                  <span className="ml-2 h-5 w-5 rounded-full bg-pink-500 text-white text-[10px] flex items-center justify-center">
+                  <span className="ml-2 h-5 w-5 rounded-full bg-pink-500 text-foreground text-[10px] flex items-center justify-center">
                     {[filterStatus !== 'all', filterDateRange.from || filterDateRange.to].filter(Boolean).length}
                   </span>
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[400px] bg-gray-900 border-gray-800 p-0" align="end">
-              <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                <h3 className="font-semibold text-white">Filters</h3>
+            <PopoverContent className="w-[400px] bg-card border-border p-0" align="end">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <h3 className="font-semibold text-foreground">Filters</h3>
                 {hasActiveFilters && (
                   <Button size="sm" variant="ghost" onClick={clearFilters} className="h-7 text-xs text-pink-400">
                     Clear All
@@ -651,12 +654,12 @@ export const RentalOrdersList = () => {
               </div>
               <div className="p-4 space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-xs text-gray-400 uppercase">Status</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Status</Label>
                   <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as RentalStatus | 'all')}>
-                    <SelectTrigger className="bg-gray-950 border-gray-800 text-white h-9">
+                    <SelectTrigger className="bg-input-background border-border text-foreground h-9">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                    <SelectContent className="bg-popover border-border text-popover-foreground">
                       <SelectItem value="all">All Statuses</SelectItem>
                       <SelectItem value="Booked">Booked</SelectItem>
                       <SelectItem value="Dispatched">Dispatched</SelectItem>
@@ -668,18 +671,17 @@ export const RentalOrdersList = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs text-gray-400 uppercase">Return Date Range</Label>
+                  <Label className="text-xs text-muted-foreground uppercase">Return Date Range</Label>
                   <CalendarDateRangePicker
-                    date={filterDateRange}
-                    onDateChange={setFilterDateRange}
-                    className="bg-gray-950 border-gray-800 text-white h-9"
+                    value={filterDateRange}
+                    onChange={setFilterDateRange}
                   />
                 </div>
               </div>
             </PopoverContent>
           </Popover>
 
-          <Button variant="outline" className="border-gray-800 text-gray-400 hover:bg-gray-800 h-10">
+          <Button variant="outline" className="border-border text-muted-foreground hover:bg-muted h-10">
             <FileDown size={16} className="mr-2" />
             Export
           </Button>
@@ -687,13 +689,13 @@ export const RentalOrdersList = () => {
       </div>
 
       {/* TABLE */}
-      <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/50">
+      <div className="border border-border rounded-xl overflow-hidden bg-muted/40">
         {/* Results Header */}
-        <div className="bg-gray-900/70 px-4 py-2 border-b border-gray-800 flex items-center justify-between">
-          <p className="text-xs text-gray-400">
+        <div className="bg-card/70 px-4 py-2 border-b border-border flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
             {loading ? 'Loading...' : (
               <>
-                Showing <span className="text-white font-medium">{displayedOrders.length}</span> of <span className="text-white font-medium">{filteredOrders.length}</span> bookings
+                Showing <span className="text-foreground font-medium">{displayedOrders.length}</span> of <span className="text-foreground font-medium">{filteredOrders.length}</span> bookings
               </>
             )}
           </p>
@@ -708,13 +710,13 @@ export const RentalOrdersList = () => {
         {/* Table with sticky header */}
         <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
           {loading ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-muted-foreground">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
               <p className="mt-2">Loading rentals...</p>
             </div>
           ) : (
             <table className="w-full text-sm text-left min-w-[700px]">
-              <thead className="bg-gray-900 text-gray-400 font-medium border-b border-gray-800 sticky top-0 z-10">
+              <thead className="bg-card text-muted-foreground font-medium border-b border-border sticky top-0 z-10">
                 <tr>
                   {columnVisibility.product && <th className="p-4 font-medium">Product</th>}
                   {columnVisibility.customer && <th className="p-4 font-medium">Customer</th>}
@@ -728,10 +730,10 @@ export const RentalOrdersList = () => {
                   {columnVisibility.action && <th className="p-4 font-medium text-right">Action</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {displayedOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="p-8 text-center text-gray-500">
+                    <td colSpan={11} className="p-8 text-center text-muted-foreground">
                       No bookings found
                     </td>
                   </tr>
@@ -745,7 +747,7 @@ export const RentalOrdersList = () => {
                     key={order.id} 
                     onClick={() => handleRowClick(order)}
                     className={cn(
-                      "hover:bg-gray-800/50 transition-colors cursor-pointer",
+                      "hover:bg-muted/50 transition-colors cursor-pointer",
                       isOverdue && "bg-red-900/10",
                       isNearDue && !isOverdue && "bg-orange-900/10"
                     )}
@@ -754,12 +756,12 @@ export const RentalOrdersList = () => {
                     {columnVisibility.product && (
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 rounded bg-gray-800 overflow-hidden shrink-0 border border-gray-700">
+                          <div className="h-12 w-12 rounded bg-muted overflow-hidden shrink-0 border border-border">
                             <img src={order.productImage} alt="" className="h-full w-full object-cover" />
                           </div>
                           <div>
-                            <p className="font-medium text-white">{order.productName}</p>
-                            <p className="text-xs text-gray-500">{order.productCode}</p>
+                            <p className="font-medium text-foreground">{order.productName}</p>
+                            <p className="text-xs text-muted-foreground">{order.productCode}</p>
                             <Badge 
                               variant="outline" 
                               className={cn(
@@ -780,12 +782,12 @@ export const RentalOrdersList = () => {
                     {columnVisibility.customer && (
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-sm font-bold text-foreground shrink-0">
                             {order.customerName.charAt(0)}
                           </div>
                           <div>
-                            <p className="text-white font-medium">{order.customerName}</p>
-                            <p className="text-xs text-gray-500 font-mono">{order.customerMobile}</p>
+                            <p className="text-foreground font-medium">{order.customerName}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{order.customerMobile}</p>
                           </div>
                         </div>
                       </td>
@@ -794,9 +796,9 @@ export const RentalOrdersList = () => {
                     {/* Pickup Date Column */}
                     {columnVisibility.pickupDate && (
                       <td className="p-4">
-                        <div className="text-gray-400 text-xs">
+                        <div className="text-muted-foreground text-xs">
                           <div className="font-mono">{order.pickupDate}</div>
-                          {order.pickupTime && <div className="text-gray-600">{order.pickupTime}</div>}
+                          {order.pickupTime && <div className="text-muted-foreground">{order.pickupTime}</div>}
                         </div>
                       </td>
                     )}
@@ -808,7 +810,7 @@ export const RentalOrdersList = () => {
                           "font-mono text-xs flex items-center gap-2",
                           isOverdue && "text-red-400 font-bold",
                           isNearDue && !isOverdue && "text-orange-400 font-bold",
-                          !isOverdue && !isNearDue && "text-gray-400"
+                          !isOverdue && !isNearDue && "text-muted-foreground"
                         )}>
                           {order.returnDate}
                           {isOverdue && <AlertTriangle size={14} className="text-red-400" />}
@@ -820,15 +822,15 @@ export const RentalOrdersList = () => {
                     {/* Rental Amount Column */}
                     {columnVisibility.rentalAmount && (
                       <td className="p-4 text-right">
-                        <div className="text-white font-medium">{formatCurrency(order.rentalAmount)}</div>
-                        <div className="text-xs text-gray-500">Per booking</div>
+                        <div className="text-foreground font-medium">{formatCurrency(order.rentalAmount)}</div>
+                        <div className="text-xs text-muted-foreground">Per booking</div>
                       </td>
                     )}
 
                     {/* Paid Amount Column */}
                     {columnVisibility.paidAmount && (
                       <td className="p-4 text-right">
-                        <div className="text-green-400 font-medium">{formatCurrency(order.paidAmount)}</div>
+                        <div className="text-[var(--erp-money-positive)] font-medium">{formatCurrency(order.paidAmount)}</div>
                       </td>
                     )}
 
@@ -837,7 +839,7 @@ export const RentalOrdersList = () => {
                       <td className="p-4 text-right">
                         <div className={cn(
                           "font-medium",
-                          order.balanceDue > 0 ? "text-red-400" : "text-gray-600"
+                          order.balanceDue > 0 ? "text-red-400" : "text-muted-foreground"
                         )}>
                           {order.balanceDue > 0 ? formatCurrency(order.balanceDue) : '-'}
                         </div>
@@ -847,11 +849,11 @@ export const RentalOrdersList = () => {
                     {/* Security Deposit Column */}
                     {columnVisibility.securityDeposit && (
                       <td className="p-4 text-right">
-                        <div className="text-white font-medium">{formatCurrency(order.securityDeposit)}</div>
-                        <div className="text-xs text-gray-500 flex items-center justify-end gap-1 mt-1">
+                        <div className="text-foreground font-medium">{formatCurrency(order.securityDeposit)}</div>
+                        <div className="text-xs text-muted-foreground flex items-center justify-end gap-1 mt-1">
                           <Shield size={10} />
                           {order.guaranteeType}
-                          {order.documentAttached && <Badge variant="outline" className="bg-green-900/20 text-green-400 border-green-900/50 text-[10px] px-1 py-0 ml-1">📎</Badge>}
+                          {order.documentAttached && <Badge variant="outline" className="bg-green-900/20 text-[var(--erp-money-positive)] border-green-900/50 text-[10px] px-1 py-0 ml-1">📎</Badge>}
                         </div>
                       </td>
                     )}
@@ -865,9 +867,9 @@ export const RentalOrdersList = () => {
                             "capitalize border font-normal",
                             order.status === 'Booked' && "bg-blue-900/20 text-blue-400 border-blue-900/50",
                             order.status === 'Dispatched' && "bg-orange-900/20 text-orange-400 border-orange-900/50",
-                            order.status === 'Returned' && "bg-green-900/20 text-green-400 border-green-900/50",
+                            order.status === 'Returned' && "bg-green-900/20 text-[var(--erp-money-positive)] border-green-900/50",
                             order.status === 'Overdue' && "bg-red-900/20 text-red-400 border-red-900/50",
-                            order.status === 'Cancelled' && "bg-gray-900/20 text-gray-400 border-gray-900/50"
+                            order.status === 'Cancelled' && "bg-card/20 text-muted-foreground border-gray-900/50"
                           )}
                         >
                           {order.status}
@@ -893,7 +895,7 @@ export const RentalOrdersList = () => {
                             <Button 
                               size="sm" 
                               variant="outline" 
-                              className="border-green-800 text-green-400 hover:bg-green-900/20 h-8 text-xs font-medium"
+                              className="border-green-800 text-[var(--erp-money-positive)] hover:bg-green-900/20 h-8 text-xs font-medium"
                               onClick={() => handleAction(order, 'return')}
                             >
                               <CornerDownLeft size={12} className="mr-1" /> Process Return
@@ -908,48 +910,48 @@ export const RentalOrdersList = () => {
                           {/* Three Dots Menu */}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-white">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                                 <MoreVertical size={16} />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white w-48">
-                              <DropdownMenuItem onClick={() => handleAction(order, 'view')} className="hover:bg-gray-800 cursor-pointer">
+                            <DropdownMenuContent align="end" className="bg-card border-border text-foreground w-48">
+                              <DropdownMenuItem onClick={() => handleAction(order, 'view')} className="hover:bg-muted cursor-pointer">
                                 <Eye size={14} className="mr-2" />
                                 View Details
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleAction(order, 'edit')} className="hover:bg-gray-800 cursor-pointer">
+                              <DropdownMenuItem onClick={() => handleAction(order, 'edit')} className="hover:bg-muted cursor-pointer">
                                 <Edit size={14} className="mr-2" />
                                 Edit Booking
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-gray-800" />
+                              <DropdownMenuSeparator className="bg-muted" />
                               {(order.status === 'Dispatched' || order.status === 'Overdue') && (
-                                <DropdownMenuItem onClick={() => handleAction(order, 'payment')} className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem onClick={() => handleAction(order, 'payment')} className="hover:bg-muted cursor-pointer">
                                   <CreditCard size={14} className="mr-2" />
                                   Add Payment
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onClick={() => handleAction(order, 'ledger')} className="hover:bg-gray-800 cursor-pointer">
+                              <DropdownMenuItem onClick={() => handleAction(order, 'ledger')} className="hover:bg-muted cursor-pointer">
                                 <Receipt size={14} className="mr-2 text-blue-400" />
                                 View Ledger
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleAction(order, 'document')} className="hover:bg-gray-800 cursor-pointer">
+                              <DropdownMenuItem onClick={() => handleAction(order, 'document')} className="hover:bg-muted cursor-pointer">
                                 <Upload size={14} className="mr-2" />
                                 Upload Document
                               </DropdownMenuItem>
                               {order.status === 'Dispatched' && (
-                                <DropdownMenuItem onClick={() => handleAction(order, 'extend')} className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem onClick={() => handleAction(order, 'extend')} className="hover:bg-muted cursor-pointer">
                                   <Calendar size={14} className="mr-2" />
                                   Extend Return Date
                                 </DropdownMenuItem>
                               )}
                               {order.status === 'Overdue' && (
-                                <DropdownMenuItem onClick={() => handleAction(order, 'latefee')} className="hover:bg-gray-800 cursor-pointer text-yellow-400">
+                                <DropdownMenuItem onClick={() => handleAction(order, 'latefee')} className="hover:bg-muted cursor-pointer text-yellow-400">
                                   <AlertTriangle size={14} className="mr-2" />
                                   Apply Late Fee
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuSeparator className="bg-gray-800" />
-                              <DropdownMenuItem onClick={() => handleAction(order, 'cancel')} className="hover:bg-gray-800 cursor-pointer text-red-400">
+                              <DropdownMenuSeparator className="bg-muted" />
+                              <DropdownMenuItem onClick={() => handleAction(order, 'cancel')} className="hover:bg-muted cursor-pointer text-red-400">
                                 <Ban size={14} className="mr-2" />
                                 Cancel Booking
                               </DropdownMenuItem>
@@ -967,8 +969,8 @@ export const RentalOrdersList = () => {
         </div>
 
         {/* Footer - Sticky */}
-        <div className="bg-gray-900/70 px-4 py-2 border-t border-gray-800 sticky bottom-0">
-          <p className="text-xs text-gray-500">
+        <div className="bg-card/70 px-4 py-2 border-t border-border sticky bottom-0">
+          <p className="text-xs text-muted-foreground">
             Total {filteredOrders.length} booking{filteredOrders.length !== 1 ? 's' : ''} found
           </p>
         </div>
@@ -1022,20 +1024,20 @@ export const RentalOrdersList = () => {
 
       {/* Cancel Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Rental Booking</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               Are you sure you want to cancel booking {selectedOrder?.id}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+            <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-muted">
               No, Keep Booking
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleCancel}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-foreground"
             >
               Yes, Cancel Booking
             </AlertDialogAction>
@@ -1045,15 +1047,15 @@ export const RentalOrdersList = () => {
 
       {/* Dispatch Dialog */}
       <AlertDialog open={dispatchDialogOpen} onOpenChange={setDispatchDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Dispatch Rental Order</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               Mark order {selectedOrder?.id} as dispatched? This will update the status to "Dispatched".
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+            <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-muted">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -1068,33 +1070,29 @@ export const RentalOrdersList = () => {
 
       {/* Extend Date Dialog */}
       <AlertDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Extend Return Date</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               Extend return date for order {selectedOrder?.id}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
-            <Label className="text-gray-300">New Return Date</Label>
-            <Input
-              type="date"
-              id="newReturnDate"
-              className="bg-gray-800 border-gray-700 text-white mt-2"
-              defaultValue={selectedOrder?.returnDate}
-              min={selectedOrder?.returnDate}
+            <Label className="text-muted-foreground">New Return Date</Label>
+            <DatePicker
+              value={extendReturnDate || selectedOrder?.returnDate || ''}
+              onChange={setExtendReturnDate}
+              minDate={selectedOrder?.returnDate ? new Date(selectedOrder.returnDate + 'T12:00:00') : undefined}
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+            <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-muted">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                const input = document.getElementById('newReturnDate') as HTMLInputElement;
-                if (input?.value) {
-                  handleExtend(input.value);
-                }
+                const next = extendReturnDate || selectedOrder?.returnDate || '';
+                if (next) handleExtend(next);
               }}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
@@ -1106,26 +1104,26 @@ export const RentalOrdersList = () => {
 
       {/* Late Fee Dialog */}
       <AlertDialog open={lateFeeDialogOpen} onOpenChange={setLateFeeDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Apply Late Fee</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               Apply late fee for order {selectedOrder?.id}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
-            <Label className="text-gray-300">Late Fee Amount</Label>
+            <Label className="text-muted-foreground">Late Fee Amount</Label>
             <Input
               type="number"
               id="lateFeeAmount"
-              className="bg-gray-800 border-gray-700 text-white mt-2"
+              className="bg-muted border-border text-foreground mt-2"
               placeholder="Enter late fee amount"
               min="0"
               step="0.01"
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+            <AlertDialogCancel className="bg-muted border-border text-foreground hover:bg-muted">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
@@ -1138,7 +1136,7 @@ export const RentalOrdersList = () => {
                   toast.error('Please enter a valid late fee amount');
                 }
               }}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white"
+              className="bg-yellow-600 hover:bg-yellow-700 text-foreground"
             >
               Apply Late Fee
             </AlertDialogAction>

@@ -1,0 +1,54 @@
+{
+  "phase": "3B-I",
+  "capturedAt": "2026-06-29T14:39:12.832Z",
+  "defaultFinanceStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+  "loaderSwapApproved": false,
+  "officialLegacyCashFlowUnchanged": true,
+  "financeRules": {
+    "Q4": "A",
+    "Q5": "C",
+    "Q7": "B"
+  },
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "phase3BJBridge": {
+    "status": "PREPARED",
+    "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/residual-delta-bridge.md",
+    "basisDecisionPack": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/finance-basis-decision-pack.md",
+    "selectedBasisOption": "B"
+  },
+  "phase3KSignoff": {
+    "status": "COMPLETE",
+    "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/cash-flow-finance-signoff-pack.md"
+  },
+  "rows": [
+    {
+      "company": "DIN CHINA",
+      "report": "Cash Flow aligned preview",
+      "candidateValues": "Legacy closing PKR 37,134,386.00 · Aligned preview closing PKR -32,503,237.00 · Δ closing PKR 69,637,623.00",
+      "financeStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Option B — expected rule difference (Q5=C transfer exclusion vs legacy). Aligned basis candidate only; NOT loader-swapped official totals. Loader swap NOT APPROVED."
+    },
+    {
+      "company": "DIN BRIDAL",
+      "report": "Cash Flow aligned preview",
+      "candidateValues": "Legacy closing PKR 918,570.00 · Aligned preview closing PKR 60,720.00 · Δ closing PKR 857,850.00",
+      "financeStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "Option B — expected rule difference (Q4=A opening exclusion vs legacy). Aligned basis candidate only; NOT loader-swapped official totals. Loader swap NOT APPROVED."
+    },
+    {
+      "company": "DIN COUTURE",
+      "report": "Cash Flow aligned preview",
+      "candidateValues": "Legacy closing PKR 50,500.00 · Aligned preview closing PKR 50,500.00 · Δ closing PKR 0.00",
+      "financeStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "reviewer": "Nadeem Khan",
+      "reviewDate": "2026-06-29",
+      "notes": "ZERO-DIFF — approved as aligned basis candidate. Zero-diff does not authorize loader swap. Loader swap NOT APPROVED."
+    }
+  ],
+  "nextAction": "Separate Cash Flow loader-swap readiness/planning phase if operator approves; loader swap execution requires explicit operator approval"
+}

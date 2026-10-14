@@ -1,0 +1,23 @@
+{
+  "runAt": "2026-07-04",
+  "script": "scripts/sql/diag_manual_receipt_payment_gl_drift.sql",
+  "environment": "production-vps",
+  "driftRowsFound": 1,
+  "cases": [
+    {
+      "reference_number": "RCV-0074",
+      "payment_id": "a8a6e09c-3b2e-4324-9ce5-c471a7090880",
+      "payment_amount": 25000,
+      "primary_je_line_max": 80000,
+      "payment_minus_primary_je": -55000,
+      "adjustment_je_count": 0,
+      "net_from_merged_jes": 80000,
+      "payment_minus_net_gl": -55000,
+      "primary_je_id": "0a573122-9cd1-4192-a61c-b948fd14abe8",
+      "entry_no": "JE-0204",
+      "payment_date": "2026-06-06",
+      "diagnosis": "Payment row edited to Rs 25,000 without payment_adjustment JE; primary journal still Rs 80,000 on AR-CUS0001 (Walk-in Customer)."
+    }
+  ],
+  "repair": "Use Transaction Detail modal → Repair GL to match receipt, or post payment_adjustment oldAmount=80000 newAmount=25000."
+}

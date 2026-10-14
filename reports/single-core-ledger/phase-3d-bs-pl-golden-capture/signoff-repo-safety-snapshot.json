@@ -1,0 +1,25 @@
+{
+  "run": "PHASE_3D_SIGNOFF_REPO_SAFETY_SNAPSHOT",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "branch": "main",
+  "head_commit": "edcd075c",
+  "origin_main_includes_edcd075c": true,
+  "staged_files_count": 0,
+  "excluded_dirty_paths": [
+    "graphify-out/GRAPH_REPORT.md",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/",
+    "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T10-56-15-324Z.json",
+    "reports/single-core-ledger/final-production-ops-handoff/final-office-pc-local-status.json",
+    "scripts/single-core-ledger/run-phase-3d-bs-pl-golden-capture.mjs"
+  ],
+  "constraints": {
+    "migrations_run": false,
+    "flags_toggled": false,
+    "deploy": false,
+    "gl_mutations": false,
+    "finance_approved": false
+  }
+}

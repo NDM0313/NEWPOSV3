@@ -3,6 +3,8 @@
  * resolve the real editable entity here instead of inventing per-screen edit logic.
  */
 
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
+
 export type TransactionKind =
   | 'document_total'
   | 'payment'
@@ -46,6 +48,7 @@ export interface JournalTransactionLike {
   payment_id?: string | null;
   is_void?: boolean | null;
   description?: string | null;
+  action_fingerprint?: string | null;
   /** When true, this row is superseded in a PF-14 payment chain — do not open payment editor. */
   payment_chain_is_historical?: boolean;
   /** Active PF-07 correction_reversal exists for this journal header — terminal for unified edit. */
@@ -66,10 +69,10 @@ function normPayment(p: unknown): PaymentRowLike | null {
   return x;
 }
 
-/** Legacy rows use reference_type=manual; Add Entry V2 uses journal — both are pure manual JEs. */
+/** Legacy rows use reference_type=manual; Add Entry V2 uses journal; mobile uses general — all pure manual JEs. */
 export function isPureManualJournalReferenceType(referenceType: string | null | undefined): boolean {
   const rt = String(referenceType || '').toLowerCase();
-  return rt === 'journal' || rt === 'manual';
+  return rt === 'journal' || rt === 'manual' || rt === 'general';
 }
 
 export function inferTransactionKind(transaction: JournalTransactionLike, paymentObj: unknown): TransactionKind {
@@ -111,6 +114,11 @@ export function inferTransactionKind(transaction: JournalTransactionLike, paymen
   if (desc.includes('discount')) return 'discount';
   if (desc.includes('commission')) return 'commission';
   if (desc.includes('shipping') || desc.includes('courier')) return 'shipping';
+
+  const fp = String(transaction.action_fingerprint || '').trim();
+  if (rt === 'rental' && (fp.startsWith('rental_party_payment:') || desc.includes('rental payment'))) {
+    return 'payment';
+  }
 
   if (rt === 'sale' || rt === 'purchase' || rt === 'rental') return 'document_total';
 
@@ -181,6 +189,15 @@ export function resolveUnifiedJournalEdit(
     };
   }
   if (kind === 'payment') {
+    if (rt === 'rental' && !payment?.id && transaction.reference_id) {
+      return {
+        kind: 'payment_editor',
+        transactionKind: 'payment',
+        context: 'rental',
+        sourceId: String(transaction.reference_id),
+        paymentReferenceType: 'rental',
+      };
+    }
     // PF-14 adjustment voucher: always edit the underlying payment, not the sale/purchase document.
     if (rt === 'payment_adjustment') {
       const pidFromJe =
@@ -246,9 +263,29 @@ export function unifiedEditButtonLabel(resolution: UnifiedJournalEditResolution)
 }
 
 /** After a successful save, broadcast so lists / ledger / statements reload. */
-export function dispatchAccountingEditCommitted(extra?: { customerId?: string; supplierId?: string }) {
+export function dispatchAccountingEditCommitted(extra?: {
+  customerId?: string;
+  supplierId?: string;
+  journalEntryId?: string;
+  companyId?: string;
+  branchId?: string | null;
+}) {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+  if (extra?.journalEntryId && extra?.companyId) {
+    notifyAccountingEntriesChanged({
+      companyId: extra.companyId,
+      branchId: extra.branchId ?? null,
+      entityId: extra.journalEntryId,
+      reason: 'accounting-entries-changed',
+    });
+  } else {
+    const entityId = extra?.journalEntryId;
+    window.dispatchEvent(
+      new CustomEvent('accountingEntriesChanged', {
+        detail: entityId ? { entityId, journalEntryId: entityId } : undefined,
+      }),
+    );
+  }
   window.dispatchEvent(new CustomEvent('paymentAdded'));
   if (extra?.customerId) {
     window.dispatchEvent(

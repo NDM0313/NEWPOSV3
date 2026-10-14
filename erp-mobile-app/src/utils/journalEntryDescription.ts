@@ -29,31 +29,58 @@ export function buildTransferAutoDescription(params: {
   return parts.join(' · ');
 }
 
+/** General Entry auto line: From-Dr / To-Cr only (no "Journal entry" / "By …"). */
 export function buildGeneralJournalAutoDescription(params: {
   debitName: string;
   debitCode?: string | null;
   creditName: string;
   creditCode?: string | null;
+  /** Ignored — kept for call-site compatibility. */
   addedByName?: string | null;
 }): string {
-  const parts = [
-    'Journal entry',
+  void params.addedByName;
+  return [
     `From-Dr ${accountLabel(params.debitName, params.debitCode)}`,
     `To-Cr ${accountLabel(params.creditName, params.creditCode)}`,
-    params.addedByName?.trim() ? `By ${params.addedByName.trim()}` : null,
-  ].filter(Boolean);
-  return parts.join(' · ');
+  ].join(' · ');
 }
 
+/**
+ * Full description: `{auto} | {userNotes} | Ref: {reference}` (omit empty segments).
+ * Example: `From-Dr WALI T/T (1202) · To-Cr NDM MZ (DC0159) | New test | Ref: 435345`
+ */
 export function composeJournalEntryDescription(params: {
   auto: string;
   userNotes?: string | null;
   reference?: string | null;
+  /** When false, auto text is omitted from the saved description. Default true. */
+  includeAuto?: boolean;
 }): string {
-  const auto = String(params.auto ?? '').trim();
+  const includeAuto = params.includeAuto !== false;
+  const auto = includeAuto ? String(params.auto ?? '').trim() : '';
   const notes = String(params.userNotes ?? '').trim();
   const ref = String(params.reference ?? '').trim();
   const refPart = ref ? (ref.startsWith('Ref:') || ref.startsWith('Reference') ? ref : `Ref: ${ref}`) : '';
   const chunks = [auto, notes, refPart].filter(Boolean);
-  return chunks.join(' | ') || 'Journal entry';
+  return chunks.join(' | ');
+}
+
+export const JOURNAL_AUTO_DESCRIPTION_STORAGE_KEY = 'erp.mobile.journalAutoDescription';
+
+export function readJournalAutoDescriptionEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(JOURNAL_AUTO_DESCRIPTION_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw !== '0' && raw !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function writeJournalAutoDescriptionEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(JOURNAL_AUTO_DESCRIPTION_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
+  }
 }

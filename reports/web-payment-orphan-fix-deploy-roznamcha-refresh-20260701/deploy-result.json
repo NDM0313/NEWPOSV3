@@ -1,0 +1,10 @@
+{
+  "run": "DEPLOY_RESULT",
+  "script": "deploy/vps-build-erp-only.sh",
+  "vps_commit": "6da3387f4fa2c9bb35cf7357b931d44c37985cfd",
+  "orphan_fix_commit": "dcf82d89",
+  "frontend_deployed": true,
+  "http_status": 200,
+  "container_healthy": true,
+  "migrations": false
+}

@@ -1,0 +1,36 @@
+{
+  "run": "POST_ROTATION_MONITORING_VERIFICATION",
+  "generated_at": "2026-06-27T15:52:33.399Z",
+  "timestamp_slug": "2026-06-27T15-42-15-024Z",
+  "status": "POST_ROTATION_MONITORING_PASS",
+  "overall": "PASS",
+  "credential_policy": "per-company-preferred",
+  "generic_fallback_allowed": false,
+  "profiles": [
+    {
+      "profileId": "din-china",
+      "pass": true,
+      "emailSource": "per-company",
+      "passwordSource": "per-company"
+    },
+    {
+      "profileId": "din-bridal",
+      "pass": true,
+      "emailSource": "per-company",
+      "passwordSource": "per-company"
+    },
+    {
+      "profileId": "din-couture",
+      "pass": true,
+      "emailSource": "per-company",
+      "passwordSource": "per-company"
+    }
+  ],
+  "evidence": {
+    "timestamped_json": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-42-15-024Z.json",
+    "latest_json": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json"
+  },
+  "migrations_run": false,
+  "gl_mutations": false,
+  "credentials_committed": false
+}

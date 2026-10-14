@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-06-30T07:46:42.416Z",
+  "overall": "PASS",
+  "entries": [
+    {
+      "id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+      "entry_no": "JE-0003",
+      "entry_date": "2026-06-30",
+      "reference_type": "party_discount",
+      "reference_id": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
+      "action_fingerprint": "party_discount:30bd8592-3384-4f34-899a-f3907e336485:customer:fe7ec33d-fd6d-4aa6-8d21-416e383b4c93:2026-06-30:1",
+      "description": "Controlled QA test — Party Ledger Discount PKR 1",
+      "lines": [
+        {
+          "line_id": "909ccebb-95a8-4ab2-8bc1-1383207a7460",
+          "debit": 1,
+          "credit": 0,
+          "code": "5200",
+          "name": "Discount Allowed"
+        },
+        {
+          "line_id": "5a6b7347-991c-4426-85ce-bf1c91fb8ede",
+          "debit": 0,
+          "credit": 1,
+          "code": "AR-FE7EC3",
+          "name": "Receivable — MR JALIL"
+        }
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "check": "reference_type party_discount",
+      "pass": true
+    },
+    {
+      "check": "amount PKR 1 balanced",
+      "pass": true
+    },
+    {
+      "check": "debit 5200 = 1",
+      "pass": true
+    },
+    {
+      "check": "credit AR/customer = 1",
+      "pass": true
+    },
+    {
+      "check": "debit equals credit",
+      "pass": true
+    },
+    {
+      "check": "entry_date today",
+      "pass": true
+    },
+    {
+      "check": "no duplicate second JE",
+      "pass": true
+    }
+  ]
+}

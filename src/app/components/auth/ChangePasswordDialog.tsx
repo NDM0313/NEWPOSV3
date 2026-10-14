@@ -133,7 +133,7 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ isOp
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">

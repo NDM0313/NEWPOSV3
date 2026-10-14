@@ -67,20 +67,31 @@ export async function getWorkerPartyGlLedgerLines(
   try {
     const { data: accts } = await supabase
       .from('accounts')
-      .select('id, code, name')
+      .select('id, code, name, parent_id')
       .eq('company_id', companyId)
       .eq('is_active', true)
-      .or('code.eq.2010,code.eq.1180,name.ilike.%Worker Payable%,name.ilike.%Worker Advance%');
+      .or(
+        'code.eq.2010,code.eq.1180,code.ilike.WP-%,code.ilike.WA-%,name.ilike.%Worker Payable%,name.ilike.%Worker Advance%',
+      );
 
     const wpWa = (accts || []).filter((a: { code?: string }) => {
-      const c = String(a.code || '').trim();
-      return c === '2010' || c === '1180';
+      const c = String(a.code || '').trim().toUpperCase();
+      return c === '2010' || c === '1180' || c.startsWith('WP-') || c.startsWith('WA-');
     });
     if (wpWa.length === 0) return { openingBalance: 0, lines: [], error: null };
 
     const accountIds = wpWa.map((a: { id: string }) => a.id);
     const codeById = new Map(wpWa.map((a: { id: string; code?: string }) => [a.id, String(a.code || '').trim()]));
     const nameById = new Map(wpWa.map((a: { id: string; name?: string }) => [a.id, String(a.name || '')]));
+
+    const isWpCode = (code: string) => {
+      const c = code.trim().toUpperCase();
+      return c === '2010' || c.startsWith('WP-');
+    };
+    const isWaCode = (code: string) => {
+      const c = code.trim().toUpperCase();
+      return c === '1180' || c.startsWith('WA-');
+    };
 
     const { data: jelRows, error } = await supabase
       .from('journal_entry_lines')
@@ -152,8 +163,8 @@ export async function getWorkerPartyGlLedgerLines(
         const code = codeById.get(String(line.account_id ?? '')) || '';
         const debit = Number(line.debit || 0);
         const credit = Number(line.credit || 0);
-        if (code === '2010') openWp += credit - debit;
-        else if (code === '1180') openWa += debit - credit;
+        if (isWpCode(code)) openWp += credit - debit;
+        else if (isWaCode(code)) openWa += debit - credit;
       });
     }
     const openingNet = openWp - openWa;
@@ -186,8 +197,8 @@ export async function getWorkerPartyGlLedgerLines(
       const credit = Number(line.credit || 0);
       const aid = String(line.account_id ?? '');
       const code = codeById.get(aid) || String((line.account as { code?: string })?.code || '').trim();
-      if (code === '2010') wpRun += credit - debit;
-      else if (code === '1180') waRun += debit - credit;
+      if (isWpCode(code)) wpRun += credit - debit;
+      else if (isWaCode(code)) waRun += debit - credit;
       runningBalance = wpRun - waRun;
 
       const entryNo = entry?.entry_no != null ? String(entry.entry_no) : '';

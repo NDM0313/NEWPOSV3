@@ -1,14 +1,20 @@
 import {
   ShoppingCart, ShoppingBag, Shirt, Camera, Receipt, Package, Archive,
-  CreditCard, Users, Home, LogOut, ChevronRight, TrendingUp, Settings, Calculator, ListChecks,
+  CreditCard, Users, Home, LogOut, ChevronRight, TrendingUp, Settings, Calculator, ListChecks, Scissors,
+  ClipboardList,
 } from 'lucide-react';
 import type { User, Branch, Screen } from '../types';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
-import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
+import {
+  canAccessInventoryCount,
+  getPermissionModuleForScreen,
+  screenSkipsModuleViewPermission,
+} from '../utils/permissionModules';
 import { useEffectiveWorkerProfile } from '../context/CounterWorkerContext';
 import { getBranches } from '../api/branches';
 import { useEffect, useState } from 'react';
+import { useBespokeEnabled } from '../hooks/useBespokeEnabled';
 
 interface TabletSidebarProps {
   user: User;
@@ -29,6 +35,7 @@ interface ModuleItem {
 
 export function TabletSidebar({ user, branch, companyId, currentScreen, onNavigate, onLogout }: TabletSidebarProps) {
   const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
   const profile = useEffectiveWorkerProfile(user);
   const displayName = profile?.displayName ?? user.name;
   const effectiveRole = profile?.role ?? user.role;
@@ -75,6 +82,7 @@ export function TabletSidebar({ user, branch, companyId, currentScreen, onNaviga
   const modules: ModuleItem[] = [
     { id: 'dashboard', title: 'Dashboard', icon: <Home size={20} />, color: '#8B5CF6', enabled: true },
     { id: 'sales', title: 'Sales', icon: <ShoppingCart size={20} />, color: '#3B82F6', enabled: true },
+    { id: 'workorders', title: 'Work Orders', icon: <Scissors size={20} />, color: '#8B5CF6', enabled: true },
     { id: 'purchase', title: 'Purchase', icon: <ShoppingBag size={20} />, color: '#10B981', enabled: true },
     { id: 'rental', title: 'Rental', icon: <Shirt size={20} />, color: '#8B5CF6', enabled: true },
     { id: 'studio', title: 'Studio', icon: <Camera size={20} />, color: '#EC4899', enabled: true },
@@ -82,6 +90,7 @@ export function TabletSidebar({ user, branch, companyId, currentScreen, onNaviga
     { id: 'expense', title: 'Expense', icon: <Receipt size={20} />, color: '#EF4444', enabled: true },
     { id: 'products', title: 'Products', icon: <Archive size={20} />, color: '#8B5CF6', enabled: true },
     { id: 'inventory', title: 'Inventory', icon: <Package size={20} />, color: '#10B981', enabled: true },
+    { id: 'inventory-count', title: 'Stock Count', icon: <ClipboardList size={20} />, color: '#14B8A6', enabled: true },
     { id: 'pos', title: 'Point of Sale', icon: <CreditCard size={20} />, color: '#3B82F6', enabled: true },
     { id: 'contacts', title: 'Contacts', icon: <Users size={20} />, color: '#6366F1', enabled: true },
     { id: 'reports', title: 'Reports', icon: <TrendingUp size={20} />, color: '#8B5CF6', enabled: true },
@@ -91,7 +100,11 @@ export function TabletSidebar({ user, branch, companyId, currentScreen, onNaviga
   ];
 
   const enabled = modules.filter((m) => {
+    if (m.id === 'workorders' && !bespokeEnabled) return false;
     if (!isModuleEnabled(m.id)) return false;
+    if (m.id === 'inventory-count') {
+      return !FEATURE_MOBILE_PERMISSION_V2 || canAccessInventoryCount(hasPermission);
+    }
     if (FEATURE_MOBILE_PERMISSION_V2) {
       if (screenSkipsModuleViewPermission(m.id)) return true;
       const code = getPermissionModuleForScreen(m.id);

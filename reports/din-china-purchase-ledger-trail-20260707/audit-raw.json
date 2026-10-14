@@ -1,0 +1,27 @@
+{
+  "audit_date": "2026-07-07",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "purchase_id": "a065035c-dca2-4079-837a-9c2aeca9332d",
+  "po_no": "PO2025/0003",
+  "landed_total": 67978418.40,
+  "goods_ap": 43404978.40,
+  "clearance_2031": 24573440.00,
+  "due_amount": 2061978.40,
+  "gates": {
+    "ap_cr": "PASS",
+    "courier_cr": "PASS",
+    "due": "PASS",
+    "trial_balance": "PASS",
+    "je_0311_void": "PASS"
+  },
+  "sixty_seven_million_on_account": {
+    "account_code": "1200",
+    "account_name": "Inventory",
+    "verdict": "CORRECT_landed_cost_debit"
+  },
+  "gaps": [
+    "orphan_opening_balance_inventory_jes_38.76M",
+    "cached_1200_inflated"
+  ],
+  "repair_script": "scripts/sql/repair_din_china_orphan_opening_jes.sql"
+}

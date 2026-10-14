@@ -1,0 +1,20 @@
+{
+  "phase": "3B-K",
+  "run": "management-summary",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "selectedOption": "B",
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "keyPoints": [
+    "Finance chose Option B.",
+    "Aligned preview is accepted as the candidate finance basis under Q4=A, Q5=C, Q7=B.",
+    "Legacy Cash Flow still remains the live official report — nothing changed for users.",
+    "Loader swap is not approved.",
+    "DIN CHINA and DIN BRIDAL differences are accepted as expected because old and new basis intentionally differ.",
+    "DIN COUTURE matches exactly.",
+    "No data changed. No deploy happened."
+  ],
+  "loaderSwapApproved": false,
+  "dataChanged": false,
+  "deployed": false
+}

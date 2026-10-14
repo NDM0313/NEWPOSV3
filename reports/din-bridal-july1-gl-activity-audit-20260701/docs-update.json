@@ -1,0 +1,22 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "docs-update",
+  "generated_at": "2026-07-01T13:20:00.000Z",
+  "files_updated": [
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md",
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md",
+    "docs/MOBILE_RELEASE_PLAN.md"
+  ],
+  "recorded_status": {
+    "admin_mobile_qa": "PASS_VALID",
+    "manager_salesman_qa": "PENDING_CREDENTIALS",
+    "din_bridal_monitoring": "FAIL_EXPECTED_UNTIL_GOLDEN_REFRESH",
+    "july1_gl_audit": "COMPLETE_LEGITIMATE_LIVE_ACTIVITY",
+    "golden_refresh_executed": false,
+    "play_store": "NOT_RELEASED",
+    "production_mutations": false,
+    "migrations": false,
+    "feature_flags": false
+  }
+}

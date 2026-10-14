@@ -1,0 +1,27 @@
+Pre-refresh monitoring — three-company run 2026-07-11T20-16-58-305Z
+Artifact: reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-11T20-16-58-305Z.json
+Overall: FAIL (DIN CHINA only; BRIDAL + COUTURE PASS)
+
+DIN CHINA Phase 2.16: 12/19 checks PASS
+
+Failing assertions (expected → actual):
+
+| Check | Expected (golden) | Actual (live) | Delta |
+|-------|-------------------|---------------|-------|
+| Account Statement MR JALIL | 216,299 | 116,299 | −100,000 |
+| Party Ledger MR JALIL | 216,299 | 116,299 | −100,000 |
+| Ledger V2 MR JALIL | 216,299 | 116,299 | −100,000 |
+| Trial Balance golden total | 358,213,589.15 | 382,219,344.15 | +24,005,755.00 |
+| Roznamcha Cash In | 60,042,230 | 61,022,230 | +980,000 |
+| Roznamcha Cash Out | 39,795,518 | 62,619,613 | +22,824,095 |
+| Roznamcha Closing | 20,246,712 | −1,597,383 | −21,844,095 |
+
+Passing integrity checks:
+- Trial Balance debit = credit (382,219,344.15 / 382,219,344.15)
+- All loaders unified
+- Admin Compare Pilot Batch 9/9 (maxAbsDiff=0)
+- No material console/RPC errors
+
+Company: DIN CHINA only
+Date range: all-time production (browser capture)
+JE-0028 alone cannot explain MR JALIL −100k or roznamcha/TB shifts.

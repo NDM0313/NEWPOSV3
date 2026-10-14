@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-06-30T09:31:03.629Z",
+  "url": "https://erp.dincouture.pk",
+  "overall": "PARTIAL",
+  "checks": [
+    {
+      "check": "App login",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Ledger V2 loads",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "MR JALIL closing 216299",
+      "result": "PASS",
+      "notes": "actual=216299"
+    },
+    {
+      "check": "Discount filter shows party discount row",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "Admin Compare shows 216299 golden",
+      "result": "FAIL",
+      "notes": ""
+    },
+    {
+      "check": "Admin Compare Pilot Batch 9/9",
+      "result": "PARTIAL",
+      "notes": "pass=3 fail=0"
+    },
+    {
+      "check": "No material console/RPC errors",
+      "result": "PASS",
+      "notes": "none"
+    }
+  ],
+  "no_new_je_posted": true
+}

@@ -1,0 +1,11 @@
+{
+  "run": "PHASE_3A_BS_PL_PREVIEW",
+  "capturedAt": "2026-06-29",
+  "branch": "main",
+  "baseCommit": "537c603d",
+  "operatorApproved": true,
+  "stagedAtStart": false,
+  "defaultRuntimeChanged": false,
+  "loaderFlagsAdded": false,
+  "migrationsRun": false
+}

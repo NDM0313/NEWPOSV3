@@ -1,0 +1,24 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "release-gate-status",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "release_gate": "BLOCKED_MONITORING_DRIFT_AND_PARTIAL_DEVICE_QA",
+  "release_gate_components": {
+    "monitoring": "BLOCKED_MONITORING_DRIFT",
+    "device_qa": "PARTIAL_DEVICE_QA_PENDING_ROLES"
+  },
+  "din_bridal_monitoring": "FAIL",
+  "din_china_monitoring": "PASS",
+  "din_couture_monitoring": "PASS",
+  "admin_qa": "PASS",
+  "manager_qa": "PENDING_CREDENTIALS",
+  "salesman_qa": "PENDING_CREDENTIALS",
+  "play_store_upload": false,
+  "public_release": false,
+  "apk_in_git": false,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "feature_flag_changes": false,
+  "supplier_party_discount_pkr1_qa": "separate_approval_not_run",
+  "r8_legacy_retirement": "blocked_2_4_week_stable_run"
+}

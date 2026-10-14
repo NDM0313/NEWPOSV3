@@ -1,0 +1,20 @@
+PASS: applied 20260922140000 on clone
+         acl          
+----------------------
+ PAYMENT_RPC_ACL_PASS
+(1 row)
+
+ has_assert 
+------------
+ t
+(1 row)
+
+PASS: same-company worker payment http=200 debit=WA-SUPZHD0036
+PASS: cross-company payment blocked http=403 no mutation
+PASS: anon payment denied http=401
+PASS: ordinary supplier payment http=200
+PROD|SUP-ZHD-0007|supplier
+PROD|SUP-ZHD-0036|supplier
+PROD|SUP-ZHD-0046|supplier
+f
+STAGING_PAYMENT_JWT_SECURITY_PASS

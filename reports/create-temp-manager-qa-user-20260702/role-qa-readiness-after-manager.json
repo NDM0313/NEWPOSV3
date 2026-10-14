@@ -1,0 +1,7 @@
+{
+  "manager": "ROLE_QA_BLOCKED_CREDENTIALS",
+  "salesman": "ROLE_QA_BLOCKED_SALESMAN_PASSWORD",
+  "device": "ROLE_QA_BLOCKED_DEVICE",
+  "full_role_qa_run": false,
+  "admin_qa": "ADMIN_QA_PASS"
+}

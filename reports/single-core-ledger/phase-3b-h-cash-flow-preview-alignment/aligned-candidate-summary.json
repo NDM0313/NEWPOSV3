@@ -1,0 +1,7 @@
+{
+  "run": "PHASE_3B_H_ALIGNED_CANDIDATE_SUMMARY",
+  "status": "PENDING_DEPLOY_CAPTURE",
+  "financeRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "loaderSwapApproved": false,
+  "officialLegacyUnchanged": true
+}

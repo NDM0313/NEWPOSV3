@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-06-30T12:28:00.000Z",
+  "branch": "main",
+  "head": "74ac110a73e8f8893eeac36a48b48a27dea247ab",
+  "origin_main": "74ac110a73e8f8893eeac36a48b48a27dea247ab",
+  "sender_name_evidence_commit": "74ac110a",
+  "qa_email_masked": "k***+1@gmail.com",
+  "qa_email_corrected_from_typo": "ygmail.com -> gmail.com",
+  "qa_password_set": true,
+  "qa_otp_code_set": false,
+  "forbidden_email_check": "PASS",
+  "credentials_staged": false
+}

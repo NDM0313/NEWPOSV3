@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
 import {
   Select,
   SelectContent,
@@ -120,16 +121,16 @@ const lowStockItems = [
 // --- Components ---
 
 const MetricCard = ({ title, value, subtext, trend, trendValue, icon: Icon, colorClass }: any) => (
-  <div className={cn("p-6 rounded-xl border border-gray-800 relative overflow-hidden", colorClass)}>
+  <div className={cn("p-6 rounded-xl border border-border relative overflow-hidden", colorClass)}>
     <div className="absolute top-0 right-0 p-4 opacity-10">
       <Icon size={64} />
     </div>
     <div className="relative z-10">
-      <p className="text-gray-300 font-medium text-sm">{title}</p>
-      <h3 className="text-3xl font-bold text-white mt-2">{value}</h3>
+      <p className="text-muted-foreground font-medium text-sm">{title}</p>
+      <h3 className="text-3xl font-bold text-foreground mt-2">{value}</h3>
       <div className="flex items-center mt-4 gap-2">
         {trend === 'up' ? (
-          <span className="bg-green-500/20 text-green-400 text-xs font-bold px-2 py-1 rounded flex items-center">
+          <span className="bg-green-500/20 text-[var(--erp-money-positive)] text-xs font-bold px-2 py-1 rounded flex items-center">
             <TrendingUp size={12} className="mr-1" /> {trendValue}
           </span>
         ) : trend === 'down' ? (
@@ -137,7 +138,7 @@ const MetricCard = ({ title, value, subtext, trend, trendValue, icon: Icon, colo
             <TrendingDown size={12} className="mr-1" /> {trendValue}
           </span>
         ) : null}
-        <span className="text-gray-400 text-xs">{subtext}</span>
+        <span className="text-muted-foreground text-xs">{subtext}</span>
       </div>
     </div>
   </div>
@@ -152,25 +153,25 @@ const CalendarHeatmap = () => {
 
   const getIntensityColor = (level: number) => {
     switch (level) {
-      case 0: return 'bg-gray-800/50';
+      case 0: return 'bg-muted/50';
       case 1: return 'bg-pink-900/40';
       case 2: return 'bg-pink-700/60';
       case 3: return 'bg-pink-500';
-      default: return 'bg-gray-800';
+      default: return 'bg-muted';
     }
   };
 
   return (
-    <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
+    <div className="bg-card border border-border p-6 rounded-xl">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
           <CalendarIcon size={18} className="text-pink-500" />
           Booking Density
         </h3>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>Less</span>
           <div className="flex gap-1">
-            <div className="w-3 h-3 bg-gray-800/50 rounded-sm"></div>
+            <div className="w-3 h-3 bg-muted/50 rounded-sm"></div>
             <div className="w-3 h-3 bg-pink-900/40 rounded-sm"></div>
             <div className="w-3 h-3 bg-pink-700/60 rounded-sm"></div>
             <div className="w-3 h-3 bg-pink-500 rounded-sm"></div>
@@ -180,7 +181,7 @@ const CalendarHeatmap = () => {
       </div>
       <div className="grid grid-cols-7 gap-2">
          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-           <div key={i} className="text-center text-xs text-gray-500 font-medium mb-1">{d}</div>
+           <div key={i} className="text-center text-xs text-muted-foreground font-medium mb-1">{d}</div>
          ))}
          {days.map((day) => (
            <div 
@@ -386,7 +387,7 @@ export const ReportsDashboard = () => {
           rows: lowStockItems.map(item => [
             item.name,
             item.category,
-            item.stock,
+            formatQty(item.stock),
             item.alert
           ])
         };
@@ -456,8 +457,8 @@ export const ReportsDashboard = () => {
             </div>
 
             {/* Income vs Expense Chart */}
-            <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
-              <h3 className="text-lg font-bold text-white mb-6">Income vs Expenses</h3>
+            <div className="bg-card border border-border p-6 rounded-xl">
+              <h3 className="text-lg font-bold text-foreground mb-6">Income vs Expenses</h3>
               <div className="h-[400px] w-full min-h-[400px]">
                 <ResponsiveContainer width="100%" height={400} minWidth={0} minHeight={400}>
                   <AreaChart data={incomeExpenseData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -489,17 +490,17 @@ export const ReportsDashboard = () => {
         );
 
       case 'roznamcha':
-        return <RoznamchaReport />;
+        return <RoznamchaReport globalStartDate={startDate} globalEndDate={endDate} />;
       case 'daybook':
-        return <DayBookReport />;
+        return <DayBookReport globalStartDate={startDate} globalEndDate={endDate} />;
 
       case 'sales':
         return (
           <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Sales Chart */}
-                <div className="lg:col-span-2 bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
-                   <h3 className="text-lg font-bold text-white mb-6">Retail vs Wholesale Performance</h3>
+                <div className="lg:col-span-2 bg-card border border-border p-6 rounded-xl">
+                   <h3 className="text-lg font-bold text-foreground mb-6">Retail vs Wholesale Performance</h3>
                    <div className="h-[400px] w-full min-h-[400px]">
                       <ResponsiveContainer width="100%" height={400} minWidth={0} minHeight={400}>
                         <BarChart data={salesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -519,25 +520,25 @@ export const ReportsDashboard = () => {
                 </div>
 
                 {/* Top Customers Table */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
-                   <div className="p-6 border-b border-gray-800">
-                      <h3 className="text-lg font-bold text-white">Top Receivables</h3>
-                      <p className="text-sm text-gray-400">Outstanding payments by customer</p>
+                <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+                   <div className="p-6 border-b border-border">
+                      <h3 className="text-lg font-bold text-foreground">Top Receivables</h3>
+                      <p className="text-sm text-muted-foreground">Outstanding payments by customer</p>
                    </div>
                    <div className="flex-1 overflow-auto">
                       <table className="w-full text-left text-base leading-snug">
-                         <thead className="bg-gray-950/50 text-gray-500 font-medium border-b border-gray-800">
+                         <thead className="bg-muted/40 text-muted-foreground font-medium border-b border-border">
                             <tr>
                                <th className="px-4 py-3">Customer</th>
                                <th className="px-4 py-3 text-right">Balance</th>
                             </tr>
                          </thead>
-                         <tbody className="divide-y divide-gray-800">
+                         <tbody className="divide-y divide-border">
                             {topCustomers.map(customer => (
-                               <tr key={customer.id} className="hover:bg-gray-800/30 transition-colors">
+                               <tr key={customer.id} className="hover:bg-accent/30 transition-colors">
                                   <td className="px-4 py-3">
                                      <div className="font-medium text-gray-200">{customer.name}</div>
-                                     <div className="text-xs text-gray-500">{customer.type}</div>
+                                     <div className="text-xs text-muted-foreground">{customer.type}</div>
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                      {customer.balance > 0 ? (
@@ -553,7 +554,7 @@ export const ReportsDashboard = () => {
                          </tbody>
                       </table>
                    </div>
-                   <div className="p-4 border-t border-gray-800 bg-gray-900/80">
+                   <div className="p-4 border-t border-border bg-card">
                       <Button variant="ghost" className="w-full text-blue-400 text-sm hover:text-blue-300">View All Customers</Button>
                    </div>
                 </div>
@@ -566,8 +567,8 @@ export const ReportsDashboard = () => {
           <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Stock Value Pie */}
-                <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col">
-                   <h3 className="text-lg font-bold text-white mb-4">Stock Valuation</h3>
+                <div className="bg-card border border-border p-6 rounded-xl flex flex-col">
+                   <h3 className="text-lg font-bold text-foreground mb-4">Stock Valuation</h3>
                    <div className="flex-1 min-h-[300px] w-full relative">
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
                         <PieChart>
@@ -592,27 +593,27 @@ export const ReportsDashboard = () => {
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center">
-                         <p className="text-gray-500 text-xs">Total Value</p>
-                         <p className="text-xl font-bold text-white">$1.2M</p>
+                         <p className="text-muted-foreground text-xs">Total Value</p>
+                         <p className="text-xl font-bold text-foreground">$1.2M</p>
                       </div>
                    </div>
                 </div>
 
                 {/* Low Stock Alert List */}
-                <div className="md:col-span-2 bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                   <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                <div className="md:col-span-2 bg-card border border-border rounded-xl overflow-hidden">
+                   <div className="p-6 border-b border-border flex justify-between items-center">
                       <div>
-                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                         <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                            <AlertTriangle className="text-yellow-500" size={20} />
                            Low Stock Alerts
                          </h3>
-                         <p className="text-sm text-gray-400">Items below re-order level</p>
+                         <p className="text-sm text-muted-foreground">Items below re-order level</p>
                       </div>
-                      <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white">Order Stock</Button>
+                      <Button variant="outline" size="sm" className="border-border text-muted-foreground hover:text-foreground">Order Stock</Button>
                    </div>
                    <div className="overflow-x-auto">
                       <table className="w-full text-left text-base leading-snug">
-                         <thead className="bg-gray-950/50 text-gray-500 border-b border-gray-800">
+                         <thead className="bg-muted/40 text-muted-foreground border-b border-border">
                             <tr>
                                <th className="px-6 py-3 font-medium">Item Name</th>
                                <th className="px-6 py-3 font-medium">Category</th>
@@ -620,12 +621,12 @@ export const ReportsDashboard = () => {
                                <th className="px-6 py-3 font-medium text-center">Status</th>
                             </tr>
                          </thead>
-                         <tbody className="divide-y divide-gray-800">
+                         <tbody className="divide-y divide-border">
                             {lowStockItems.map((item) => (
-                               <tr key={item.id} className="hover:bg-gray-800/30">
-                                  <td className="px-6 py-4 font-medium text-white">{item.name}</td>
-                                  <td className="px-6 py-4 text-gray-400">{item.category}</td>
-                                  <td className="px-6 py-4 text-center text-white font-mono">{item.stock}</td>
+                               <tr key={item.id} className="hover:bg-accent/30">
+                                  <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
+                                  <td className="px-6 py-4 text-muted-foreground">{item.category}</td>
+                                  <td className="px-6 py-4 text-center text-foreground font-mono tabular-nums">{formatQty(item.stock)}</td>
                                   <td className="px-6 py-4 text-center">
                                      <span className={cn(
                                         "px-2 py-1 rounded-full text-xs font-bold border",
@@ -651,12 +652,12 @@ export const ReportsDashboard = () => {
                       <DollarSign size={32} />
                    </div>
                    <div>
-                      <h4 className="text-xl font-bold text-white">Estimated Profit Potential</h4>
+                      <h4 className="text-xl font-bold text-foreground">Estimated Profit Potential</h4>
                       <p className="text-indigo-300/80">Difference between Cost Price and Selling Price of current stock.</p>
                    </div>
                 </div>
                 <div className="text-right">
-                   <p className="text-3xl font-bold text-white">$450,000</p>
+                   <p className="text-3xl font-bold text-foreground">$450,000</p>
                    <p className="text-sm text-indigo-300">Potential Gross Profit</p>
                 </div>
              </div>
@@ -669,33 +670,33 @@ export const ReportsDashboard = () => {
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Status Cards */}
                 <div className="space-y-6">
-                   <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
+                   <div className="bg-card border border-border p-6 rounded-xl">
                       <div className="flex justify-between items-start">
                          <div>
-                            <p className="text-gray-400 text-sm">Active Rentals</p>
-                            <h3 className="text-2xl font-bold text-white mt-1">24</h3>
+                            <p className="text-muted-foreground text-sm">Active Rentals</p>
+                            <h3 className="text-2xl font-bold text-foreground mt-1">24</h3>
                          </div>
                          <ShoppingBag className="text-blue-500" />
                       </div>
                       <div className="mt-4 text-xs text-blue-400 bg-blue-900/20 inline-block px-2 py-1 rounded">Out with customers</div>
                    </div>
 
-                   <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
+                   <div className="bg-card border border-border p-6 rounded-xl">
                       <div className="flex justify-between items-start">
                          <div>
-                            <p className="text-gray-400 text-sm">Overdue Returns</p>
-                            <h3 className="text-2xl font-bold text-white mt-1">3</h3>
+                            <p className="text-muted-foreground text-sm">Overdue Returns</p>
+                            <h3 className="text-2xl font-bold text-foreground mt-1">3</h3>
                          </div>
                          <AlertTriangle className="text-red-500" />
                       </div>
                       <div className="mt-4 text-xs text-red-400 bg-red-900/20 inline-block px-2 py-1 rounded">Action required</div>
                    </div>
 
-                   <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
+                   <div className="bg-card border border-border p-6 rounded-xl">
                       <div className="flex justify-between items-start">
                          <div>
-                            <p className="text-gray-400 text-sm">Security Held</p>
-                            <h3 className="text-2xl font-bold text-white mt-1">$45k</h3>
+                            <p className="text-muted-foreground text-sm">Security Held</p>
+                            <h3 className="text-2xl font-bold text-foreground mt-1">$45k</h3>
                          </div>
                          <CreditCard className="text-purple-500" />
                       </div>
@@ -707,21 +708,21 @@ export const ReportsDashboard = () => {
                 <div className="md:col-span-2 space-y-6">
                    <CalendarHeatmap />
                    
-                   <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
-                      <h3 className="text-lg font-bold text-white mb-4">Upcoming Returns (Next 3 Days)</h3>
+                   <div className="bg-card border border-border p-6 rounded-xl">
+                      <h3 className="text-lg font-bold text-foreground mb-4">Upcoming Returns (Next 3 Days)</h3>
                       <div className="space-y-4">
                          {[1, 2, 3].map((i) => (
-                            <div key={i} className="flex items-center justify-between p-4 bg-gray-950/50 rounded-lg border border-gray-800">
+                            <div key={i} className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border border-border">
                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center font-bold text-gray-400">
+                                  <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center font-bold text-muted-foreground">
                                      {i}
                                   </div>
                                   <div>
-                                     <p className="font-medium text-white">Bridal Set #{100+i}</p>
-                                     <p className="text-sm text-gray-500">Mrs. Khan • Due Tomorrow</p>
+                                     <p className="font-medium text-foreground">Bridal Set #{100+i}</p>
+                                     <p className="text-sm text-muted-foreground">Mrs. Khan • Due Tomorrow</p>
                                   </div>
                                </div>
-                               <Button size="sm" variant="outline" className="border-gray-700 text-gray-300">View Details</Button>
+                               <Button size="sm" variant="outline" className="border-border text-muted-foreground">View Details</Button>
                             </div>
                          ))}
                       </div>
@@ -735,8 +736,8 @@ export const ReportsDashboard = () => {
         return (
           <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gray-900/50 border border-gray-800 p-8 rounded-xl flex flex-col items-center justify-center min-h-[400px]">
-                   <h3 className="text-lg font-bold text-white mb-2 self-start w-full">Expense Breakdown</h3>
+                <div className="bg-card border border-border p-8 rounded-xl flex flex-col items-center justify-center min-h-[400px]">
+                   <h3 className="text-lg font-bold text-foreground mb-2 self-start w-full">Expense Breakdown</h3>
                    <div className="h-[300px] w-full max-w-lg relative">
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
                         <PieChart>
@@ -762,50 +763,50 @@ export const ReportsDashboard = () => {
                              verticalAlign="bottom" 
                              height={36} 
                              iconType="circle"
-                             formatter={(value) => <span className="text-gray-400 ml-1">{value}</span>}
+                             formatter={(value) => <span className="text-muted-foreground ml-1">{value}</span>}
                           />
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
-                         <p className="text-gray-500 text-sm">Total</p>
-                         <p className="text-3xl font-bold text-white">$100k</p>
+                         <p className="text-muted-foreground text-sm">Total</p>
+                         <p className="text-3xl font-bold text-foreground">$100k</p>
                       </div>
                    </div>
                 </div>
 
                 <div className="space-y-6">
-                   <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
-                      <h3 className="text-lg font-bold text-white mb-4">Quick Financial Health</h3>
+                   <div className="bg-card border border-border p-6 rounded-xl">
+                      <h3 className="text-lg font-bold text-foreground mb-4">Quick Financial Health</h3>
                       <div className="space-y-4">
                          <div className="flex justify-between items-center p-4 bg-green-900/10 border border-green-900/20 rounded-lg">
                             <div>
-                               <p className="text-green-400 font-medium">Profit Margin</p>
-                               <p className="text-2xl font-bold text-white mt-1">27.5%</p>
+                               <p className="text-[var(--erp-money-positive)] font-medium">Profit Margin</p>
+                               <p className="text-2xl font-bold text-foreground mt-1">27.5%</p>
                             </div>
                             <ArrowUpRight className="text-green-500" size={32} />
                          </div>
                          <div className="flex justify-between items-center p-4 bg-orange-900/10 border border-orange-900/20 rounded-lg">
                             <div>
                                <p className="text-orange-400 font-medium">Overhead Ratio</p>
-                               <p className="text-2xl font-bold text-white mt-1">12.1%</p>
+                               <p className="text-2xl font-bold text-foreground mt-1">12.1%</p>
                             </div>
                             <ArrowDownRight className="text-orange-500" size={32} />
                          </div>
                       </div>
                    </div>
 
-                   <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl">
-                      <h3 className="text-lg font-bold text-white mb-4">Recent Large Expenses</h3>
+                   <div className="bg-card border border-border p-6 rounded-xl">
+                      <h3 className="text-lg font-bold text-foreground mb-4">Recent Large Expenses</h3>
                       <div className="space-y-3">
                          {[
                             { name: 'Shop Monthly Rent', amount: '40,000', date: 'Oct 24' },
                             { name: 'Staff Salaries', amount: '30,000', date: 'Oct 22' },
                             { name: 'Fabric Stitching', amount: '20,000', date: 'Oct 20' }
                          ].map((exp, i) => (
-                            <div key={i} className="flex justify-between items-center text-sm border-b border-gray-800 pb-3 last:border-0 last:pb-0">
+                            <div key={i} className="flex justify-between items-center text-sm border-b border-border pb-3 last:border-0 last:pb-0">
                                <div>
-                                  <p className="text-white font-medium">{exp.name}</p>
-                                  <p className="text-gray-500 text-xs">{exp.date}</p>
+                                  <p className="text-foreground font-medium">{exp.name}</p>
+                                  <p className="text-muted-foreground text-xs">{exp.date}</p>
                                 </div>
                                <span className="text-red-400 font-bold">-${exp.amount}</span>
                             </div>
@@ -839,17 +840,17 @@ export const ReportsDashboard = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-2">
         <div>
-           <h2 className="text-3xl font-bold text-white tracking-tight">Reports & Analytics</h2>
-           <p className="text-gray-400 mt-1">Deep dive into your business performance.</p>
+           <h2 className="text-3xl font-bold text-foreground tracking-tight">Reports & Analytics</h2>
+           <p className="text-muted-foreground mt-1">Deep dive into your business performance.</p>
         </div>
         
         <div className="flex flex-wrap gap-3">
            <Select defaultValue="30days">
-             <SelectTrigger className="w-[180px] bg-gray-900 border-gray-700 text-white">
+             <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
                <CalendarIcon className="mr-2 h-4 w-4" />
                <SelectValue placeholder="Date Range" />
              </SelectTrigger>
-             <SelectContent className="bg-gray-900 border-gray-800 text-white">
+             <SelectContent className="bg-popover border-border text-popover-foreground">
                <SelectItem value="30days">Last 30 Days</SelectItem>
                <SelectItem value="thismonth">This Month</SelectItem>
                <SelectItem value="lastmonth">Last Month</SelectItem>
@@ -859,26 +860,26 @@ export const ReportsDashboard = () => {
            
            <DropdownMenu>
              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="bg-gray-900 border-gray-700 text-white gap-2">
+                <Button variant="outline" className="bg-card border-border text-foreground gap-2">
                    <Download size={16} /> Export
-                   <ChevronDown size={14} className="text-gray-500" />
+                   <ChevronDown size={14} className="text-muted-foreground" />
                 </Button>
              </DropdownMenuTrigger>
-             <DropdownMenuContent className="bg-gray-900 border-gray-800 text-white">
+             <DropdownMenuContent className="bg-card border-border text-foreground">
                 <DropdownMenuItem 
-                  className="cursor-pointer hover:bg-gray-800"
+                  className="cursor-pointer hover:bg-muted"
                   onClick={handleExportPDF}
                 >
                   Export as PDF
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  className="cursor-pointer hover:bg-gray-800"
+                  className="cursor-pointer hover:bg-muted"
                   onClick={handleExportExcel}
                 >
                   Export as Excel
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  className="cursor-pointer hover:bg-gray-800"
+                  className="cursor-pointer hover:bg-muted"
                   onClick={handleExportCSV}
                 >
                   Export as CSV
@@ -889,7 +890,7 @@ export const ReportsDashboard = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-gray-800 overflow-x-auto">
+      <div className="border-b border-border overflow-x-auto">
          <div className="flex gap-8 min-w-max">
             {['overview', 'roznamcha', 'daybook', 'sales', 'inventory', 'rentals', 'finance', 'pnl', 'ledger', 'item-lifecycle', 'profitability'].map((tab) => (
                <button
@@ -899,7 +900,7 @@ export const ReportsDashboard = () => {
                     "pb-3 text-sm font-medium transition-all relative capitalize",
                     activeTab === tab 
                       ? "text-blue-400" 
-                      : "text-gray-400 hover:text-gray-200"
+                      : "text-muted-foreground hover:text-gray-200"
                  )}
                >
                  {tab === 'roznamcha' ? 'Roznamcha' :

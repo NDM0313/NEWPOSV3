@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-06-30T13:05:00.000Z",
+  "status": "BLOCKED_OTP_CODE_MISSING",
+  "test_email_masked": "k***+1@gmail.com",
+  "email_typo_note": ".env has @ygmail.com — use @gmail.com",
+  "password_set": true,
+  "otp_code_set": false,
+  "otp_gate_validated_prior_run": "78db4d03",
+  "immediate_session_before_verification": false,
+  "otp_phase_reached_prior_run": true,
+  "business_created": false,
+  "email_received_infra_prior_run": true,
+  "sender_display_confirmed": false,
+  "cleanup_prior_run": "auth-only user deleted"
+}

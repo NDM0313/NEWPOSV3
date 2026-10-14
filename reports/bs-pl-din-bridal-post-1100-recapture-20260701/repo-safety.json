@@ -1,0 +1,11 @@
+{
+  "runName": "BS_PL DIN BRIDAL POST-1100 RECAPTURE — COMPARE ONLY NO SWAP",
+  "timestampUtc": "2026-07-01T12:00:00.000Z",
+  "branch": "main",
+  "headCommit": "3971190ee76d5957b91aaf29e663b8c396dad21f",
+  "originMain": "3971190ee76d5957b91aaf29e663b8c396dad21f",
+  "bsPlPackCommit5333b1de": true,
+  "inSyncWithOrigin": true,
+  "stagedCredentials": false,
+  "unrelatedDirtyFilesUnstaged": true
+}

@@ -22,6 +22,7 @@ import { ShipmentAccountingStrip } from '../shipment/ShipmentAccountingStrip';
 import { resolveDbUserId } from '../../lib/resolveDbUserId';
 import { updateCourierAndSyncSale } from '../../api/shipmentSync';
 import { nextCourierStatus, statusLabel } from '../../lib/shipmentStatus';
+import { DateInputField } from '../shared/DateTimePicker';
 
 interface PackingListModuleProps {
   onBack: () => void;
@@ -254,24 +255,8 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
               Dates
             </p>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-[#9CA3AF]">Booking date</label>
-                <input
-                  type="date"
-                  value={bookingDateEdit}
-                  onChange={(e) => setBookingDateEdit(e.target.value)}
-                  className="w-full mt-1 h-9 rounded bg-[#111827] border border-[#374151] text-white px-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-[#9CA3AF]">Expected delivery</label>
-                <input
-                  type="date"
-                  value={expectedDateEdit}
-                  onChange={(e) => setExpectedDateEdit(e.target.value)}
-                  className="w-full mt-1 h-9 rounded bg-[#111827] border border-[#374151] text-white px-2 text-sm"
-                />
-              </div>
+              <DateInputField label="Booking date" value={bookingDateEdit} onChange={setBookingDateEdit} />
+              <DateInputField label="Expected delivery" value={expectedDateEdit} onChange={setExpectedDateEdit} />
             </div>
             <button
               type="button"

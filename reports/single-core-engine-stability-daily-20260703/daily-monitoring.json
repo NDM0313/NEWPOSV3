@@ -1,0 +1,14 @@
+{
+  "run": "STABILITY_DAY3_DAILY_MONITORING",
+  "classification": "STABILITY_DAY_PASS",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T08-44-49-417Z.json",
+  "overall": "PASS",
+  "din_china": "PASS",
+  "din_china_admin_compare_9_9": "PASS",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true,
+  "production_mutation": false
+}

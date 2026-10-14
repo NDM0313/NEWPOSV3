@@ -1,0 +1,49 @@
+{
+  "phase": "main-merge-complete",
+  "status": "MAIN MERGE COMPLETE — DIN CHINA SINGLE CORE LEDGER CLOSED",
+  "company": "DIN CHINA",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "production_url": "https://erp.dincouture.pk",
+  "rollout_branch": "feature/single-core-ledger-phase-2-9a3-preview-deploy-plan",
+  "base_branch": "main",
+  "latest_rollout_commit": "b92e6955",
+  "pre_merge_main_commit": "cb79b744",
+  "pr_url": "https://github.com/NDM0313/NEWPOSV3/pull/21",
+  "merged": true,
+  "merge_type": "fast-forward",
+  "merge_commit": "b92e6955",
+  "pre_merge_tests": {
+    "command": "npm run test:unified-ledger",
+    "result": "PASS",
+    "count": 240,
+    "fail": 0
+  },
+  "pre_merge_build": {
+    "command": "npm run build",
+    "result": "PASS"
+  },
+  "post_merge_tests": {
+    "command": "npm run test:unified-ledger",
+    "result": "PASS",
+    "count": 240,
+    "fail": 0
+  },
+  "post_merge_build": {
+    "command": "npm run build",
+    "result": "PASS"
+  },
+  "production_monitoring_rerun": false,
+  "production_monitoring_authoritative": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+  "flags_changed": false,
+  "migrations_run": false,
+  "sql_executed": false,
+  "gl_mutations": false,
+  "other_company_expansion": false,
+  "fx_app_touched": false,
+  "diff_summary": {
+    "files_changed": 608,
+    "fx_files": 0,
+    "review_result": "PASS"
+  },
+  "generated_at": "2026-06-27T09:04:48Z"
+}

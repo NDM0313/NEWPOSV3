@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phase 2 — Relink dry-run wizard (RCV-0017)</title>
+  <link rel="stylesheet" href="_shared.css" />
+</head>
+<body>
+  <div class="backdrop">
+    <div class="dialog" role="dialog" aria-label="Relink contact dry-run">
+      <h2>Relink contact dry-run</h2>
+      <p class="sub">Preview only — Phase 2 does not save mappings or change GL lines.</p>
+      <div class="badges">
+        <span class="badge badge-emerald">low risk</span>
+        <span class="badge badge-cyan">Likely mapped — heuristic false positive</span>
+      </div>
+      <div class="alert alert-cyan">
+        Likely mapped — heuristic false positive: JE reference_type is payment, payment row is on_account, and AR sub-ledger linked_contact_id matches payment contact.
+      </div>
+      <dl class="panel">
+        <div class="row"><dt>JE</dt><dd class="mono-blue">RCV-0017</dd></div>
+        <div class="row"><dt>Payment ref</dt><dd>RCV-0017</dd></div>
+        <div class="row"><dt>Current account</dt><dd>Walk-in Customer (AR-CUS0001)</dd></div>
+        <div class="row"><dt>Line amount</dt><dd>Dr Rs 0 / Cr Rs 20,000</dd></div>
+        <div class="row"><dt>Current linked contact</dt><dd>Walk-in Customer old</dd></div>
+        <div class="row"><dt>Payment contact</dt><dd>Walk-in Customer old</dd></div>
+      </dl>
+      <p class="section-title">Suggested contact (preview selection)</p>
+      <div class="panel" style="border-color:#3b82f6;background:rgba(30,58,138,.25);">
+        <strong>Walk-in Customer old</strong><br />
+        <span style="color:#6b7280;font-size:11px;">payment.contact_id</span>
+      </div>
+      <div class="panel">
+        <p class="section-title" style="margin-top:0;">Before → After (mapping intent)</p>
+        <p class="section-body"><span style="color:#9ca3af;">Before:</span> Walk-in Customer old on AR-CUS0001</p>
+        <p class="section-body"><span style="color:#9ca3af;">After (Phase 3 audit only):</span> Walk-in Customer old → journal_party_contact_mapping</p>
+        <p class="section-body" style="color:rgba(251,191,36,.9);margin-top:8px;">Warning: current relink is audit-only until Phase 3 apply. GL journal lines are not updated in Phase 2.</p>
+      </div>
+      <div class="footer">
+        <button type="button" class="btn btn-outline">Close</button>
+        <button type="button" class="btn btn-disabled">Save mapping (Phase 3)</button>
+      </div>
+    </div>
+  </div>
+  <div class="caption">AR/AP Reconciliation Center — Relink dry-run · RCV-0017 false-positive pattern</div>
+</body>
+</html>

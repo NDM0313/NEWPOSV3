@@ -10,9 +10,11 @@ COPY . .
 ARG VITE_SUPABASE_URL=https://placeholder.supabase.co
 ARG VITE_SUPABASE_ANON_KEY=placeholder-key
 ARG VITE_DISABLE_REALTIME=true
+ARG VITE_BUILD_COMMIT=dev
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_DISABLE_REALTIME=$VITE_DISABLE_REALTIME
+ENV VITE_BUILD_COMMIT=$VITE_BUILD_COMMIT
 RUN npm run build
 
 # Stage 2: Build mobile PWA
@@ -23,6 +25,20 @@ RUN npm ci
 # CACHEBUST forces fresh copy on every deploy (no stale mobile build)
 ARG CACHEBUST=
 COPY erp-mobile-app/ .
+# Shared stock-count pure helpers. Mobile vite may resolve `@/app/lib/*` via the
+# `@` → ./src alias (→ /app/src/app/lib) or via ../src/app/lib — ship both.
+RUN mkdir -p /app/src/app/lib /app/src/app/utils /src/app/lib /src/app/utils
+COPY src/app/lib/stockCountDisplay.ts \
+     src/app/lib/stockCountGrouping.ts \
+     src/app/lib/stockCountPreviewStore.ts \
+     src/app/lib/stockCountRowPresentation.ts \
+     src/app/lib/stockCountVarianceWarning.ts \
+     src/app/lib/stockCountMath.ts \
+     src/app/lib/stockCountDrift.ts \
+     src/app/lib/stockLedgerSummary.ts \
+     /app/src/app/lib/
+COPY src/app/utils/variationFieldMap.ts /app/src/app/utils/
+RUN cp -a /app/src/app/lib/. /src/app/lib/ && cp -a /app/src/app/utils/. /src/app/utils/
 ARG VITE_SUPABASE_URL_MOBILE=https://supabase.dincouture.pk
 ARG VITE_SUPABASE_ANON_KEY=placeholder-key
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL_MOBILE

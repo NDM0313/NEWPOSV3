@@ -189,7 +189,12 @@ export function has(module: string, action: string): boolean {
   if (m === 'accounting' || m === 'ledger') return a === 'view' && (d.canAccessAccounting ?? false);
   if (m === 'payments') return d.canMakePayments ?? d.canReceivePayments ?? false;
   if (m === 'expenses') return d.canManageExpenses ?? false;
-  if (m === 'products' || m === 'inventory') return (a === 'view' || a === 'adjust' || a === 'transfer') && (d.canManageProducts ?? false);
+  if (m === 'products' || m === 'inventory') {
+    return (
+      (a === 'view' || a === 'adjust' || a === 'transfer' || a === 'count' || a === 'post_count') &&
+      (d.canManageProducts ?? false)
+    );
+  }
   if (m === 'contacts') {
     if (a === 'view' || a === 'edit') return d.canViewContacts ?? false;
     if (a === 'create') return d.canCreateContact ?? d.canViewContacts ?? false;
@@ -203,16 +208,9 @@ export function has(module: string, action: string): boolean {
  */
 export function clear(): void {
   memoryCache = null;
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(CACHE_KEY_PREFIX)) keys.push(k);
-    }
-    keys.forEach(k => localStorage.removeItem(k));
-  } catch {
-    // ignore
-  }
+  safeLocalStorageKeys((k) => k.startsWith(CACHE_KEY_PREFIX)).forEach((k) =>
+    safeLocalStorageRemoveItem(k)
+  );
 }
 
 /**

@@ -16,19 +16,35 @@ interface SelectRentalCustomerTabletProps {
   onBack: () => void;
   onSelect: (customer: RentalCustomer) => void;
   companyId: string | null;
+  /** Prefill highlight when editing an existing booking. */
+  initialSelectedCustomerId?: string | null;
 }
 
-export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: SelectRentalCustomerTabletProps) {
+export function SelectRentalCustomerTablet({
+  onBack,
+  onSelect,
+  companyId,
+  initialSelectedCustomerId = null,
+}: SelectRentalCustomerTabletProps) {
   const { canViewBalances } = usePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<RentalCustomer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<RentalCustomer | null>(null);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    () => initialSelectedCustomerId,
+  );
   const walkingInitRef = useRef(false);
   const [loading, setLoading] = useState(!!companyId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
   const [addError, setAddError] = useState('');
+
+  useEffect(() => {
+    if (initialSelectedCustomerId) {
+      setSelectedCustomerId(initialSelectedCustomerId);
+      walkingInitRef.current = true;
+    }
+  }, [initialSelectedCustomerId]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -64,7 +80,10 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
         setCustomers(list);
       }
       setDefaultCustomer(walking);
-      if (walking && !walkingInitRef.current) {
+      if (initialSelectedCustomerId) {
+        setSelectedCustomerId(initialSelectedCustomerId);
+        walkingInitRef.current = true;
+      } else if (walking && !walkingInitRef.current) {
         walkingInitRef.current = true;
         setSelectedCustomerId(walking.id);
       }

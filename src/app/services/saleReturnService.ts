@@ -673,6 +673,7 @@ export const saleReturnService = {
           totalCostAmount: totalInventoryCostForJE,
           returnNo: (saleReturn as { return_no?: string }).return_no || returnId,
           performedBy: userId || null,
+          entryDate: (saleReturn as { return_date?: string | null }).return_date || undefined,
         });
       } catch (jeErr: any) {
         // Non-blocking: stock movements are the authoritative record; JE failure is surfaced as a warning.

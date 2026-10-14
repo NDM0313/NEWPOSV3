@@ -140,21 +140,21 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#111827] p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <Users className="text-purple-400" size={28} />
               Worker Accounts & Payment Ledger
             </h2>
-            <p className="text-gray-400 mt-1">Track worker tasks and manage payments</p>
+            <p className="text-muted-foreground mt-1">Track worker tasks and manage payments</p>
           </div>
           <Button
             variant="outline"
             onClick={onClose}
-            className="bg-gray-900 border-gray-800 text-gray-300"
+            className="bg-card border-border text-muted-foreground"
           >
             <X size={16} className="mr-2" />
             Close
@@ -163,50 +163,50 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
 
         {/* Statistics */}
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
                 <Users size={20} className="text-blue-400" />
               </div>
               <div>
-                <div className="text-xs text-gray-500">Total Workers</div>
-                <div className="text-2xl font-bold text-white">{stats.totalWorkers}</div>
+                <div className="text-xs text-muted-foreground">Total Workers</div>
+                <div className="text-2xl font-bold text-foreground">{stats.totalWorkers}</div>
               </div>
             </div>
           </div>
 
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
                 <Clock size={20} className="text-orange-400" />
               </div>
               <div>
-                <div className="text-xs text-gray-500">Pending Payment</div>
-                <div className="text-xl font-bold text-white">₹{stats.totalPending.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">Pending Payment</div>
+                <div className="text-xl font-bold text-foreground">₹{stats.totalPending.toLocaleString()}</div>
               </div>
             </div>
           </div>
 
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
-                <CheckCircle size={20} className="text-green-400" />
+                <CheckCircle size={20} className="text-[var(--erp-money-positive)]" />
               </div>
               <div>
-                <div className="text-xs text-gray-500">Total Paid</div>
-                <div className="text-xl font-bold text-white">₹{stats.totalPaid.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">Total Paid</div>
+                <div className="text-xl font-bold text-foreground">₹{stats.totalPaid.toLocaleString()}</div>
               </div>
             </div>
           </div>
 
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                 <TrendingUp size={20} className="text-purple-400" />
               </div>
               <div>
-                <div className="text-xs text-gray-500">Active Tasks</div>
-                <div className="text-2xl font-bold text-white">{stats.activeTasks}</div>
+                <div className="text-xs text-muted-foreground">Active Tasks</div>
+                <div className="text-2xl font-bold text-foreground">{stats.activeTasks}</div>
               </div>
             </div>
           </div>
@@ -215,18 +215,18 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
         {/* Filters */}
         <div className="flex gap-4 mb-6">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
             <Input
               placeholder="Search by name or phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-gray-900 border-gray-800 text-white"
+              className="pl-10 bg-card border-border text-foreground"
             />
           </div>
           <select
             value={filterDept}
             onChange={(e) => setFilterDept(e.target.value)}
-            className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white"
+            className="px-4 py-2 bg-card border border-border rounded-lg text-foreground"
           >
             <option value="all">All Departments</option>
             <option value="dyeing">Dyeing</option>
@@ -238,7 +238,7 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
         <div className="grid grid-cols-2 gap-6">
           {/* Workers List */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-white">Workers</h3>
+            <h3 className="text-lg font-semibold text-foreground">Workers</h3>
             {filteredWorkers.map(worker => (
               <button
                 key={worker.id}
@@ -246,13 +246,13 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
                 className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
                   selectedWorker?.id === worker.id
                     ? 'bg-purple-500/10 border-purple-500'
-                    : 'bg-gray-900 border-gray-800 hover:border-gray-700'
+                    : 'bg-card border-border hover:border-border'
                 }`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h4 className="text-white font-semibold">{worker.name}</h4>
-                    <p className="text-sm text-gray-400 mt-1">{worker.phone}</p>
+                    <h4 className="text-foreground font-semibold">{worker.name}</h4>
+                    <p className="text-sm text-muted-foreground mt-1">{worker.phone}</p>
                   </div>
                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 capitalize">
                     {worker.department}
@@ -261,20 +261,20 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
                 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <div className="text-gray-500">Total Tasks</div>
-                    <div className="text-white font-semibold">{worker.totalTasks}</div>
+                    <div className="text-muted-foreground">Total Tasks</div>
+                    <div className="text-foreground font-semibold">{worker.totalTasks}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">Completed</div>
-                    <div className="text-white font-semibold">{worker.completedTasks}</div>
+                    <div className="text-muted-foreground">Completed</div>
+                    <div className="text-foreground font-semibold">{worker.completedTasks}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">Pending Payment</div>
+                    <div className="text-muted-foreground">Pending Payment</div>
                     <div className="text-orange-400 font-semibold">₹{worker.pendingPayment.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div className="text-gray-500">Total Earned</div>
-                    <div className="text-green-400 font-semibold">₹{worker.totalEarned.toLocaleString()}</div>
+                    <div className="text-muted-foreground">Total Earned</div>
+                    <div className="text-[var(--erp-money-positive)] font-semibold">₹{worker.totalEarned.toLocaleString()}</div>
                   </div>
                 </div>
               </button>
@@ -284,38 +284,38 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
           {/* Worker Details & Tasks */}
           <div>
             {selectedWorker ? (
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <div className="bg-card border border-border rounded-xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-bold text-white">{selectedWorker.name}</h3>
-                    <p className="text-sm text-gray-400 mt-1">{selectedWorker.department} Department</p>
+                    <h3 className="text-xl font-bold text-foreground">{selectedWorker.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">{selectedWorker.department} Department</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm text-gray-500">Pending</div>
+                    <div className="text-sm text-muted-foreground">Pending</div>
                     <div className="text-2xl font-bold text-orange-400">
                       ₹{selectedWorker.pendingPayment.toLocaleString()}
                     </div>
                   </div>
                 </div>
 
-                <h4 className="text-lg font-semibold text-white mb-4">Task Ledger</h4>
+                <h4 className="text-lg font-semibold text-foreground mb-4">Task Ledger</h4>
                 
                 {selectedWorker.tasks.length > 0 ? (
                   <div className="space-y-3">
                     {selectedWorker.tasks.map(task => (
                       <div
                         key={task.id}
-                        className="bg-gray-800 border border-gray-700 rounded-lg p-4"
+                        className="bg-muted border border-border rounded-lg p-4"
                       >
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <div className="text-white font-semibold mb-1">{task.invoiceNumber}</div>
-                            <div className="text-sm text-gray-400">{task.customerName}</div>
-                            <div className="text-sm text-gray-500 mt-1">{task.description}</div>
+                            <div className="text-foreground font-semibold mb-1">{task.invoiceNumber}</div>
+                            <div className="text-sm text-muted-foreground">{task.customerName}</div>
+                            <div className="text-sm text-muted-foreground mt-1">{task.description}</div>
                           </div>
                           <Badge className={
                             task.paymentStatus === 'completed'
-                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                               : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
                           }>
                             {task.paymentStatus === 'completed' ? '✓ Paid' : 'Pending'}
@@ -323,14 +323,14 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
                         </div>
 
                         <div className="flex items-center justify-between">
-                          <div className="text-xl font-bold text-white">
+                          <div className="text-xl font-bold text-foreground">
                             ₹{task.amount.toLocaleString()}
                           </div>
                           {task.paymentStatus === 'pending' && task.completedDate && (
                             <Button
                               size="sm"
                               onClick={() => handlePayment(selectedWorker.id, task.id)}
-                              className="bg-green-600 hover:bg-green-500 text-white"
+                              className="bg-green-600 hover:bg-green-500 text-foreground"
                             >
                               <CheckCircle size={14} className="mr-1" />
                               Pay Now
@@ -338,30 +338,30 @@ export const WorkerLedger: React.FC<WorkerLedgerProps> = ({ onClose }) => {
                           )}
                         </div>
 
-                        <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500 space-y-1">
+                        <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground space-y-1">
                           <div>Assigned: {new Date(task.assignedDate).toLocaleDateString('en-GB')}</div>
                           {task.completedDate && (
                             <div>Completed: {new Date(task.completedDate).toLocaleDateString('en-GB')}</div>
                           )}
                           {task.paidDate && (
-                            <div className="text-green-400">Paid: {new Date(task.paidDate).toLocaleDateString('en-GB')}</div>
+                            <div className="text-[var(--erp-money-positive)]">Paid: {new Date(task.paidDate).toLocaleDateString('en-GB')}</div>
                           )}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <Clock size={48} className="mx-auto mb-2 opacity-50" />
                     <p>No tasks assigned yet</p>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
-                <Users size={48} className="mx-auto mb-4 text-gray-600" />
-                <h3 className="text-lg font-semibold text-gray-400 mb-2">Select a Worker</h3>
-                <p className="text-gray-500">Click on a worker to view their task ledger and payment details</p>
+              <div className="bg-card border border-border rounded-xl p-12 text-center">
+                <Users size={48} className="mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-semibold text-muted-foreground mb-2">Select a Worker</h3>
+                <p className="text-muted-foreground">Click on a worker to view their task ledger and payment details</p>
               </div>
             )}
           </div>

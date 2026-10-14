@@ -1,7 +1,12 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { acceptAllowsCamera, capturePhotoWithNativeCamera } from '../../lib/mediaPick';
+import { acceptAllowsCamera, capturePhotoWithNativeCamera, normalizePickedImageFiles } from '../../lib/mediaPick';
 import { beginMediaCapture, endMediaCapture } from '../../lib/mediaCaptureSession';
+import {
+  ClipboardImageError,
+  filesFromPasteEvent,
+  readClipboardImageFile,
+} from '../../lib/clipboardImage';
 import { MediaSourceActionSheet } from './MediaSourceActionSheet';
 
 export interface MediaSourcePickerProps {
@@ -19,6 +24,7 @@ export interface MediaSourcePickerProps {
 /**
  * Camera vs gallery sheet. Native APK uses @capacitor/camera for Take photo;
  * browser/PWA uses file input with capture=environment. Gallery uses standard file input.
+ * When accept allows images, Paste is always offered (tap reads clipboard; empty → onError).
  */
 export function MediaSourcePicker({
   accept,
@@ -35,6 +41,10 @@ export function MediaSourcePicker({
   const cameraWebRef = useRef<HTMLInputElement>(null);
 
   const showCamera = allowCamera ?? acceptAllowsCamera(accept);
+  const acceptsImages = acceptAllowsCamera(accept);
+  // Always show Paste for image accepts — clipboard probe is unreliable in WebView
+  // (permission / user-gesture), so gating the row hid it for users with a copied image.
+  const showPaste = acceptsImages;
   const useNativeCamera = Capacitor.isNativePlatform();
 
   const emitFiles = useCallback(
@@ -91,13 +101,57 @@ export function MediaSourcePicker({
     })();
   };
 
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!sheetOpen || !acceptsImages) return;
+
+    const onPaste = (event: ClipboardEvent) => {
+      const picked = normalizePickedImageFiles(filesFromPasteEvent(event));
+      if (!picked.length) return;
+      event.preventDefault();
+      closeSheet();
+      emitFiles(picked);
+    };
+
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [sheetOpen, acceptsImages, closeSheet, emitFiles]);
+
+  const pasteFromClipboard = () => {
+    if (disabled) return;
+    beginMediaCapture();
+    // Start read inside the click gesture so Clipboard API permissions succeed.
+    const readPromise = readClipboardImageFile();
+    void (async () => {
+      try {
+        const file = await readPromise;
+        closeSheet();
+        emitFiles([file]);
+      } catch (err) {
+        const message =
+          err instanceof ClipboardImageError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Could not paste image — try gallery.';
+        onError?.(message);
+      } finally {
+        endMediaCapture();
+      }
+    })();
+  };
+
   const openPicker = () => {
     if (disabled) return;
-    if (!showCamera) {
-      openGallery();
+    // Open sheet when camera or image paste may apply (so Paste is reachable).
+    if (showCamera || acceptsImages) {
+      setSheetOpen(true);
       return;
     }
-    setSheetOpen(true);
+    openGallery();
   };
 
   return (
@@ -105,10 +159,12 @@ export function MediaSourcePicker({
       {children(openPicker)}
       <MediaSourceActionSheet
         open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+        onClose={closeSheet}
         onCamera={openCamera}
         onGallery={openGallery}
+        onPaste={pasteFromClipboard}
         showCamera={showCamera}
+        showPaste={showPaste}
         title={sheetTitle}
       />
       <input

@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-06-30T09:39:35.743Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "exit_code": 0,
+  "deployed_commit": "49ac971158a3a55f0faffc4b35787cdd889547f2",
+  "din_china_admin_compare": "compared=9 pass=9 fail=0",
+  "profiles": { "din-china": "PASS", "din-bridal": "PASS", "din-couture": "PASS" },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence_file": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T09-28-52-837Z.json"
+}

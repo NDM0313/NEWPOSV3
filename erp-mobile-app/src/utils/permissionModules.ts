@@ -6,6 +6,7 @@ import type { Screen } from '../types';
 
 const SCREEN_TO_MODULE: Record<string, string> = {
   sales: 'sales',
+  workorders: 'sales',
   purchase: 'purchase', // singular to match DB
   pos: 'pos',          // match DB pos module
   rental: 'rentals',
@@ -14,6 +15,7 @@ const SCREEN_TO_MODULE: Record<string, string> = {
   expense: 'payments',  // fallback to payments as there is no expenses module
   products: 'inventory', // products screen maps to inventory module
   inventory: 'inventory',
+  'inventory-count': 'inventory',
   contacts: 'contacts',
   reports: 'reports',
   packing: 'sales',    // packing list is part of sales/wholesale workflow
@@ -34,4 +36,21 @@ export function screenSkipsModuleViewPermission(screen: Screen): boolean {
 
 export function screenRequiresPermission(screen: Screen): boolean {
   return screen !== 'login' && screen !== 'branch-selection' && screen !== 'home' && getPermissionModuleForScreen(screen) != null;
+}
+
+/**
+ * Physical Stock Count tile/route — matches web InventoryCountPage canCount:
+ * inventory.count | inventory.view | inventory.adjust. Does not open to all roles.
+ */
+export function canAccessInventoryCount(hasPermission: (code: string) => boolean): boolean {
+  return (
+    hasPermission('inventory.count') ||
+    hasPermission('inventory.view') ||
+    hasPermission('inventory.adjust')
+  );
+}
+
+/** Post / Review gate — matches web canPost. */
+export function canPostInventoryCount(hasPermission: (code: string) => boolean): boolean {
+  return hasPermission('inventory.post_count') || hasPermission('inventory.adjust');
 }

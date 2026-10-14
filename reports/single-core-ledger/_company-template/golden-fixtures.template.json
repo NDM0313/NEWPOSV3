@@ -1,0 +1,15 @@
+{
+  "company": "REPLACE_COMPANY_NAME",
+  "company_id": "REPLACE_UUID",
+  "captured_from": "legacy loaders before unified enablement",
+  "finance_sign_off_ref": "REPLACE_PATH_OR_ID",
+  "fixtures": {
+    "mr_jalil_or_golden_party_closing_pkr": null,
+    "trial_balance_debit_pkr": null,
+    "trial_balance_credit_pkr": null,
+    "roznamcha_cash_in_pkr": null,
+    "roznamcha_cash_out_pkr": null,
+    "roznamcha_closing_pkr": null
+  },
+  "note": "Do not copy DIN CHINA values. Capture on production with legacy loaders only."
+}

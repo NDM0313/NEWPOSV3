@@ -1,6 +1,11 @@
 import { ReportBrandHeader } from './ReportBrandHeader';
 import type { CompanyBrand } from '../../api/reports';
-import type { RoznamchaRowWithBalance, RoznamchaSummary } from '../../api/roznamcha';
+import {
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
+  type RoznamchaRowWithBalance,
+  type RoznamchaSummary,
+} from '../../api/roznamcha';
 import { formatRoznamchaRowDescription } from '../../lib/roznamchaRowDescription';
 
 export interface RoznamchaPreviewPdfProps {
@@ -116,8 +121,10 @@ export function RoznamchaPreviewPdf({
                   ) : null}
                 </td>
                 <td>
-                  {r.ref}
-                  {r.journalEntryNo ? <div style={{ fontSize: 8, color: '#555' }}>{r.journalEntryNo}</div> : null}
+                  {roznamchaRefDisplay(r)}
+                  {roznamchaJournalSubtitle(r) ? (
+                    <div style={{ fontSize: 8, color: '#555' }}>{roznamchaJournalSubtitle(r)}</div>
+                  ) : null}
                 </td>
                 <td style={{ whiteSpace: 'pre-wrap' }}>{formatRoznamchaRowDescription(r)}</td>
                 <td>{accountDisplay(r)}</td>

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-06-26T10:15:00.000Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "companyName": "DIN CHINA",
+  "sqlSource": "scripts/single-core-ledger/phase-210-preflight-loader.sql",
+  "flags": [
+    {
+      "feature_key": "unified_ledger_engine",
+      "enabled": true,
+      "updated_at": "2026-06-25T18:05:23.850288+00"
+    },
+    {
+      "feature_key": "unified_ledger_pilot",
+      "enabled": true,
+      "updated_at": "2026-06-25T17:28:52.061434+00"
+    },
+    {
+      "feature_key": "unified_ledger_screen_ledger_v2",
+      "enabled": true,
+      "updated_at": "2026-06-25T18:05:23.855813+00"
+    }
+  ],
+  "loaderFlag": {
+    "feature_key": "unified_ledger_loader_ledger_v2",
+    "present": false,
+    "enabled": false
+  },
+  "preflightPass": true,
+  "notes": "Only pilot + engine + screen_ledger_v2 ON. Loader flag absent. No other unified_ledger% keys returned."
+}

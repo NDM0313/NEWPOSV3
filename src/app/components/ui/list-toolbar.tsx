@@ -132,25 +132,31 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
 
   // Default rows options
   const rowsOptions = rowsSelector.options || [25, 50, 100, 500, 1000];
+  const overlayOpen = Boolean(filter?.isOpen || columnVisibilityOpen);
 
   return (
-    <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800 relative z-10">
+    <div
+      className={cn(
+        'shrink-0 px-6 py-3 bg-secondary border-b border-border relative',
+        overlayOpen ? 'z-30' : 'z-20'
+      )}
+    >
       <div className="flex items-center gap-3">
         {/* ============================================ */}
         {/* LEFT SECTION - SEARCH (Full Width) */}
         {/* ============================================ */}
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
           <Input
             value={search.value}
             onChange={(e) => search.onChange(e.target.value)}
             placeholder={search.placeholder}
-            className="pl-10 bg-gray-900 border-gray-700 text-white h-10"
+            className="pl-10 bg-popover border-border text-foreground h-10"
           />
           {search.value && (
             <button
               onClick={() => search.onChange('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <X size={16} />
             </button>
@@ -179,7 +185,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
             <Button
               variant="outline"
               onClick={() => setColumnVisibilityOpen(!columnVisibilityOpen)}
-              className="h-10 gap-2 bg-gray-900 border-gray-700"
+              className="h-10 gap-2 bg-popover border-border"
             >
               <Columns3 size={16} />
               Columns
@@ -192,9 +198,9 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
                   aria-hidden
                 />
                 
-                <div className="absolute right-0 top-12 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+                <div className="absolute right-0 top-12 w-64 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-white">Show Columns</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Show Columns</h3>
                     <button
                       onClick={columnsManager.onShowAll}
                       className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -207,7 +213,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
                     {columnsManager.columns.map((column, index) => (
                       <div 
                         key={column.key} 
-                        className="flex items-center gap-2 hover:bg-gray-800/50 p-2 rounded transition-colors group"
+                        className="flex items-center gap-2 hover:bg-accent/50 p-2 rounded transition-colors group"
                       >
                         {/* Checkbox with Label */}
                         <label className="flex items-center gap-2 cursor-pointer flex-1">
@@ -215,9 +221,9 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
                             type="checkbox"
                             checked={columnsManager.visibleColumns[column.key]}
                             onChange={() => columnsManager.onToggle(column.key)}
-                            className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900 cursor-pointer"
+                            className="w-4 h-4 rounded bg-muted border-border text-primary focus:ring-ring focus:ring-offset-background cursor-pointer"
                           />
-                          <span className="text-sm text-gray-300">{column.label}</span>
+                          <span className="text-sm text-muted-foreground">{column.label}</span>
                         </label>
 
                         {/* Reorder Arrows (only show if onMoveUp/onMoveDown provided) */}
@@ -229,7 +235,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
                                 columnsManager.onMoveUp?.(column.key);
                               }}
                               disabled={index === 0}
-                              className="text-gray-500 hover:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
+                              className="text-muted-foreground hover:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
                               title="Move Up"
                             >
                               <ChevronUp size={14} />
@@ -240,7 +246,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
                                 columnsManager.onMoveDown?.(column.key);
                               }}
                               disabled={index === columnsManager.columns.length - 1}
-                              className="text-gray-500 hover:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
+                              className="text-muted-foreground hover:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
                               title="Move Down"
                             >
                               <ChevronDown size={14} />
@@ -267,7 +273,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
               variant="outline"
               onClick={filter.onToggle}
               className={cn(
-                "h-10 gap-2 bg-gray-900 border-gray-700",
+                "h-10 gap-2 bg-popover border-border",
                 filter.activeCount > 0 && "border-blue-500 text-blue-400"
               )}
             >
@@ -298,7 +304,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
           <Button 
             type="button"
             variant="outline" 
-            className="h-10 gap-2 bg-gray-900 border-gray-700 relative z-10"
+            className="h-10 gap-2 bg-popover border-border text-foreground hover:bg-accent relative z-10"
             onClick={(e) => {
               e.stopPropagation();
               importConfig.onImport();
@@ -313,28 +319,28 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
         {exportConfig && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-10 gap-2 bg-gray-900 border-gray-700">
+              <Button variant="outline" className="h-10 gap-2 bg-popover border-border text-foreground hover:bg-accent">
                 <Download size={16} />
                 Export
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white">
+            <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
               <DropdownMenuItem 
-                className="hover:bg-gray-800 cursor-pointer"
+                className="hover:bg-accent cursor-pointer"
                 onClick={exportConfig.onExportExcel}
               >
                 <FileSpreadsheet size={14} className="mr-2 text-green-400" />
                 Export as Excel
               </DropdownMenuItem>
               <DropdownMenuItem 
-                className="hover:bg-gray-800 cursor-pointer"
+                className="hover:bg-accent cursor-pointer"
                 onClick={exportConfig.onExportCSV}
               >
                 <FileText size={14} className="mr-2 text-blue-400" />
                 Export as CSV
               </DropdownMenuItem>
               <DropdownMenuItem 
-                className="hover:bg-gray-800 cursor-pointer"
+                className="hover:bg-accent cursor-pointer"
                 onClick={exportConfig.onExportPDF}
               >
                 <FileText size={14} className="mr-2 text-red-400" />
@@ -348,7 +354,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
         {primaryAction && (
           <Button 
             onClick={primaryAction.onClick}
-            className={cn("h-10 gap-2", primaryAction.className || "bg-blue-600 hover:bg-blue-500 text-white")}
+            className={cn("h-10 gap-2", primaryAction.className || "bg-blue-600 hover:bg-blue-500 text-foreground")}
           >
             {primaryAction.icon}
             {primaryAction.label}

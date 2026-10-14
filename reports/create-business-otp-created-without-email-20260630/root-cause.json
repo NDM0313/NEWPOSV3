@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-06-30T11:00:00.000Z",
+  "classification": "SIGNUP_AUTO_CONFIRM_ENABLED",
+  "production_auth_config": {
+    "GOTRUE_MAILER_AUTOCONFIRM": "true",
+    "GOTRUE_SMTP_HOST": "supabase-mail",
+    "GOTRUE_SMTP_SENDER_NAME": "fake_sender"
+  },
+  "code_path": "signUp returns session when autoconfirm on → businessService.createBusiness skips OTP (needsEmailVerification=false) → runCreateBusinessTransaction immediately",
+  "frontend_gates_on": "hasSession from signUp, not email_confirmed_at",
+  "code_fix_needed": true,
+  "code_fix_scope": "Production: set GOTRUE_MAILER_AUTOCONFIRM=false + real SMTP (separate infra approval). Optional frontend: refuse createBusiness when email_confirmed_at null even if session exists."
+}

@@ -1,0 +1,34 @@
+name: JE guard review regression
+on:
+  push:
+    branches: [feat/party-je-guards-attributed-ledger]
+    paths:
+      - 'migrations/20260919140000_journal_posting_account_guard_and_verified_remaps.sql'
+      - 'reports/supplier-coa-dual-audit-20260919/**'
+      - '.github/workflows/je-guard-review-regression.yml'
+  workflow_dispatch:
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run isolated PostgreSQL 15 regression
+        run: |
+          chmod +x reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.sh
+          bash -x reports/supplier-coa-dual-audit-20260919/verification/run_isolated_pg.sh
+      - name: Show evidence
+        if: always()
+        run: |
+          test ! -f reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md || cat reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md
+      - name: Publish evidence in job summary
+        if: always()
+        run: |
+          test ! -f reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md || cat reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: je-guard-review-regression-evidence
+          path: reports/supplier-coa-dual-audit-20260919/verification/EVIDENCE.md
+          if-no-files-found: error

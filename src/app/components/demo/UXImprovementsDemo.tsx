@@ -10,7 +10,7 @@ export function UXImprovementsDemo() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#111827]">
+    <div className="min-h-screen bg-background">
       {activeDemo === 'overview' ? (
         <div className="p-6 max-w-6xl mx-auto space-y-6">
           {/* Header */}
@@ -92,7 +92,7 @@ export function UXImprovementsDemo() {
               <div className="space-y-2">
                 <div className="text-xs text-gray-500">Background</div>
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded bg-[#111827] border border-gray-700"></div>
+                  <div className="w-8 h-8 rounded bg-background border border-gray-700"></div>
                   <span className="text-xs text-gray-400">#111827</span>
                 </div>
               </div>

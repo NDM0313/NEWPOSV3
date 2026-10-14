@@ -1,0 +1,50 @@
+{
+  "phase": "3B-F",
+  "run": "Cash Flow row-keyed export capture",
+  "productionUrl": "https://erp.dincouture.pk",
+  "deployedCommit": "5433ac2c",
+  "capturedAt": "2026-06-29T13:40:31.324Z",
+  "companies": {
+    "din-china": {
+      "status": "CAPTURED",
+      "startDate": "2000-01-01",
+      "endDate": "2026-06-29",
+      "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+      "phase": "3B-F",
+      "diagnosticOnly": true,
+      "matchCounts": {
+        "exact": 89,
+        "strong": 0,
+        "weak": 11,
+        "legacyOnly": 223,
+        "previewOnly": 305
+      },
+      "closingDelta": 45675273,
+      "thematicBucketCount": 6,
+      "export": "exports/din-china-cash-flow-row-export.json",
+      "diffReport": "diff-reports/din-china/sample-row-diff-report.json",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+    },
+    "din-bridal": {
+      "status": "CAPTURED",
+      "startDate": "2000-01-01",
+      "endDate": "2026-06-29",
+      "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "phase": "3B-F",
+      "diagnosticOnly": true,
+      "matchCounts": {
+        "exact": 2,
+        "strong": 48,
+        "weak": 0,
+        "legacyOnly": 1,
+        "previewOnly": 3
+      },
+      "closingDelta": -55000,
+      "thematicBucketCount": 3,
+      "export": "exports/din-bridal-cash-flow-row-export.json",
+      "diffReport": "diff-reports/din-bridal/sample-row-diff-report.json",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED"
+    }
+  },
+  "overall": "PASS"
+}

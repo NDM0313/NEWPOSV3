@@ -1,0 +1,114 @@
+﻿Lab H Task B ΓÇö AR vs receivables diagnosis (DIN BRIDAL)
+Generated: 2026-07-20T06:50:54Z
+Company: 597a5292-14c8-4cd8-96bd-c61b5a0d8c92
+
+=== 1) Lab H formula snapshot ===
+ document_due_positive_only | document_due_signed_all_final | ar_from_journal | lab_h_difference | final_sales_count | final_with_positive_due 
+----------------------------+-------------------------------+-----------------+------------------+-------------------+-------------------------
+                  329000.00 |                     329000.00 |      1711450.00 |      -1382450.00 |                28 |                       6
+(1 row)
+
+
+=== 2) AR account breakdown (journal Dr-Cr) ===
+    code    |              name               | journal_bal 
+------------+---------------------------------+-------------
+ AR-CUS0064 | Receivable ΓÇö IBRAHIM N221       |  -290000.00
+ AR-CUS0041 | Receivable ΓÇö MR QUDRAT ULLAH    |   181500.00
+ AR-CUS0000 | Receivable ΓÇö Walk-in Customer   |   176000.00
+ AR-CUS0066 | Receivable ΓÇö Abu Qasim N46      |   132000.00
+ AR-CUS0065 | Receivable ΓÇö Jaffar N43         |   130000.00
+ AR-CUS0023 | Receivable ΓÇö MR IBRAHIM         |   120000.00
+ AR-CUS0001 | Receivable ΓÇö Walk-in Customer   |    91500.00
+ AR-CUS0043 | Receivable ΓÇö MR SAJJAD KHAN     |    90000.00
+ AR-CUS0040 | Receivable ΓÇö MR NISAR           |    80000.00
+ AR-CUS0030 | Receivable ΓÇö MR MEHMOOD HUSSAIN |    73000.00
+ AR-CUS0021 | Receivable ΓÇö MR H.Gul Shah Ali  |    60250.00
+ AR-CUS0050 | Receivable ΓÇö MR TAIB BASHIR     |    58000.00
+ AR-CUS0013 | Receivable ΓÇö MR ASIF            |    52000.00
+ 1100       | Accounts Receivable             |   -50000.00
+ AR-CUS0015 | Receivable ΓÇö MR ATIF NADEEM     |    50000.00
+ AR-CUS0077 | Receivable ΓÇö ZAHOR AHMED        |    45000.00
+ AR-CUS0026 | Receivable ΓÇö MR Kamran Ahmed    |    40000.00
+ AR-CUS0071 | Receivable ΓÇö Sulman Habib N51   |    40000.00
+ AR-CUS0016 | Receivable ΓÇö MR AWAIS           |    40000.00
+ AR-CUS0056 | Receivable ΓÇö Miss NAGHMANA RAJA |    35000.00
+ AR-CUS0046 | Receivable ΓÇö MR SAYED MUJTBA    |    35000.00
+ AR-CUS0070 | Receivable ΓÇö KAMRAN N50         |    30000.00
+ AR-CUS0063 | Receivable ΓÇö Zaneb A114         |    28000.00
+ AR-CUS0039 | Receivable ΓÇö MR NABEEL CUSTOMER |    27500.00
+ AR-CUS0047 | Receivable ΓÇö MR SHERYAR         |    27000.00
+ AR-FBC4BF  | Receivable ΓÇö Patras             |   -25000.00
+ AR-CUS0006 | Receivable ΓÇö MR ABDULLAH MANAN  |    25000.00
+ AR-CUS0020 | Receivable ΓÇö MR FAZIAN          |    25000.00
+ AR-CUS0011 | Receivable ΓÇö MR ARSLAN          |    25000.00
+ AR-CUS0055 | Receivable ΓÇö MR ZAMAAR          |    24500.00
+ AR-CUS0017 | Receivable ΓÇö MR EMAN FATIMA     |    23000.00
+ AR-CUS0032 | Receivable ΓÇö MR MOHSIN          |    23000.00
+ AR-CUS0002 | Receivable ΓÇö HAMZA              |    22000.00
+ AR-CUS0024 | Receivable ΓÇö MR ASAD            |    20000.00
+ AR-CUS0004 | Receivable ΓÇö MISS SALIHA AMEEN  |    20000.00
+ AR-CUS0037 | Receivable ΓÇö MR N633            |    20000.00
+ AR-CUS0058 | Receivable ΓÇö Inayat             |   -20000.00
+ AR-CUS0062 | Receivable ΓÇö HARIS N219         |   -20000.00
+ AR-CUS0073 | Receivable ΓÇö Kamran             |    19000.00
+ AR-CUS0079 | Receivable ΓÇö Tasleem            |   -19000.00
+(40 rows)
+
+
+=== 3) Sales due composition ===
+ final_sales | sum_total  | sum_paid  | sum_due_amount_col | sum_due_positive | sum_due_negative | neg_due_rows | zero_due_but_unpaid 
+-------------+------------+-----------+--------------------+------------------+------------------+--------------+---------------------
+          28 | 1273500.00 | 944500.00 |          329000.00 |        329000.00 |             0.00 |            0 |                   0
+(1 row)
+
+
+=== 4) Non-sale reference types on AR accounts (top) ===
+          ref_type          | je_count |   net_dr    
+----------------------------+----------+-------------
+ opening_balance_contact_ar |       57 |  2382950.00
+ payment                    |       52 | -1540000.00
+ sale                       |       33 |  1410700.00
+ manual_receipt             |        3 |  -615000.00
+ sale_reversal              |        6 |  -187200.00
+ rental                     |       23 |   180000.00
+ correction_reversal        |        1 |    80000.00
+ gl_correction              |        7 |        0.00
+(8 rows)
+
+
+=== 5) Opening / import-like AR activity ===
+          ref_type          |                    description                     | entry_no | entry_date |  net_dr   
+----------------------------+----------------------------------------------------+----------+------------+-----------
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR REHAN ALI       | JE-0130  | 2026-05-30 | 530000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö Walk-in Customer   | JE-0089  | 2026-05-30 | 376000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR QUDRAT ULLAH    | JE-0128  | 2026-05-30 | 181500.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR IBRAHIM         | JE-0110  | 2026-05-30 | 120000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR SAJJAD KHAN     | JE-0129  | 2026-05-30 |  90000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR NISAR           | JE-0127  | 2026-05-30 |  80000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR MEHMOOD HUSSAIN | JE-0117  | 2026-05-30 |  73000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR H.Gul Shah Ali  | JE-0109  | 2026-05-30 |  60250.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR TAIB BASHIR     | JE-0137  | 2026-05-30 |  58000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ASIF            | JE-0100  | 2026-05-30 |  52000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ATIF NADEEM     | JE-0102  | 2026-05-30 |  50000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR Kamran Ahmed    | JE-0113  | 2026-05-30 |  40000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR AWAIS           | JE-0103  | 2026-05-30 |  40000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö Miss NAGHMANA RAJA | JE-0143  | 2026-05-30 |  35000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR SAYED MUJTBA    | JE-0133  | 2026-05-30 |  35000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR NABEEL CUSTOMER | JE-0126  | 2026-05-30 |  27500.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR SHERYAR         | JE-0134  | 2026-05-30 |  27000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR FAZIAN          | JE-0108  | 2026-05-30 |  25000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ARSLAN          | JE-0099  | 2026-05-30 |  25000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ABDULLAH MANAN  | JE-0092  | 2026-05-30 |  25000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ZAMAAR          | JE-0142  | 2026-05-30 |  24500.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR EMAN FATIMA     | JE-0106  | 2026-05-30 |  23000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR MOHSIN          | JE-0118  | 2026-05-30 |  23000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö HAMZA              | JE-0088  | 2026-05-30 |  22000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR N633            | JE-0124  | 2026-05-30 |  20000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MISS SALIHA AMEEN  | JE-0091  | 2026-05-30 |  20000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ASAD            | JE-0111  | 2026-05-30 |  20000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ARMAN           | JE-0097  | 2026-05-30 |  18000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR TOUQEER         | JE-0138  | 2026-05-30 |  18000.00
+ opening_balance_contact_ar | Opening balance ΓÇö customer AR ΓÇö MR ASNAT AHMAD     | JE-0101  | 2026-05-30 |  15000.00
+(30 rows)
+
+DIAG_DONE 2026-07-20T06:50:58Z

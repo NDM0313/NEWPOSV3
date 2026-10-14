@@ -1,0 +1,9 @@
+{
+  "generated": "2026-07-04",
+  "commit": "d6750340",
+  "message": "fix(accounting): make single core loader guard cross platform",
+  "pushed": true,
+  "head": "d6750340",
+  "originMain": "d6750340",
+  "passwordCommitted": false
+}

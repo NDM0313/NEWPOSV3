@@ -10,6 +10,24 @@ export function formatLocalDateYYYYMMDD(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Local datetime for DateTimePicker value contract (yyyy-MM-ddTHH:mm). */
+export function formatLocalDateTimeYYYYMMDDHHmm(d: Date): string {
+  return `${formatLocalDateYYYYMMDD(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** Parse DateTimePicker value (yyyy-MM-dd or yyyy-MM-ddTHH:mm) in local timezone. */
+export function parseLocalDateTimeInput(value: string | null | undefined): Date {
+  const s = String(value ?? '').trim();
+  if (!s) return new Date();
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(s);
+  if (m) {
+    const hours = m[4] != null ? Number(m[4]) : 0;
+    const minutes = m[5] != null ? Number(m[5]) : 0;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hours, minutes, 0, 0);
+  }
+  return parseLocalDateInput(s);
+}
+
 export function localNowDateString(): string {
   return formatLocalDateYYYYMMDD(new Date());
 }

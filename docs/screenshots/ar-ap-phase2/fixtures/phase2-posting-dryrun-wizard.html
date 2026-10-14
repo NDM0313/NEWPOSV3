@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phase 2 — Posting dry-run wizard (validation step)</title>
+  <link rel="stylesheet" href="_shared.css" />
+</head>
+<body>
+  <div class="backdrop">
+    <div class="dialog wide" role="dialog" aria-label="Posting dry-run preview">
+      <h2>Posting dry-run (preview only)</h2>
+      <p class="sub">Phase 2 — apply is disabled. No journal will be created.</p>
+      <p class="steps">
+        <span>1. Document</span> →
+        <span class="active">2. Validation</span> →
+        <span>3. Proposed JE</span> →
+        <span>4. Review</span>
+      </p>
+      <div class="alert alert-slate">
+        <strong>Non-final document — no posting required yet</strong><br />
+        This document is not final. Posting is blocked until the document is finalized.
+      </div>
+      <ul class="section-body" style="margin:0;padding-left:18px;color:#fde68a;">
+        <li>[SALE_STATUS] Sale status is order — only final sales may post to GL.</li>
+      </ul>
+      <div class="footer">
+        <button type="button" class="btn btn-outline">Back</button>
+        <button type="button" class="btn btn-primary">Next</button>
+        <button type="button" class="btn btn-outline">Close</button>
+      </div>
+    </div>
+  </div>
+  <div class="caption">AR/AP Reconciliation Center — Posting dry-run · validation step · SL-0005 blocked</div>
+</body>
+</html>

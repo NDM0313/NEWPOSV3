@@ -1,0 +1,21 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA_RESUME",
+  "task": "device-qa-summary",
+  "generated_at": "2026-07-01T11:35:00.000Z",
+  "classification": "BLOCKED_DEVICE_QA",
+  "apk_installed": true,
+  "app_launches": true,
+  "fatal_crashes": false,
+  "admin_qa": "UI_QA_PENDING_OPERATOR_UNLOCK",
+  "manager_qa": "MANAGER_QA_PENDING_CREDENTIALS",
+  "salesman_qa": "SALESMAN_QA_PENDING_CREDENTIALS",
+  "golden_totals_on_device": "NOT_VERIFIED",
+  "production_mutations": false,
+  "pre_monitoring": "PASS",
+  "blockers": [
+    "DEVICE_LOCKED_UI_AUTOMATION_LIMIT",
+    "MANAGER_QA_PENDING_CREDENTIALS",
+    "SALESMAN_QA_PENDING_CREDENTIALS"
+  ],
+  "resolved_prior_blocker": "INSTALL_FAILED_UPDATE_INCOMPATIBLE fixed by uninstall + debug install"
+}

@@ -77,6 +77,67 @@ export function partyGlDueForListRole(
   return Math.max(0, slice.glWorkerPayable);
 }
 
+/** Operational RPC row → single display balance for a list role. */
+export function operationalDueForListRole(
+  contactType: string,
+  receivables: number,
+  payables: number,
+  listRole?: 'customer' | 'supplier' | 'worker'
+): number {
+  const t = (contactType || '').toLowerCase();
+  if (listRole === 'customer') return Math.max(0, receivables);
+  if (listRole === 'supplier') return Math.max(0, payables);
+  if (listRole === 'worker') return Math.max(0, payables);
+  if (t === 'supplier') return Math.max(0, payables);
+  if (t === 'worker') return Math.max(0, payables);
+  if (t === 'both') return Math.max(0, receivables) + Math.max(0, payables);
+  return Math.max(0, receivables);
+}
+
+const GL_DUE_EPS = 0.01;
+
+/**
+ * Resolve list-row due: prefer non-zero party GL; when GL missing/zero, fill from operational;
+ * else opening_balance (or worker totalPayable passed as opening).
+ */
+export function resolveContactListBalance(params: {
+  opening: number;
+  contactType: string;
+  listRole?: 'customer' | 'supplier' | 'worker';
+  glOk: boolean;
+  glSlice: ContactPartyGlSlice | undefined;
+  opRow: ContactBalancesRow | undefined;
+}): number {
+  const opening = Number(params.opening) || 0;
+  let glDue: number | null = null;
+  if (params.glOk && params.glSlice) {
+    if (params.listRole) {
+      glDue = partyGlDueForListRole(params.glSlice, params.listRole);
+    } else {
+      glDue =
+        Math.max(0, params.glSlice.glArReceivable) +
+        Math.max(0, params.glSlice.glApPayable) +
+        Math.max(0, params.glSlice.glWorkerPayable);
+    }
+    if (glDue >= GL_DUE_EPS) return glDue;
+  }
+
+  if (params.opRow) {
+    const opDue = operationalDueForListRole(
+      params.contactType,
+      params.opRow.receivables,
+      params.opRow.payables,
+      params.listRole
+    );
+    if (opDue >= GL_DUE_EPS) return opDue;
+    if (glDue != null) return glDue;
+    return opDue;
+  }
+
+  if (glDue != null) return glDue;
+  return opening;
+}
+
 export function partyGlSliceFromMap(
   map: Map<string, ContactPartyGlSlice>,
   contactId: string
@@ -172,6 +233,17 @@ export function receivableFromBalanceMap(
   const raw = String(contactId).trim();
   const row = map.get(cid) ?? map.get(raw);
   return Math.max(0, row?.receivables ?? 0);
+}
+
+/** Operational / summary payable for one contact id (supplier / both). */
+export function payableFromBalanceMap(
+  map: Map<string, ContactBalancesRow>,
+  contactId: string
+): number {
+  const cid = canonContactId(contactId);
+  const raw = String(contactId).trim();
+  const row = map.get(cid) ?? map.get(raw);
+  return Math.max(0, row?.payables ?? 0);
 }
 
 export function balanceRowFromMap(

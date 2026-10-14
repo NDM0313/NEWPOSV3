@@ -1,0 +1,60 @@
+{
+  "run": "FINAL_OFFICE_PC_LOCAL_STATUS_VERIFY",
+  "generated_at": "2026-06-29T19:00:00.000Z",
+  "status": "FINAL_LOCAL_STATUS_VERIFIED",
+  "branch": "main",
+  "latest_main_commit": "3f4d50a0",
+  "sync_with_origin": true,
+  "modified_count": 14,
+  "untracked_count": 2,
+  "staged_count": 0,
+  "action": "VERIFICATION_ONLY_NO_COMMIT",
+  "categories": {
+    "FINANCE_SENSITIVE_DO_NOT_TOUCH": {
+      "count": 8,
+      "files": [
+        "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+        "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-raw.json",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-report.md",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/party-ledger.png",
+        "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/roznamcha.png",
+        "reports/single-core-ledger/din-bridal-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-day1.md"
+      ]
+    },
+    "DAILY_MONITORING_LOCAL_ONLY": {
+      "count": 4,
+      "files": [
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T09-06-51-058Z.json",
+        "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T09-06-51-058Z.md",
+        "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+        "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md"
+      ],
+      "overall": "PASS",
+      "timestamp_slug": "2026-06-29T09-06-51-058Z",
+      "commit_recommended": false
+    },
+    "TIMESTAMP_REFRESH_LOW_RISK": {
+      "count": 4,
+      "files": [
+        "reports/single-core-ledger/din-couture-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/din-couture-monitoring/production-monitoring-day1.md",
+        "reports/single-core-ledger/phase-2-16-monitoring/production-flags-day1.json",
+        "reports/single-core-ledger/phase-2-16-monitoring/production-monitoring-day1.md"
+      ]
+    },
+    "GENERATED_NOISE_RESTORED_OR_NONE": {
+      "count": 0,
+      "note": "graphify-out/GRAPH_REPORT.md clean after B+D cleanup"
+    }
+  },
+  "official_committed_monitoring": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-42-30-177Z.json",
+  "archive_location_prior_cleanup": "C:\\Users\\ndm31\\erp-monitoring-logs\\single-core-ledger\\2026-06-29-local-cleanup",
+  "repo_acceptable_for_daily_monitoring": true,
+  "repo_acceptable_for_future_development": true,
+  "development_caution": "avoid git add -A; finance-sensitive bridal paths frozen",
+  "further_cleanup_recommended": false,
+  "commit_now_recommended": false,
+  "next_action": "Continue scheduled monitoring; finance approval before bridal golden files; avoid staging frozen paths"
+}

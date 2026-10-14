@@ -1,0 +1,74 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "mobile-parity-implementation-plan",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "primary_target": "erp-mobile-app",
+  "secondary_target": "erp-flutter-app",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Shared flag + loader resolution",
+      "actions": [
+        "Port or share unifiedLedgerFlagKeys + resolve*MainLoaderSource from web src/app/lib",
+        "Mobile reads same feature_flags via Supabase — no new flags",
+        "Fallback to legacy RPCs when flags OFF or kill switch"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Screen implementation (Capacitor)",
+      "screens": [
+        "Ledger V2",
+        "Account Statement",
+        "Trial Balance",
+        "Cash Flow",
+        "Balance Sheet",
+        "Profit & Loss",
+        "Party Ledger / Roznamcha (extend existing)"
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Print/export/share",
+      "actions": [
+        "Reuse CompanyBrand + report PDF layout from api/reports.ts",
+        "WhatsApp/share sheet parity with web",
+        "CSV/Excel only if web supports for that report"
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Role permissions",
+      "actions": [
+        "Mirror web Admin/Manager/Salesman gates",
+        "Hide balances where web hides (salesman restricted view)"
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "QA matrix",
+      "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+      "roles": ["admin", "manager", "salesman_restricted"]
+    },
+    {
+      "phase": 6,
+      "name": "Test and release gate",
+      "tests": [
+        "cd erp-mobile-app && npm run test (if present)",
+        "npm run build:mobile",
+        "cd erp-flutter-app && flutter analyze && flutter test (if approved for Flutter)"
+      ],
+      "release_gate": "NO APK build/release without operator approval",
+      "apk_versioning": "semver bump per MOBILE_RELEASE_PLAN",
+      "rollback": "Keep previous APK artifact; document install rollback in release notes"
+    }
+  ],
+  "data_source_policy": {
+    "rule": "Mobile must match production web data source after flags",
+    "bs_pl": "Use unified main loader RPC path when unified_ledger_loader_balance_sheet / profit_loss ON",
+    "fallback": "Legacy getBalanceSheet / getProfitLoss when flags OFF — document in screen footer"
+  },
+  "next_prompt_file": "reports/post-bs-pl-swap-stability-mobile-readiness-20260701/NEXT_PROMPT_MOBILE_PARITY_IMPLEMENTATION.md",
+  "blocked_without": "operator_approval_for_implementation",
+  "status": "PLAN_READY"
+}

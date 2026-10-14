@@ -1,0 +1,21 @@
+{
+  "run": "PHASE_3B_PROD_DEPLOY",
+  "generated_at": "2026-06-29T12:05:00.000Z",
+  "command": "ssh dincouture-vps \"cd /root/NEWPOSV3 && git fetch origin main && git pull origin main && bash deploy/vps-build-erp-only.sh\"",
+  "script": "deploy/vps-build-erp-only.sh",
+  "host": "dincouture-vps",
+  "target_url": "https://erp.dincouture.pk",
+  "target_container": "erp-frontend",
+  "deployed_commit": "99f2e3b3",
+  "start_timestamp": "2026-06-29T11:47:00.000Z",
+  "end_timestamp": "2026-06-29T11:49:00.000Z",
+  "container_healthy": true,
+  "bundle_asset": "CashFlowReportPage-BK2pqTBs.js",
+  "bundle_marker": "cash-flow-preview-compare",
+  "bundle_marker_count": 1,
+  "migrations_run": false,
+  "flags_toggled": false,
+  "gl_mutations": false,
+  "cash_flow_loader_swap": false,
+  "warnings": ["vite_chunk_size_non_blocking"]
+}

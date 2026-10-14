@@ -1,0 +1,11 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "phase": "post-swap-report-tieout",
+  "status": "SKIPPED_NO_SWAP",
+  "flagsChanged": false,
+  "cashFlowFlagsChanged": false,
+  "r8Changed": false,
+  "glMutations": false,
+  "migrations": false,
+  "note": "Pre-swap totals unchanged; see final-bs-pl-compare.json for approved zero-diff baseline"
+}

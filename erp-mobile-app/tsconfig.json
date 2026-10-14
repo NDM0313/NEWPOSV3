@@ -17,8 +17,13 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/app/lib/*": ["../src/app/lib/*"],
+      "@/app/utils/*": ["../src/app/utils/*"],
+      "@/*": ["src/*"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "../src/app/lib/stockCount*.ts", "../src/app/lib/stockLedgerSummary.ts", "../src/app/utils/variationFieldMap.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

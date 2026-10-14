@@ -1,0 +1,9 @@
+{
+  "total": 134,
+  "counts": {
+    "ALREADY_CLEAN": 35,
+    "ROLE_EXCEPTION": 3,
+    "AMBIGUOUS": 96
+  },
+  "seed": 0
+}

@@ -22,9 +22,9 @@ export const AttachmentViewer: React.FC<AttachmentViewerProps> = ({
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
+      <DialogContent className="bg-card border-border text-foreground w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
+          <DialogTitle className="flex items-center gap-2 text-foreground">
             <Paperclip size={20} className="text-amber-400" />
             Attachments
           </DialogTitle>

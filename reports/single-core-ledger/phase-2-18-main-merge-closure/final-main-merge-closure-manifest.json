@@ -1,0 +1,41 @@
+{
+  "phase": "final-main-merge-closure",
+  "status": "FINAL_PR_READY_OPERATOR_MERGE_APPROVAL_REQUIRED",
+  "company": "DIN CHINA",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "production_url": "https://erp.dincouture.pk",
+  "rollout_branch": "feature/single-core-ledger-phase-2-9a3-preview-deploy-plan",
+  "base_branch": "main",
+  "latest_rollout_commit": "ac9f8f4e",
+  "pr_url": null,
+  "merged": false,
+  "merge_commit": null,
+  "pre_merge_tests": {
+    "command": "npm run test:unified-ledger",
+    "result": "PASS",
+    "count": 240,
+    "fail": 0
+  },
+  "pre_merge_build": {
+    "command": "npm run build",
+    "result": "PASS"
+  },
+  "post_merge_tests": null,
+  "post_merge_build": null,
+  "production_monitoring_rerun": false,
+  "production_monitoring_authoritative": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md",
+  "flags_changed": false,
+  "migrations_run": false,
+  "sql_executed": false,
+  "gl_mutations": false,
+  "other_company_expansion": false,
+  "fx_app_touched": false,
+  "diff_summary": {
+    "files_changed": 600,
+    "fx_files": 0,
+    "review_result": "PASS"
+  },
+  "operator_next_action": "Create PR to main via compare URL; review safety review and gates; merge with explicit approval; do not run flag SQL after merge",
+  "compare_url": "https://github.com/NDM0313/NEWPOSV3/compare/main...feature/single-core-ledger-phase-2-9a3-preview-deploy-plan",
+  "generated_at": "2026-06-27T13:45:43Z"
+}

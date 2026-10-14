@@ -5,7 +5,7 @@ import { Button } from "../ui/button";
 
 export function PaymentFooterDemo() {
   return (
-    <div className="min-h-screen bg-[#111827] p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">

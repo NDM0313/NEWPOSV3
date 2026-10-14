@@ -1,0 +1,13 @@
+{
+  "prohibited": [
+    "r8_legacy_retirement",
+    "play_store_upload",
+    "db_migrations_without_approval",
+    "gl_repairs_or_business_data_mutation",
+    "fixture_refresh_without_approval",
+    "credentials_in_git",
+    "calendar_day3_on_2026-07-02",
+    "manager_user_without_real_email_and_secure_password",
+    "supplier_party_discount_qa_without_approval"
+  ]
+}

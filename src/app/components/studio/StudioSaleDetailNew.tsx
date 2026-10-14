@@ -2623,7 +2623,7 @@ export const StudioSaleDetailNew = () => {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <p className="text-gray-400 mb-4">Studio order not found</p>
+          <p className="text-muted-foreground mb-4">Studio order not found</p>
           <Button onClick={() => setCurrentView('studio')} variant="outline">
             <ArrowLeft size={16} className="mr-2" />
             Back to Studio Sales
@@ -2634,24 +2634,24 @@ export const StudioSaleDetailNew = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
       {/* Page is always editable (no Edit mode toggle). Save Changes appears when worker/stage/cost/time change. */}
       {/* ============ FIXED HEADER ============ */}
-      <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
+      <div className="shrink-0 bg-popover border-b border-border z-20">
         {/* Top Bar */}
-        <div className="h-14 flex items-center justify-between px-6 border-b border-gray-800/50">
+        <div className="h-14 flex items-center justify-between px-6 border-b border-border">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => handleAttemptLeave('studio')}
-              className="text-gray-400 hover:text-white h-9 w-9"
+              className="text-muted-foreground hover:text-foreground h-9 w-9"
             >
               <ArrowLeft size={18} />
             </Button>
             <div>
-              <h1 className="text-lg font-bold text-white">{saleDetail.invoiceNo}</h1>
-              <p className="text-xs text-gray-500 flex items-center gap-2">
+              <h1 className="text-lg font-bold text-foreground">{saleDetail.invoiceNo}</h1>
+              <p className="text-xs text-muted-foreground flex items-center gap-2">
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-cyan-900/30 text-cyan-400 border-cyan-600/50">Studio</Badge>
                 Studio Production Order
               </p>
@@ -2662,7 +2662,7 @@ export const StudioSaleDetailNew = () => {
               size="sm"
               disabled={savingStage || saleLockedForEditing}
               onClick={() => persistAllStagesToBackend()}
-              className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+              className="bg-green-600 hover:bg-green-700 text-foreground disabled:opacity-50"
               title={saleIsFinalized ? 'Invoice finalized – cost editing locked' : saleIsCancelled ? 'Sale cancelled – editing locked' : undefined}
             >
               {savingStage ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <Save size={14} className="mr-1.5" />}
@@ -2692,7 +2692,7 @@ export const StudioSaleDetailNew = () => {
                     }
                     handleSaveWorkerEdit(!!isPending);
                   }}
-                  className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                  className="bg-green-600 hover:bg-green-700 text-foreground shrink-0"
                 >
                   {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
                   {isPending ? 'Save & Start' : 'Save'}
@@ -2712,10 +2712,10 @@ export const StudioSaleDetailNew = () => {
               title="Sale / production status"
               className={cn(
                 "text-xs px-3 py-1.5",
-                headerStatus === 'Draft' && "bg-gray-500/20 text-gray-400 border-gray-700",
-                headerStatus === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700",
+                headerStatus === 'Draft' && "bg-gray-500/20 text-muted-foreground border-border",
+                headerStatus === 'Pending' && "bg-gray-500/20 text-muted-foreground border-border",
                 headerStatus === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                headerStatus === 'Completed' && "bg-green-500/20 text-green-400 border-green-700",
+                headerStatus === 'Completed' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-700",
                 headerStatus === 'Cancelled' && "bg-red-500/20 text-red-400 border-red-500/30"
               )}
             >
@@ -2742,34 +2742,34 @@ export const StudioSaleDetailNew = () => {
         )}
 
         {/* Info Bar */}
-        <div className="px-6 py-3 bg-[#0F1419]">
+        <div className="px-6 py-3 bg-muted/40">
           <div className="grid grid-cols-6 gap-6 text-sm">
             <div>
-              <p className="text-xs text-gray-500 mb-1">Customer</p>
-              <p className="text-white font-medium">{saleDetail.customerName}</p>
-              <p className="text-xs text-gray-400">{saleDetail.customerPhone}</p>
+              <p className="text-xs text-muted-foreground mb-1">Customer</p>
+              <p className="text-foreground font-medium">{saleDetail.customerName}</p>
+              <p className="text-xs text-muted-foreground">{saleDetail.customerPhone}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">{saleDetail.studioProductName ? 'Studio product' : 'Fabric'}</p>
-              <p className="text-white font-medium">{saleDetail.studioProductName || saleDetail.fabricName}</p>
-              <p className="text-xs text-gray-400">{saleDetail.meters} meters</p>
+              <p className="text-xs text-muted-foreground mb-1">{saleDetail.studioProductName ? 'Studio product' : 'Fabric'}</p>
+              <p className="text-foreground font-medium">{saleDetail.studioProductName || saleDetail.fabricName}</p>
+              <p className="text-xs text-muted-foreground">{saleDetail.meters} meters</p>
               {saleDetail.studioProductName &&
                 saleDetail.fabricName &&
                 saleDetail.studioProductName.trim() !== String(saleDetail.fabricName).trim() && (
-                  <p className="text-xs text-gray-500 mt-1">Fabric line: {saleDetail.fabricName}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Fabric line: {saleDetail.fabricName}</p>
                 )}
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Sale Date</p>
-              <p className="text-white">{safeFormatDate(saleDetail.saleDate, 'dd MMM yyyy')}</p>
+              <p className="text-xs text-muted-foreground mb-1">Sale Date</p>
+              <p className="text-foreground">{safeFormatDate(saleDetail.saleDate, 'dd MMM yyyy')}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Deadline</p>
+              <p className="text-xs text-muted-foreground mb-1">Deadline</p>
               <p className="text-yellow-400 font-medium">{safeFormatDate(saleDetail.expectedDeliveryDate, 'dd MMM yyyy')}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Total Bill</p>
-              <p className="text-white font-bold text-lg">{formatCurrency(grandTotalForCard)}</p>
+              <p className="text-xs text-muted-foreground mb-1">Total Bill</p>
+              <p className="text-foreground font-bold text-lg">{formatCurrency(grandTotalForCard)}</p>
               {saleDetail.shipmentCharges > 0 && (
                 <p className="text-xs text-blue-400">Inc. shipping {formatCurrency(saleDetail.shipmentCharges)}</p>
               )}
@@ -2778,25 +2778,25 @@ export const StudioSaleDetailNew = () => {
               )}
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Balance Due</p>
+              <p className="text-xs text-muted-foreground mb-1">Balance Due</p>
               <p className={cn(
                 "font-bold text-lg",
-                displayBalanceDue === 0 ? "text-green-400" : "text-orange-400"
+                displayBalanceDue === 0 ? "text-[var(--erp-money-positive)]" : "text-orange-400"
               )}>
                 {formatCurrency(displayBalanceDue)}
               </p>
             </div>
           </div>
           {lastInvoiceSyncResult?.success && (
-            <div className="mt-3 pt-3 border-t border-gray-800 flex items-center gap-2">
-              <CheckCircle size={16} className="text-green-400 shrink-0" />
-              <span className="text-sm text-green-400 font-medium">Studio invoice item synced with production pricing.</span>
+            <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
+              <CheckCircle size={16} className="text-[var(--erp-money-positive)] shrink-0" />
+              <span className="text-sm text-[var(--erp-money-positive)] font-medium">Studio invoice item synced with production pricing.</span>
             </div>
           )}
         </div>
 
         {/* Production Progress Bar */}
-        <div className="px-6 py-3 bg-[#0B1019] border-t border-gray-800/50">
+        <div className="px-6 py-3 bg-popover border-t border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {saleDetail.productionSteps
@@ -2808,9 +2808,9 @@ export const StudioSaleDetailNew = () => {
                       <div className="flex items-center gap-2">
                         <div className={cn(
                           "h-9 w-9 rounded-lg flex items-center justify-center transition-all",
-                          step.status === 'Completed' && "bg-green-500/20 text-green-400",
+                          step.status === 'Completed' && "bg-green-500/20 text-[var(--erp-money-positive)]",
                           (step.status === 'Assigned' || step.status === 'In Progress') && "bg-blue-500/20 text-blue-400 ring-2 ring-blue-500/40",
-                          step.status === 'Pending' && "bg-gray-800 text-gray-600"
+                          step.status === 'Pending' && "bg-muted text-muted-foreground"
                         )}>
                           {step.status === 'Completed' ? (
                             <CheckCircle size={18} />
@@ -2821,14 +2821,14 @@ export const StudioSaleDetailNew = () => {
                         <div>
                           <p className={cn(
                             "text-xs font-medium",
-                            step.status === 'Completed' && "text-green-400",
+                            step.status === 'Completed' && "text-[var(--erp-money-positive)]",
                             (step.status === 'Assigned' || step.status === 'In Progress') && "text-blue-400",
-                            step.status === 'Pending' && "text-gray-600"
+                            step.status === 'Pending' && "text-muted-foreground"
                           )}>
                             {step.name}
                           </p>
                           {step.assignedWorker && (
-                            <p className="text-[10px] text-gray-500">{step.assignedWorker}</p>
+                            <p className="text-[10px] text-muted-foreground">{step.assignedWorker}</p>
                           )}
                         </div>
                       </div>
@@ -2870,7 +2870,7 @@ export const StudioSaleDetailNew = () => {
                   }
                 }}
                 className={cn(
-                  "bg-green-600 hover:bg-green-700 text-white",
+                  "bg-green-600 hover:bg-green-700 text-foreground",
                   (!allTasksCompleted || savingStage) && "opacity-50 cursor-not-allowed"
                 )}
               >
@@ -2891,9 +2891,9 @@ export const StudioSaleDetailNew = () => {
                     <ChevronDown size={14} className="ml-2" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 min-w-[180px]">
+                <DropdownMenuContent align="end" className="bg-card border-border min-w-[180px]">
                   <DropdownMenuItem
-                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    className="text-gray-200 focus:bg-blue-600 focus:text-foreground focus:outline-none cursor-pointer"
                     onSelect={async () => {
                       // Reset all fields first
                       setCreateProductInvoiceForm({ productName: '', categoryId: '', salePrice: grandTotalForCard > 0 ? String(Math.round(grandTotalForCard)) : '', description: '' });
@@ -2977,14 +2977,14 @@ export const StudioSaleDetailNew = () => {
                     Generate Bill
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    className="text-gray-200 focus:bg-blue-600 focus:text-foreground focus:outline-none cursor-pointer"
                     onSelect={() => window.print()}
                   >
                     <Printer size={14} className="mr-2" />
                     Print
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    className="text-gray-200 focus:bg-blue-600 focus:text-foreground focus:outline-none cursor-pointer"
                     onSelect={() => {
                       toast.info('PDF – open sale in Sales to download/share PDF');
                       if (setOpenSaleIdForView && saleDetail.id) {
@@ -2997,7 +2997,7 @@ export const StudioSaleDetailNew = () => {
                     PDF
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    className="text-gray-200 focus:bg-blue-600 focus:text-foreground focus:outline-none cursor-pointer"
                     onSelect={() => {
                       if (setOpenSaleIdForView && saleDetail.id) {
                         setOpenSaleIdForView(saleDetail.id);
@@ -3021,13 +3021,13 @@ export const StudioSaleDetailNew = () => {
         <div className="h-full grid grid-cols-1 lg:grid-cols-[1fr_420px]">
           
           {/* LEFT COLUMN - Worker & Project Details */}
-          <div className="flex flex-col h-full overflow-y-auto bg-[#111827] border-r border-gray-800">
+          <div className="flex flex-col h-full overflow-y-auto bg-background border-r border-border">
             <div className="p-6 space-y-6">
               
               {/* Production Workflow */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                     <Users size={18} className="text-blue-400" />
                     Production Workflow
                   </h2>
@@ -3061,10 +3061,10 @@ export const StudioSaleDetailNew = () => {
                 </div>
 
                 {saleDetail.productionSteps.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-900/50 rounded-lg border border-dashed border-gray-700">
-                    <Scissors size={40} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-sm text-gray-400 mb-1">No production tasks configured</p>
-                    <p className="text-xs text-gray-600 mb-4">Click "Customize Tasks" to add tasks for this sale</p>
+                  <div className="text-center py-12 bg-muted/40 rounded-lg border border-dashed border-border">
+                    <Scissors size={40} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-sm text-muted-foreground mb-1">No production tasks configured</p>
+                    <p className="text-xs text-muted-foreground mb-4">Click "Customize Tasks" to add tasks for this sale</p>
                     <Button
                       size="sm"
                       disabled={pipelineLocked}
@@ -3091,10 +3091,10 @@ export const StudioSaleDetailNew = () => {
                         <div 
                           key={step.id}
                           className={cn(
-                            "bg-gray-900/50 border rounded-lg transition-all",
+                            "bg-muted/40 border rounded-lg transition-all",
                             step.status === 'Completed' && "border-green-700/30",
                             (step.status === 'Assigned' || step.status === 'In Progress') && "border-blue-700/50 bg-blue-950/10",
-                            step.status === 'Pending' && "border-gray-800"
+                            step.status === 'Pending' && "border-border"
                           )}
                         >
                           <div className="p-4">
@@ -3104,16 +3104,16 @@ export const StudioSaleDetailNew = () => {
                                 "h-12 w-12 rounded-xl flex items-center justify-center shrink-0",
                                 step.status === 'Completed' && "bg-green-500/20",
                                 (step.status === 'Assigned' || step.status === 'In Progress') && "bg-blue-500/20",
-                                step.status === 'Pending' && stepLocked && "bg-gray-800",
-                                step.status === 'Pending' && !stepLocked && "bg-gray-700/30"
+                                step.status === 'Pending' && stepLocked && "bg-muted",
+                                step.status === 'Pending' && !stepLocked && "bg-muted/30"
                               )}>
                                 {stepLocked ? (
-                                  <Lock size={20} className="text-gray-600" />
+                                  <Lock size={20} className="text-muted-foreground" />
                                 ) : (
                                   <StepIcon size={20} className={cn(
-                                    step.status === 'Completed' && "text-green-400",
+                                    step.status === 'Completed' && "text-[var(--erp-money-positive)]",
                                     (step.status === 'Assigned' || step.status === 'In Progress') && "text-blue-400",
-                                    step.status === 'Pending' && "text-gray-400"
+                                    step.status === 'Pending' && "text-muted-foreground"
                                   )} />
                                 )}
                               </div>
@@ -3123,14 +3123,14 @@ export const StudioSaleDetailNew = () => {
                                 <div className="flex items-start justify-between gap-3 mb-2">
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
-                                      <h3 className="text-sm font-semibold text-white">{step.name}</h3>
+                                      <h3 className="text-sm font-semibold text-foreground">{step.name}</h3>
                                       <Badge 
                                         variant="outline" 
                                         className={cn(
                                           "text-xs",
-                                          step.status === 'Completed' && "bg-green-500/20 text-green-400 border-green-700",
+                                          step.status === 'Completed' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-700",
                                           (step.status === 'Assigned' || step.status === 'In Progress') && "bg-blue-500/20 text-blue-400 border-blue-700",
-                                          step.status === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700"
+                                          step.status === 'Pending' && "bg-gray-500/20 text-muted-foreground border-border"
                                         )}
                                       >
                                         {step.status}
@@ -3140,8 +3140,8 @@ export const StudioSaleDetailNew = () => {
                                     {step.assignedWorker ? (
                                       <div className="space-y-1">
                                         <div className="flex items-center gap-2 text-sm">
-                                          <Users size={14} className="text-gray-500" />
-                                          <span className="text-gray-300">{step.assignedWorker}</span>
+                                          <Users size={14} className="text-muted-foreground" />
+                                          <span className="text-muted-foreground">{step.assignedWorker}</span>
                                           {step.assignedWorkers && step.assignedWorkers.length > 1 && (
                                             <span className="text-xs text-blue-400">({step.assignedWorkers.length} workers)</span>
                                           )}
@@ -3161,7 +3161,7 @@ export const StudioSaleDetailNew = () => {
                                             {formatCurrency(step.workerCost)}
                                           </button>
                                           {step.assignedWorkers && step.assignedWorkers.length > 1 && (
-                                            <span className="text-xs text-gray-500">(total)</span>
+                                            <span className="text-xs text-muted-foreground">(total)</span>
                                           )}
                                           {/* ERP: Worker Payment Status */}
                                           {step.workerPaymentStatus && (
@@ -3169,7 +3169,7 @@ export const StudioSaleDetailNew = () => {
                                               variant="outline"
                                               className={cn(
                                                 "text-[10px] px-1.5 py-0",
-                                                step.workerPaymentStatus === 'Paid' && "bg-green-500/20 text-green-400 border-green-700",
+                                                step.workerPaymentStatus === 'Paid' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-700",
                                                 step.workerPaymentStatus === 'Pending' && "bg-yellow-500/20 text-yellow-400 border-yellow-700",
                                                 step.workerPaymentStatus === 'Partial' && "bg-yellow-500/20 text-yellow-400 border-yellow-700",
                                                 step.workerPaymentStatus === 'Payable' && "bg-orange-500/20 text-orange-400 border-orange-700"
@@ -3180,10 +3180,10 @@ export const StudioSaleDetailNew = () => {
                                           )}
                                         </div>
                                         {(step.workerPaidAmount ?? 0) > 0 || (step.workerRemainingDue ?? 0) > 0 ? (
-                                          <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 pl-0.5">
+                                          <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground pl-0.5">
                                             <span>
                                               Worker paid:{' '}
-                                              <span className="text-green-400 font-semibold tabular-nums">
+                                              <span className="text-[var(--erp-money-positive)] font-semibold tabular-nums">
                                                 {formatCurrency(step.workerPaidAmount ?? 0)}
                                               </span>
                                             </span>
@@ -3197,13 +3197,13 @@ export const StudioSaleDetailNew = () => {
                                         ) : null}
                                       </div>
                                     ) : (
-                                      <p className="text-sm text-gray-600">
+                                      <p className="text-sm text-muted-foreground">
                                         {stepLocked ? "🔒 Locked - Complete previous step" : "Not assigned"}
                                       </p>
                                     )}
                                     {step.notes?.trim() ? (
                                       <p
-                                        className="text-xs text-gray-400 mt-2 leading-snug line-clamp-2 whitespace-pre-wrap"
+                                        className="text-xs text-muted-foreground mt-2 leading-snug line-clamp-2 whitespace-pre-wrap"
                                         title={step.notes}
                                       >
                                         {step.notes}
@@ -3286,7 +3286,7 @@ export const StudioSaleDetailNew = () => {
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => setShowStageDetailModal(step.id)}
-                                          className="h-8 w-8 p-0 text-green-400 hover:text-green-300 hover:bg-green-900/20"
+                                          className="h-8 w-8 p-0 text-[var(--erp-money-positive)] hover:text-green-300 hover:bg-green-900/20"
                                           title="View timeline & notes"
                                         >
                                           <Eye size={16} />
@@ -3302,7 +3302,7 @@ export const StudioSaleDetailNew = () => {
                                             <RotateCcw size={16} />
                                           </Button>
                                         )}
-                                        <CheckCircle className="text-green-400" size={20} />
+                                        <CheckCircle className="text-[var(--erp-money-positive)]" size={20} />
                                       </>
                                     )}
                                     
@@ -3328,33 +3328,33 @@ export const StudioSaleDetailNew = () => {
 
                             {/* Expanded Details */}
                             {isExpanded && (
-                              <div className="mt-4 pt-4 border-t border-gray-800 space-y-2 ml-16">
+                              <div className="mt-4 pt-4 border-t border-border space-y-2 ml-16">
                                 {step.assignedDate && (
                                   <div className="flex items-center gap-2 text-sm">
-                                    <Calendar size={14} className="text-gray-500" />
-                                    <span className="text-gray-400">
+                                    <Calendar size={14} className="text-muted-foreground" />
+                                    <span className="text-muted-foreground">
                                       Assigned: {safeFormatDate(step.assignedDate, 'dd MMM yyyy')}
                                     </span>
                                   </div>
                                 )}
                                 {step.expectedCompletionDate && (
                                   <div className="flex items-center gap-2 text-sm">
-                                    <Clock size={14} className="text-gray-500" />
-                                    <span className="text-gray-400">
+                                    <Clock size={14} className="text-muted-foreground" />
+                                    <span className="text-muted-foreground">
                                       Expected: {safeFormatDate(step.expectedCompletionDate, 'dd MMM yyyy')}
                                     </span>
                                   </div>
                                 )}
                                 {step.actualCompletionDate && (
                                   <div className="flex items-center gap-2 text-sm">
-                                    <CheckCircle size={14} className="text-green-400" />
-                                    <span className="text-green-400">
+                                    <CheckCircle size={14} className="text-[var(--erp-money-positive)]" />
+                                    <span className="text-[var(--erp-money-positive)]">
                                       Completed: {safeFormatDate(step.actualCompletionDate, 'dd MMM yyyy')}
                                     </span>
                                   </div>
                                 )}
                                 {step.notes && (
-                                  <div className="bg-gray-950 border border-gray-800 rounded-lg p-3 text-sm text-gray-300">
+                                  <div className="bg-input-background border border-border rounded-lg p-3 text-sm text-muted-foreground">
                                     {step.notes}
                                   </div>
                                 )}
@@ -3370,8 +3370,8 @@ export const StudioSaleDetailNew = () => {
 
               {/* Production Cost Summary - ERP Style */}
               {saleDetail.productionSteps.length > 0 && (
-                <div className="bg-gradient-to-br from-gray-900/80 to-gray-950/80 border border-gray-800 rounded-xl p-5">
-                  <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <div className="bg-gradient-to-br from-gray-900/80 to-gray-950/80 border border-border rounded-xl p-5">
+                  <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                     <FileText size={16} className="text-blue-400" />
                     Production Cost Summary
                   </h3>
@@ -3379,39 +3379,39 @@ export const StudioSaleDetailNew = () => {
                   <div className="space-y-3">
                     {/* Total Worker Cost */}
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">Total Worker Cost</span>
+                      <span className="text-sm text-muted-foreground">Total Worker Cost</span>
                       <span className="text-lg font-bold text-orange-400">
                         {formatCurrency(saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0))}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">Total Worker Paid (Accounting)</span>
-                      <span className="text-lg font-bold text-green-400">
+                      <span className="text-sm text-muted-foreground">Total Worker Paid (Accounting)</span>
+                      <span className="text-lg font-bold text-[var(--erp-money-positive)]">
                         {formatCurrency(
                           saleDetail.productionSteps.reduce((sum, step) => sum + (step.workerPaidAmount ?? 0), 0)
                         )}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">Total Worker Unpaid</span>
+                      <span className="text-sm text-muted-foreground">Total Worker Unpaid</span>
                       <span className="text-lg font-bold text-amber-400">
                         {formatCurrency(
                           saleDetail.productionSteps.reduce((sum, step) => sum + (step.workerRemainingDue ?? 0), 0)
                         )}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {allTasksCompleted
                         ? 'Set profit margin in "Pricing Calculator", then use "Sync invoice pricing" after you have generated the invoice.'
                         : 'Complete all production stages to unlock the Pricing Calculator.'}
                     </p>
                     {/* Payment Status Breakdown */}
-                    <div className="pt-2 border-t border-gray-800">
-                      <p className="text-xs text-gray-500 mb-2">Payment Status:</p>
+                    <div className="pt-2 border-t border-border">
+                      <p className="text-xs text-muted-foreground mb-2">Payment Status:</p>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div className="bg-green-950/30 border border-green-800/30 rounded-lg p-2 text-center">
-                          <p className="text-[10px] text-green-400 mb-1">Paid</p>
-                          <p className="text-sm font-bold text-green-400">
+                          <p className="text-[10px] text-[var(--erp-money-positive)] mb-1">Paid</p>
+                          <p className="text-sm font-bold text-[var(--erp-money-positive)]">
                             {formatCurrency(saleDetail.productionSteps
                               .filter(s => s.workerPaymentStatus === 'Paid')
                               .reduce((sum, s) => sum + s.workerCost, 0))}
@@ -3457,7 +3457,7 @@ export const StudioSaleDetailNew = () => {
               {/* Accessories */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                     <Package size={18} className="text-purple-400" />
                     Accessories
                   </h2>
@@ -3474,20 +3474,20 @@ export const StudioSaleDetailNew = () => {
                 </div>
 
                 {saleDetail.accessories.length === 0 ? (
-                  <div className="bg-gray-900/30 border border-gray-800 border-dashed rounded-lg p-8 text-center">
-                    <Package size={32} className="mx-auto text-gray-600 mb-2" />
-                    <p className="text-sm text-gray-500">No accessories added</p>
+                  <div className="bg-muted/30 border border-border border-dashed rounded-lg p-8 text-center">
+                    <Package size={32} className="mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">No accessories added</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {saleDetail.accessories.map(acc => (
                       <div 
                         key={acc.id}
-                        className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 flex items-center justify-between hover:border-gray-700 transition-colors"
+                        className="bg-card border border-border rounded-lg p-4 flex items-center justify-between hover:border-border transition-colors"
                       >
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-white mb-1">{acc.itemName}</p>
-                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                          <p className="text-sm font-medium text-foreground mb-1">{acc.itemName}</p>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
                             <span>Qty: {acc.quantity}</span>
                             <span>•</span>
                             <span>Unit: {formatCurrency(acc.unitCost)}</span>
@@ -3514,17 +3514,17 @@ export const StudioSaleDetailNew = () => {
           </div>
 
           {/* RIGHT COLUMN - Shipment (TOP) & Payment (BOTTOM) */}
-          <div className="flex flex-col h-full overflow-y-auto bg-[#0F1419]">
+          <div className="flex flex-col h-full overflow-y-auto bg-muted/40">
             <div className="p-6 space-y-6">
               
               {/* SHIPMENT SECTION – Add disabled until invoice is generated (studio product line). */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <Truck size={18} className={hasInvoiceGenerated ? "text-blue-400" : "text-gray-600"} />
+                  <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Truck size={18} className={hasInvoiceGenerated ? "text-blue-400" : "text-muted-foreground"} />
                     Shipment
                     {!hasInvoiceGenerated && (
-                      <Lock size={14} className="text-gray-600" title="Generate invoice first (Create Product + Add to Sale)" />
+                      <Lock size={14} className="text-muted-foreground" title="Generate invoice first (Create Product + Add to Sale)" />
                     )}
                   </h2>
                   <Button
@@ -3558,10 +3558,10 @@ export const StudioSaleDetailNew = () => {
                       return (
                         <div 
                           key={shipment.id}
-                          className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"
+                          className="bg-card border border-border rounded-xl overflow-hidden"
                         >
                           {/* Header */}
-                          <div className="bg-gray-950 border-b border-gray-800 p-4 flex items-center justify-between">
+                          <div className="bg-input-background border-b border-border p-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <div className={cn(
                                 "h-10 w-10 rounded-lg flex items-center justify-center",
@@ -3570,11 +3570,11 @@ export const StudioSaleDetailNew = () => {
                                 {shipment.shipmentType === 'Courier' ? (
                                   <Package size={20} className="text-blue-400" />
                                 ) : (
-                                  <MapPin size={20} className="text-green-400" />
+                                  <MapPin size={20} className="text-[var(--erp-money-positive)]" />
                                 )}
                               </div>
                               <div>
-                                <p className="text-sm font-semibold text-white">
+                                <p className="text-sm font-semibold text-foreground">
                                   {shipment.shipmentType === 'Courier' ? shipment.courierName : 'Local Delivery'}
                                 </p>
                                 <div className="flex items-center gap-2 mt-0.5">
@@ -3582,10 +3582,10 @@ export const StudioSaleDetailNew = () => {
                                     variant="outline"
                                     className={cn(
                                       "text-xs",
-                                      shipment.shipmentStatus === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700",
+                                      shipment.shipmentStatus === 'Pending' && "bg-gray-500/20 text-muted-foreground border-border",
                                       shipment.shipmentStatus === 'Booked' && "bg-yellow-500/20 text-yellow-400 border-yellow-700",
                                       shipment.shipmentStatus === 'Dispatched' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                                      shipment.shipmentStatus === 'Delivered' && "bg-green-500/20 text-green-400 border-green-700"
+                                      shipment.shipmentStatus === 'Delivered' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-700"
                                     )}
                                   >
                                     {shipment.shipmentStatus}
@@ -3626,13 +3626,13 @@ export const StudioSaleDetailNew = () => {
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               {shipment.bookingDate && (
                                 <div>
-                                  <p className="text-xs text-gray-500 mb-1">Booking Date</p>
-                                  <p className="text-white">{safeFormatDate(shipment.bookingDate, 'dd MMM yyyy')}</p>
+                                  <p className="text-xs text-muted-foreground mb-1">Booking Date</p>
+                                  <p className="text-foreground">{safeFormatDate(shipment.bookingDate, 'dd MMM yyyy')}</p>
                                 </div>
                               )}
                               {shipment.expectedDeliveryDate && (
                                 <div>
-                                  <p className="text-xs text-gray-500 mb-1">Expected Delivery</p>
+                                  <p className="text-xs text-muted-foreground mb-1">Expected Delivery</p>
                                   <p className="text-yellow-400">{safeFormatDate(shipment.expectedDeliveryDate, 'dd MMM yyyy')}</p>
                                 </div>
                               )}
@@ -3643,14 +3643,14 @@ export const StudioSaleDetailNew = () => {
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 {shipment.riderPhone && (
                                   <div>
-                                    <p className="text-xs text-gray-500 mb-1">Rider Phone</p>
-                                    <p className="text-white">{shipment.riderPhone}</p>
+                                    <p className="text-xs text-muted-foreground mb-1">Rider Phone</p>
+                                    <p className="text-foreground">{shipment.riderPhone}</p>
                                   </div>
                                 )}
                                 {shipment.deliveryArea && (
                                   <div>
-                                    <p className="text-xs text-gray-500 mb-1">Area</p>
-                                    <p className="text-white">{shipment.deliveryArea}</p>
+                                    <p className="text-xs text-muted-foreground mb-1">Area</p>
+                                    <p className="text-foreground">{shipment.deliveryArea}</p>
                                   </div>
                                 )}
                               </div>
@@ -3659,7 +3659,7 @@ export const StudioSaleDetailNew = () => {
                             {/* Tracking ID */}
                             <div>
                               <div className="flex items-center justify-between mb-2">
-                                <p className="text-xs text-gray-500 uppercase font-medium">Tracking ID</p>
+                                <p className="text-xs text-muted-foreground uppercase font-medium">Tracking ID</p>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -3671,22 +3671,22 @@ export const StudioSaleDetailNew = () => {
                                 </Button>
                               </div>
                               {shipment.trackingId ? (
-                                <div className="bg-gray-950 border border-blue-700/30 rounded-lg p-3">
+                                <div className="bg-input-background border border-blue-700/30 rounded-lg p-3">
                                   <p className="text-blue-400 font-mono font-semibold">{shipment.trackingId}</p>
                                   {shipment.trackingUrl && (
-                                    <p className="text-xs text-gray-500 mt-1 truncate">{shipment.trackingUrl}</p>
+                                    <p className="text-xs text-muted-foreground mt-1 truncate">{shipment.trackingUrl}</p>
                                   )}
                                 </div>
                               ) : (
-                                <div className="bg-gray-950 border border-gray-800 border-dashed rounded-lg p-3 text-center">
-                                  <p className="text-xs text-gray-500">No tracking ID added</p>
+                                <div className="bg-input-background border border-border border-dashed rounded-lg p-3 text-center">
+                                  <p className="text-xs text-muted-foreground">No tracking ID added</p>
                                 </div>
                               )}
                             </div>
 
                             {/* Tracking Documents */}
                             <div>
-                              <p className="text-xs text-gray-500 uppercase font-medium mb-2">Tracking Documents</p>
+                              <p className="text-xs text-muted-foreground uppercase font-medium mb-2">Tracking Documents</p>
 
                               {/* Documents List or clickable empty state with Upload / Take pic */}
                               {shipment.trackingDocuments && shipment.trackingDocuments.length > 0 ? (
@@ -3694,21 +3694,21 @@ export const StudioSaleDetailNew = () => {
                                   {shipment.trackingDocuments.map(doc => (
                                     <div
                                       key={doc.id}
-                                      className="bg-gray-950 border border-gray-800 rounded-lg p-2 flex items-center gap-3"
+                                      className="bg-input-background border border-border rounded-lg p-2 flex items-center gap-3"
                                     >
                                       <div className={cn(
                                         "h-8 w-8 rounded flex items-center justify-center shrink-0",
                                         doc.type === 'image' && "bg-blue-500/20 text-blue-400",
                                         doc.type === 'pdf' && "bg-red-500/20 text-red-400",
-                                        doc.type === 'other' && "bg-gray-700 text-gray-400"
+                                        doc.type === 'other' && "bg-muted text-muted-foreground"
                                       )}>
                                         {doc.type === 'image' ? <ImageIcon size={16} /> : 
                                          doc.type === 'pdf' ? <FileText size={16} /> : 
                                          <File size={16} />}
                                       </div>
                                       <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-white truncate">{doc.name}</p>
-                                        <p className="text-[10px] text-gray-500">
+                                        <p className="text-xs text-foreground truncate">{doc.name}</p>
+                                        <p className="text-[10px] text-muted-foreground">
                                           {safeFormatDate(doc.uploadedAt, 'dd MMM yyyy HH:mm')}
                                         </p>
                                       </div>
@@ -3729,23 +3729,23 @@ export const StudioSaleDetailNew = () => {
                                     <button
                                       type="button"
                                       onClick={() => setShowDocumentUpload(shipment.id)}
-                                      className="w-full bg-gray-950 border border-gray-800 border-dashed rounded-lg p-4 text-center hover:bg-gray-900/80 hover:border-gray-700 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                      className="w-full bg-input-background border border-border border-dashed rounded-lg p-4 text-center hover:bg-card hover:border-border transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                                     >
-                                      <Paperclip size={20} className="mx-auto text-gray-600 mb-1" />
-                                      <p className="text-xs text-gray-500">No documents uploaded</p>
+                                      <Paperclip size={20} className="mx-auto text-muted-foreground mb-1" />
+                                      <p className="text-xs text-muted-foreground">No documents uploaded</p>
                                       <p className="text-[10px] text-blue-400 mt-1">Click to upload or take pic</p>
                                     </button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="center" className="bg-gray-900 border-gray-700 min-w-[160px]">
+                                  <DropdownMenuContent align="center" className="bg-card border-border min-w-[160px]">
                                     <DropdownMenuItem
-                                      className="text-gray-200 focus:bg-blue-600 focus:text-white cursor-pointer"
+                                      className="text-gray-200 focus:bg-blue-600 focus:text-foreground cursor-pointer"
                                       onSelect={() => setTimeout(() => fileInputRef.current?.click(), 100)}
                                     >
                                       <Upload size={14} className="mr-2" />
                                       Upload
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      className="text-gray-200 focus:bg-blue-600 focus:text-white cursor-pointer"
+                                      className="text-gray-200 focus:bg-blue-600 focus:text-foreground cursor-pointer"
                                       onSelect={() => setTimeout(() => cameraInputRef.current?.click(), 100)}
                                     >
                                       <Camera size={14} className="mr-2" />
@@ -3759,8 +3759,8 @@ export const StudioSaleDetailNew = () => {
                             {/* Notes */}
                             {shipment.notes && (
                               <div className="bg-blue-950/20 border border-blue-800/30 rounded-lg p-3">
-                                <p className="text-xs text-gray-500 uppercase font-medium mb-1">Notes</p>
-                                <p className="text-sm text-gray-300">{shipment.notes}</p>
+                                <p className="text-xs text-muted-foreground uppercase font-medium mb-1">Notes</p>
+                                <p className="text-sm text-muted-foreground">{shipment.notes}</p>
                               </div>
                             )}
                           </div>
@@ -3790,47 +3790,47 @@ export const StudioSaleDetailNew = () => {
 
               {/* PRICING CALCULATOR – disabled until all production stages are complete */}
               <div className={cn(
-                "rounded-xl overflow-hidden border border-gray-800 bg-gray-900/50",
+                "rounded-xl overflow-hidden border border-border bg-muted/40",
                 !allTasksCompleted && "opacity-70 pointer-events-none"
               )}>
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <DollarSign size={18} className={allTasksCompleted ? "text-blue-400" : "text-gray-500"} />
+                <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
+                  <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <DollarSign size={18} className={allTasksCompleted ? "text-blue-400" : "text-muted-foreground"} />
                     Pricing Calculator
-                    {!allTasksCompleted && <Lock size={14} className="text-gray-500" />}
+                    {!allTasksCompleted && <Lock size={14} className="text-muted-foreground" />}
                   </h2>
                 </div>
                 <div className="p-5 space-y-4">
                   {!allTasksCompleted ? (
-                    <p className="text-sm text-gray-400">Complete all production stages to set profit margin and sync invoice.</p>
+                    <p className="text-sm text-muted-foreground">Complete all production stages to set profit margin and sync invoice.</p>
                   ) : (
                     <>
                       <div>
-                        <p className="text-sm text-gray-400 mb-1">Production Cost</p>
-                        <p className="text-base font-semibold text-white">{formatCurrency(productionCostFromStages)}</p>
+                        <p className="text-sm text-muted-foreground mb-1">Production Cost</p>
+                        <p className="text-base font-semibold text-foreground">{formatCurrency(productionCostFromStages)}</p>
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <Label className="text-sm text-gray-400">Profit Margin</Label>
+                          <Label className="text-sm text-muted-foreground">Profit Margin</Label>
                           <div className="flex items-center gap-2">
-                            <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-gray-500" : "text-blue-400 font-medium")}>%</span>
+                            <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-muted-foreground" : "text-blue-400 font-medium")}>%</span>
                             <Switch
                               checked={profitMarginMode === 'fixed'}
                               onCheckedChange={(checked) => setProfitMarginMode(checked ? 'fixed' : 'percentage')}
                               className="data-[state=checked]:bg-blue-600"
                             />
-                            <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-blue-400 font-medium" : "text-gray-500")}>Fixed</span>
+                            <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-blue-400 font-medium" : "text-muted-foreground")}>Fixed</span>
                           </div>
                         </div>
                         <Input
                           type="number"
                           min={0}
                           step={profitMarginMode === 'percentage' ? 0.5 : 1}
-                          className="bg-gray-950 border-gray-700 text-white text-sm"
+                          className="bg-input-background border-border text-foreground text-sm"
                           value={profitMarginValue}
                           onChange={(e) => setProfitMarginValue(e.target.value)}
                         />
-                        <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                        <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                           <Info size={12} className="text-blue-400 shrink-0" />
                           {profitMarginMode === 'percentage'
                             ? `${profitMarginValue || 0}% of production cost`
@@ -3838,13 +3838,13 @@ export const StudioSaleDetailNew = () => {
                         </p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400 mb-1">Profit Distribution</p>
-                        <div className="flex items-center justify-between bg-gray-950/80 border border-gray-800 rounded-lg p-3">
-                          <span className="text-sm text-white">{completedProductionSteps.length} Stages</span>
+                        <p className="text-sm text-muted-foreground mb-1">Profit Distribution</p>
+                        <div className="flex items-center justify-between bg-input-background/80 border border-border rounded-lg p-3">
+                          <span className="text-sm text-foreground">{completedProductionSteps.length} Stages</span>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white"
+                            className="border-gray-600 text-muted-foreground hover:bg-muted hover:text-foreground"
                             onClick={() => setShowProfitDistributionModal(true)}
                             disabled={completedProductionSteps.length === 0}
                           >
@@ -3854,7 +3854,7 @@ export const StudioSaleDetailNew = () => {
                         </div>
                       </div>
                       {saleDetail?.id && (
-                        <div className="pt-2 border-t border-gray-800 space-y-2">
+                        <div className="pt-2 border-t border-border space-y-2">
                           {/* ── Invoice Sync Status Banners ── */}
                           {saleIsFinalized && invoiceLinked && (
                             <div className="flex items-start gap-2 rounded-lg bg-red-900/20 border border-red-700/40 px-3 py-2.5">
@@ -3892,7 +3892,7 @@ export const StudioSaleDetailNew = () => {
                           {/* ── Manual Sync Button (fallback / override) ── */}
                           {!saleIsFinalized && !saleIsCancelled && (
                             <>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-muted-foreground">
                                 {invoiceLinked
                                   ? 'Or manually force-sync invoice pricing:'
                                   : 'After generating invoice, sync the invoice line with production cost + profit:'}
@@ -3938,10 +3938,10 @@ export const StudioSaleDetailNew = () => {
               {/* PAYMENT SECTION – disabled once invoice is generated (studio product line linked) */}
               <div className={cn(invoiceLinked && "opacity-70 pointer-events-none")}>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <CreditCard size={18} className={!invoiceLinked ? "text-green-400" : "text-gray-500"} />
+                  <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <CreditCard size={18} className={!invoiceLinked ? "text-[var(--erp-money-positive)]" : "text-muted-foreground"} />
                     Payment
-                    {invoiceLinked && <Lock size={14} className="text-gray-500" />}
+                    {invoiceLinked && <Lock size={14} className="text-muted-foreground" />}
                   </h2>
                   {!invoiceLinked && (
                     <Badge className={cn(
@@ -3956,9 +3956,9 @@ export const StudioSaleDetailNew = () => {
                 </div>
 
                 {invoiceLinked ? (
-                  <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 mb-4">
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <Lock size={14} className="text-gray-500 shrink-0" />
+                  <div className="rounded-xl border border-border bg-muted/40 p-5 mb-4">
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Lock size={14} className="text-muted-foreground shrink-0" />
                       Invoice generated — Payment section is locked. Use Accounting → Customer Receipts for payments.
                     </p>
                   </div>
@@ -3971,53 +3971,53 @@ export const StudioSaleDetailNew = () => {
                         ? "bg-gradient-to-br from-green-950/30 to-green-900/20 border-green-800/50"
                         : saleDetail.paidAmount > 0
                           ? "bg-gradient-to-br from-blue-950/30 to-blue-900/20 border-blue-800/50"
-                          : "bg-gradient-to-br from-gray-900 to-gray-950 border-gray-800"
+                          : "bg-gradient-to-br from-gray-900 to-gray-950 border-border"
                     )}>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">Production Cost</span>
-                          <span className="text-lg font-semibold text-white">{formatCurrency(productionCostFromStages)}</span>
+                          <span className="text-sm text-muted-foreground">Production Cost</span>
+                          <span className="text-lg font-semibold text-foreground">{formatCurrency(productionCostFromStages)}</span>
                         </div>
                         <div className="flex items-center justify-between bg-transparent">
-                          <span className="text-sm text-gray-400">Profit</span>
-                          <span className="text-lg font-semibold text-white">{formatCurrency(profitAmount)}</span>
+                          <span className="text-sm text-muted-foreground">Profit</span>
+                          <span className="text-lg font-semibold text-foreground">{formatCurrency(profitAmount)}</span>
                         </div>
                         {saleDetail.shipmentCharges > 0 && (
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-400">Shipment</span>
-                            <span className="text-lg font-semibold text-white">{formatCurrency(saleDetail.shipmentCharges)}</span>
+                            <span className="text-sm text-muted-foreground">Shipment</span>
+                            <span className="text-lg font-semibold text-foreground">{formatCurrency(saleDetail.shipmentCharges)}</span>
                           </div>
                         )}
-                        <div className="h-px bg-gray-800"></div>
+                        <div className="h-px bg-muted"></div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold text-gray-300">Grand Total</span>
-                          <span className="text-xl font-bold text-white">{formatCurrency(grandTotalForCard)}</span>
+                          <span className="text-sm font-semibold text-muted-foreground">Grand Total</span>
+                          <span className="text-xl font-bold text-foreground">{formatCurrency(grandTotalForCard)}</span>
                         </div>
                         {saleDetail.paidAmount > 0 && (
                           <>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-400">Customer Paid</span>
+                              <span className="text-sm text-muted-foreground">Customer Paid</span>
                               <div className="flex items-center gap-2">
-                                <span className="text-lg font-semibold text-green-400">{formatCurrency(saleDetail.paidAmount)}</span>
-                                <span className="text-xs text-gray-500">
+                                <span className="text-lg font-semibold text-[var(--erp-money-positive)]">{formatCurrency(saleDetail.paidAmount)}</span>
+                                <span className="text-xs text-muted-foreground">
                                   ({grandTotalForCard > 0 ? ((saleDetail.paidAmount / grandTotalForCard) * 100).toFixed(0) : 0}%)
                                 </span>
                               </div>
                             </div>
                           </>
                         )}
-                        <div className="h-px bg-gray-800"></div>
+                        <div className="h-px bg-muted"></div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold text-gray-300">Balance Due</span>
+                          <span className="text-sm font-semibold text-muted-foreground">Balance Due</span>
                           <div className="flex items-center gap-2">
                             <span className={cn(
                               "text-2xl font-bold",
-                              displayBalanceDue === 0 ? "text-green-400" : "text-orange-400"
+                              displayBalanceDue === 0 ? "text-[var(--erp-money-positive)]" : "text-orange-400"
                             )}>
                               {formatCurrency(displayBalanceDue)}
                             </span>
                             {displayBalanceDue === 0 && (
-                              <CheckCircle2 size={24} className="text-green-400" />
+                              <CheckCircle2 size={24} className="text-[var(--erp-money-positive)]" />
                             )}
                           </div>
                         </div>
@@ -4034,7 +4034,7 @@ export const StudioSaleDetailNew = () => {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-blue-400 mb-1">💡 Payment Handling</p>
-                      <p className="text-xs text-gray-400 mb-3">
+                      <p className="text-xs text-muted-foreground mb-3">
                         Customer payments: <strong className="text-blue-400">Accounting → Customer Receipts</strong>. 
                         Worker payments are separate: <strong className="text-blue-400">Accounting → Worker Payments</strong>. 
                         Balance Due is driven by customer receipts only.
@@ -4056,25 +4056,25 @@ export const StudioSaleDetailNew = () => {
                 {saleDetail.payments && saleDetail.payments.length > 0 && (
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs text-gray-500 uppercase font-medium">Payment History (Synced from Accounting)</p>
-                      <Badge variant="outline" className="text-[10px] bg-green-500/20 text-green-400 border-green-700">
+                      <p className="text-xs text-muted-foreground uppercase font-medium">Payment History (Synced from Accounting)</p>
+                      <Badge variant="outline" className="text-[10px] bg-green-500/20 text-[var(--erp-money-positive)] border-green-700">
                         Auto-synced
                       </Badge>
                     </div>
                     {saleDetail.payments.map(payment => (
                       <div 
                         key={payment.id}
-                        className="bg-gray-900 border border-gray-800 rounded-lg p-3"
+                        className="bg-card border border-border rounded-lg p-3"
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-base font-semibold text-green-400">
+                          <span className="text-base font-semibold text-[var(--erp-money-positive)]">
                             {formatCurrency(payment.amount)}
                           </span>
-                          <Badge variant="outline" className="bg-gray-800 text-gray-300 border-gray-700 text-xs">
+                          <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">
                             {payment.method}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Calendar size={12} />
                           <span>{safeFormatDate(payment.date, 'dd MMM yyyy')}</span>
                           {payment.reference && (
@@ -4085,7 +4085,7 @@ export const StudioSaleDetailNew = () => {
                           )}
                         </div>
                         {payment.notes && (
-                          <p className="text-xs text-gray-400 mt-2">{payment.notes}</p>
+                          <p className="text-xs text-muted-foreground mt-2">{payment.notes}</p>
                         )}
                       </div>
                     ))}
@@ -4102,23 +4102,23 @@ export const StudioSaleDetailNew = () => {
       {/* Profit Distribution Modal */}
       {showProfitDistributionModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1A1E27] border border-gray-800 rounded-xl overflow-hidden max-w-[590px] w-full max-h-[103.5vh] flex flex-col">
+          <div className="bg-[#1A1E27] border border-border rounded-xl overflow-hidden max-w-[590px] w-full max-h-[103.5vh] flex flex-col">
             <div className="bg-gradient-to-r from-emerald-600/80 to-blue-600/80 px-5 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Users size={20} className="text-emerald-200" />
-                <h3 className="text-lg font-bold text-white">Profit Distribution</h3>
+                <h3 className="text-lg font-bold text-foreground">Profit Distribution</h3>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setShowProfitDistributionModal(false)} className="text-white hover:bg-white/20 h-8 w-8 p-0">
+              <Button size="sm" variant="ghost" onClick={() => setShowProfitDistributionModal(false)} className="text-foreground hover:bg-white/20 h-8 w-8 p-0">
                 <X size={18} />
               </Button>
             </div>
             <div className="p-5 overflow-y-auto flex-1 space-y-4">
-              <p className="text-sm text-gray-300">Total Profit: <span className="font-bold text-green-400">{formatCurrency(Math.max(0, profitAmount))}</span></p>
+              <p className="text-sm text-muted-foreground">Total Profit: <span className="font-bold text-[var(--erp-money-positive)]">{formatCurrency(Math.max(0, profitAmount))}</span></p>
               <div className="bg-blue-950/30 border border-blue-800/50 rounded-lg p-3">
                 <p className="text-xs font-medium text-blue-300 flex items-center gap-1 mb-2">
                   <Info size={14} /> How it works:
                 </p>
-                <ul className="text-xs text-gray-400 space-y-1">
+                <ul className="text-xs text-muted-foreground space-y-1">
                   <li>• Edit any stage to set a manual amount</li>
                   <li>• Remaining profit auto-distributes to other stages</li>
                   <li>• Total profit always remains fixed</li>
@@ -4126,25 +4126,25 @@ export const StudioSaleDetailNew = () => {
               </div>
               <div className="space-y-3">
                 {profitDistributionRows.map((row, index) => (
-                  <div key={row.stepId} className="bg-gray-900/80 border border-gray-800 rounded-lg p-4">
+                  <div key={row.stepId} className="bg-card border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600/30 text-emerald-400 text-xs font-bold">{index + 1}</span>
-                        <span className="text-sm font-medium text-white">{row.name}</span>
+                        <span className="text-sm font-medium text-foreground">{row.name}</span>
                         <Badge variant="outline" className={cn("text-[10px]", row.isManual ? "bg-amber-500/20 text-amber-400 border-amber-600" : "bg-blue-500/20 text-blue-400 border-blue-600")}>
                           {row.isManual ? 'Manual' : 'Auto'}
                         </Badge>
                       </div>
-                      <Edit2 size={14} className="text-gray-500" />
+                      <Edit2 size={14} className="text-muted-foreground" />
                     </div>
-                    <p className="text-xs text-gray-500 mb-2">Worker: {row.workerName}</p>
+                    <p className="text-xs text-muted-foreground mb-2">Worker: {row.workerName}</p>
                     <div>
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Profit Share</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Profit Share</p>
                       <Input
                         type="number"
                         min={0}
                         step={1}
-                        className="bg-gray-950 border-gray-700 text-white h-9 font-semibold text-green-400"
+                        className="bg-input-background border-border text-foreground h-9 font-semibold text-[var(--erp-money-positive)]"
                         value={Math.round(row.amount)}
                         onChange={(e) => {
                           const v = parseInt(e.target.value, 10);
@@ -4160,10 +4160,10 @@ export const StudioSaleDetailNew = () => {
                 Reset Auto Distribution
               </Button>
             </div>
-            <div className="p-4 border-t border-gray-800 flex items-center justify-between shrink-0 bg-gray-950/50">
+            <div className="p-4 border-t border-border flex items-center justify-between shrink-0 bg-muted/40">
               <div className="flex items-center gap-4 text-sm">
-                <span className="text-gray-400">Total Distributed: <span className="font-semibold text-green-400">{formatCurrency(totalDistributed)}</span></span>
-                <span className="text-gray-500">Across Stages: <span className="text-white">{profitDistributionRows.length}</span></span>
+                <span className="text-muted-foreground">Total Distributed: <span className="font-semibold text-[var(--erp-money-positive)]">{formatCurrency(totalDistributed)}</span></span>
+                <span className="text-muted-foreground">Across Stages: <span className="text-foreground">{profitDistributionRows.length}</span></span>
               </div>
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowProfitDistributionModal(false)}>
                 Done
@@ -4176,9 +4176,9 @@ export const StudioSaleDetailNew = () => {
       {/* Add Accessory Modal */}
       {showAccessoryModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white">Add Accessory</h3>
+              <h3 className="text-lg font-bold text-foreground">Add Accessory</h3>
               <Button
                 size="sm"
                 variant="ghost"
@@ -4191,34 +4191,34 @@ export const StudioSaleDetailNew = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Item Name</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Item Name</label>
                 <Input
                   value={newAccessory.itemName}
                   onChange={(e) => setNewAccessory(prev => ({ ...prev, itemName: e.target.value }))}
                   placeholder="e.g., Golden Lace, Buttons"
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Quantity</label>
+                  <label className="text-sm text-muted-foreground mb-2 block">Quantity</label>
                   <Input
                     type="number"
                     value={newAccessory.quantity || ''}
                     onChange={(e) => setNewAccessory(prev => ({ ...prev, quantity: Number(e.target.value) }))}
                     placeholder="0"
-                    className="bg-gray-950 border-gray-700"
+                    className="bg-input-background border-border"
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Unit Cost (Rs)</label>
+                  <label className="text-sm text-muted-foreground mb-2 block">Unit Cost (Rs)</label>
                   <Input
                     type="number"
                     value={newAccessory.unitCost || ''}
                     onChange={(e) => setNewAccessory(prev => ({ ...prev, unitCost: Number(e.target.value) }))}
                     placeholder="0"
-                    className="bg-gray-950 border-gray-700"
+                    className="bg-input-background border-border"
                   />
                 </div>
               </div>
@@ -4227,7 +4227,7 @@ export const StudioSaleDetailNew = () => {
                 <Button
                   onClick={() => setShowAccessoryModal(false)}
                   variant="outline"
-                  className="flex-1 border-gray-700"
+                  className="flex-1 border-border"
                 >
                   Cancel
                 </Button>
@@ -4246,9 +4246,9 @@ export const StudioSaleDetailNew = () => {
       {/* Add Shipment Modal */}
       {showShipmentModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white">Add Shipment</h3>
+              <h3 className="text-lg font-bold text-foreground">Add Shipment</h3>
               <Button
                 size="sm"
                 variant="ghost"
@@ -4261,11 +4261,11 @@ export const StudioSaleDetailNew = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Shipment Type</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Shipment Type</label>
                 <select
                   value={newShipment.shipmentType}
                   onChange={(e) => setNewShipment(prev => ({ ...prev, shipmentType: e.target.value as ShipmentType }))}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
+                  className="w-full bg-input-background border border-border rounded-lg text-foreground h-10 px-3"
                 >
                   <option value="Courier">Courier (DHL, TCS, etc.)</option>
                   <option value="Local">Local Delivery</option>
@@ -4274,62 +4274,62 @@ export const StudioSaleDetailNew = () => {
 
               {newShipment.shipmentType === 'Courier' && (
                 <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Courier Name</label>
+                  <label className="text-sm text-muted-foreground mb-2 block">Courier Name</label>
                   <Input
                     value={newShipment.courierName}
                     onChange={(e) => setNewShipment(prev => ({ ...prev, courierName: e.target.value }))}
                     placeholder="e.g., DHL, TCS, Leopard"
-                    className="bg-gray-950 border-gray-700"
+                    className="bg-input-background border-border"
                   />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Charged to Customer (Rs)</label>
+                  <label className="text-sm text-muted-foreground mb-2 block">Charged to Customer (Rs)</label>
                   <Input
                     type="number"
                     value={newShipment.chargedToCustomer || ''}
                     onChange={(e) => setNewShipment(prev => ({ ...prev, chargedToCustomer: Number(e.target.value) }))}
                     placeholder="0"
-                    className="bg-gray-950 border-gray-700"
+                    className="bg-input-background border-border"
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-400 mb-2 block">Actual Cost (Rs)</label>
+                  <label className="text-sm text-muted-foreground mb-2 block">Actual Cost (Rs)</label>
                   <Input
                     type="number"
                     value={newShipment.actualCost || ''}
                     onChange={(e) => setNewShipment(prev => ({ ...prev, actualCost: Number(e.target.value) }))}
                     placeholder="0"
-                    className="bg-gray-950 border-gray-700"
+                    className="bg-input-background border-border"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Tracking ID (Optional)</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Tracking ID (Optional)</label>
                 <Input
                   value={newShipment.trackingId}
                   onChange={(e) => setNewShipment(prev => ({ ...prev, trackingId: e.target.value }))}
                   placeholder="e.g., DHL-123456789"
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
 
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Notes (Optional)</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Notes (Optional)</label>
                 <Input
                   value={newShipment.notes}
                   onChange={(e) => setNewShipment(prev => ({ ...prev, notes: e.target.value }))}
                   placeholder="Additional notes..."
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
 
               <div className="bg-blue-950/20 border border-blue-800/30 rounded-lg p-3">
                 <p className="text-xs text-blue-400 font-medium mb-1">Note:</p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   This amount will be added to the total bill. You can upload tracking documents after creating the shipment.
                 </p>
               </div>
@@ -4338,7 +4338,7 @@ export const StudioSaleDetailNew = () => {
                 <Button
                   onClick={() => setShowShipmentModal(false)}
                   variant="outline"
-                  className="flex-1 border-gray-700"
+                  className="flex-1 border-border"
                 >
                   Cancel
                 </Button>
@@ -4378,17 +4378,17 @@ export const StudioSaleDetailNew = () => {
 
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-[#1A1E27] border border-gray-800 rounded-xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col">
+            <div className="bg-[#1A1E27] border border-border rounded-xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col">
 
               {/* ── Header ── */}
               <div className="bg-gradient-to-r from-blue-600/80 to-purple-700/80 px-5 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <Package size={20} className="text-white" />
+                <Package size={20} className="text-foreground" />
                 <div>
-                  <h3 className="text-lg font-bold text-white">
+                  <h3 className="text-lg font-bold text-foreground">
                     {generatedInvoiceItemId ? 'Edit Invoice Line' : 'Product & Invoice'}
                   </h3>
-                  <p className="text-xs text-white/70">
+                  <p className="text-xs text-foreground/70">
                     {generatedInvoiceItemId
                       ? 'Update product or price — existing invoice line will be edited, no duplicate created.'
                       : selectedExistingProduct && productUseMode === 'variation'
@@ -4399,13 +4399,13 @@ export const StudioSaleDetailNew = () => {
                   </p>
                 </div>
               </div>
-                <Button size="sm" variant="ghost" onClick={closeModal} className="text-white hover:bg-white/20 h-8 w-8 p-0">
+                <Button size="sm" variant="ghost" onClick={closeModal} className="text-foreground hover:bg-white/20 h-8 w-8 p-0">
                   <X size={18} />
                 </Button>
               </div>
 
               {/* ── Step indicators ── */}
-              <div className="px-5 pt-3 pb-2 flex items-center gap-2 shrink-0 border-b border-gray-800/60">
+              <div className="px-5 pt-3 pb-2 flex items-center gap-2 shrink-0 border-b border-border/60">
                 {[
                   { label: 'Search', done: !!selectedExistingProduct || (productSearchQuery.trim().length >= 1 && !showProductDropdown) },
                   { label: 'Choose Mode', done: !!productUseMode || (!selectedExistingProduct && productSearchQuery.trim().length >= 1) },
@@ -4415,11 +4415,11 @@ export const StudioSaleDetailNew = () => {
                     <div className="flex items-center gap-1">
                       <div className={cn(
                         'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold transition-colors',
-                        step.done ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-400'
+                        step.done ? 'bg-emerald-500 text-foreground' : 'bg-muted text-muted-foreground'
                       )}>{step.done ? '✓' : i + 1}</div>
-                      <span className={cn('text-[11px]', step.done ? 'text-emerald-400' : 'text-gray-500')}>{step.label}</span>
+                      <span className={cn('text-[11px]', step.done ? 'text-emerald-400' : 'text-muted-foreground')}>{step.label}</span>
                     </div>
-                    {i < 2 && <div className="flex-1 h-px bg-gray-700/60" />}
+                    {i < 2 && <div className="flex-1 h-px bg-muted/60" />}
                   </React.Fragment>
                 ))}
               </div>
@@ -4428,7 +4428,7 @@ export const StudioSaleDetailNew = () => {
 
                 {/* ── 1. Product Search ── */}
                 <div ref={productSearchRef} className="relative">
-                  <Label className="text-gray-400 text-sm flex items-center gap-2 flex-wrap">
+                  <Label className="text-muted-foreground text-sm flex items-center gap-2 flex-wrap">
                     Product Name
                     {selectedExistingProduct && (
                       <span className="text-[10px] bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded px-1.5 py-0.5">
@@ -4442,12 +4442,12 @@ export const StudioSaleDetailNew = () => {
                     )}
                   </Label>
                   {saleDetail.studioProductName?.trim() ? (
-                    <p className="text-[10px] text-gray-500 mt-1">Prefilled from replica title — edit before creating.</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Prefilled from replica title — edit before creating.</p>
                   ) : null}
                   <div className="relative mt-1">
                     <Input
                       className={cn(
-                        'bg-gray-950 border-gray-700 text-white pr-8',
+                        'bg-input-background border-border text-foreground pr-8',
                         selectedExistingProduct && 'border-emerald-600/50 focus-visible:ring-emerald-600/30'
                       )}
                       placeholder="Search or tap ▾ to browse all products…"
@@ -4469,19 +4469,19 @@ export const StudioSaleDetailNew = () => {
                       }}
                     >
                       {productSearchLoading
-                        ? <Loader2 size={14} className="animate-spin text-gray-500" />
+                        ? <Loader2 size={14} className="animate-spin text-muted-foreground" />
                         : selectedExistingProduct
                           ? <CheckCircle size={14} className="text-emerald-500" />
-                          : <ChevronDown size={14} className={cn('text-gray-400 transition-transform', showProductDropdown && 'rotate-180')} />
+                          : <ChevronDown size={14} className={cn('text-muted-foreground transition-transform', showProductDropdown && 'rotate-180')} />
                       }
                     </button>
                   </div>
 
                   {/* Dropdown */}
                   {showProductDropdown && (
-                    <div className="absolute z-20 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl max-h-56 overflow-y-auto">
+                    <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-2xl max-h-56 overflow-y-auto">
                       {productSearchLoading && (
-                        <div className="flex items-center gap-2 px-3 py-3 text-gray-400 text-sm">
+                        <div className="flex items-center gap-2 px-3 py-3 text-muted-foreground text-sm">
                           <Loader2 size={14} className="animate-spin" /> Searching…
                         </div>
                       )}
@@ -4489,12 +4489,12 @@ export const StudioSaleDetailNew = () => {
                         <div className="px-3 py-3 space-y-1">
                           {productSearchQuery.trim()
                             ? <>
-                                <p className="text-sm text-gray-400">No matching products found.</p>
+                                <p className="text-sm text-muted-foreground">No matching products found.</p>
                                 <p className="text-xs text-amber-400">
                                   A new product <strong>"{productSearchQuery}"</strong> will be created.
                                 </p>
                               </>
-                            : <p className="text-sm text-gray-500">No products yet. Type a name to create a new one.</p>
+                            : <p className="text-sm text-muted-foreground">No products yet. Type a name to create a new one.</p>
                           }
                         </div>
                       )}
@@ -4502,22 +4502,22 @@ export const StudioSaleDetailNew = () => {
                         <button
                           key={p.id}
                           type="button"
-                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-600/20 transition-colors text-left border-b border-gray-800 last:border-0"
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-600/20 transition-colors text-left border-b border-border last:border-0"
                           onMouseDown={() => handleSelectExistingProduct(p)}
                         >
-                          <div className="w-9 h-9 rounded-md bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden">
+                          <div className="w-9 h-9 rounded-md bg-muted border border-border flex items-center justify-center shrink-0 overflow-hidden">
                             {p.image_urls && p.image_urls.length > 0
                               ? <img src={p.image_urls[0]} alt="" className="w-full h-full object-cover" />
-                              : <Package size={15} className="text-gray-600" />
+                              : <Package size={15} className="text-muted-foreground" />
                             }
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-white truncate font-medium">{p.name}</p>
-                            <p className="text-[11px] text-gray-500 truncate">
+                            <p className="text-sm text-foreground truncate font-medium">{p.name}</p>
+                            <p className="text-[11px] text-muted-foreground truncate">
                               {p.category_name || 'No category'}{p.sku ? ` · ${p.sku}` : ''}
                             </p>
                           </div>
-                          <ChevronRight size={14} className="text-gray-600 shrink-0" />
+                          <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                         </button>
                       ))}
                     </div>
@@ -4525,26 +4525,26 @@ export const StudioSaleDetailNew = () => {
 
                   {/* Selected product info card (parent product) */}
                   {selectedExistingProduct && (
-                    <div className="mt-2 rounded-lg bg-gray-900 border border-gray-700 overflow-hidden">
+                    <div className="mt-2 rounded-lg bg-card border border-border overflow-hidden">
                       <div className="flex items-center gap-3 px-3 py-2.5">
-                        <div className="w-10 h-10 rounded-md bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-md bg-muted border border-border flex items-center justify-center shrink-0 overflow-hidden">
                           {selectedExistingProduct.image_urls && selectedExistingProduct.image_urls.length > 0
                             ? <img src={selectedExistingProduct.image_urls[0]} alt="" className="w-full h-full object-cover" />
-                            : <Package size={16} className="text-gray-600" />
+                            : <Package size={16} className="text-muted-foreground" />
                           }
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white font-medium truncate">{selectedExistingProduct.name}</p>
-                          <p className="text-[11px] text-gray-500 flex items-center gap-1.5 truncate">
+                          <p className="text-sm text-foreground font-medium truncate">{selectedExistingProduct.name}</p>
+                          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
                             {selectedExistingProduct.category_name && <span>{selectedExistingProduct.category_name}</span>}
                             {selectedExistingProduct.sku && (
-                              <span className="font-mono bg-gray-800 rounded px-1 text-gray-400">{selectedExistingProduct.sku}</span>
+                              <span className="font-mono bg-muted rounded px-1 text-muted-foreground">{selectedExistingProduct.sku}</span>
                             )}
                           </p>
                         </div>
                         <button
                           type="button"
-                          className="text-gray-600 hover:text-red-400 transition-colors shrink-0"
+                          className="text-muted-foreground hover:text-red-400 transition-colors shrink-0"
                           onClick={() => {
                             setSelectedExistingProduct(null);
                             setProductSearchQuery('');
@@ -4563,9 +4563,9 @@ export const StudioSaleDetailNew = () => {
 
                 {/* ── 2. Decision section (only when existing product selected) ── */}
                 {selectedExistingProduct && (
-                  <div className="rounded-lg border border-gray-700 overflow-hidden">
-                    <div className="bg-gray-800/60 px-3 py-2">
-                      <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">How would you like to use this product?</p>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <div className="bg-muted/60 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">How would you like to use this product?</p>
                     </div>
                     <div className="divide-y divide-gray-700/60">
 
@@ -4576,7 +4576,7 @@ export const StudioSaleDetailNew = () => {
                           'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
                           productUseMode === 'exact'
                             ? 'bg-emerald-600/10 border-l-2 border-emerald-500'
-                            : 'hover:bg-gray-800/40 border-l-2 border-transparent'
+                            : 'hover:bg-muted/40 border-l-2 border-transparent'
                         )}
                         onClick={() => setProductUseMode('exact')}
                       >
@@ -4587,9 +4587,9 @@ export const StudioSaleDetailNew = () => {
                           {productUseMode === 'exact' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
                         <div>
-                          <p className="text-sm text-white font-medium">Use Exact Same Product</p>
-                          <p className="text-[11px] text-gray-500 mt-0.5">
-                            Invoice references <span className="font-mono text-gray-400">{selectedExistingProduct.sku || 'this product'}</span> directly. No new record created.
+                          <p className="text-sm text-foreground font-medium">Use Exact Same Product</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Invoice references <span className="font-mono text-muted-foreground">{selectedExistingProduct.sku || 'this product'}</span> directly. No new record created.
                           </p>
                         </div>
                         {productUseMode === 'exact' && <CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5 ml-auto" />}
@@ -4602,7 +4602,7 @@ export const StudioSaleDetailNew = () => {
                           'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
                           productUseMode === 'variation'
                             ? 'bg-purple-600/10 border-l-2 border-purple-500'
-                            : 'hover:bg-gray-800/40 border-l-2 border-transparent'
+                            : 'hover:bg-muted/40 border-l-2 border-transparent'
                         )}
                         onClick={() => {
                           setProductUseMode('variation');
@@ -4618,8 +4618,8 @@ export const StudioSaleDetailNew = () => {
                           {productUseMode === 'variation' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </div>
                         <div>
-                          <p className="text-sm text-white font-medium">Create Variation</p>
-                          <p className="text-[11px] text-gray-500 mt-0.5">
+                          <p className="text-sm text-foreground font-medium">Create Variation</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
                             Create a new variant linked to this product (own image, description &amp; SKU).
                           </p>
                         </div>
@@ -4639,21 +4639,21 @@ export const StudioSaleDetailNew = () => {
 
                     {/* Variant SKU preview */}
                     <div>
-                      <Label className="text-gray-400 text-xs">Variant SKU (auto-generated)</Label>
-                      <div className="mt-1 flex items-center gap-2 h-9 rounded-md bg-gray-950 border border-gray-700 px-3">
+                      <Label className="text-muted-foreground text-xs">Variant SKU (auto-generated)</Label>
+                      <div className="mt-1 flex items-center gap-2 h-9 rounded-md bg-input-background border border-border px-3">
                         {variantSkuLoading
-                          ? <Loader2 size={13} className="animate-spin text-gray-500" />
+                          ? <Loader2 size={13} className="animate-spin text-muted-foreground" />
                           : <span className="font-mono text-sm text-purple-300">{variantSkuPreview || '…'}</span>
                         }
-                        <span className="text-[10px] text-gray-600 ml-auto">Parent: {selectedExistingProduct.sku || '—'}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">Parent: {selectedExistingProduct.sku || '—'}</span>
                       </div>
                     </div>
 
                     {/* Variation description */}
                     <div>
-                      <Label className="text-gray-400 text-xs">Variation Description (optional)</Label>
+                      <Label className="text-muted-foreground text-xs">Variation Description (optional)</Label>
                       <textarea
-                        className="mt-1 w-full min-h-[60px] rounded-md bg-gray-950 border border-gray-700 text-white px-3 py-2 text-sm resize-none"
+                        className="mt-1 w-full min-h-[60px] rounded-md bg-input-background border border-border text-foreground px-3 py-2 text-sm resize-none"
                         placeholder="e.g. Red embroidery on cream base, size M"
                         value={variationDescription}
                         onChange={(e) => setVariationDescription(e.target.value)}
@@ -4662,32 +4662,32 @@ export const StudioSaleDetailNew = () => {
 
                     {/* Variation image upload */}
                     <div>
-                      <Label className="text-gray-400 text-xs">Variation Image (optional)</Label>
+                      <Label className="text-muted-foreground text-xs">Variation Image (optional)</Label>
                       <div
                         {...variationImageDropzone.getRootProps()}
                         className={cn(
                           'mt-1 border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition-colors',
                           variationImageDropzone.isDragActive
                             ? 'border-purple-500 bg-purple-500/10'
-                            : 'border-gray-700 hover:border-purple-700 bg-gray-800/30'
+                            : 'border-border hover:border-purple-700 bg-accent/30'
                         )}
                       >
                         <input {...variationImageDropzone.getInputProps()} />
-                        <Upload size={18} className="text-gray-500 mb-1" />
-                        <p className="text-xs text-gray-400 text-center">
+                        <Upload size={18} className="text-muted-foreground mb-1" />
+                        <p className="text-xs text-muted-foreground text-center">
                           Drag & drop or <span className="text-purple-400">browse</span>
                         </p>
-                        <p className="text-[10px] text-gray-600 mt-0.5">JPG · PNG · max 5MB</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">JPG · PNG · max 5MB</p>
                       </div>
                       {variationImageFiles.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {variationImageFiles.map((file, idx) => (
-                            <div key={idx} className="relative group w-12 h-12 rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+                            <div key={idx} className="relative group w-12 h-12 rounded-lg overflow-hidden border border-border bg-muted">
                               <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
                               <button
                                 type="button"
                                 onClick={() => setVariationImageFiles(prev => prev.filter((_, i) => i !== idx))}
-                                className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute top-0 right-0 bg-red-500 text-foreground p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <X size={10} />
                               </button>
@@ -4703,9 +4703,9 @@ export const StudioSaleDetailNew = () => {
                 {!selectedExistingProduct && (
                   <>
                     <div>
-                      <Label className="text-gray-400 text-sm">Product Category</Label>
+                      <Label className="text-muted-foreground text-sm">Product Category</Label>
                       <select
-                        className="mt-1 w-full h-10 rounded-md bg-gray-950 border border-gray-700 text-white px-3 text-sm"
+                        className="mt-1 w-full h-10 rounded-md bg-input-background border border-border text-foreground px-3 text-sm"
                         value={createProductInvoiceForm.categoryId}
                         onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, categoryId: e.target.value }))}
                       >
@@ -4716,32 +4716,32 @@ export const StudioSaleDetailNew = () => {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-gray-400 text-sm">Upload Product Image (optional)</Label>
+                      <Label className="text-muted-foreground text-sm">Upload Product Image (optional)</Label>
                       <div
                         {...createProductInvoiceDropzone.getRootProps()}
                         className={cn(
                           'mt-1 border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors',
                           createProductInvoiceDropzone.isDragActive
                             ? 'border-blue-500 bg-blue-500/10'
-                            : 'border-gray-700 hover:border-gray-500 bg-gray-800/50'
+                            : 'border-border hover:border-gray-500 bg-muted/50'
                         )}
                       >
                         <input {...createProductInvoiceDropzone.getInputProps()} />
-                        <Upload size={20} className="text-gray-500 mb-1" />
-                        <p className="text-sm text-gray-400 text-center">
+                        <Upload size={20} className="text-muted-foreground mb-1" />
+                        <p className="text-sm text-muted-foreground text-center">
                           Drag & drop, or <span className="text-blue-500">browse</span>
                         </p>
-                        <p className="text-[10px] text-gray-600 mt-0.5">JPG · PNG · max 5MB</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">JPG · PNG · max 5MB</p>
                       </div>
                       {createProductInvoiceImageFiles.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {createProductInvoiceImageFiles.map((file, idx) => (
-                            <div key={idx} className="relative group w-14 h-14 rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+                            <div key={idx} className="relative group w-14 h-14 rounded-lg overflow-hidden border border-border bg-muted">
                               <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); setCreateProductInvoiceImageFiles(prev => prev.filter((_, i) => i !== idx)); }}
-                                className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute top-0 right-0 bg-red-500 text-foreground p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <X size={12} />
                               </button>
@@ -4751,9 +4751,9 @@ export const StudioSaleDetailNew = () => {
                       )}
                     </div>
                     <div>
-                      <Label className="text-gray-400 text-sm">Description (Optional)</Label>
+                      <Label className="text-muted-foreground text-sm">Description (Optional)</Label>
                       <textarea
-                        className="mt-1 w-full min-h-[60px] rounded-md bg-gray-950 border border-gray-700 text-white px-3 py-2 text-sm resize-y"
+                        className="mt-1 w-full min-h-[60px] rounded-md bg-input-background border border-border text-foreground px-3 py-2 text-sm resize-y"
                         placeholder="Product description…"
                         value={createProductInvoiceForm.description}
                         onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, description: e.target.value }))}
@@ -4764,11 +4764,11 @@ export const StudioSaleDetailNew = () => {
 
                 {/* ── 5. Sale Price (always visible) ── */}
                 <div>
-                  <Label className="text-gray-400 text-sm">Sale Price (Rs)</Label>
+                  <Label className="text-muted-foreground text-sm">Sale Price (Rs)</Label>
                   <Input
                     type="number"
                     min={0}
-                    className="mt-1 bg-gray-950 border-gray-700 text-white"
+                    className="mt-1 bg-input-background border-border text-foreground"
                     placeholder="0"
                     value={createProductInvoiceForm.salePrice}
                     onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, salePrice: e.target.value }))}
@@ -4776,16 +4776,16 @@ export const StudioSaleDetailNew = () => {
                 </div>
 
                 {/* Context note */}
-                <p className="text-[11px] text-gray-600">
+                <p className="text-[11px] text-muted-foreground">
                   {productUseMode === 'variation'
-                    ? <>Variation <span className="font-mono text-gray-400">{variantSkuPreview}</span> will be linked to invoice <strong className="text-white">{saleDetail.invoiceNo}</strong>.</>
+                    ? <>Variation <span className="font-mono text-muted-foreground">{variantSkuPreview}</span> will be linked to invoice <strong className="text-foreground">{saleDetail.invoiceNo}</strong>.</>
                     : selectedExistingProduct
-                      ? <>Product <strong className="text-white">{selectedExistingProduct.name}</strong> will be reused — no duplicate created.</>
-                      : <>New product will be created with code <strong className="text-white">STD-PROD-XXXXX</strong> and linked to <strong className="text-white">{saleDetail.invoiceNo}</strong>.</>
+                      ? <>Product <strong className="text-foreground">{selectedExistingProduct.name}</strong> will be reused — no duplicate created.</>
+                      : <>New product will be created with code <strong className="text-foreground">STD-PROD-XXXXX</strong> and linked to <strong className="text-foreground">{saleDetail.invoiceNo}</strong>.</>
                   }
                 </p>
 
-                <label className="flex items-start gap-2.5 cursor-pointer text-[11px] text-gray-400">
+                <label className="flex items-start gap-2.5 cursor-pointer text-[11px] text-muted-foreground">
                   <Checkbox
                     checked={syncReplicaTitleToProduct}
                     onCheckedChange={(v) => setSyncReplicaTitleToProduct(v === true)}
@@ -4799,8 +4799,8 @@ export const StudioSaleDetailNew = () => {
               </div>
 
               {/* ── Footer ── */}
-              <div className="p-5 border-t border-gray-800 flex gap-3 shrink-0">
-                <Button variant="outline" className="flex-1 border-gray-700" onClick={closeModal}>
+              <div className="p-5 border-t border-border flex gap-3 shrink-0">
+                <Button variant="outline" className="flex-1 border-border" onClick={closeModal}>
                   Cancel
                 </Button>
                 <Button
@@ -4848,20 +4848,20 @@ export const StudioSaleDetailNew = () => {
           aria-modal="true"
         >
           <div
-            className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <Users size={18} className="text-blue-400" />
                   Assign worker – {currentStep?.name || categoryLabel}
                 </h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  {showAllWorkersInAssignModal ? 'Showing all workers.' : `Only ${categoryLabel} workers shown.`} Click <strong className="text-white">Save</strong> or <strong className="text-white">Done</strong> in the header above to save assignment.
+                <p className="text-xs text-muted-foreground mt-1">
+                  {showAllWorkersInAssignModal ? 'Showing all workers.' : `Only ${categoryLabel} workers shown.`} Click <strong className="text-foreground">Save</strong> or <strong className="text-foreground">Done</strong> in the header above to save assignment.
                 </p>
                 {currentStep?.status === 'Pending' && (
-                  <p className="text-xs text-gray-500 mt-0.5">Save & Start sets stage to In Progress. Next step unlocks after you Receive from Worker.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Save & Start sets stage to In Progress. Next step unlocks after you Receive from Worker.</p>
                 )}
               </div>
               <Button
@@ -4880,15 +4880,15 @@ export const StudioSaleDetailNew = () => {
                 id="show-all-workers"
                 checked={showAllWorkersInAssignModal}
                 onChange={(e) => setShowAllWorkersInAssignModal(e.target.checked)}
-                className="rounded border-gray-600 bg-gray-800 text-cyan-500 focus:ring-cyan-500"
+                className="rounded border-gray-600 bg-muted text-cyan-500 focus:ring-cyan-500"
               />
-              <label htmlFor="show-all-workers" className="text-sm text-gray-400 cursor-pointer">Show all workers</label>
+              <label htmlFor="show-all-workers" className="text-sm text-muted-foreground cursor-pointer">Show all workers</label>
             </div>
 
             {workerList.length === 0 && (
               <div className="mb-4 p-4 bg-amber-950/30 border border-amber-800/50 rounded-lg">
                 <p className="text-sm text-amber-400 font-medium">Is category ka koi worker available nahi.</p>
-                <p className="text-xs text-gray-400 mt-1">Add a worker with role &quot;{categoryLabel}&quot; from Contacts, or use the button below.</p>
+                <p className="text-xs text-muted-foreground mt-1">Add a worker with role &quot;{categoryLabel}&quot; from Contacts, or use the button below.</p>
                 <Button
                   size="sm"
                   onClick={() => { setShowWorkerEditModal(null); openDrawer?.('addContact', undefined, { contactType: 'worker' }); }}
@@ -4904,7 +4904,7 @@ export const StudioSaleDetailNew = () => {
               {/* Workers List */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-300">Assigned Workers</label>
+                  <label className="text-sm font-medium text-muted-foreground">Assigned Workers</label>
                   <Button
                     size="sm"
                     onClick={handleAddWorker}
@@ -4917,15 +4917,15 @@ export const StudioSaleDetailNew = () => {
                 </div>
 
                 {editingWorkerData.workers.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-950/50 rounded-lg border border-dashed border-gray-700">
-                    <Users size={32} className="mx-auto text-gray-600 mb-2" />
-                    <p className="text-sm text-gray-500">No workers assigned</p>
-                    <p className="text-xs text-gray-600 mt-1">Select a worker from the list below{showAllWorkersInAssignModal ? '' : ` (${categoryLabel} category)`}</p>
+                  <div className="text-center py-8 bg-muted/40 rounded-lg border border-dashed border-border">
+                    <Users size={32} className="mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">No workers assigned</p>
+                    <p className="text-xs text-muted-foreground mt-1">Select a worker from the list below{showAllWorkersInAssignModal ? '' : ` (${categoryLabel} category)`}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {editingWorkerData.workers.map((worker, index) => (
-                      <div key={worker.id} className="bg-gray-950/50 border border-gray-800 rounded-lg p-4">
+                      <div key={worker.id} className="bg-muted/40 border border-border rounded-lg p-4">
                         <div className="flex items-start gap-3">
                           <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
                             <User size={16} className="text-blue-400" />
@@ -4933,7 +4933,7 @@ export const StudioSaleDetailNew = () => {
                           <div className="flex-1 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">Worker Name</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Worker Name</label>
                                 <select
                                   value={worker.workerId}
                                   onChange={(e) => {
@@ -4958,7 +4958,7 @@ export const StudioSaleDetailNew = () => {
                                       }),
                                     }));
                                   }}
-                                  className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white text-sm h-9 px-2"
+                                  className="w-full bg-card border border-border rounded-lg text-foreground text-sm h-9 px-2"
                                 >
                                   <option value="">Select...</option>
                                   {workerList.map(w => (
@@ -4967,20 +4967,20 @@ export const StudioSaleDetailNew = () => {
                                 </select>
                               </div>
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">Role / Task</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Role / Task</label>
                                 <Input
                                   value={worker.role}
                                   onChange={(e) => handleUpdateWorker(worker.id, 'role', e.target.value)}
                                   placeholder="e.g., Main, Assistant"
-                                  className="bg-gray-900 border-gray-700 text-sm h-9"
+                                  className="bg-card border-border text-sm h-9"
                                 />
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="flex-1">
-                                <label className="text-xs text-gray-500 mb-1 block">Worker Cost (Rs)</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">Worker Cost (Rs)</label>
                                 {workerStagePaymentStatus[showWorkerEditModal] === 'paid' ? (
-                                  <div className="bg-gray-800/50 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-400 flex items-center gap-2">
+                                  <div className="bg-muted/50 border border-border rounded-md px-3 py-2 text-sm text-muted-foreground flex items-center gap-2">
                                     <Lock size={14} />
                                     {formatCurrency(worker.cost || 0)} — locked (worker paid)
                                   </div>
@@ -4993,7 +4993,7 @@ export const StudioSaleDetailNew = () => {
                                       handleUpdateWorker(worker.id, 'cost', raw === '' ? 0 : Number(raw));
                                     }}
                                     placeholder="0"
-                                    className="bg-gray-900 border-gray-700 text-sm h-9"
+                                    className="bg-card border-border text-sm h-9"
                                   />
                                 )}
                               </div>
@@ -5026,7 +5026,7 @@ export const StudioSaleDetailNew = () => {
 
               {/* Expected Completion Date – DD MMM YYYY display, YYYY-MM-DD value (Step B: mandatory) */}
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Expected Completion Date *</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Expected Completion Date *</label>
                 <DatePicker
                   value={editingWorkerData.expectedCompletionDate || ''}
                   onChange={(v) => setEditingWorkerData(prev => ({ ...prev, expectedCompletionDate: v }))}
@@ -5037,20 +5037,20 @@ export const StudioSaleDetailNew = () => {
 
               {/* Notes */}
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Notes (Optional)</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Notes (Optional)</label>
                 <textarea
                   value={editingWorkerData.notes}
                   onChange={(e) => setEditingWorkerData(prev => ({ ...prev, notes: e.target.value }))}
                   placeholder="Any special instructions..."
                   rows={3}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none"
+                  className="w-full bg-input-background border border-border rounded-lg text-foreground px-3 py-2 text-sm resize-none"
                 />
               </div>
 
               {/* ERP Info Message */}
               <div className="bg-blue-950/20 border border-blue-800/30 rounded-lg p-3">
                 <p className="text-xs text-blue-400 font-medium mb-1">💡 Worker Payment Handling</p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-muted-foreground">
                   Worker costs are recorded here. When task is completed, payment status becomes "Payable". 
                   Actual payments are handled in <strong className="text-blue-400">Accounting → Worker Payments</strong> module.
                 </p>
@@ -5060,7 +5060,7 @@ export const StudioSaleDetailNew = () => {
                 <Button
                   onClick={() => { setShowWorkerEditModal(null); setShowAllWorkersInAssignModal(false); }}
                   variant="outline"
-                  className="border-gray-700"
+                  className="border-border"
                 >
                   Cancel
                 </Button>
@@ -5099,34 +5099,34 @@ export const StudioSaleDetailNew = () => {
       {/* Send to Worker Modal */}
       {showSendModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-1">Send to Worker</h3>
-            <p className="text-sm text-gray-400 mb-4">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-foreground mb-1">Send to Worker</h3>
+            <p className="text-sm text-muted-foreground mb-4">
               Confirm send date (default today). Use yesterday for backdated entries.
             </p>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Send date</label>
+                <label className="text-sm text-muted-foreground mb-1 block">Send date</label>
                 <Input
                   type="date"
                   value={sendWorkflowDate}
                   onChange={(e) => setSendWorkflowDate(e.target.value)}
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Send note (optional)</label>
+                <label className="text-sm text-muted-foreground mb-1 block">Send note (optional)</label>
                 <textarea
                   value={sendNotes}
                   onChange={(e) => setSendNotes(e.target.value)}
                   placeholder="Record issues or instructions for the worker…"
                   rows={2}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none"
+                  className="w-full bg-input-background border border-border rounded-lg text-foreground px-3 py-2 text-sm resize-none"
                 />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowSendModal(null); setSendNotes(''); }} disabled={savingStage}>
+              <Button variant="outline" className="flex-1 border-border" onClick={() => { setShowSendModal(null); setSendNotes(''); }} disabled={savingStage}>
                 Cancel
               </Button>
               <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleSendConfirm} disabled={savingStage}>
@@ -5141,34 +5141,34 @@ export const StudioSaleDetailNew = () => {
       {/* Receive from Worker Modal */}
       {showReceiveModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-1">Receive from Worker</h3>
-            <p className="text-sm text-gray-400 mb-4">
-              Confirm receive date and optional note (saved as <span className="text-gray-300">[Receive]:</span>). Next, enter customer charge and worker payment.
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-foreground mb-1">Receive from Worker</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Confirm receive date and optional note (saved as <span className="text-muted-foreground">[Receive]:</span>). Next, enter customer charge and worker payment.
             </p>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Receive date</label>
+                <label className="text-sm text-muted-foreground mb-1 block">Receive date</label>
                 <Input
                   type="date"
                   value={receiveWorkflowDate}
                   onChange={(e) => setReceiveWorkflowDate(e.target.value)}
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Receive note (optional)</label>
+                <label className="text-sm text-muted-foreground mb-1 block">Receive note (optional)</label>
                 <textarea
                   value={receiveNotes}
                   onChange={(e) => setReceiveNotes(e.target.value)}
                   placeholder="Damage, delay, quality issues…"
                   rows={2}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none"
+                  className="w-full bg-input-background border border-border rounded-lg text-foreground px-3 py-2 text-sm resize-none"
                 />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowReceiveModal(null); setReceiveNotes(''); setReceiveWorkflowDate(todayDateInputValue()); }} disabled={savingStage}>
+              <Button variant="outline" className="flex-1 border-border" onClick={() => { setShowReceiveModal(null); setReceiveNotes(''); setReceiveWorkflowDate(todayDateInputValue()); }} disabled={savingStage}>
                 Cancel
               </Button>
               <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleReceiveConfirm} disabled={savingStage}>
@@ -5182,39 +5182,39 @@ export const StudioSaleDetailNew = () => {
 
       {settlementModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white mb-1">Worker settlement</h3>
-            <p className="text-sm text-gray-400 mb-4">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-foreground mb-1">Worker settlement</h3>
+            <p className="text-sm text-muted-foreground mb-4">
               {settlementModal.stepName} — {settlementModal.workerName}
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Charge customer (Rs)</label>
-                <Input type="number" min={0} value={settlementCustomerCharge} onChange={(e) => setSettlementCustomerCharge(e.target.value)} className="bg-gray-950 border-gray-700" />
+                <label className="text-sm text-muted-foreground mb-1 block">Charge customer (Rs)</label>
+                <Input type="number" min={0} value={settlementCustomerCharge} onChange={(e) => setSettlementCustomerCharge(e.target.value)} className="bg-input-background border-border" />
               </div>
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Pay worker (Rs)</label>
-                <Input type="number" min={0} value={settlementWorkerPay} onChange={(e) => setSettlementWorkerPay(e.target.value)} className="bg-gray-950 border-gray-700" />
+                <label className="text-sm text-muted-foreground mb-1 block">Pay worker (Rs)</label>
+                <Input type="number" min={0} value={settlementWorkerPay} onChange={(e) => setSettlementWorkerPay(e.target.value)} className="bg-input-background border-border" />
               </div>
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Remarks (optional)</label>
-                <textarea value={settlementRemarks} onChange={(e) => setSettlementRemarks(e.target.value)} rows={2} className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none" />
+                <label className="text-sm text-muted-foreground mb-1 block">Remarks (optional)</label>
+                <textarea value={settlementRemarks} onChange={(e) => setSettlementRemarks(e.target.value)} rows={2} className="w-full bg-input-background border border-border rounded-lg text-foreground px-3 py-2 text-sm resize-none" />
               </div>
-              <p className="text-xs text-gray-500">Select account to post payment:</p>
+              <p className="text-xs text-muted-foreground">Select account to post payment:</p>
               {settlementAccountsLoading ? (
-                <p className="text-sm text-gray-400 flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading…</p>
+                <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading…</p>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {settlementAccounts.map((a) => (
-                    <button key={a.id} type="button" disabled={savingStage} onClick={() => void handleSettlementConfirm(a.id)} className="w-full text-left px-3 py-2 rounded-lg border border-gray-700 hover:border-green-500 bg-gray-950">
-                      <span className="text-white text-sm">{a.name}</span>
-                      <span className="text-gray-500 text-xs ml-2">{a.code}</span>
+                    <button key={a.id} type="button" disabled={savingStage} onClick={() => void handleSettlementConfirm(a.id)} className="w-full text-left px-3 py-2 rounded-lg border border-border hover:border-green-500 bg-input-background">
+                      <span className="text-foreground text-sm">{a.name}</span>
+                      <span className="text-muted-foreground text-xs ml-2">{a.code}</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <Button variant="outline" className="w-full mt-4 border-gray-700" onClick={() => setSettlementModal(null)} disabled={savingStage}>Cancel</Button>
+            <Button variant="outline" className="w-full mt-4 border-border" onClick={() => setSettlementModal(null)} disabled={savingStage}>Cancel</Button>
           </div>
         </div>
       )}
@@ -5224,9 +5224,9 @@ export const StudioSaleDetailNew = () => {
         if (!step) return null;
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto">
+            <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto">
               <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-bold text-white">Stage detail</h3>
+                <h3 className="text-lg font-bold text-foreground">Stage detail</h3>
                 <Button variant="ghost" size="sm" onClick={() => setShowStageDetailModal(null)}>Close</Button>
               </div>
               <StudioStageTimeline
@@ -5279,9 +5279,9 @@ export const StudioSaleDetailNew = () => {
       {/* Task Customization Modal */}
       {showTaskCustomizationModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Edit2 size={18} className="text-purple-400" />
                 Customize Production Tasks
               </h3>
@@ -5298,7 +5298,7 @@ export const StudioSaleDetailNew = () => {
             <div className="space-y-6">
               {/* Standard Tasks */}
               <div>
-                <h4 className="text-sm font-semibold text-white mb-3">Standard Production Tasks</h4>
+                <h4 className="text-sm font-semibold text-foreground mb-3">Standard Production Tasks</h4>
                 <div className="space-y-2">
                   {availableTaskTemplates.map(task => {
                     const TaskIcon = task.icon;
@@ -5318,28 +5318,28 @@ export const StudioSaleDetailNew = () => {
                               "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
                               isSelected 
                                 ? "bg-blue-950/30 border-blue-600 ring-2 ring-blue-600/30" 
-                                : "bg-gray-950/50 border-gray-800 hover:border-gray-700"
+                                : "bg-muted/40 border-border hover:border-border"
                             )}
                           >
                             <div className={cn(
                               "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
-                              isSelected ? "bg-blue-500/20" : "bg-gray-800"
+                              isSelected ? "bg-blue-500/20" : "bg-muted"
                             )}>
-                              <TaskIcon size={18} className={isSelected ? "text-blue-400" : "text-gray-500"} />
+                              <TaskIcon size={18} className={isSelected ? "text-blue-400" : "text-muted-foreground"} />
                             </div>
                             <div className="flex-1">
                               <p className={cn(
                                 "text-sm font-medium",
-                                isSelected ? "text-white" : "text-gray-400"
+                                isSelected ? "text-foreground" : "text-muted-foreground"
                               )}>
                                 {task.name}
                               </p>
                             </div>
                             <div className={cn(
                               "h-5 w-5 rounded border-2 flex items-center justify-center",
-                              isSelected ? "bg-blue-600 border-blue-600" : "border-gray-700"
+                              isSelected ? "bg-blue-600 border-blue-600" : "border-border"
                             )}>
-                              {isSelected && <CheckCircle size={14} className="text-white" />}
+                              {isSelected && <CheckCircle size={14} className="text-foreground" />}
                             </div>
                           </div>
                         );
@@ -5349,7 +5349,7 @@ export const StudioSaleDetailNew = () => {
 
                   {/* Custom Tasks */}
                   <div>
-                    <h4 className="text-sm font-semibold text-white mb-3">Custom Tasks / Others</h4>
+                    <h4 className="text-sm font-semibold text-foreground mb-3">Custom Tasks / Others</h4>
                     
                     {/* Add Custom Task Input */}
                     <div className="flex gap-2 mb-3">
@@ -5357,7 +5357,7 @@ export const StudioSaleDetailNew = () => {
                         value={newCustomTaskName}
                         onChange={(e) => setNewCustomTaskName(e.target.value)}
                         placeholder="e.g., Quality Check, Packaging, Ironing..."
-                        className="flex-1 bg-gray-950 border-gray-700"
+                        className="flex-1 bg-input-background border-border"
                         onKeyPress={(e) => {
                           if (e.key === 'Enter') {
                             handleAddCustomTask();
@@ -5398,19 +5398,19 @@ export const StudioSaleDetailNew = () => {
                                 "flex items-center gap-3 p-3 rounded-lg border",
                                 isSelected 
                                   ? "bg-purple-950/30 border-purple-600" 
-                                  : "bg-gray-950/50 border-gray-800"
+                                  : "bg-muted/40 border-border"
                               )}
                             >
                               <div className={cn(
                                 "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
-                                isSelected ? "bg-purple-500/20" : "bg-gray-800"
+                                isSelected ? "bg-purple-500/20" : "bg-muted"
                               )}>
-                                <MoreHorizontal size={18} className={isSelected ? "text-purple-400" : "text-gray-500"} />
+                                <MoreHorizontal size={18} className={isSelected ? "text-purple-400" : "text-muted-foreground"} />
                               </div>
                               <div className="flex-1">
                                 <p className={cn(
                                   "text-sm font-medium",
-                                  isSelected ? "text-white" : "text-gray-400"
+                                  isSelected ? "text-foreground" : "text-muted-foreground"
                                 )}>
                                   {task.name}
                                 </p>
@@ -5426,10 +5426,10 @@ export const StudioSaleDetailNew = () => {
                                   }}
                                   className={cn(
                                     "h-5 w-5 rounded border-2 flex items-center justify-center",
-                                    isSelected ? "bg-purple-600 border-purple-600" : "border-gray-700"
+                                    isSelected ? "bg-purple-600 border-purple-600" : "border-border"
                                   )}
                                 >
-                                  {isSelected && <CheckCircle size={14} className="text-white" />}
+                                  {isSelected && <CheckCircle size={14} className="text-foreground" />}
                                 </button>
                                 <Button
                                   size="sm"
@@ -5448,9 +5448,9 @@ export const StudioSaleDetailNew = () => {
                         })}
                       </div>
                     ) : (
-                      <div className="text-center py-6 bg-gray-950/50 rounded-lg border border-dashed border-gray-700">
-                        <MoreHorizontal size={24} className="mx-auto text-gray-600 mb-2" />
-                        <p className="text-xs text-gray-500">No custom tasks added</p>
+                      <div className="text-center py-6 bg-muted/40 rounded-lg border border-dashed border-border">
+                        <MoreHorizontal size={24} className="mx-auto text-muted-foreground mb-2" />
+                        <p className="text-xs text-muted-foreground">No custom tasks added</p>
                       </div>
                     )}
                   </div>
@@ -5476,7 +5476,7 @@ export const StudioSaleDetailNew = () => {
                         })}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-500 mt-2">No tasks selected. Select at least one task to continue.</p>
+                      <p className="text-xs text-muted-foreground mt-2">No tasks selected. Select at least one task to continue.</p>
                     )}
                   </div>
 
@@ -5485,7 +5485,7 @@ export const StudioSaleDetailNew = () => {
                     <Button
                       onClick={() => setShowTaskCustomizationModal(false)}
                       variant="outline"
-                      className="flex-1 border-gray-700"
+                      className="flex-1 border-border"
                     >
                       Cancel
                     </Button>
@@ -5507,9 +5507,9 @@ export const StudioSaleDetailNew = () => {
       {/* Edit Tracking ID Modal */}
       {showTrackingModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Package size={18} className="text-blue-400" />
                 Update Tracking Details
               </h3>
@@ -5550,36 +5550,36 @@ export const StudioSaleDetailNew = () => {
 
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-800"></div>
+                  <div className="w-full border-t border-border"></div>
                 </div>
                 <div className="relative flex justify-center text-xs">
-                  <span className="bg-gray-900 px-2 text-gray-500">OR ENTER MANUALLY</span>
+                  <span className="bg-card px-2 text-muted-foreground">OR ENTER MANUALLY</span>
                 </div>
               </div>
 
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Tracking ID</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Tracking ID</label>
                 <Input
                   value={trackingData.trackingId}
                   onChange={(e) => setTrackingData(prev => ({ ...prev, trackingId: e.target.value }))}
                   placeholder="e.g., DHL-987654321"
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
 
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Tracking URL (Optional)</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Tracking URL (Optional)</label>
                 <Input
                   value={trackingData.trackingUrl}
                   onChange={(e) => setTrackingData(prev => ({ ...prev, trackingUrl: e.target.value }))}
                   placeholder="https://www.courier.com/track?id=..."
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-input-background border-border"
                 />
               </div>
 
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-3">
-                <p className="text-xs text-gray-500">
-                  <strong className="text-gray-400">Tip:</strong> Use the scanner for quick entry, or paste the tracking link from your courier's email.
+              <div className="bg-input-background border border-border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground">
+                  <strong className="text-muted-foreground">Tip:</strong> Use the scanner for quick entry, or paste the tracking link from your courier's email.
                 </p>
               </div>
 
@@ -5587,7 +5587,7 @@ export const StudioSaleDetailNew = () => {
                 <Button
                   onClick={() => setShowTrackingModal(null)}
                   variant="outline"
-                  className="flex-1 border-gray-700"
+                  className="flex-1 border-border"
                 >
                   Cancel
                 </Button>
@@ -5611,27 +5611,27 @@ export const StudioSaleDetailNew = () => {
           if (!open) setStudioProductNameConflict(null);
         }}
       >
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white max-w-lg max-h-[85vh] flex flex-col">
+        <AlertDialogContent className="bg-card border-border text-foreground max-w-lg max-h-[85vh] flex flex-col">
           <AlertDialogHeader>
             <AlertDialogTitle>Similar products found</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-muted-foreground">
               Your label matches existing catalog names. Choose one to link to this invoice line, or create a new catalog product anyway.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {studioProductNameConflict ? (
             <>
-              <p className="text-sm text-gray-300 -mt-1 mb-2">
-                Typed label: <span className="font-medium text-white">&quot;{studioProductNameConflict.typedName}&quot;</span>
+              <p className="text-sm text-muted-foreground -mt-1 mb-2">
+                Typed label: <span className="font-medium text-foreground">&quot;{studioProductNameConflict.typedName}&quot;</span>
               </p>
               <div className="overflow-y-auto max-h-[min(40vh,280px)] space-y-2 pr-1">
                 {studioProductNameConflict.candidates.map((c) => (
                   <div
                     key={c.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-gray-700 bg-gray-950 p-3"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-border bg-input-background p-3"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-white truncate">{c.name}</p>
-                      <p className="text-xs text-gray-500 font-mono">{c.sku || '—'}</p>
+                      <p className="font-medium text-foreground truncate">{c.name}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{c.sku || '—'}</p>
                     </div>
                     <Button
                       type="button"
@@ -5657,7 +5657,7 @@ export const StudioSaleDetailNew = () => {
             </>
           ) : null}
           <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between">
-            <AlertDialogCancel className="border-gray-700 m-0">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border m-0">Cancel</AlertDialogCancel>
             <Button
               type="button"
               variant="outline"
@@ -5676,7 +5676,7 @@ export const StudioSaleDetailNew = () => {
 
       {/* Save confirmation: Yes → Studio Dashboard, No → stay on page */}
       <AlertDialog open={showSaveConfirmDialog} onOpenChange={setShowSaveConfirmDialog}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Changes save ho gaye hain</AlertDialogTitle>
             <AlertDialogDescription>
@@ -5684,7 +5684,7 @@ export const StudioSaleDetailNew = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowSaveConfirmDialog(false)} className="border-gray-700">
+            <AlertDialogCancel onClick={() => setShowSaveConfirmDialog(false)} className="border-border">
               No — stay on page
             </AlertDialogCancel>
             <AlertDialogAction
@@ -5707,7 +5707,7 @@ export const StudioSaleDetailNew = () => {
           setPendingLeaveTarget(null);
         }
       }}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
             <AlertDialogDescription>
@@ -5715,7 +5715,7 @@ export const StudioSaleDetailNew = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-            <AlertDialogCancel onClick={() => { setShowUnsavedWarning(false); setPendingLeaveTarget(null); }} className="border-gray-700 order-3 sm:order-1">
+            <AlertDialogCancel onClick={() => { setShowUnsavedWarning(false); setPendingLeaveTarget(null); }} className="border-border order-3 sm:order-1">
               Stay
             </AlertDialogCancel>
             <Button
@@ -5747,7 +5747,7 @@ export const StudioSaleDetailNew = () => {
 
       {/* Reopen task: Mark completed step as In Progress */}
       <AlertDialog open={!!reopenStepId} onOpenChange={(open) => !open && setReopenStepId(null)}>
-        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+        <AlertDialogContent className="bg-card border-border text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Task reopen karein?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -5755,7 +5755,7 @@ export const StudioSaleDetailNew = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setReopenStepId(null)} className="border-gray-700">
+            <AlertDialogCancel onClick={() => setReopenStepId(null)} className="border-border">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction

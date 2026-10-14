@@ -4,6 +4,8 @@ import type { User } from '../../types';
 import { getAllCustomersWithBalance, type CustomerWithBalance } from '../../api/customerLedger';
 import { MobilePaymentSheet, type MobilePaymentSheetSubmitPayload } from '../shared/MobilePaymentSheet';
 import { useRecordOnAccountCustomerPayment } from '../../hooks/useRecordOnAccountCustomerPayment';
+import { finalizePaymentAttachments } from '../../lib/finalizePaymentAttachments';
+import type { ReceiptOcrRouteSeed } from '../../lib/ocr/receiptOcrRouteSeed';
 
 interface CustomerPaymentFlowProps {
   onBack: () => void;
@@ -12,6 +14,10 @@ interface CustomerPaymentFlowProps {
   companyId?: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
+  /** Prefill from Duplicate — select this customer when list loads. */
+  initialContactId?: string | null;
+  /** Prefill from Scan Receipt hub. */
+  ocrSeed?: ReceiptOcrRouteSeed | null;
 }
 
 export function CustomerPaymentFlow({
@@ -21,6 +27,8 @@ export function CustomerPaymentFlow({
   companyId,
   branchId,
   onViewLedger,
+  initialContactId,
+  ocrSeed,
 }: CustomerPaymentFlowProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<CustomerWithBalance[]>([]);
@@ -38,14 +46,19 @@ export function CustomerPaymentFlow({
     setLoading(true);
     getAllCustomersWithBalance(companyId, branchId ?? null).then(({ data, error }) => {
       if (cancelled) return;
-      setCustomers(data || []);
+      const list = data || [];
+      setCustomers(list);
       setLoadError(error);
       setLoading(false);
+      if (initialContactId) {
+        const match = list.find((c) => c.id === initialContactId);
+        if (match) setSelectedCustomer(match);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId]);
+  }, [companyId, branchId, initialContactId]);
 
   const filteredCustomers = customers.filter(
     (c) =>
@@ -59,42 +72,64 @@ export function CustomerPaymentFlow({
     }
     const { success, error, paymentId, referenceNumber } = await submit({
       companyId,
-      branchId: branchId ?? null,
+      branchId: payload.branchId ?? branchId ?? null,
       contactId: selectedCustomer.id,
       contactName: selectedCustomer.name,
       amount: payload.amount,
       accountId: payload.accountId,
       paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
       paymentDate: payload.paymentDate,
+      paymentAt: payload.paymentAt,
       notes: payload.notes || null,
       bankTraceId: payload.reference?.trim() || null,
+      paymentAccountName: payload.accountName || null,
       createdBy: user.id ?? null,
     });
+    let attachmentWarning: string | null = null;
+    if (success && paymentId && payload.attachments.length > 0) {
+      const fin = await finalizePaymentAttachments({
+        companyId,
+        storageSegment: selectedCustomer.id,
+        paymentId,
+        files: payload.attachments,
+      });
+      attachmentWarning = fin.attachmentWarning;
+    }
     return {
       success,
       error: error ?? null,
       paymentId: paymentId ?? null,
       referenceNumber: referenceNumber ?? null,
       partyAccountName: selectedCustomer.name ? `Receivable — ${selectedCustomer.name}` : null,
+      attachmentWarning,
     };
   };
 
   if (selectedCustomer && companyId) {
+    const ocrAmount = ocrSeed?.amount && ocrSeed.amount > 0 ? ocrSeed.amount : undefined;
+    const due = Math.max(0, selectedCustomer.balance);
     return (
       <MobilePaymentSheet
         mode="receive"
         companyId={companyId}
         branchId={branchId ?? null}
         userId={user.id}
+        userRole={user.role}
+        profileId={user.profileId ?? null}
         partyName={selectedCustomer.name}
         partyPhone={selectedCustomer.phone}
-        outstandingAmount={Math.max(0, selectedCustomer.balance)}
-        initialAmount={Math.max(0, selectedCustomer.balance) || undefined}
+        outstandingAmount={due}
+        initialAmount={ocrAmount ?? (due || undefined)}
         allowOverpayment
         title="Receive Payment from Customer"
         subtitle="On-account receipt (updates customer AR)"
         partyKindLabel="CUSTOMER"
         submitLabel="Receive Payment"
+        defaultPaymentNotes={ocrSeed?.notes ?? null}
+        initialReference={ocrSeed?.reference ?? null}
+        initialPaymentDate={ocrSeed?.date ?? null}
+        initialPaymentTime={ocrSeed?.time ?? null}
+        initialAttachmentFiles={ocrSeed?.attachmentFiles?.length ? ocrSeed.attachmentFiles : null}
         onClose={() => setSelectedCustomer(null)}
         onSuccess={onComplete}
         onSubmit={handleSubmit}

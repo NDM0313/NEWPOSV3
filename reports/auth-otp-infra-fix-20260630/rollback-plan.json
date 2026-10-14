@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-06-30T11:25:00.000Z",
+  "backup_paths": {
+    "env": "/root/supabase/docker/.env.bak.auth-otp-infra-20260630T112048Z",
+    "compose": "/root/supabase/docker/docker-compose.yml.bak.auth-otp-infra-20260630T112048Z"
+  },
+  "variables_to_restore_if_changed": [
+    "ENABLE_EMAIL_AUTOCONFIRM",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASS",
+    "SMTP_ADMIN_EMAIL",
+    "SMTP_SENDER_NAME"
+  ],
+  "pre_change_values_masked": {
+    "ENABLE_EMAIL_AUTOCONFIRM": "true",
+    "SMTP_HOST": "supabase-mail",
+    "SMTP_PORT": "2500",
+    "SMTP_USER": "fake_mail_user",
+    "SMTP_PASS": "***MASKED***",
+    "SMTP_ADMIN_EMAIL": "admin@example.com",
+    "SMTP_SENDER_NAME": "fake_sender"
+  },
+  "restore_commands": [
+    "cp /root/supabase/docker/.env.bak.auth-otp-infra-20260630T112048Z /root/supabase/docker/.env",
+    "cd /root/supabase/docker && docker compose up -d auth"
+  ],
+  "rollback_validation": [
+    "docker inspect supabase-auth --format '{{.State.Health.Status}}' => healthy",
+    "docker exec supabase-auth printenv GOTRUE_MAILER_AUTOCONFIRM => true",
+    "docker exec supabase-auth printenv GOTRUE_SMTP_HOST => supabase-mail",
+    "npm run monitor:three-company-unified-ledger => PASS"
+  ],
+  "rollback_behavior_note": "Restores autoconfirm=true and fake/local SMTP — signup returns immediate session again; verification emails not delivered to Gmail"
+}

@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-06-30T06:52:00.000Z",
+  "head": "a836f83a0218042f3a4eb19a45c3a1d501c9cb9f",
+  "tests": {
+    "test_unified_ledger": { "command": "npm run test:unified-ledger", "pass": 298, "fail": 0, "result": "PASS" },
+    "test_unit": { "command": "npm run test:unit", "pass": 122, "fail": 0, "result": "PASS" },
+    "build": { "command": "npm run build", "result": "PASS" }
+  },
+  "overall": "PASS"
+}

@@ -136,7 +136,7 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
+      <div className="flex items-center justify-center h-full text-muted-foreground">
         Loading purchase history...
       </div>
     );
@@ -144,7 +144,7 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
 
   if (salesWithItems.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
+      <div className="flex items-center justify-center h-full text-muted-foreground">
         No purchase history found
       </div>
     );
@@ -154,19 +154,19 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
     <div className="overflow-x-auto p-6">
       <div className="space-y-6">
         {salesWithItems.map((sale) => (
-          <div key={sale.saleId} className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div key={sale.saleId} className="bg-card border border-border rounded-lg overflow-hidden">
             {/* Invoice Header */}
-            <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
+            <div className="bg-muted border-b border-border px-4 py-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold text-white">Invoice: {sale.invoiceNo}</div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="font-semibold text-foreground">Invoice: {sale.invoiceNo}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
                     Date: {format(new Date(sale.invoiceDate), 'dd MMM yyyy')}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-gray-400">Invoice Total</div>
-                  <div className="font-semibold text-white">
+                  <div className="text-xs text-muted-foreground">Invoice Total</div>
+                  <div className="font-semibold text-foreground">
                     {formatCurrency(sale.invoiceTotal)}
                   </div>
                 </div>
@@ -175,8 +175,8 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
 
             {/* Items Table - 1:1 with sale_items: Variation, Packing, Qty, Unit separate */}
             <table className="w-full">
-              <thead className="bg-gray-900 border-b border-gray-800">
-                <tr className="text-xs font-semibold text-gray-400 uppercase">
+              <thead className="bg-card border-b border-border">
+                <tr className="text-xs font-semibold text-muted-foreground uppercase">
                   <th className="px-4 py-3 text-left">Product Name</th>
                   <th className="px-4 py-3 text-left">Variation</th>
                   <th className="px-4 py-3 text-left">Packing</th>
@@ -189,7 +189,7 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
               <tbody>
                 {sale.items.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-4 text-center text-gray-400 text-sm">
+                    <td colSpan={7} className="px-4 py-4 text-center text-muted-foreground text-sm">
                       No items found
                     </td>
                   </tr>
@@ -212,16 +212,16 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
                         : '—';
                     const unit = item.unit ?? 'piece';
                     return (
-                      <tr key={item.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                        <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-300">{variationText}</td>
-                        <td className="px-4 py-3 text-sm text-gray-300">{packingText}</td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-300">{Number(item.quantity).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-300">{unit}</td>
-                        <td className="px-4 py-3 text-sm text-right text-gray-300">
+                      <tr key={item.id} className="border-b border-border hover:bg-muted/50">
+                        <td className="px-4 py-3 text-sm text-foreground">{item.product_name}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{variationText}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{packingText}</td>
+                        <td className="px-4 py-3 text-sm text-right text-muted-foreground">{Number(item.quantity).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{unit}</td>
+                        <td className="px-4 py-3 text-sm text-right text-muted-foreground">
                           {formatCurrency(Number(item.unit_price))}
                         </td>
-                        <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">
+                        <td className="px-4 py-3 text-sm text-right text-[var(--erp-money-positive)] font-semibold">
                           {formatCurrency(Number(item.total))}
                         </td>
                       </tr>

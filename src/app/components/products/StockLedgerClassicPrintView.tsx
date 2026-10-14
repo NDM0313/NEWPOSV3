@@ -9,10 +9,18 @@ import React, { useState, useMemo } from 'react';
 import { Download, Printer, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { formatStockReference } from '@/app/utils/formatters';
+import { formatQty } from '@/app/utils/quantity';
 import { toast } from 'sonner';
 import { useSettings } from '@/app/context/SettingsContext';
 import { ClassicPrintBase } from '../shared/ClassicPrintBase';
 import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
+import {
+  isPurchaseReferenceType,
+  isSaleReferenceType,
+  resolveMovementInvoiceNo,
+  resolveMovementPartyName,
+  type StockMovementEnrichment,
+} from '@/app/lib/stockMovementReferenceEnrichment';
 
 export interface StockMovementForPrint {
   id: string;
@@ -44,8 +52,7 @@ export interface StockLedgerClassicPrintViewProps {
   runningBalance: Map<string, number>;
   totals: TotalsForPrint;
   getMovementTypeLabel: (type: string) => string;
-  getSaleById?: (id: string) => { invoiceNo?: string } | null;
-  getPurchaseById?: (id: string) => { purchaseNo?: string; po_no?: string } | null;
+  refEnrichment?: StockMovementEnrichment | null;
   onClose: () => void;
   /** Initial orientation when opening print view */
   initialOrientation?: 'portrait' | 'landscape';
@@ -60,8 +67,7 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
   runningBalance,
   totals,
   getMovementTypeLabel,
-  getSaleById,
-  getPurchaseById,
+  refEnrichment,
   onClose,
   initialOrientation = 'landscape',
 }) => {
@@ -113,7 +119,7 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
       </Button>
       <Button
         onClick={onClose}
-        className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+        className="bg-gray-600 text-foreground px-4 py-2 rounded-lg hover:bg-muted"
       >
         <X size={16} className="mr-2" />
         Close
@@ -187,21 +193,21 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
         <div className="classic-print-summary-grid" style={{ display: 'grid', gridTemplateColumns: orientation === 'portrait' ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '16px', marginTop: '12px' }}>
           <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
             <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Total Purchased</div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{totals.totalPurchased.toFixed(2)}</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{formatQty(totals.totalPurchased)}</div>
           </div>
           <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
             <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Total Sold</div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{totals.totalSold.toFixed(2)}</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{formatQty(totals.totalSold)}</div>
           </div>
           <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
             <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Adjustments</div>
             <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>
-              {totals.totalAdjustments >= 0 ? '+' : ''}{totals.totalAdjustments.toFixed(2)}
+              {totals.totalAdjustments >= 0 ? '+' : ''}{formatQty(totals.totalAdjustments)}
             </div>
           </div>
           <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
             <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Current Stock</div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{totals.currentBalance.toFixed(2)}</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{formatQty(totals.currentBalance)}</div>
           </div>
         </div>
       </div>
@@ -220,6 +226,7 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
               {enablePacking && <th className="text-left">Unit</th>}
               <th className="text-right">Balance</th>
               <th>Reference</th>
+              <th>Party</th>
               <th className="notes-col">Notes</th>
             </tr>
           </thead>
@@ -230,36 +237,31 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
               const pieceChange = movement.piece_change ?? 0;
               const unit = movement.unit || 'pcs';
               const balance = runningBalance.get(movement.id) ?? 0;
-              const sale =
-                movement.reference_type &&
-                movement.reference_id &&
-                String(movement.reference_type).toLowerCase().includes('sale')
-                  ? getSaleById?.(movement.reference_id)
-                  : null;
-              const purchase =
-                movement.reference_type &&
-                movement.reference_id &&
-                String(movement.reference_type).toLowerCase().includes('purchase')
-                  ? getPurchaseById?.(movement.reference_id)
-                  : null;
+              const enrichedInvoiceNo = resolveMovementInvoiceNo(refEnrichment, movement);
               const refNo = formatStockReference({
                 referenceType: movement.reference_type,
                 referenceId: movement.reference_id,
                 movementId: movement.id,
-                saleInvoiceNo: sale?.invoiceNo,
-                purchaseInvoiceNo: purchase?.purchaseNo ?? purchase?.po_no,
+                saleInvoiceNo: isSaleReferenceType(movement.reference_type)
+                  ? enrichedInvoiceNo
+                  : undefined,
+                purchaseInvoiceNo: isPurchaseReferenceType(movement.reference_type)
+                  ? enrichedInvoiceNo
+                  : undefined,
                 notes: movement.notes,
               });
+              const party = resolveMovementPartyName(refEnrichment, movement) || '—';
               return (
                 <tr key={movement.id}>
                   <td>{new Date(movement.created_at).toLocaleString()}</td>
                   <td>{getMovementTypeLabel(movement.movement_type || movement.type || '')}</td>
-                  <td className="text-right">{qty >= 0 ? '+' : ''}{qty.toFixed(2)}</td>
+                  <td className="text-right">{qty >= 0 ? '+' : ''}{formatQty(qty)}</td>
                   {enablePacking && <td className="text-right">{boxChange >= 0 ? '+' : ''}{Math.round(Number(boxChange))}</td>}
                   {enablePacking && <td className="text-right">{pieceChange >= 0 ? '+' : ''}{Math.round(Number(pieceChange))}</td>}
                   {enablePacking && <td className="text-left">{unit}</td>}
-                  <td className="text-right">{balance.toFixed(2)}</td>
+                  <td className="text-right">{formatQty(balance)}</td>
                   <td>{refNo}</td>
+                  <td>{party}</td>
                   <td style={{ maxWidth: '200px', wordBreak: 'break-word' }}>{movement.notes || '—'}</td>
                 </tr>
               );

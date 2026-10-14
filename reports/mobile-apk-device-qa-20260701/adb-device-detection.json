@@ -1,0 +1,11 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "adb-device-detection",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "status": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE",
+  "adb_devices_connected": 0,
+  "device_model": null,
+  "android_version": null,
+  "manufacturer": null,
+  "manual_install_instructions": "Enable USB debugging on Android test device, connect via USB, accept debugging prompt, then run: adb devices && adb install -r erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk"
+}

@@ -1,0 +1,20 @@
+{
+  "status": "DIN BRIDAL 1100 OPTION C APPLY COMPLETE",
+  "approvalConfirmed": true,
+  "correctionJes": ["JV-000209", "JV-000210"],
+  "control1100": { "before": -136500, "after": 0 },
+  "arCus0056": { "before": 113750, "after": 35000, "creditMovement": 78750 },
+  "arCus0012": { "before": 72750, "after": 15000, "creditMovement": 57750 },
+  "tests": {
+    "unifiedLedger": "303/303 PASS",
+    "unit": "122/122 PASS",
+    "build": "PASS"
+  },
+  "monitoring": {
+    "preApply": "PASS",
+    "postApply": "FAIL (TB golden drift +136500 expected)"
+  },
+  "deploy": "NOT DEPLOYED",
+  "rollbackPlan": "reports/din-bridal-1100-option-c-apply-20260630/rollback-plan.md",
+  "nextAction": "BS/P&L finance approval pack — no loader swap without signed approval"
+}

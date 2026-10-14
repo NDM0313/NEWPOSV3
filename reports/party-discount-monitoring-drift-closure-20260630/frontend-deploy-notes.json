@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-30T08:56:00.000Z",
+  "deploy_type": "frontend-only",
+  "script": "deploy/vps-build-erp-only.sh",
+  "deployed_commit": "a83522f758a3a55f0faffc4b35787cdd889547f2",
+  "deploy_start_utc": "2026-06-30T08:52:32Z",
+  "deploy_end_utc": "2026-06-30T08:55:57Z",
+  "deploy_exit_code": 1,
+  "deploy_note": "Docker recreate race during force-recreate; erp-frontend verified healthy at a83522f7 shortly after",
+  "container_health": "healthy",
+  "url": "https://erp.dincouture.pk",
+  "migrations_run": false,
+  "feature_flags_changed": false,
+  "gl_mutations": false,
+  "cash_flow_loader_swap": false
+}

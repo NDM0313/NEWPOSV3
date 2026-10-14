@@ -1,0 +1,14 @@
+{
+  "stability_window_start": "2026-07-01",
+  "stability_sample_label": "Day 8 retry 1",
+  "run_local_datetime": "2026-07-02T17:31:22+05:00",
+  "calendar_days_elapsed_since_window_start": 1,
+  "day8_original_classification": "STABILITY_SAMPLE_FAIL",
+  "day8_retry1_classification": "STABILITY_SAMPLE_RETRY_PASS",
+  "monitoring_artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T12-31-57-841Z.json",
+  "roznamcha_reached": true,
+  "production_mutation": false,
+  "monitoring_harness_changed": false,
+  "r8_blocked": true,
+  "same_day_samples_do_not_shorten_r8_window": true
+}

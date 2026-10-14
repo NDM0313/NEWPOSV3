@@ -1,0 +1,18 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "git-push-result",
+  "generated_at": "2026-07-01T09:35:00.000Z",
+  "commit_message": "docs(accounting): close bs pl swap stability and mobile readiness",
+  "head_before_push": "42459bde8322eb95869d6bf4eaa09e982f448282",
+  "evidence_commit": "ea02cedb",
+  "origin_main_after_push": "ea02cedb",
+  "push_status": "SUCCESS",
+  "branch": "main",
+  "prior_bs_pl_commits": {
+    "db499995": "feat(accounting): wire bs pl unified main loaders",
+    "98d2f4c8": "docs(accounting): complete bs pl unified loader swap evidence",
+    "42459bde": "docs(accounting): add bs pl swap push verification"
+  },
+  "staged_unrelated": false,
+  "status": "PASS"
+}

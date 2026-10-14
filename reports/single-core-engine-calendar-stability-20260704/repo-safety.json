@@ -1,0 +1,9 @@
+{
+  "runLocalDateTime": "2026-07-04T01:10:45+05:00",
+  "branch": "main",
+  "headStart": "e958dff2",
+  "failedArtifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-03T19-14-05-255Z.json",
+  "finalArtifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-03T20-00-55-685Z.json",
+  "stagedCredentials": false,
+  "stagedApkAab": false
+}

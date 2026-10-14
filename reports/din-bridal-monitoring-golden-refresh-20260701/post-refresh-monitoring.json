@@ -1,0 +1,23 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "post-refresh-monitoring",
+  "generated_at": "2026-07-01T14:28:44.988Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T14-18-15-475Z.json",
+  "overall": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "din_bridal_actuals": {
+    "trial_balance_total_pkr": 22390400,
+    "roznamcha_cash_in_pkr": 2116850,
+    "roznamcha_cash_out_pkr": 917780,
+    "roznamcha_closing_pkr": 1199070,
+    "mr_rehan_closing_pkr": 530000
+  },
+  "admin_compare_din_china": "9/9 PASS"
+}

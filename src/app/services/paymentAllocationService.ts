@@ -731,6 +731,80 @@ export async function rebuildManualSupplierFifoAllocations(params: {
   });
 }
 
+/**
+ * When open purchase bills exist, re-FIFO this supplier's non-voided
+ * `manual_payment` advances that still have unapplied remainder (oldest first)
+ * so credit settles open dues. Triggers recalc via payment_allocations.
+ */
+export async function applyUnappliedManualSupplierPaymentsToOpenBills(
+  companyId: string,
+  supplierId: string,
+): Promise<{ processed: number; applied: boolean }> {
+  if (!companyId || !supplierId) return { processed: 0, applied: false };
+
+  const open = await fetchOpenPurchasesForFifo(companyId, supplierId);
+  if (!open.length) {
+    logSupplierTrace({
+      phase: 'apply_unapplied_skip',
+      company_id: companyId,
+      supplier_id: supplierId,
+      reason: 'no_open_bills',
+    });
+    return { processed: 0, applied: false };
+  }
+
+  const { data: payments, error } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('contact_id', supplierId)
+    .eq('reference_type', 'manual_payment')
+    .is('voided_at', null)
+    .order('payment_date', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  const rows = payments || [];
+  if (!rows.length) {
+    logSupplierTrace({
+      phase: 'apply_unapplied_skip',
+      company_id: companyId,
+      supplier_id: supplierId,
+      reason: 'no_manual_payments',
+    });
+    return { processed: 0, applied: false };
+  }
+
+  logSupplierTrace({
+    phase: 'apply_unapplied_start',
+    company_id: companyId,
+    supplier_id: supplierId,
+    open_bills: open.length,
+    payments: rows.length,
+  });
+
+  let processed = 0;
+  for (const row of rows) {
+    const paymentId = String((row as { id?: string }).id || '');
+    if (!paymentId) continue;
+    const summary = await getManualSupplierAllocationSummary(paymentId);
+    const unapplied = summary ? Number(summary.unapplied) || 0 : Number.POSITIVE_INFINITY;
+    // No summary (race) or leftover credit → rebuild so FIFO can hit newly opened bills.
+    if (unapplied <= 0.01) continue;
+    await rebuildManualSupplierFifoAllocations({ paymentId });
+    processed += 1;
+  }
+
+  logSupplierTrace({
+    phase: 'apply_unapplied_done',
+    company_id: companyId,
+    supplier_id: supplierId,
+    processed,
+  });
+
+  return { processed, applied: processed > 0 };
+}
+
 export type ManualSupplierAllocationSummary = {
   paymentTotal: number;
   allocatedTotal: number;

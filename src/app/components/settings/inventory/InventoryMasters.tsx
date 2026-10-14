@@ -290,7 +290,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
   return (
     <div className="space-y-6">
       {/* Sub-tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-4">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-4">
         {SUB_TABS.map((tab) => (
           <button
             key={tab.id}
@@ -298,8 +298,8 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
             className={cn(
               'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
               activeSubTab === tab.id
-                ? 'bg-teal-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                ? 'bg-teal-600 text-foreground'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             )}
           >
             <tab.icon size={16} />
@@ -315,19 +315,19 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
       {activeSubTab === 'units' && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h4 className="text-white font-semibold">Units</h4>
+            <h4 className="text-foreground font-semibold">Units</h4>
             <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-500" onClick={() => openAdd('unit')}>
               <Plus size={14} /> Add Unit
             </Button>
           </div>
           {loading ? (
-            <div className="flex items-center gap-2 text-gray-400 py-4">
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
               <Loader2 size={18} className="animate-spin" /> Loading...
             </div>
           ) : (
-            <div className="border border-gray-800 rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-950 text-gray-400 text-left">
+                <thead className="bg-input-background text-muted-foreground text-left">
                   <tr>
                     <th className="p-3">Name</th>
                     <th className="p-3">Short Code</th>
@@ -336,25 +336,25 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                     <th className="p-3 w-24">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {units.map((u) => (
-                    <tr key={u.id} className={cn("hover:bg-gray-800/30", u.is_default && "bg-blue-500/5")}>
+                    <tr key={u.id} className={cn("hover:bg-accent/30", u.is_default && "bg-blue-500/5")}>
                       <td className="p-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-white">{u.name}</span>
+                          <span className="text-foreground">{u.name}</span>
                           {u.is_default && (
                             <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">Default</Badge>
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-gray-400 font-mono">{u.short_code || u.symbol || '—'}</td>
+                      <td className="p-3 text-muted-foreground font-mono">{u.short_code || u.symbol || '—'}</td>
                       <td className="p-3">
-                        <Badge className={u.allow_decimal ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
+                        <Badge className={u.allow_decimal ? 'bg-green-500/20 text-[var(--erp-money-positive)]' : 'bg-gray-500/20 text-muted-foreground'}>
                           {u.allow_decimal ? 'Yes' : 'No'}
                         </Badge>
                       </td>
                       <td className="p-3">
-                        <Badge className={u.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
+                        <Badge className={u.is_active ? 'bg-green-500/20 text-[var(--erp-money-positive)]' : 'bg-gray-500/20 text-muted-foreground'}>
                           {u.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
@@ -362,7 +362,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="text-gray-400 h-8" 
+                          className="text-muted-foreground h-8" 
                           onClick={() => openEdit(u, 'unit')}
                           disabled={u.is_default}
                           title={u.is_default ? 'Default unit cannot be edited' : 'Edit unit'}
@@ -372,7 +372,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                         <Button
                           variant="ghost"
                           size="sm"
-                          className={u.is_active ? 'text-amber-400 h-8' : 'text-green-400 h-8'}
+                          className={u.is_active ? 'text-amber-400 h-8' : 'text-[var(--erp-money-positive)] h-8'}
                           onClick={() => toggleActive('unit', u, !u.is_active)}
                           disabled={u.is_default}
                           title={u.is_default ? 'Default unit cannot be disabled' : u.is_active ? 'Disable unit' : 'Enable unit'}
@@ -406,7 +406,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                 </tbody>
               </table>
               {units.length === 0 && (
-                <div className="p-8 text-center text-gray-500 text-sm">No units. Add one to use in products.</div>
+                <div className="p-8 text-center text-muted-foreground text-sm">No units. Add one to use in products.</div>
               )}
             </div>
           )}
@@ -416,42 +416,42 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
       {activeSubTab === 'categories' && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h4 className="text-white font-semibold">Categories (parent level)</h4>
+            <h4 className="text-foreground font-semibold">Categories (parent level)</h4>
             <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-500" onClick={() => openAdd('category')}>
               <Plus size={14} /> Add Category
             </Button>
           </div>
           {loading ? (
-            <div className="flex items-center gap-2 text-gray-400 py-4">
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
               <Loader2 size={18} className="animate-spin" /> Loading...
             </div>
           ) : (
-            <div className="border border-gray-800 rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-950 text-gray-400 text-left">
+                <thead className="bg-input-background text-muted-foreground text-left">
                   <tr>
                     <th className="p-3">Name</th>
                     <th className="p-3">Status</th>
                     <th className="p-3 w-24">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {categories.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-800/30">
-                      <td className="p-3 text-white">{c.name}</td>
+                    <tr key={c.id} className="hover:bg-accent/30">
+                      <td className="p-3 text-foreground">{c.name}</td>
                       <td className="p-3">
-                        <Badge className={c.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
+                        <Badge className={c.is_active ? 'bg-green-500/20 text-[var(--erp-money-positive)]' : 'bg-gray-500/20 text-muted-foreground'}>
                           {c.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
                       <td className="p-3 flex gap-1">
-                        <Button variant="ghost" size="sm" className="text-gray-400 h-8" onClick={() => openEdit(c, 'category')}>
+                        <Button variant="ghost" size="sm" className="text-muted-foreground h-8" onClick={() => openEdit(c, 'category')}>
                           <Edit size={14} />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className={c.is_active ? 'text-amber-400 h-8' : 'text-green-400 h-8'}
+                          className={c.is_active ? 'text-amber-400 h-8' : 'text-[var(--erp-money-positive)] h-8'}
                           onClick={() => toggleActive('category', c, !c.is_active)}
                         >
                           {c.is_active ? <PowerOff size={14} /> : <Power size={14} />}
@@ -462,7 +462,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                 </tbody>
               </table>
               {categories.length === 0 && (
-                <div className="p-8 text-center text-gray-500 text-sm">No categories. Add one to link products.</div>
+                <div className="p-8 text-center text-muted-foreground text-sm">No categories. Add one to link products.</div>
               )}
             </div>
           )}
@@ -472,19 +472,19 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
       {activeSubTab === 'sub-categories' && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h4 className="text-white font-semibold">Sub-Categories (linked to category)</h4>
+            <h4 className="text-foreground font-semibold">Sub-Categories (linked to category)</h4>
             <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-500" onClick={() => openAdd('sub-category')}>
               <Plus size={14} /> Add Sub-Category
             </Button>
           </div>
           {loading ? (
-            <div className="flex items-center gap-2 text-gray-400 py-4">
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
               <Loader2 size={18} className="animate-spin" /> Loading...
             </div>
           ) : (
-            <div className="border border-gray-800 rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-950 text-gray-400 text-left">
+                <thead className="bg-input-background text-muted-foreground text-left">
                   <tr>
                     <th className="p-3">Name</th>
                     <th className="p-3">Category</th>
@@ -492,24 +492,24 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                     <th className="p-3 w-24">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {subCategories.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-800/30">
-                      <td className="p-3 text-white">{c.name}</td>
-                      <td className="p-3 text-gray-400">{getCategoryName(c.parent_id!)}</td>
+                    <tr key={c.id} className="hover:bg-accent/30">
+                      <td className="p-3 text-foreground">{c.name}</td>
+                      <td className="p-3 text-muted-foreground">{getCategoryName(c.parent_id!)}</td>
                       <td className="p-3">
-                        <Badge className={c.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
+                        <Badge className={c.is_active ? 'bg-green-500/20 text-[var(--erp-money-positive)]' : 'bg-gray-500/20 text-muted-foreground'}>
                           {c.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
                       <td className="p-3 flex gap-1">
-                        <Button variant="ghost" size="sm" className="text-gray-400 h-8" onClick={() => openEdit(c, 'sub-category')}>
+                        <Button variant="ghost" size="sm" className="text-muted-foreground h-8" onClick={() => openEdit(c, 'sub-category')}>
                           <Edit size={14} />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className={c.is_active ? 'text-amber-400 h-8' : 'text-green-400 h-8'}
+                          className={c.is_active ? 'text-amber-400 h-8' : 'text-[var(--erp-money-positive)] h-8'}
                           onClick={() => toggleActive('sub-category', c, !c.is_active)}
                         >
                           {c.is_active ? <PowerOff size={14} /> : <Power size={14} />}
@@ -520,7 +520,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                 </tbody>
               </table>
               {subCategories.length === 0 && (
-                <div className="p-8 text-center text-gray-500 text-sm">No sub-categories. Add categories first, then sub-categories.</div>
+                <div className="p-8 text-center text-muted-foreground text-sm">No sub-categories. Add categories first, then sub-categories.</div>
               )}
             </div>
           )}
@@ -530,42 +530,42 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
       {activeSubTab === 'brands' && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h4 className="text-white font-semibold">Brands</h4>
+            <h4 className="text-foreground font-semibold">Brands</h4>
             <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-500" onClick={() => openAdd('brand')}>
               <Plus size={14} /> Add Brand
             </Button>
           </div>
           {loading ? (
-            <div className="flex items-center gap-2 text-gray-400 py-4">
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
               <Loader2 size={18} className="animate-spin" /> Loading...
             </div>
           ) : (
-            <div className="border border-gray-800 rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-950 text-gray-400 text-left">
+                <thead className="bg-input-background text-muted-foreground text-left">
                   <tr>
                     <th className="p-3">Name</th>
                     <th className="p-3">Status</th>
                     <th className="p-3 w-24">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {brands.map((b) => (
-                    <tr key={b.id} className="hover:bg-gray-800/30">
-                      <td className="p-3 text-white">{b.name}</td>
+                    <tr key={b.id} className="hover:bg-accent/30">
+                      <td className="p-3 text-foreground">{b.name}</td>
                       <td className="p-3">
-                        <Badge className={b.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
+                        <Badge className={b.is_active ? 'bg-green-500/20 text-[var(--erp-money-positive)]' : 'bg-gray-500/20 text-muted-foreground'}>
                           {b.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
                       <td className="p-3 flex gap-1">
-                        <Button variant="ghost" size="sm" className="text-gray-400 h-8" onClick={() => openEdit(b, 'brand')}>
+                        <Button variant="ghost" size="sm" className="text-muted-foreground h-8" onClick={() => openEdit(b, 'brand')}>
                           <Edit size={14} />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className={b.is_active ? 'text-amber-400 h-8' : 'text-green-400 h-8'}
+                          className={b.is_active ? 'text-amber-400 h-8' : 'text-[var(--erp-money-positive)] h-8'}
                           onClick={() => toggleActive('brand', b, !b.is_active)}
                         >
                           {b.is_active ? <PowerOff size={14} /> : <Power size={14} />}
@@ -576,7 +576,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                 </tbody>
               </table>
               {brands.length === 0 && (
-                <div className="p-8 text-center text-gray-500 text-sm">No brands. Add one to assign to products.</div>
+                <div className="p-8 text-center text-muted-foreground text-sm">No brands. Add one to assign to products.</div>
               )}
             </div>
           )}
@@ -585,7 +585,7 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
 
       {/* Add/Edit modals */}
       <Dialog open={addModal !== null} onOpenChange={(open) => !open && closeModal()}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className="bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle>
               {addModal === 'unit' && (editItem ? 'Edit Unit' : 'Add Unit')}
@@ -596,33 +596,33 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label className="text-gray-300">Name *</Label>
+              <Label className="text-muted-foreground">Name *</Label>
               <Input
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                className="bg-gray-950 border-gray-700 text-white mt-1"
+                className="bg-input-background border-border text-foreground mt-1"
                 placeholder={addModal === 'unit' ? 'e.g. Piece' : addModal === 'brand' ? 'e.g. Nike' : 'e.g. Clothing'}
               />
             </div>
             {addModal === 'unit' && (
               <>
                 <div>
-                  <Label className="text-gray-300">Short Code *</Label>
+                  <Label className="text-muted-foreground">Short Code *</Label>
                   <Input
                     value={formShortCode}
                     onChange={(e) => setFormShortCode(e.target.value)}
-                    className="bg-gray-950 border-gray-700 text-white mt-1"
+                    className="bg-input-background border-border text-foreground mt-1"
                     placeholder="e.g. pcs, m, kg, yd"
                     disabled={editItem && (editItem as Unit).is_default}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Short code for this unit (e.g., pcs for Piece, m for Meter)</p>
+                  <p className="text-xs text-muted-foreground mt-1">Short code for this unit (e.g., pcs for Piece, m for Meter)</p>
                 </div>
                 <div>
-                  <Label className="text-gray-300">Symbol (optional)</Label>
+                  <Label className="text-muted-foreground">Symbol (optional)</Label>
                   <Input
                     value={formSymbol}
                     onChange={(e) => setFormSymbol(e.target.value)}
-                    className="bg-gray-950 border-gray-700 text-white mt-1"
+                    className="bg-input-background border-border text-foreground mt-1"
                     placeholder="e.g. pcs, m (usually same as short code)"
                     disabled={editItem && (editItem as Unit).is_default}
                   />
@@ -633,10 +633,10 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                     id="allowDecimal"
                     checked={formAllowDecimal}
                     onChange={(e) => setFormAllowDecimal(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-950 text-teal-600 focus:ring-teal-500"
+                    className="w-4 h-4 rounded border-gray-600 bg-input-background text-teal-600 focus:ring-teal-500"
                     disabled={editItem && (editItem as Unit).is_default}
                   />
-                  <Label htmlFor="allowDecimal" className="text-gray-300 cursor-pointer">
+                  <Label htmlFor="allowDecimal" className="text-muted-foreground cursor-pointer">
                     Allow decimal quantities (e.g., 1.5 meters, 2.3 kg)
                   </Label>
                 </div>
@@ -651,11 +651,11 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
             )}
             {addModal === 'sub-category' && (
               <div>
-                <Label className="text-gray-300">Category *</Label>
+                <Label className="text-muted-foreground">Category *</Label>
                 <select
                   value={formParentId}
                   onChange={(e) => setFormParentId(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white mt-1"
+                  className="w-full bg-input-background border border-border rounded-lg px-3 py-2 text-foreground mt-1"
                 >
                   <option value="">Select category</option>
                   {categories.map((c) => (

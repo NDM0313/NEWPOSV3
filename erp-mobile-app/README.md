@@ -23,7 +23,7 @@ Browser open hoga `http://localhost:5174`
 Mobile app aur **web app dono ko ek hi database** use karna hai (same users, same login). Iske liye:
 
 1. **erp-mobile-app/.env** mein ye dono set karo (web app jaisa):
-   - `VITE_SUPABASE_URL` – web jaisa (production: `https://supabase.dincouture.pk`, local: jis URL se web chal raha hai)
+   - `VITE_SUPABASE_URL` – web jaisa (production: `https://api.ndmcore.com`, local: jis URL se web chal raha hai)
    - `VITE_SUPABASE_ANON_KEY` – **bilkul wahi** anon key jo main project ke `.env.production` ya `.env.local` mein hai (Kong anon key)
 
 2. Agar abhi mobile par **Supabase Cloud** (wrwljqzckmnmuphwhslt.supabase.co) use ho raha tha to wahan users alag hain; web par jo user hai woh self-hosted (supabase.dincouture.pk) par hai. Same user/password se login ke liye mobile ko bhi **same URL + same anon key** do. (port 5174 taake main project 5173 par conflict na ho).

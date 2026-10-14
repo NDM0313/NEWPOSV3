@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Save, AlertCircle, Package, Loader2, DollarSign, Building2, Lock, Ruler, TrendingUp, Undo2, RefreshCw, Box, Check } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { CalendarDatePicker } from '../ui/CalendarDatePicker';
+import { DatePicker } from '../ui/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import { saleReturnService, CreateSaleReturnData, UpdateSaleReturnData } from '@
 import { saleService } from '@/app/services/saleService';
 import { PackingEntryModal, type ReturnPackingDetails } from '../transactions/PackingEntryModal';
 import { cn, formatBoxesPieces } from '../ui/utils';
+import { computeSaleReturnSettlementSplit } from '@/app/lib/saleReturnSettlementSplit';
 import {
   Table,
   TableBody,
@@ -95,6 +96,13 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   // Settlement dialog state
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
   const [pendingReturnData, setPendingReturnData] = useState<CreateSaleReturnData | null>(null);
+  /** Frozen at dialog open so post-finalize recalc cannot collapse AR → full cash. */
+  const [frozenSettlement, setFrozenSettlement] = useState<{
+    dueBefore: number;
+    arPortion: number;
+    refundPortion: number;
+    returnTotal: number;
+  } | null>(null);
 
   // Refund accounts: cash or bank accounts filtered from accounting context
   const refundAccounts = useMemo(() => {
@@ -418,6 +426,20 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
         total,
       };
       setPendingReturnData(returnData);
+      const dueAtDialog = Math.max(
+        0,
+        Number(originalSale?.due_amount ?? originalSale?.due ?? 0) || 0,
+      );
+      const splitAtDialog = computeSaleReturnSettlementSplit({
+        returnTotal: total,
+        dueBefore: dueAtDialog,
+      });
+      setFrozenSettlement({
+        dueBefore: dueAtDialog,
+        arPortion: splitAtDialog.arPortion,
+        refundPortion: splitAtDialog.refundPortion,
+        returnTotal: splitAtDialog.returnTotal,
+      });
       setShowSettlementDialog(true);
     } catch (error: any) {
       console.error('[SALE RETURN FORM] Error saving return:', error);
@@ -430,6 +452,10 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   // Handle settlement confirmation
   const handleSettlementConfirm = async () => {
     if (!pendingReturnData || !companyId || !contextBranchId || !originalSale) return;
+    if (!frozenSettlement) {
+      toast.error('Settlement split missing — please reopen the return and try again');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -441,6 +467,8 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
         return;
       }
 
+      const { arPortion, refundPortion, dueBefore: frozenDue } = frozenSettlement;
+
       // Create sale return
       const saleReturn = await saleReturnService.createSaleReturn(pendingReturnData);
 
@@ -451,7 +479,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
       const settlementAmount = Math.max(0, Number(refreshedReturn.total) || 0);
       
       try {
-        const desc = `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`;
+        const desc = `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Due adjust ${formatCurrency(arPortion)} / Refund ${formatCurrency(refundPortion)}`;
         const returnDiscountAmt = Number(refreshedReturn.discount_amount) || 0;
         const returnSubtotalAmt = Number(refreshedReturn.subtotal) || (settlementAmount + returnDiscountAmt);
         const reversalSuccess = await accounting.recordSaleReturn({
@@ -461,12 +489,18 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           customerId: originalSale.customer_id || undefined,
           amount: settlementAmount,
           originalSaleId: saleReturn.original_sale_id || undefined,
-          refundMethod,
-          refundAccountId: (refundMethod === 'cash' || refundMethod === 'bank') ? selectedRefundAccountId || null : null,
+          refundMethod: refundPortion > 0.005 ? refundMethod === 'adjust' ? 'cash' : refundMethod : 'adjust',
+          refundAccountId:
+            refundPortion > 0.005 && (refundMethod === 'cash' || refundMethod === 'bank')
+              ? selectedRefundAccountId || null
+              : null,
           description: desc,
           postingDate: pendingReturnData.return_date,
           discountAmount: returnDiscountAmt > 0 ? returnDiscountAmt : undefined,
           subtotal: returnDiscountAmt > 0 ? returnSubtotalAmt : undefined,
+          dueBefore: frozenDue,
+          arPortion,
+          refundPortion,
         });
 
         if (!reversalSuccess) {
@@ -482,6 +516,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
 
       toast.success(`Sale return ${saleReturn.return_no || saleReturn.id} finalized successfully`);
       setPendingReturnData(null);
+      setFrozenSettlement(null);
 
       if (onSuccess) onSuccess();
       onClose();
@@ -506,6 +541,22 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
     adjustedTotal += manualAdjustment; // Manual adjustment (can be positive or negative)
     return Math.max(0, adjustedTotal); // Ensure non-negative
   }, [subtotal, discountAmount, restockingFee, manualAdjustment]);
+
+  const dueBefore = frozenSettlement?.dueBefore ?? Math.max(
+    0,
+    Number(originalSale?.due_amount ?? originalSale?.due ?? 0) || 0,
+  );
+  const settlementSplit = useMemo(
+    () =>
+      frozenSettlement
+        ? {
+            arPortion: frozenSettlement.arPortion,
+            refundPortion: frozenSettlement.refundPortion,
+            returnTotal: frozenSettlement.returnTotal,
+          }
+        : computeSaleReturnSettlementSplit({ returnTotal: total, dueBefore }),
+    [total, dueBefore, frozenSettlement],
+  );
 
   // Auto-populate proportional discount from original sale when return quantities change.
   // Only applies in CREATE mode (returnId === null/undefined).
@@ -539,9 +590,9 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-8">
+        <div className="bg-card border border-border rounded-xl p-8">
           <Loader2 className="animate-spin text-blue-500 mx-auto mb-4" size={32} />
-          <p className="text-gray-400 text-center">Loading sale data...</p>
+          <p className="text-muted-foreground text-center">Loading sale data...</p>
         </div>
       </div>
     );
@@ -549,18 +600,18 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto p-4">
-      <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl w-[80%] min-w-[1000px] max-w-6xl min-h-[85vh] max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
+      <div className="bg-secondary border border-border rounded-2xl w-[80%] min-w-[1000px] max-w-6xl min-h-[85vh] max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
         {/* Header — Figma: Title + Ref, Return No, Controlled Reversal, Locked badge */}
-        <div className="shrink-0 bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+        <div className="shrink-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">
-              {returnId ? 'Edit ' : ''}Sales Return <span className="text-gray-400 font-normal">· Ref: {originalSale?.invoice_no || 'N/A'}</span>
+            <h2 className="text-lg font-bold text-foreground tracking-tight">
+              {returnId ? 'Edit ' : ''}Sales Return <span className="text-muted-foreground font-normal">· Ref: {originalSale?.invoice_no || 'N/A'}</span>
               {originalSale?.customer_name ? (
-                <span className="text-gray-400 font-normal"> · {originalSale.customer_name}</span>
+                <span className="text-muted-foreground font-normal"> · {originalSale.customer_name}</span>
               ) : null}
             </h2>
             <div className="flex items-center gap-3 mt-1">
-              <span className="text-xs text-gray-500"># Return No: {returnId ? 'Draft' : 'New'}</span>
+              <span className="text-xs text-muted-foreground"># Return No: {returnId ? 'Draft' : 'New'}</span>
               <span className="flex items-center gap-1.5 text-amber-400/90 text-xs font-medium">
                 <AlertCircle size={14} className="shrink-0" />
                 Controlled Reversal
@@ -569,10 +620,18 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           </div>
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-[11px] text-gray-500 block mb-0.5">Return Date</span>
-              <CalendarDatePicker value={returnDate} onChange={(date) => date && setReturnDate(date)} className="bg-gray-800 border-gray-700 text-white h-8 w-[140px] text-sm" />
+              <span className="text-[11px] text-muted-foreground block mb-0.5">Return Date</span>
+              <DatePicker
+                className="w-[140px]"
+                value={format(returnDate, 'yyyy-MM-dd')}
+                onChange={(v) => {
+                  if (!v) return;
+                  const d = parseISO(v);
+                  if (isValid(d)) setReturnDate(d);
+                }}
+              />
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white rounded-full">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-foreground rounded-full">
               <X size={22} />
             </Button>
           </div>
@@ -584,12 +643,12 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full h-[60px]">
             <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-green-500/10 border border-green-500/30 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-8 h-8 bg-green-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="flex items-center gap-1 text-green-400 relative">
+              <div className="flex items-center gap-1 text-[var(--erp-money-positive)] relative">
                 <TrendingUp size={12} className="shrink-0" />
                 <span className="text-[9px] font-bold uppercase tracking-wider">Original Sale</span>
               </div>
-              <p className="text-sm font-bold text-green-400 tracking-tight relative leading-tight">{formatCurrency(originalAmount)}</p>
-              <p className="text-[8px] text-gray-500 relative">Reference</p>
+              <p className="text-sm font-bold text-[var(--erp-money-positive)] tracking-tight relative leading-tight">{formatCurrency(originalAmount)}</p>
+              <p className="text-[8px] text-muted-foreground relative">Reference</p>
             </div>
             <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-red-500/10 border border-red-500/30 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-8 h-8 bg-red-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -598,7 +657,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                 <span className="text-[9px] font-bold uppercase tracking-wider">Return Amount</span>
               </div>
               <p className="text-sm font-bold text-red-400 tracking-tight relative leading-tight">{formatCurrency(returnAmount)}</p>
-              <p className="text-[8px] text-gray-500 relative">From items</p>
+              <p className="text-[8px] text-muted-foreground relative">From items</p>
             </div>
             <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-blue-500/10 border border-blue-500/30 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-8 h-8 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -608,18 +667,18 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               <div className="flex items-center gap-1 text-blue-400 relative">
                 <span className="text-[9px] font-bold uppercase tracking-wider">Net After Return</span>
               </div>
-              <p className="text-sm font-bold text-white tracking-tight relative leading-tight">{formatCurrency(netAfterReturn)}</p>
+              <p className="text-sm font-bold text-foreground tracking-tight relative leading-tight">{formatCurrency(netAfterReturn)}</p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex flex-wrap items-end gap-3 flex-1 min-w-0 max-w-md">
               <div className="min-w-[140px] w-[140px] shrink-0">
-                <Label className="text-gray-500 text-xs mb-1 block">Reason (optional)</Label>
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective, Wrong item" className="bg-gray-800 border-gray-700 text-white text-sm h-9" />
+                <Label className="text-muted-foreground text-xs mb-1 block">Reason (optional)</Label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective, Wrong item" className="bg-muted border-border text-foreground text-sm h-9" />
               </div>
               <div className="flex-1 min-w-[200px]">
-                <Label className="text-gray-500 text-xs mb-1 block">Notes (optional)</Label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-gray-800 border-gray-700 text-white text-sm h-9 w-[652px]" />
+                <Label className="text-muted-foreground text-xs mb-1 block">Notes (optional)</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-muted border-border text-foreground text-sm h-9 w-[652px]" />
               </div>
             </div>
             <Button
@@ -642,25 +701,25 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               <AlertCircle size={18} className="text-amber-400" />
             </div>
             <p className="text-sm text-blue-100">
-              <span className="font-semibold text-white">Return Reversal Mode:</span> Items are loaded from original sale invoice {originalSale?.invoice_no || 'N/A'}. Adjust return quantities as needed. Stock will be updated automatically upon finalization.
+              <span className="font-semibold text-foreground">Return Reversal Mode:</span> Items are loaded from original sale invoice {originalSale?.invoice_no || 'N/A'}. Adjust return quantities as needed. Stock will be updated automatically upon finalization.
             </p>
           </div>
 
           {/* 3) Items Entry — Figma: section title + search + table */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Box size={18} className="text-gray-500" />
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Box size={18} className="text-muted-foreground" />
                 Items Entry
               </h3>
               <Input
                 placeholder="Search products by name, SKU... ⌘K"
                 value={itemSearch}
                 onChange={(e) => setItemSearch(e.target.value)}
-                className="mb-4 bg-gray-800/80 border-gray-700 text-white placeholder:text-gray-500 rounded-lg h-10"
+                className="mb-4 bg-muted/80 border-border text-foreground placeholder:text-muted-foreground rounded-lg h-10"
               />
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                     <Package size={16} />
                     Items ({filteredReturnItems.length})
                     <span className="text-xs font-normal normal-case text-purple-400 ml-1">Return Items</span>
@@ -669,22 +728,22 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-gray-800 hover:bg-transparent">
-                        <TableHead className="text-gray-400">Product</TableHead>
-                        <TableHead className="text-gray-400">SKU</TableHead>
-                        <TableHead className="text-gray-400">Variation</TableHead>
-                        {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
-                        <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
-                        <TableHead className="text-gray-400 text-center">Original Qty</TableHead>
-                        <TableHead className="text-gray-400 text-center">Return Qty</TableHead>
-                        <TableHead className="text-gray-400">Unit</TableHead>
-                        <TableHead className="text-gray-400 text-right">Return Total</TableHead>
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-muted-foreground">Product</TableHead>
+                        <TableHead className="text-muted-foreground">SKU</TableHead>
+                        <TableHead className="text-muted-foreground">Variation</TableHead>
+                        {enablePacking && <TableHead className="text-muted-foreground">Packing</TableHead>}
+                        <TableHead className="text-muted-foreground text-right">Unit Price</TableHead>
+                        <TableHead className="text-muted-foreground text-center">Original Qty</TableHead>
+                        <TableHead className="text-muted-foreground text-center">Return Qty</TableHead>
+                        <TableHead className="text-muted-foreground">Unit</TableHead>
+                        <TableHead className="text-muted-foreground text-right">Return Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredReturnItems.length === 0 ? (
-                        <TableRow className="border-gray-800 hover:bg-transparent" key="empty">
-                          <TableCell colSpan={enablePacking ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
+                        <TableRow className="border-border hover:bg-transparent" key="empty">
+                          <TableCell colSpan={enablePacking ? 9 : 8} className="px-4 py-8 text-center text-muted-foreground">
                             <Package size={32} className="mx-auto mb-2 opacity-50" />
                             <p>{itemSearch ? 'No items match search' : 'No items found in original sale'}</p>
                           </TableCell>
@@ -742,25 +801,25 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                           const unitDisplay = item.unit ?? 'pcs';
 
                           return (
-                            <TableRow key={index} className={cn("border-gray-800", !canReturn && "opacity-50")}>
+                            <TableRow key={index} className={cn("border-border", !canReturn && "opacity-50")}>
                               <TableCell>
                                 <div>
-                                  <p className="font-medium text-white">{item.product_name}</p>
+                                  <p className="font-medium text-foreground">{item.product_name}</p>
                                   {(item.variation?.sku || item.sku) && (
-                                    <p className="text-xs text-gray-500">SKU: {item.variation?.sku || item.sku}</p>
+                                    <p className="text-xs text-muted-foreground">SKU: {item.variation?.sku || item.sku}</p>
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell className="text-gray-400">{item.variation?.sku || item.sku}</TableCell>
+                              <TableCell className="text-muted-foreground">{item.variation?.sku || item.sku}</TableCell>
                               <TableCell>
                                 {variationText ? (
-                                  <span className="text-gray-300 text-sm">{variationText}</span>
+                                  <span className="text-muted-foreground text-sm">{variationText}</span>
                                 ) : (
-                                  <span className="text-gray-600">—</span>
+                                  <span className="text-muted-foreground">—</span>
                                 )}
                               </TableCell>
                               {enablePacking && (
-                                <TableCell className="text-gray-400">
+                                <TableCell className="text-muted-foreground">
                                   {hasPackingStructure ? (
                                     <button
                                       type="button"
@@ -778,17 +837,17 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                                   )}
                                 </TableCell>
                               )}
-                              <TableCell className="text-right text-white">
+                              <TableCell className="text-right text-foreground">
                                 {formatCurrency(Number(item.unit_price))}
                               </TableCell>
-                              <TableCell className="text-center text-white font-medium">
+                              <TableCell className="text-center text-foreground font-medium">
                                 {item.original_quantity}
                               </TableCell>
                               <TableCell className="text-center">
                                 {enablePacking && hasPackingStructure ? (
                                   <div className="flex flex-col items-center gap-0.5">
-                                    <div className="flex items-center justify-center gap-1 rounded bg-gray-800/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
-                                      <span className="text-sm font-medium text-white tabular-nums">{item.return_quantity}</span>
+                                    <div className="flex items-center justify-center gap-1 rounded bg-muted/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
+                                      <span className="text-sm font-medium text-foreground tabular-nums">{item.return_quantity}</span>
                                     </div>
                                     <Button
                                       variant="ghost"
@@ -809,7 +868,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                                       value={item.return_quantity}
                                       onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
                                       disabled={!canReturn}
-                                      className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      className="w-20 text-center bg-card border border-border text-foreground h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                       placeholder="0"
                                     />
                                     {!canReturn && (
@@ -818,7 +877,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                                   </>
                                 )}
                               </TableCell>
-                              <TableCell className="text-gray-400">{unitDisplay}</TableCell>
+                              <TableCell className="text-muted-foreground">{unitDisplay}</TableCell>
                               <TableCell className="text-right text-red-400 font-medium">
                                 {item.total > 0 ? `-${formatCurrency(Number(item.total))}` : '—'}
                               </TableCell>
@@ -829,8 +888,8 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                     </TableBody>
                   </Table>
                 </div>
-                <div className="px-5 py-3 bg-gray-950/50 border-t border-gray-800 flex items-center justify-between text-sm">
-                  <span className="text-gray-400">
+                <div className="px-5 py-3 bg-muted/40 border-t border-border flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
                     {filteredReturnItems.length} Item{filteredReturnItems.length !== 1 ? 's' : ''} · Qty: {filteredReturnItems.reduce((s, i) => s + i.return_quantity, 0)}
                   </span>
                   <span className="text-red-400 font-semibold">Total: -{formatCurrency(subtotal)}</span>
@@ -842,22 +901,37 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
 
       {/* Settlement Dialog */}
       <Dialog open={showSettlementDialog} onOpenChange={setShowSettlementDialog}>
-        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-md">
+        <DialogContent className="bg-background border-border text-foreground max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
               <DollarSign size={20} className="text-purple-400" />
               Return Amount Settlement
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
-            <div className="bg-[#0F1419] border border-gray-800 rounded-lg p-4">
-              <p className="text-sm text-gray-400 mb-2">Return Amount:</p>
-              <p className="text-2xl font-bold text-red-400">{formatCurrency(total)}</p>
+            <div className="bg-muted/40 border border-border rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Return amount</span>
+                <span className="font-semibold text-red-400">{formatCurrency(total)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Invoice due (adjust first)</span>
+                <span className="tabular-nums">{formatCurrency(dueBefore)}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t border-border pt-2">
+                <span className="text-muted-foreground">Due adjust (AR)</span>
+                <span className="tabular-nums text-foreground">{formatCurrency(settlementSplit.arPortion)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Cash/bank refund</span>
+                <span className="tabular-nums text-foreground">{formatCurrency(settlementSplit.refundPortion)}</span>
+              </div>
             </div>
             
+            {settlementSplit.refundPortion > 0.005 ? (
             <div>
-              <Label className="text-gray-300 mb-3 block text-sm font-semibold">
-                How would you like to settle this return amount?
+              <Label className="text-muted-foreground mb-3 block text-sm font-semibold">
+                Refund the remaining {formatCurrency(settlementSplit.refundPortion)} via
               </Label>
               <div className="space-y-2">
                 <button
@@ -867,13 +941,13 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                     "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
                     refundMethod === 'cash'
                       ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-gray-900/50 text-gray-400 border-gray-700 hover:bg-gray-800"
+                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
                   )}
                 >
                   <DollarSign size={18} />
                   <div className="flex-1 text-left">
                     <div className="font-semibold">Cash Refund</div>
-                    <div className="text-xs opacity-75">Refund amount in cash</div>
+                    <div className="text-xs opacity-75">Pay refund from cash</div>
                   </div>
                   {refundMethod === 'cash' && <div className="w-2 h-2 rounded-full bg-white" />}
                 </button>
@@ -885,46 +959,33 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                     "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
                     refundMethod === 'bank'
                       ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-gray-900/50 text-gray-400 border-gray-700 hover:bg-gray-800"
+                      : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
                   )}
                 >
                   <Building2 size={18} />
                   <div className="flex-1 text-left">
                     <div className="font-semibold">Bank Refund</div>
-                    <div className="text-xs opacity-75">Refund amount via bank transfer</div>
+                    <div className="text-xs opacity-75">Pay refund via bank</div>
                   </div>
                   {refundMethod === 'bank' && <div className="w-2 h-2 rounded-full bg-white" />}
                 </button>
-                
-                <button
-                  type="button"
-                  onClick={() => setRefundMethod('adjust')}
-                  className={cn(
-                    "w-full px-4 py-3 rounded-lg text-sm font-medium transition-all border flex items-center gap-3",
-                    refundMethod === 'adjust'
-                      ? "bg-blue-600 text-white border-blue-500"
-                      : "bg-gray-900/50 text-gray-400 border-gray-700 hover:bg-gray-800"
-                  )}
-                >
-                  <Package size={18} />
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold">Adjust in Customer Account</div>
-                    <div className="text-xs opacity-75">Reduce customer's outstanding balance</div>
-                  </div>
-                  {refundMethod === 'adjust' && <div className="w-2 h-2 rounded-full bg-white" />}
-                </button>
               </div>
             </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Full return applies to invoice due — no cash/bank refund needed.
+              </p>
+            )}
           </div>
-          {(refundMethod === 'cash' || refundMethod === 'bank') && (
+          {settlementSplit.refundPortion > 0.005 && (refundMethod === 'cash' || refundMethod === 'bank') && (
             <div className="px-1 pt-3">
-              <label className="block text-xs text-gray-400 mb-1.5">
+              <label className="block text-xs text-muted-foreground mb-1.5">
                 Select Account <span className="text-red-400">*</span>
               </label>
               <select
                 value={selectedRefundAccountId}
                 onChange={(e) => setSelectedRefundAccountId(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                className="w-full bg-card border border-border rounded-lg px-3 py-2 text-foreground text-sm focus:outline-none focus:border-blue-500"
               >
                 <option value="">
                   {refundMethod === 'cash' ? 'Select Cash Account' : 'Select Bank Account'}
@@ -943,21 +1004,27 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               )}
             </div>
           )}
-          <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+          <DialogFooter className="mt-6 border-t border-border pt-4">
             <Button
               variant="outline"
               onClick={() => {
                 setShowSettlementDialog(false);
                 setPendingReturnData(null);
+                setFrozenSettlement(null);
                 setSaving(false);
               }}
-              className="border-gray-700 text-gray-300"
+              className="border-border text-muted-foreground"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSettlementConfirm}
-              disabled={saving || ((refundMethod === 'cash' || refundMethod === 'bank') && !selectedRefundAccountId)}
+              disabled={
+                saving ||
+                (settlementSplit.refundPortion > 0.005 &&
+                  (refundMethod === 'cash' || refundMethod === 'bank') &&
+                  !selectedRefundAccountId)
+              }
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {saving ? (

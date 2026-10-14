@@ -1,0 +1,12 @@
+{
+  "artifact": "2026-06-30T14-56-22-198Z",
+  "overall": "PASS",
+  "dinChina": "PASS",
+  "dinBridal": "PASS",
+  "dinCouture": "PASS",
+  "adminCompare9of9": true,
+  "otherCompanyLoadersOn": 0,
+  "migrationsRun": false,
+  "glMutations": false,
+  "sourcePath": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T14-56-22-198Z.json"
+}

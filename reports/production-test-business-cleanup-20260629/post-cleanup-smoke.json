@@ -1,0 +1,13 @@
+{
+  "generated": "2026-06-29",
+  "url": "https://erp.dincouture.pk",
+  "appLoads": true,
+  "loginPageLoads": true,
+  "adminTestComRemoved": true,
+  "realOperatorLogin": "NOT_VERIFIED_MISSING_CREDENTIALS",
+  "createBusinessWizardLoads": true,
+  "ledgerV2PartyDiscount": "NOT_VERIFIED_MISSING_CREDENTIALS",
+  "newBusinessCreated": false,
+  "discountJePosted": false,
+  "result": "PARTIAL_PASS"
+}

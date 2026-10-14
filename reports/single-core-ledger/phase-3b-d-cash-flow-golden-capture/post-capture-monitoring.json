@@ -1,0 +1,16 @@
+{
+  "run": "PHASE_3B_D_POST_CAPTURE_MONITORING",
+  "generated_at": "2026-06-29T12:31:00.000Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "profiles": {
+    "din-china": "PASS",
+    "din-bridal": "PASS",
+    "din-couture": "PASS"
+  },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence_ref": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T12-21-23-647Z.json",
+  "conclusion": "Capture read-only; five approved unified loaders unaffected"
+}

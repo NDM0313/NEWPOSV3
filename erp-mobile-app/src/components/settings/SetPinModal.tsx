@@ -71,6 +71,7 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
       });
       setPinLockSettings({
         lockOnBackground: requireOnResume,
+        idleTimeout: getPinLockSettings().idleTimeout === 'off' ? '1m' : getPinLockSettings().idleTimeout,
         sessionMaxAgeMs: getDevicePinMaxAgeMs(),
       });
 
@@ -207,8 +208,8 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
               />
             </label>
             <p className="text-xs text-[#6B7280] -mt-1 mb-2">
-              When on, leaving the app (home or another app) requires PIN again. Long session limit follows Settings
-              Counter ({policyLabel()}). Idle lock can be set under Security in Settings.
+              App re-locks after 1 minute without touch or scroll (Settings → Security → Idle lock). Optional: also
+              track app switch. Long session limit follows Settings Counter ({policyLabel()}).
             </p>
           </div>
 

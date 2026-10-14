@@ -52,7 +52,7 @@ const DepartmentCard = ({ name, icon: Icon, count, color, onClick }: DepartmentC
     <div
       onClick={onClick}
       className={cn(
-        "bg-gray-900 border border-gray-800 rounded-xl p-6 cursor-pointer transition-all hover:border-gray-700 group",
+        "bg-card border border-border rounded-xl p-6 cursor-pointer transition-all hover:border-border group",
         "hover:shadow-lg hover:-translate-y-1"
       )}
     >
@@ -67,14 +67,14 @@ const DepartmentCard = ({ name, icon: Icon, count, color, onClick }: DepartmentC
           <Icon size={28} className={cn(
             color === 'purple' && "text-purple-400",
             color === 'blue' && "text-blue-400",
-            color === 'green' && "text-green-400",
+            color === 'green' && "text-[var(--erp-money-positive)]",
             color === 'orange' && "text-orange-400"
           )} />
         </div>
-        <ArrowRight size={20} className="text-gray-600 group-hover:text-gray-400 transition-colors" />
+        <ArrowRight size={20} className="text-muted-foreground group-hover:text-muted-foreground transition-colors" />
       </div>
-      <h3 className="text-2xl font-bold text-white mb-1">{count}</h3>
-      <p className="text-sm text-gray-400">{name}</p>
+      <h3 className="text-2xl font-bold text-foreground mb-1">{count}</h3>
+      <p className="text-sm text-muted-foreground">{name}</p>
     </div>
   );
 };
@@ -159,68 +159,68 @@ const OrderDetailsModal = ({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
       <div
-        className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-[900px] max-h-[90vh] overflow-y-auto shadow-xl"
+        className="bg-card border border-border rounded-xl w-full max-w-[900px] max-h-[90vh] overflow-y-auto shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between z-10">
-          <h3 className="text-lg font-semibold text-white">Order details</h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400">
+        <div className="sticky top-0 bg-card border-b border-border px-4 py-3 flex items-center justify-between z-10">
+          <h3 className="text-lg font-semibold text-foreground">Order details</h3>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground">
             <X size={18} />
           </button>
         </div>
         <div className="p-5 space-y-5">
           {loading ? (
-            <div className="py-12 text-center text-gray-500">Loading…</div>
+            <div className="py-12 text-center text-muted-foreground">Loading…</div>
           ) : !sale ? (
-            <div className="py-12 text-center text-gray-500">Order not found</div>
+            <div className="py-12 text-center text-muted-foreground">Order not found</div>
           ) : (
             <>
               {/* Header */}
-              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4 space-y-3">
+              <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Invoice</p>
-                    <p className="text-lg font-bold text-white mt-0.5">{invoiceNo}</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Invoice</p>
+                    <p className="text-lg font-bold text-foreground mt-0.5">{invoiceNo}</p>
                   </div>
                   <Badge
                     variant="outline"
                     className={cn(
                       'text-xs shrink-0',
-                      derivedStatus === 'Completed' && 'bg-green-500/20 text-green-400 border-green-700',
+                      derivedStatus === 'Completed' && 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-700',
                       derivedStatus === 'In Progress' && 'bg-blue-500/20 text-blue-400 border-blue-700',
-                      derivedStatus === 'Pending' && 'bg-gray-500/20 text-gray-400 border-gray-700'
+                      derivedStatus === 'Pending' && 'bg-gray-500/20 text-muted-foreground border-border'
                     )}
                   >
                     {derivedStatus}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
-                  <User size={14} className="text-gray-500 shrink-0" />
+                  <User size={14} className="text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-white font-medium">{customerName}</p>
+                    <p className="text-foreground font-medium">{customerName}</p>
                     {customerPhone && (
-                      <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+                      <p className="text-muted-foreground text-xs flex items-center gap-1 mt-0.5">
                         <Phone size={10} /> {customerPhone}
                       </p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
-                  <Package size={14} className="text-gray-500 shrink-0" />
-                  <p className="text-gray-300">{fabricName}</p>
+                  <Package size={14} className="text-muted-foreground shrink-0" />
+                  <p className="text-muted-foreground">{fabricName}</p>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
-                  <Calendar size={14} className="text-gray-500 shrink-0" />
-                  <p className="text-gray-400">Expected delivery: <span className="text-white">{expectedDeliveryFormatted}</span></p>
+                  <Calendar size={14} className="text-muted-foreground shrink-0" />
+                  <p className="text-muted-foreground">Expected delivery: <span className="text-foreground">{expectedDeliveryFormatted}</span></p>
                 </div>
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-800">
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
                   <div>
-                    <p className="text-xs text-gray-500">Total bill</p>
-                    <p className="text-white font-semibold">Rs {totalBill.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Total bill</p>
+                    <p className="text-foreground font-semibold">Rs {totalBill.toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Balance due</p>
-                    <p className={cn('font-semibold', balanceDue > 0 ? 'text-orange-400' : 'text-green-400')}>
+                    <p className="text-xs text-muted-foreground">Balance due</p>
+                    <p className={cn('font-semibold', balanceDue > 0 ? 'text-orange-400' : 'text-[var(--erp-money-positive)]')}>
                       Rs {balanceDue.toLocaleString()}
                     </p>
                   </div>
@@ -228,13 +228,13 @@ const OrderDetailsModal = ({
               </div>
 
               {/* Production progress – graphical stepper */}
-              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+              <div className="bg-muted/40 border border-border rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                   <FileText size={16} className="text-cyan-400" />
                   Production progress
                 </h4>
                 {stages.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No stages yet</p>
+                  <p className="text-muted-foreground text-sm">No stages yet</p>
                 ) : (
                   <div className="space-y-3">
                     {stages.map((s: any, i: number) => {
@@ -249,23 +249,23 @@ const OrderDetailsModal = ({
                             'flex items-start gap-3 p-3 rounded-lg border',
                             isCompleted && 'bg-green-500/10 border-green-700/50',
                             isInProgress && 'bg-amber-500/10 border-amber-700/50',
-                            isPending && 'bg-gray-800/50 border-gray-700'
+                            isPending && 'bg-muted/50 border-border'
                           )}
                         >
                           <div className={cn(
                             'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
-                            isCompleted && 'bg-green-500/20 text-green-400',
+                            isCompleted && 'bg-green-500/20 text-[var(--erp-money-positive)]',
                             isInProgress && 'bg-amber-500/20 text-amber-400',
-                            isPending && 'bg-gray-700 text-gray-500'
+                            isPending && 'bg-muted text-muted-foreground'
                           )}>
                             {isCompleted ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className={cn(
                               'font-medium',
-                              isCompleted && 'text-green-400',
+                              isCompleted && 'text-[var(--erp-money-positive)]',
                               isInProgress && 'text-amber-400',
-                              isPending && 'text-gray-400'
+                              isPending && 'text-muted-foreground'
                             )}>
                               {stageTypeToLabel(s.stage_type)}
                               {isCompleted && ' ✔'}
@@ -273,7 +273,7 @@ const OrderDetailsModal = ({
                               {isPending && ' Pending'}
                             </p>
                             {(s.worker?.name || s.expected_completion_date || s.cost != null) && (
-                              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                                 {s.worker?.name && <p>Assigned: {s.worker.name}</p>}
                                 {s.expected_completion_date && <p>ETA: {String(s.expected_completion_date).slice(0, 10)}</p>}
                                 {s.cost != null && s.cost > 0 && <p>Cost: Rs {Number(s.cost).toLocaleString()}</p>}
@@ -288,13 +288,13 @@ const OrderDetailsModal = ({
               </div>
 
               {/* Worker cost breakdown */}
-              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+              <div className="bg-muted/40 border border-border rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                   <User size={16} className="text-cyan-400" />
                   Worker cost breakdown
                 </h4>
                 {stages.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No stages</p>
+                  <p className="text-muted-foreground text-sm">No stages</p>
                 ) : (
                   <div className="space-y-3">
                     {stages.map((s: any) => {
@@ -302,25 +302,25 @@ const OrderDetailsModal = ({
                       const assignedDate = s.assigned_worker_id && s.updated_at ? fmt(s.updated_at) : (s.created_at ? fmt(s.created_at) : null);
                       const completedDate = fmt(s.completed_at);
                       return (
-                        <div key={s.id} className="border-b border-gray-800 last:border-0 pb-3 last:pb-0">
+                        <div key={s.id} className="border-b border-border last:border-0 pb-3 last:pb-0">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-300 font-medium">{stageTypeToLabel(s.stage_type)}</span>
-                            <span className="text-white font-medium">Rs {(Number(s.cost) || 0).toLocaleString()}</span>
+                            <span className="text-muted-foreground font-medium">{stageTypeToLabel(s.stage_type)}</span>
+                            <span className="text-foreground font-medium">Rs {(Number(s.cost) || 0).toLocaleString()}</span>
                             <Badge variant="outline" className={cn(
                               'text-[10px]',
-                              s.status === 'completed' ? 'bg-green-500/20 text-green-400 border-green-700' : 'bg-gray-500/20 text-gray-400 border-gray-700'
+                              s.status === 'completed' ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-700' : 'bg-gray-500/20 text-muted-foreground border-border'
                             )}>
                               {s.status === 'completed' ? 'Payable' : '—'}
                             </Badge>
                           </div>
-                          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
                             <span>Assigned: {assignedDate || '—'}</span>
                             <span>Completed: {completedDate || '—'}</span>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="flex items-center justify-between font-semibold text-white pt-2 border-t border-gray-700">
+                    <div className="flex items-center justify-between font-semibold text-foreground pt-2 border-t border-border">
                       <span>Total worker cost</span>
                       <span>Rs {workerCostTotal.toLocaleString()}</span>
                     </div>
@@ -334,52 +334,52 @@ const OrderDetailsModal = ({
                       >
                         Record / Edit worker payment
                       </Button>
-                      <p className="text-[10px] text-gray-500 mt-1.5 text-center">Opens Production page to record or edit worker payments</p>
+                      <p className="text-[10px] text-muted-foreground mt-1.5 text-center">Opens Production page to record or edit worker payments</p>
                     </div>
                   </div>
                 )}
               </div>
 
               {/* Financial summary – more detail */}
-              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+              <div className="bg-muted/40 border border-border rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                   <DollarSign size={16} className="text-cyan-400" />
                   Financial summary
                 </h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-400">Customer bill (total)</span>
-                    <span className="text-white">Rs {totalBill.toLocaleString()}</span>
+                    <span className="text-muted-foreground">Customer bill (total)</span>
+                    <span className="text-foreground">Rs {totalBill.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-400">Paid by customer</span>
-                    <span className="text-green-400">Rs {paidAmount.toLocaleString()}</span>
+                    <span className="text-muted-foreground">Paid by customer</span>
+                    <span className="text-[var(--erp-money-positive)]">Rs {paidAmount.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-400">Balance due (customer)</span>
-                    <span className={balanceDue <= 0 ? 'text-green-400' : 'text-orange-400'}>
+                    <span className="text-muted-foreground">Balance due (customer)</span>
+                    <span className={balanceDue <= 0 ? 'text-[var(--erp-money-positive)]' : 'text-orange-400'}>
                       Rs {balanceDue.toLocaleString()}
                     </span>
                   </div>
-                  <div className="flex justify-between pt-1 border-t border-gray-800">
-                    <span className="text-gray-400">Worker cost total</span>
-                    <span className="text-white">Rs {workerCostTotal.toLocaleString()}</span>
+                  <div className="flex justify-between pt-1 border-t border-border">
+                    <span className="text-muted-foreground">Worker cost total</span>
+                    <span className="text-foreground">Rs {workerCostTotal.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-400">Net margin (bill − worker cost)</span>
-                    <span className={totalBill - workerCostTotal >= 0 ? 'text-green-400' : 'text-red-400'}>
+                    <span className="text-muted-foreground">Net margin (bill − worker cost)</span>
+                    <span className={totalBill - workerCostTotal >= 0 ? 'text-[var(--erp-money-positive)]' : 'text-red-400'}>
                       Rs {(totalBill - workerCostTotal).toLocaleString()}
                     </span>
                   </div>
-                  <div className="flex justify-between pt-2 border-t border-gray-800">
-                    <span className="text-gray-400">Customer payment status</span>
-                    <span className={balanceDue <= 0 ? 'text-green-400' : 'text-orange-400'}>
+                  <div className="flex justify-between pt-2 border-t border-border">
+                    <span className="text-muted-foreground">Customer payment status</span>
+                    <span className={balanceDue <= 0 ? 'text-[var(--erp-money-positive)]' : 'text-orange-400'}>
                       {balanceDue <= 0 ? 'Paid' : 'Rs ' + balanceDue.toLocaleString() + ' due'}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-400">Worker payment</span>
-                    <span className="text-gray-400 text-xs">
+                    <span className="text-muted-foreground">Worker payment</span>
+                    <span className="text-muted-foreground text-xs">
                       {stages.filter((s: any) => s.status === 'completed').length > 0 ? 'Payable (record in Accounting)' : '—'}
                     </span>
                   </div>
@@ -388,10 +388,10 @@ const OrderDetailsModal = ({
 
               {/* Actions – no Edit/Save */}
               <div className="flex flex-col gap-2 pt-2">
-                <Button onClick={onOpenProduction} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">
+                <Button onClick={onOpenProduction} className="w-full bg-cyan-600 hover:bg-cyan-700 text-foreground">
                   Open Production
                 </Button>
-                <Button onClick={onClose} variant="outline" className="w-full border-gray-700 text-gray-300">
+                <Button onClick={onClose} variant="outline" className="w-full border-border text-muted-foreground">
                   Close
                 </Button>
               </div>
@@ -608,8 +608,8 @@ export const StudioDashboardNew = () => {
     <div className="space-y-6 p-6">
       {/* HEADER */}
       <div>
-        <h1 className="text-2xl font-bold text-white mb-2">Studio Production Dashboard</h1>
-        <p className="text-sm text-gray-400">Department-wise order tracking</p>
+        <h1 className="text-2xl font-bold text-foreground mb-2">Studio Production Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Department-wise order tracking</p>
       </div>
 
       {/* DEPARTMENT CARDS – studio sales (Ready for Production) + department-wise */}
@@ -677,15 +677,15 @@ export const StudioDashboardNew = () => {
       )}
 
       {/* SEARCH BAR */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
           <Input
             type="text"
             placeholder="Search by invoice, customer, fabric, or worker..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-gray-950 border-gray-700 text-white"
+            className="pl-10 bg-input-background border-border text-foreground"
           />
         </div>
       </div>
@@ -693,7 +693,7 @@ export const StudioDashboardNew = () => {
       {/* DEPARTMENT DETAIL TABLE */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">
+          <h2 className="text-lg font-bold text-foreground">
             {selectedDepartment ? `${selectedDepartment} Department Orders` : 'All Active Orders'}
           </h2>
           <Button
@@ -705,48 +705,48 @@ export const StudioDashboardNew = () => {
           </Button>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
-            <thead className="bg-gray-950 border-b border-gray-800">
+            <thead className="bg-input-background border-b border-border">
               <tr>
-                <th className="p-4 text-left text-gray-400 font-medium">Invoice No</th>
-                <th className="p-4 text-left text-gray-400 font-medium">Customer</th>
-                <th className="p-4 text-left text-gray-400 font-medium">Fabric</th>
-                <th className="p-4 text-left text-gray-400 font-medium">Current Stage</th>
-                <th className="p-4 text-left text-gray-400 font-medium">Assigned Worker</th>
-                <th className="p-4 text-center text-gray-400 font-medium">Expected Date</th>
-                <th className="p-4 text-center text-gray-400 font-medium">Status</th>
-                <th className="p-4 text-center text-gray-400 font-medium">Action</th>
+                <th className="p-4 text-left text-muted-foreground font-medium">Invoice No</th>
+                <th className="p-4 text-left text-muted-foreground font-medium">Customer</th>
+                <th className="p-4 text-left text-muted-foreground font-medium">Fabric</th>
+                <th className="p-4 text-left text-muted-foreground font-medium">Current Stage</th>
+                <th className="p-4 text-left text-muted-foreground font-medium">Assigned Worker</th>
+                <th className="p-4 text-center text-muted-foreground font-medium">Expected Date</th>
+                <th className="p-4 text-center text-muted-foreground font-medium">Status</th>
+                <th className="p-4 text-center text-muted-foreground font-medium">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                     <p className="mt-2">Loading studio orders...</p>
                   </td>
                 </tr>
               ) : searchFilteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     No orders found
                   </td>
                 </tr>
               ) : searchFilteredOrders.map(order => (
-                <tr key={order.rowKey} className="hover:bg-gray-800/50">
+                <tr key={order.rowKey} className="hover:bg-muted/50">
                   <td className="p-4">
-                    <p className="text-white font-medium">{order.invoiceNo}</p>
+                    <p className="text-foreground font-medium">{order.invoiceNo}</p>
                   </td>
                   <td className="p-4">
-                    <p className="text-white">{order.customerName}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{order.customerPhone}</p>
+                    <p className="text-foreground">{order.customerName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{order.customerPhone}</p>
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2">
-                      <Package size={14} className="text-gray-400" />
-                      <p className="text-gray-300">{order.fabricName}</p>
+                      <Package size={14} className="text-muted-foreground" />
+                      <p className="text-muted-foreground">{order.fabricName}</p>
                     </div>
                   </td>
                   <td className="p-4">
@@ -757,7 +757,7 @@ export const StudioDashboardNew = () => {
                         order.currentStage === 'Ready for Production' && "bg-cyan-500/20 text-cyan-400 border-cyan-700",
                         order.currentStage === 'Dyeing' && "bg-purple-500/20 text-purple-400 border-purple-700",
                         order.currentStage === 'Handwork' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                        order.currentStage === 'Stitching' && "bg-green-500/20 text-green-400 border-green-700",
+                        order.currentStage === 'Stitching' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-700",
                         order.currentStage === 'Completed' && "bg-orange-500/20 text-orange-400 border-orange-700"
                       )}
                     >
@@ -765,7 +765,7 @@ export const StudioDashboardNew = () => {
                     </Badge>
                   </td>
                   <td className="p-4">
-                    <p className="text-gray-300">{order.assignedWorker}</p>
+                    <p className="text-muted-foreground">{order.assignedWorker}</p>
                   </td>
                   <td className="p-4 text-center">
                     <div className="flex items-center justify-center gap-1.5 text-yellow-400">
@@ -778,9 +778,9 @@ export const StudioDashboardNew = () => {
                       variant="outline"
                       className={cn(
                         "text-xs",
-                        order.status === 'Completed' && "bg-green-500/20 text-green-400 border-green-700",
+                        order.status === 'Completed' && "bg-green-500/20 text-[var(--erp-money-positive)] border-green-700",
                         order.status === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                        order.status === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700"
+                        order.status === 'Pending' && "bg-gray-500/20 text-muted-foreground border-border"
                       )}
                     >
                       {order.status}
@@ -800,7 +800,7 @@ export const StudioDashboardNew = () => {
                             toast.error('Open this order from Studio Sales list (link by sale) to manage production.');
                           }
                         }}
-                        className="bg-cyan-600 hover:bg-cyan-700 text-white text-xs"
+                        className="bg-cyan-600 hover:bg-cyan-700 text-foreground text-xs"
                       >
                         <Package size={14} className="mr-1.5" />
                         Open Production
@@ -811,19 +811,19 @@ export const StudioDashboardNew = () => {
                             size="sm"
                             variant="outline"
                             onClick={(e) => e.stopPropagation()}
-                            className="h-8 w-8 p-0 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white"
+                            className="h-8 w-8 p-0 border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                           >
                             <MoreVertical size={16} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white min-w-[180px]">
+                        <DropdownMenuContent align="end" className="bg-card border-border text-foreground min-w-[180px]">
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
                               setStatusDetailOrderId(order.id);
                               setStatusDetailOrderSaleId(order.saleId ?? null);
                             }}
-                            className="text-gray-300 focus:bg-gray-800 focus:text-white cursor-pointer"
+                            className="text-muted-foreground focus:bg-muted focus:text-foreground cursor-pointer"
                           >
                             <FileText size={14} className="mr-2" />
                             View Order Details
@@ -842,26 +842,26 @@ export const StudioDashboardNew = () => {
 
       {/* QUICK STATS – from real data */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-3 mb-2">
             <Package size={18} className="text-cyan-400" />
-            <p className="text-sm text-gray-400">Ready for Production</p>
+            <p className="text-sm text-muted-foreground">Ready for Production</p>
           </div>
-          <p className="text-2xl font-bold text-white">{departmentCounts.readyForProduction}</p>
+          <p className="text-2xl font-bold text-foreground">{departmentCounts.readyForProduction}</p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-3 mb-2">
-            <TrendingUp size={18} className="text-green-400" />
-            <p className="text-sm text-gray-400">Total Studio Orders</p>
+            <TrendingUp size={18} className="text-[var(--erp-money-positive)]" />
+            <p className="text-sm text-muted-foreground">Total Studio Orders</p>
           </div>
-          <p className="text-2xl font-bold text-white">{orders.length}</p>
+          <p className="text-2xl font-bold text-foreground">{orders.length}</p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-3 mb-2">
             <CheckCircle2 size={18} className="text-blue-400" />
-            <p className="text-sm text-gray-400">Completed</p>
+            <p className="text-sm text-muted-foreground">Completed</p>
           </div>
-          <p className="text-2xl font-bold text-white">{departmentCounts.completed}</p>
+          <p className="text-2xl font-bold text-foreground">{departmentCounts.completed}</p>
         </div>
       </div>
 

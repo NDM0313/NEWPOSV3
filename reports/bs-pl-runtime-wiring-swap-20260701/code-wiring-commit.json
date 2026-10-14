@@ -1,0 +1,7 @@
+{
+  "run": "BS_PL_RUNTIME_WIRING_SWAP",
+  "phase": "code-wiring-commit",
+  "commit": "db49999533a06bc9ae1b7eb52a059654adfeda64",
+  "message": "feat(accounting): wire bs pl unified main loaders",
+  "pushed": true
+}

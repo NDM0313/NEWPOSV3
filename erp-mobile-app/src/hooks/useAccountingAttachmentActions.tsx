@@ -81,6 +81,8 @@ export function useAccountingAttachmentActions(companyId: string | null, branchI
   const hasAnyAttachmentHint = useCallback((params: AccountingAttachmentRowParams) => {
     if (params.hasAttachments) return true;
     if (params.transactionRow) return transactionShowsAttachmentIcon(params.transactionRow);
+    const rt = String(params.referenceType ?? '').toLowerCase();
+    if ((rt === 'expense' || rt === 'expense_payment') && params.referenceId) return true;
     return false;
   }, []);
 

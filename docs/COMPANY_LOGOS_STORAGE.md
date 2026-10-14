@@ -9,6 +9,21 @@ This is **not** fixed by the mobile APK product-image builds (32/33). Company lo
 
 ---
 
+## Root cause (common on self-hosted)
+
+Bucket row must use **`id = 'company-logos'`** (same as `name`). Migrations that used `gen_random_uuid()` for `id` create a row the Storage API cannot resolve — upload fails with *Bucket not found* even though a row exists in SQL.
+
+Fix on VPS:
+
+```bash
+# From your machine (pipes script to VPS)
+Get-Content deploy/fix-company-logos-bucket-api.sh -Raw | ssh dincouture-vps "bash -s"
+```
+
+Or run [`deploy/fix-company-logos-bucket-api.sh`](../deploy/fix-company-logos-bucket-api.sh) on the server after `git pull`.
+
+---
+
 ## Fix (choose one)
 
 ### Option A — VPS deploy (recommended)

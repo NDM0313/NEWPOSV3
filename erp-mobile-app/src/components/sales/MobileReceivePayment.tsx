@@ -15,6 +15,8 @@ export interface MobileReceivePaymentProps {
   totalAmount: number;
   alreadyPaid: number;
   outstandingAmount: number;
+  customerBillRef?: string | null;
+  defaultPaymentNotes?: string | null;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
 }
 
@@ -37,6 +39,8 @@ export function MobileReceivePayment(props: MobileReceivePaymentProps) {
       totalAmount={props.totalAmount}
       alreadyPaid={props.alreadyPaid}
       outstandingAmount={props.outstandingAmount}
+      customerBillRef={props.customerBillRef}
+      defaultPaymentNotes={props.defaultPaymentNotes}
       onClose={props.onClose}
       onSuccess={props.onSuccess}
       onViewLedger={props.onViewLedger}

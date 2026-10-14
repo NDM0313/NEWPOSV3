@@ -1,0 +1,26 @@
+{
+  "commit": "ae6c69d0",
+  "conflictFiles": [
+    "src/app/features/ledger-statement-center-v2/LedgerFilterBar.tsx",
+    "src/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page.tsx"
+  ],
+  "conflictMarkersRemaining": false,
+  "checks": {
+    "partyLedgerDiscountUiPreserved": true,
+    "unifiedPreviewPanelPreserved": true,
+    "existingFiltersIntact": true,
+    "discountFilterMapsToPartyDiscount": true,
+    "ledgerUpdatedReload": true,
+    "phase3bPreviewCodeRetained": true,
+    "duplicateModalStateBug": false,
+    "typescriptBuildPass": true
+  },
+  "unifiedPreviewArtifacts": [
+    "LedgerV2UnifiedPreviewPanel",
+    "useUnifiedLedgerEngineState",
+    "resolveLedgerV2PreviewCompareSource",
+    "loadLedgerV2UnifiedPreview",
+    "loadLedgerV2LegacyShadowPreview"
+  ],
+  "verdict": "MERGE_RESOLUTION_SAFE"
+}

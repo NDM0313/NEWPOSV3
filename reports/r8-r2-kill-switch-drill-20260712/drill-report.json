@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-07-11T20:05:51.343Z",
+  "drill_type": "read_only_L0_L1_artifact_verify",
+  "production_kill_switch_enabled": false,
+  "flag_guard": {
+    "ok": true,
+    "rows": [
+      {
+        "name": "DIN BRIDAL",
+        "loaders_on": 8
+      },
+      {
+        "name": "DIN CHINA",
+        "loaders_on": 8
+      },
+      {
+        "name": "DIN COUTURE",
+        "loaders_on": 8
+      }
+    ],
+    "unexpected": [],
+    "other_company_loaders_on": 0
+  },
+  "unified_ledger_tests": "336/336 PASS",
+  "rollback_sql_count": 36,
+  "legacy_main_services_retained": 4,
+  "r8_r1_date": "2026-07-10",
+  "soak_required_until": "2026-08-09",
+  "soak_day": 2,
+  "code_deletion_status": "DEFERRED_POST_SOAK",
+  "operator_note": "Kill-switch NOT toggled in production during drill. L1 SQL rollback files verified present."
+}

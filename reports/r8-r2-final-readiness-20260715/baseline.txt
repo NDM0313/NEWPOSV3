@@ -1,0 +1,24 @@
+OLD ERP R8-R2 FINAL READINESS — BASELINE
+Date: 2026-07-15
+
+BRANCH: main
+HEAD / origin/main: b8fec34b836b2957254e461231de253aa647c085
+CONTAINS_b8fec34b: YES
+CONTAINS_a5149971 (AR/AP runtime): YES
+STAGED_AT_START: (none)
+
+WORKING TREE EXCLUDED (unrelated WIP — not staged by this pack):
+- docs/accounting/ACCOUNTING_REPORTS_INDEX.md
+- graphify-out/
+- migration-tools/* cashbook/repair
+- Ledger V2 / attachments / accountingService WIP
+- docs/accounting/*IMPORT_GAP*
+- docs/audit/*
+- tmp/
+
+UNSAFE PATTERNS: no .env/credentials/APK/AAB/IPA/keystore staged
+GRAPHIFY: remains unstaged
+RUNTIME CHANGES THIS SESSION: none
+DEPLOY: none
+LEGACY DELETION: none
+KILL SWITCH TOGGLE: none

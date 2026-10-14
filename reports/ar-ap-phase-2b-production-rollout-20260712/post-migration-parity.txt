@@ -1,0 +1,55 @@
+# AR/AP Phase 2b party GL parity (read-only)
+Generated: 2026-07-12T06:46:41Z
+
+Legacy RPC deployed: YES
+Unified RPC deployed: YES
+
+## DIN COUTURE: PASS
+- Legacy sums AR/AP/WP: 22625273.0 / 26908831.0 / 0.0
+- Legacy contact count: 84
+- Unified sums AR/AP/WP: 22625273.0 / 26908831.0 / 0.0
+- Unified contact count: 84
+- Contact count delta: 0
+- Max column delta: 0.0
+
+## DIN BRIDAL: FAIL
+- Legacy sums AR/AP/WP: 2025800.0 / -547191.0 / 0.0
+- Legacy contact count: 142
+- Unified sums AR/AP/WP: 1945950.0 / -547191.0 / 0.0
+- Unified contact count: 142
+- Contact count delta: 0
+- Max column delta: 79850.0
+
+## DIN CHINA: PASS
+- Legacy sums AR/AP/WP: 14189222.98 / 1140286.4 / 0.0
+- Legacy contact count: 35
+- Unified sums AR/AP/WP: 14189222.98 / 1140286.4 / 0.0
+- Unified contact count: 35
+- Contact count delta: 0
+- Max column delta: 0.0
+
+Overall: FAIL
+
+## Contact-level drivers (DIN BRIDAL, effective_party)
+
+| Contact | contact_id | legacy AR | unified AR | AR delta |
+|---------|------------|-----------|------------|----------|
+| Walk-in Customer old | 4549c5de-0599-435a-a6ab-6e622f99be64 | 171500.00 | 91500.00 | -80000.00 |
+| Walk-in Customer | a3c6ea52-a705-48c9-a3ac-e42e423526de | -150.00 | 0.00 | 150.00 |
+
+AP / worker payable: no material contact deltas.
+
+## Basis diagnostic (DIN BRIDAL company sums)
+
+| Basis | Max AR/AP/WP delta vs legacy |
+|-------|------------------------------|
+| effective_party (Phase 2b default) | 79850 FAIL |
+| official_gl | 0 PASS |
+| audit_full_history | 0 PASS |
+
+Walk-in Customer old under official_gl / audit_full_history matches legacy AR 171500.00.
+
+## Gate decision
+
+STOP RULE triggered: do not proceed with Phase 2b production-complete claim.
+No GL mutation. No kill-switch toggle. No additional deploy performed in this session.

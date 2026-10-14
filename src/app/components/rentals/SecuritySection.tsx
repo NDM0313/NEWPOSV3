@@ -58,11 +58,11 @@ export const SecuritySection = ({ onChange, disabled = false }: SecuritySectionP
 
   return (
     <div className={cn(
-      "bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4",
+      "bg-card border border-border rounded-lg p-5 space-y-4",
       disabled && "opacity-70 pointer-events-none"
     )}>
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-white flex items-center gap-2">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
           <Shield className="text-blue-500" size={18} />
           Security Deposit / Guarantee
         </h3>
@@ -85,12 +85,12 @@ export const SecuritySection = ({ onChange, disabled = false }: SecuritySectionP
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Security Type */}
         <div className="space-y-2">
-          <Label className="text-gray-400 text-xs uppercase">Guarantee Type</Label>
+          <Label className="text-muted-foreground text-xs uppercase">Guarantee Type</Label>
           <Select value={type} onValueChange={handleTypeChange} disabled={disabled}>
-            <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+            <SelectTrigger className="bg-muted border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-gray-800 border-gray-700 text-white">
+            <SelectContent className="bg-muted border-border text-foreground">
               <SelectItem value="cash">Cash Deposit</SelectItem>
               <SelectItem value="id_card">ID Card (Original)</SelectItem>
               <SelectItem value="passport">Passport</SelectItem>
@@ -101,14 +101,14 @@ export const SecuritySection = ({ onChange, disabled = false }: SecuritySectionP
 
         {/* Reference / ID Number */}
         <div className="space-y-2">
-          <Label className="text-gray-400 text-xs uppercase">
+          <Label className="text-muted-foreground text-xs uppercase">
             {type === 'cash' ? 'Amount Received' : 'ID / Document Number'}
           </Label>
           <Input 
             value={reference}
             onChange={handleRefChange}
             placeholder={type === 'cash' ? '5000' : 'ABC-1234567'}
-            className="bg-gray-800 border-gray-700 text-white"
+            className="bg-muted border-border text-foreground"
             disabled={disabled}
           />
         </div>
@@ -117,11 +117,11 @@ export const SecuritySection = ({ onChange, disabled = false }: SecuritySectionP
       {/* Document Upload Area */}
       {type !== 'cash' && (
         <div className="space-y-2">
-           <Label className="text-gray-400 text-xs uppercase">Document Evidence</Label>
+           <Label className="text-muted-foreground text-xs uppercase">Document Evidence</Label>
            <div 
              className={cn(
                "border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors",
-               hasFile ? 'border-green-500/50 bg-green-500/5' : 'border-gray-700 hover:border-gray-600 hover:bg-gray-800/50',
+               hasFile ? 'border-green-500/50 bg-green-500/5' : 'border-border hover:border-gray-600 hover:bg-muted/50',
                !disabled && "cursor-pointer"
              )}
              onClick={disabled ? undefined : handleFileUpload}
@@ -130,13 +130,13 @@ export const SecuritySection = ({ onChange, disabled = false }: SecuritySectionP
                <div className="text-center space-y-2">
                  <FileCheck size={32} className="text-green-500 mx-auto" />
                  <p className="text-green-500 font-medium text-sm">Document Attached</p>
-                 <p className="text-gray-500 text-xs">{disabled ? '' : 'Click to replace'}</p>
+                 <p className="text-muted-foreground text-xs">{disabled ? '' : 'Click to replace'}</p>
                </div>
              ) : (
                <div className="text-center space-y-2">
-                 <Camera size={24} className="text-gray-400 mx-auto" />
-                 <p className="text-gray-300 font-medium text-sm">Upload Photo of ID</p>
-                 <p className="text-gray-500 text-xs">Drag & drop or click to capture</p>
+                 <Camera size={24} className="text-muted-foreground mx-auto" />
+                 <p className="text-muted-foreground font-medium text-sm">Upload Photo of ID</p>
+                 <p className="text-muted-foreground text-xs">Drag & drop or click to capture</p>
                </div>
              )}
            </div>

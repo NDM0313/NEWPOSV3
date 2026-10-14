@@ -1,0 +1,14 @@
+{
+  "generated": "2026-06-29",
+  "deployedCommit": "cca0c246",
+  "featureCommit": "ae6c69d0",
+  "deployStartUtc": "2026-06-29T19:36:00Z",
+  "deployEndUtc": "2026-06-29T19:38:00Z",
+  "url": "https://erp.dincouture.pk",
+  "containerStatus": "healthy",
+  "migrationsRun": false,
+  "featureFlagsChanged": false,
+  "glMutations": false,
+  "cashFlowLoaderSwap": false,
+  "result": "PASS"
+}

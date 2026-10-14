@@ -1,5 +1,5 @@
 /* Minimal service worker: cache app shell, API calls not cached. Works at / or /m/ */
-const CACHE = 'erp-mobile-v5'; // Incremented cache version — bust stale PWA bundles (direct Supabase URL)
+const CACHE = 'erp-mobile-v6'; // Bust stale PWA bundles after ndmcore API lock
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '').replace(/\/?$/, '') || '';
 
 const APP_SHELL = [
@@ -35,7 +35,7 @@ self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   // Do not cache API, Auth, Storage, or Realtime calls
   const isInternal = u.origin === self.location.origin;
-  const isExternalApi = u.origin.includes('supabase.dincouture.pk');
+  const isExternalApi = u.origin.includes('api.ndmcore.com');
   
   if (isExternalApi || u.pathname.includes('/auth/') || u.pathname.includes('/rest/') || 
       u.pathname.includes('/storage/') || u.pathname.includes('/realtime/')) {
