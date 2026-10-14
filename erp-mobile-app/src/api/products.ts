@@ -185,40 +185,47 @@ type VariationFetchRow = {
   retail_price?: number | null;
 };
 
+/** Layered selects — PostgREST returns HTTP 400 when a selected column is missing. */
+const PRODUCT_VARIATION_SELECT_LAYERS = [
+  'id, product_id, sku, attributes, price, retail_price',
+  'id, product_id, sku, attributes, price',
+  'id, product_id, sku, attributes, retail_price',
+  'id, product_id, sku, attributes',
+] as const;
+
 async function fetchActiveVariationsForProducts(productIds: string[]): Promise<VariationFetchRow[]> {
   if (productIds.length === 0) return [];
-  try {
-    return await fetchInBatches(productIds, async (chunk) => {
-      const { data, error } = await supabase
-        .from('product_variations')
-        .select('id, product_id, sku, attributes, price, retail_price')
-        .in('product_id', chunk)
-        .eq('is_active', true);
-      if (error) throw error;
-      return (data || []) as VariationFetchRow[];
-    });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Older schemas may lack retail_price — retry without it.
-    if (/retail_price|column/i.test(msg)) {
-      try {
-        return await fetchInBatches(productIds, async (chunk) => {
-          const { data, error } = await supabase
-            .from('product_variations')
-            .select('id, product_id, sku, attributes, price')
-            .in('product_id', chunk)
-            .eq('is_active', true);
-          if (error) throw error;
-          return (data || []) as VariationFetchRow[];
-        });
-      } catch (e2: unknown) {
-        console.warn('[getProducts] product_variations:', e2 instanceof Error ? e2.message : String(e2));
+  let lastMsg = '';
+  for (const layer of PRODUCT_VARIATION_SELECT_LAYERS) {
+    try {
+      return await fetchInBatches(productIds, async (chunk) => {
+        let query = supabase
+          .from('product_variations')
+          .select(layer)
+          .in('product_id', chunk);
+        // is_active may be absent on older schemas — try with filter first.
+        const withActive = await query.eq('is_active', true);
+        if (!withActive.error) return (withActive.data || []) as unknown as VariationFetchRow[];
+        if (!/is_active|column|PGRST/i.test(withActive.error.message || '')) {
+          throw withActive.error;
+        }
+        const { data, error } = await supabase
+          .from('product_variations')
+          .select(layer)
+          .in('product_id', chunk);
+        if (error) throw error;
+        return (data || []) as unknown as VariationFetchRow[];
+      });
+    } catch (e: unknown) {
+      lastMsg = e instanceof Error ? e.message : String(e);
+      if (!/column|does not exist|400|PGRST|is_active|retail_price|price/i.test(lastMsg)) {
+        console.warn('[getProducts] product_variations:', lastMsg);
         return [];
       }
     }
-    console.warn('[getProducts] product_variations:', msg);
-    return [];
   }
+  console.warn('[getProducts] product_variations:', lastMsg);
+  return [];
 }
 
 /** Get a single product by barcode or SKU (barcode first, then SKU). For POS barcode scan. Stock from stock_movements. */

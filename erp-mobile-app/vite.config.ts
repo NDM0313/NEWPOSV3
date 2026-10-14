@@ -107,12 +107,26 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-        ...(useMlKitStub && {
-          '@capacitor-mlkit/barcode-scanning': path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
-        }),
-      },
+      // Prefer specific @/app/* aliases so mobile can share stock-count pure libs from web src.
+      alias: [
+        {
+          find: '@/app/lib',
+          replacement: path.resolve(__dirname, '../src/app/lib'),
+        },
+        {
+          find: '@/app/utils',
+          replacement: path.resolve(__dirname, '../src/app/utils'),
+        },
+        { find: '@', replacement: path.resolve(__dirname, './src') },
+        ...(useMlKitStub
+          ? [
+              {
+                find: '@capacitor-mlkit/barcode-scanning',
+                replacement: path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
+              },
+            ]
+          : []),
+      ],
     },
     plugins: [react(), bootScriptOnErrorPlugin()],
     server: {
