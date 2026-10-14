@@ -6,11 +6,16 @@
 export type CountRowPresentation = {
   /** Live movement balance label on the card */
   currentStockLabel: string;
+  /** As-of posting baseline label (historical closing qty) */
+  systemAsOfLabel: string;
   physicalLabel: string;
   differenceLabel: string;
   /** Difference only when a physical count is confirmed (incl. zero) */
   showDifference: boolean;
-  /** Compact badge only — never long baseline essays on the card */
+  /**
+   * Mid-count drift only (live now vs live_qty_at_capture).
+   * Never derived from live vs as-of baseline.
+   */
   showStockChangedBadge: boolean;
   stockChangedBadgeLabel: string;
   /** Uncounted shows em dash, not numeric 0 */
@@ -21,9 +26,11 @@ export type CountRowPresentation = {
 export function countRowPresentation(opts: {
   physicalQty: number | null | undefined;
   countStatus?: string | null;
+  /** Explicit mid-count drift flag from enrich (live capture vs live now) */
   baselineDrifted?: boolean | null;
   currentSystemQty?: number | null;
   systemQtyBaseline?: number | null;
+  asOfDate?: string | null;
 }): CountRowPresentation {
   const uncounted =
     opts.countStatus === 'uncounted' ||
@@ -31,18 +38,15 @@ export function countRowPresentation(opts: {
     Number.isNaN(Number(opts.physicalQty));
   const confirmedZero =
     !uncounted && (opts.countStatus === 'counted_zero' || Number(opts.physicalQty) === 0);
-  const drifted =
-    opts.baselineDrifted === true ||
-    (opts.currentSystemQty != null &&
-      opts.systemQtyBaseline != null &&
-      Math.abs(Number(opts.currentSystemQty) - Number(opts.systemQtyBaseline)) > 0.0000001);
+  const asOf = opts.asOfDate ? String(opts.asOfDate).slice(0, 10) : null;
 
   return {
-    currentStockLabel: 'Current Stock',
+    currentStockLabel: 'Live now',
+    systemAsOfLabel: asOf ? `System (as of ${asOf})` : 'System (as of)',
     physicalLabel: 'Physical Count',
     differenceLabel: 'Difference',
     showDifference: !uncounted,
-    showStockChangedBadge: drifted,
+    showStockChangedBadge: opts.baselineDrifted === true,
     stockChangedBadgeLabel: 'Stock changed',
     physicalDisplayIsBlank: uncounted,
     isConfirmedZero: confirmedZero,

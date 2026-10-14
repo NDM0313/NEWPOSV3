@@ -25,7 +25,7 @@ import {
   type StockLedgerSummary,
 } from '@/app/lib/stockLedgerSummary';
 import {
-  compareBaselineToCurrent,
+  compareLiveCaptureToCurrent,
   ledgerRunningBalanceFromMovements,
   movementsAfterBaseline,
   shouldBlockPostForDrift,
@@ -125,8 +125,10 @@ export type StockCountSessionStatus =
   | 'draft'
   | 'in_progress'
   | 'pending_review'
+  | 'awaiting_approval'
   | 'posted'
-  | 'cancelled';
+  | 'cancelled'
+  | 'reversed';
 
 export type StockCountSession = {
   id: string;
@@ -135,9 +137,20 @@ export type StockCountSession = {
   branch_id: string | null;
   scope_type?: 'single_branch' | 'all_branches';
   status: StockCountSessionStatus;
+  /** Closing / count-as-of calendar date (YYYY-MM-DD). */
+  as_of_date?: string | null;
+  /** STK-… assigned on approve. */
+  document_no?: string | null;
   notes?: string | null;
   created_by?: string | null;
   posted_by?: string | null;
+  submitted_at?: string | null;
+  submitted_by?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  reversed_at?: string | null;
+  reversed_by?: string | null;
+  reverse_reason?: string | null;
   created_at?: string;
   updated_at?: string;
   completed_at?: string | null;
@@ -153,16 +166,18 @@ export type StockCountLine = {
   branch_id?: string | null;
   product_id: string;
   variation_id?: string | null;
-  /** Frozen system qty at add-line / recount — posting basis. */
+  /** Frozen as-of system qty — posting variance basis. */
   system_qty_baseline: number;
   baseline_at: string;
+  /** Live qty when line was added/recounted — mid-count drift basis. */
+  live_qty_at_capture?: number | null;
   /**
-   * Latest movement balance (Full Stock Ledger / getStock).
-   * May differ from system_qty_baseline when stock moved after the count pass.
+   * Latest live movement balance (Full Stock Ledger / getStock).
    */
   current_system_qty?: number | null;
-  /** current − baseline when both known */
+  /** live_now − live_qty_at_capture when both known */
   movement_since_baseline?: number | null;
+  /** True when live moved after capture (not live vs as-of). */
   baseline_drifted?: boolean;
   physical_qty: number | null;
   active_pass_number: number;
@@ -196,6 +211,18 @@ export type StockCountUnmatchedIssue = {
   notes?: string | null;
   status: string;
   created_at?: string;
+};
+
+export type StockCountLineEvent = {
+  id: string;
+  event_type: string;
+  prior_qty: number | null;
+  new_qty: number | null;
+  created_at: string;
+  pass_number: number;
+  reason?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
 };
 
 export type StockCountSearchHit = {
@@ -241,6 +268,10 @@ function mapLine(raw: Record<string, unknown>): StockCountLine {
     variation_id: (raw.variation_id as string) || null,
     system_qty_baseline: baseline,
     baseline_at: String(raw.baseline_at || ''),
+    live_qty_at_capture:
+      raw.live_qty_at_capture == null || raw.live_qty_at_capture === ''
+        ? null
+        : Number(raw.live_qty_at_capture),
     physical_qty: physical,
     active_pass_number: Number(raw.active_pass_number) || 1,
     variance:
@@ -316,7 +347,7 @@ async function enrichLines(
   });
 }
 
-/** Attach live Current System Stock (same getStock path as inventory / ledger sum). */
+/** Attach live stock; drift = live now vs live_qty_at_capture (never vs as-of baseline). */
 async function enrichCurrentSystemQty(
   companyId: string,
   lines: StockCountLine[],
@@ -333,7 +364,7 @@ async function enrichCurrentSystemQty(
   return lines.map((line, i) => {
     const current = qtys[i];
     if (current == null) return line;
-    const snap = compareBaselineToCurrent(line.system_qty_baseline, current);
+    const snap = compareLiveCaptureToCurrent(line.live_qty_at_capture, current);
     return {
       ...line,
       current_system_qty: snap.currentSystemStock,
@@ -347,7 +378,8 @@ export const stockCountApi = {
   async createSession(
     branchId: string | null,
     notes?: string,
-    allBranches = false
+    allBranches = false,
+    asOfDate?: string | null
   ): Promise<StockCountSession> {
     if (!allBranches && (!branchId || branchId === 'all')) {
       throw new Error('Select a physical branch, or choose All Branches for a multi-branch count');
@@ -358,9 +390,53 @@ export const stockCountApi = {
     };
     // p_all_branches requires migration 20261014160000_*; omit when false for older RPC.
     if (allBranches) payload.p_all_branches = true;
+    // p_as_of_date requires migration 20261014190000_*
+    if (asOfDate) payload.p_as_of_date = asOfDate;
     const { data, error } = await supabase.rpc('create_stock_count_session', payload);
     if (error) throw rpcError(error);
     return data as StockCountSession;
+  },
+
+  /** Session qty locked; stock not written yet. */
+  isAwaitingApproval(session: StockCountSession | null | undefined): boolean {
+    return session?.status === 'awaiting_approval';
+  },
+
+  isCountEditable(session: StockCountSession | null | undefined): boolean {
+    const s = session?.status;
+    return s === 'draft' || s === 'in_progress' || s === 'pending_review';
+  },
+
+  /** Soft-cancel allowed (not posted/reversed/already cancelled). */
+  isCancellable(session: StockCountSession | null | undefined): boolean {
+    const s = session?.status;
+    return (
+      s === 'draft' ||
+      s === 'in_progress' ||
+      s === 'pending_review' ||
+      s === 'awaiting_approval'
+    );
+  },
+
+  isReversible(session: StockCountSession | null | undefined): boolean {
+    return session?.status === 'posted';
+  },
+
+  /** Shown in Recent by default (not cancelled/reversed). */
+  isActiveInRecentList(session: StockCountSession | null | undefined): boolean {
+    const s = session?.status;
+    return (
+      s === 'draft' ||
+      s === 'in_progress' ||
+      s === 'pending_review' ||
+      s === 'awaiting_approval' ||
+      s === 'posted'
+    );
+  },
+
+  isArchivedSession(session: StockCountSession | null | undefined): boolean {
+    const s = session?.status;
+    return s === 'cancelled' || s === 'reversed';
   },
 
   isAllBranchesSession(session: StockCountSession | null | undefined): boolean {
@@ -409,7 +485,7 @@ export const stockCountApi = {
     };
   },
 
-  /** Lines that must be recounted or acknowledged before post (baseline ≠ current). */
+  /** Lines that must be recounted or acknowledged before submit (live moved after capture). */
   linesBlockingPostForDrift(
     lines: StockCountLine[],
     acknowledgedLineIds?: Set<string> | string[]
@@ -422,15 +498,15 @@ export const stockCountApi = {
     return lines.filter((l) => {
       const drifted =
         l.baseline_drifted === true ||
-        (l.current_system_qty != null &&
-          compareBaselineToCurrent(l.system_qty_baseline, l.current_system_qty).drifted);
+        compareLiveCaptureToCurrent(l.live_qty_at_capture, l.current_system_qty).drifted;
       const gate = shouldBlockPostForDrift({
         drifted,
         countStatus: l.count_status,
         driftAcknowledged: ack.has(l.id),
         recountedAfterDrift:
+          l.live_qty_at_capture != null &&
           l.current_system_qty != null &&
-          Math.abs(Number(l.system_qty_baseline) - Number(l.current_system_qty)) < 0.0000001,
+          Math.abs(Number(l.live_qty_at_capture) - Number(l.current_system_qty)) < 0.0000001,
       });
       return gate.block;
     });
@@ -454,6 +530,75 @@ export const stockCountApi = {
       return ((data as any).lines as Record<string, unknown>[]).map(mapLine);
     }
     return [mapLine(data as Record<string, unknown>)];
+  },
+
+  async listLineCountEvents(lineId: string): Promise<StockCountLineEvent[]> {
+    const { data, error } = await supabase
+      .from('stock_count_events')
+      .select('id, event_type, prior_qty, new_qty, created_at, pass_number, reason, created_by')
+      .eq('line_id', lineId)
+      .order('created_at', { ascending: true });
+    if (error) throw rpcError(error);
+    const rows = (data || []) as Array<Record<string, unknown>>;
+    const creatorIds = [
+      ...new Set(rows.map((r) => r.created_by).filter(Boolean).map(String)),
+    ];
+    const nameById = new Map<string, string>();
+    if (creatorIds.length) {
+      try {
+        const { data: byAuth } = await supabase
+          .from('users')
+          .select('auth_user_id, full_name, email')
+          .in('auth_user_id', creatorIds);
+        for (const u of byAuth || []) {
+          if (u?.auth_user_id) {
+            nameById.set(u.auth_user_id, u.full_name || u.email || '');
+          }
+        }
+        const missing = creatorIds.filter((id) => !nameById.has(id));
+        if (missing.length) {
+          const { data: byId } = await supabase
+            .from('users')
+            .select('id, full_name, email')
+            .in('id', missing);
+          for (const u of byId || []) {
+            if (u?.id) nameById.set(u.id, u.full_name || u.email || '');
+          }
+        }
+      } catch {
+        /* names optional */
+      }
+    }
+    return rows.map((row) => {
+      const createdBy = row.created_by == null ? null : String(row.created_by);
+      return {
+        id: String(row.id),
+        event_type: String(row.event_type || ''),
+        prior_qty: row.prior_qty == null ? null : Number(row.prior_qty),
+        new_qty: row.new_qty == null ? null : Number(row.new_qty),
+        created_at: String(row.created_at || ''),
+        pass_number: Number(row.pass_number) || 1,
+        reason: (row.reason as string) || null,
+        created_by: createdBy,
+        created_by_name: createdBy ? nameById.get(createdBy) || null : null,
+      };
+    });
+  },
+
+  async removeLine(lineId: string): Promise<{ removed: boolean; line_id: string; session_id: string }> {
+    const { data, error } = await supabase.rpc('stock_count_remove_line', {
+      p_line_id: lineId,
+    });
+    if (error) {
+      const msg = error.message || 'Stock count request failed';
+      if (/Could not find the function|PGRST202|does not exist/i.test(msg)) {
+        throw new Error(
+          'Delete failed: apply migration 20261014180000_stock_count_remove_line on this database.'
+        );
+      }
+      throw new Error(`Delete failed: ${msg}`);
+    }
+    return data as { removed: boolean; line_id: string; session_id: string };
   },
 
   async applyEvent(
@@ -480,7 +625,7 @@ export const stockCountApi = {
           mapped.variation_id ?? null,
           bid
         );
-        const snap = compareBaselineToCurrent(mapped.system_qty_baseline, current);
+        const snap = compareLiveCaptureToCurrent(mapped.live_qty_at_capture, current);
         return {
           ...mapped,
           current_system_qty: snap.currentSystemStock,
@@ -517,6 +662,10 @@ export const stockCountApi = {
     return data as StockCountSession;
   },
 
+  /**
+   * Submit for approval — does NOT write stock (after migration 190000).
+   * Returns awaiting_approval session.
+   */
   async postSession(
     sessionId: string,
     clientOperationId?: string,
@@ -525,6 +674,10 @@ export const stockCountApi = {
     session: StockCountSession;
     posted_movements: number;
     zero_variance: number;
+    submitted?: boolean;
+    counted_lines?: number;
+    qty_over?: number;
+    qty_short?: number;
     idempotent?: boolean;
   }> {
     const { data, error } = await supabase.rpc('post_stock_count_session', {
@@ -537,8 +690,46 @@ export const stockCountApi = {
       session: StockCountSession;
       posted_movements: number;
       zero_variance: number;
+      submitted?: boolean;
+      counted_lines?: number;
+      qty_over?: number;
+      qty_short?: number;
       idempotent?: boolean;
     };
+  },
+
+  /** Final approve: STK number + dated stock_movements. */
+  async approveSession(
+    sessionId: string,
+    clientOperationId?: string
+  ): Promise<{
+    session: StockCountSession;
+    posted_movements: number;
+    zero_variance: number;
+    document_no?: string | null;
+    idempotent?: boolean;
+  }> {
+    const { data, error } = await supabase.rpc('approve_stock_count_session', {
+      p_session_id: sessionId,
+      p_client_operation_id: clientOperationId || crypto.randomUUID(),
+    });
+    if (error) throw rpcError(error);
+    return data as {
+      session: StockCountSession;
+      posted_movements: number;
+      zero_variance: number;
+      document_no?: string | null;
+      idempotent?: boolean;
+    };
+  },
+
+  async rejectSession(sessionId: string, reason?: string): Promise<StockCountSession> {
+    const { data, error } = await supabase.rpc('reject_stock_count_session', {
+      p_session_id: sessionId,
+      p_reason: reason || null,
+    });
+    if (error) throw rpcError(error);
+    return data as StockCountSession;
   },
 
   async cancelSession(sessionId: string): Promise<StockCountSession> {
@@ -547,6 +738,33 @@ export const stockCountApi = {
     });
     if (error) throw rpcError(error);
     return data as StockCountSession;
+  },
+
+  /** Posted-only: opposite stock adjustments + GL; keeps STK document_no. */
+  async reverseSession(
+    sessionId: string,
+    reason?: string,
+    clientOperationId?: string
+  ): Promise<{
+    session: StockCountSession;
+    reversed_movements: number;
+    skipped?: number;
+    document_no?: string | null;
+    idempotent?: boolean;
+  }> {
+    const { data, error } = await supabase.rpc('reverse_stock_count_session', {
+      p_session_id: sessionId,
+      p_reason: reason || null,
+      p_client_operation_id: clientOperationId || crypto.randomUUID(),
+    });
+    if (error) throw rpcError(error);
+    return data as {
+      session: StockCountSession;
+      reversed_movements: number;
+      skipped?: number;
+      document_no?: string | null;
+      idempotent?: boolean;
+    };
   },
 
   /**

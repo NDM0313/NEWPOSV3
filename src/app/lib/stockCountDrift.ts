@@ -1,7 +1,7 @@
 /**
- * Baseline vs current system stock — pure helpers.
- * Posting still uses physical − baseline (preserves post-baseline movements).
- * UI must never label baseline as "current stock" when they differ.
+ * Baseline / live-capture vs current system stock — pure helpers.
+ * Posting still uses physical − as-of baseline (preserves post-as-of movements).
+ * STOCK CHANGED drift uses live_qty_at_capture vs live now — never live vs as-of baseline.
  */
 
 import { computeAdjustmentDelta, isZeroVariance, roundCountQty } from './stockCountMath';
@@ -38,6 +38,28 @@ export function compareBaselineToCurrent(
     movementSinceBaseline,
     drifted: Math.abs(movementSinceBaseline) > epsilon,
   };
+}
+
+/**
+ * Mid-count drift: live now vs qty frozen when the line was added/recounted.
+ * If capture is missing (pre-migration rows), do not invent drift from as-of baseline.
+ */
+export function compareLiveCaptureToCurrent(
+  liveQtyAtCapture: number | null | undefined,
+  currentSystemStock: number | null | undefined,
+  epsilon = 0.0000001
+): BaselineCurrentSnapshot & { drifted: boolean } {
+  if (liveQtyAtCapture == null || currentSystemStock == null) {
+    const current =
+      currentSystemStock == null ? 0 : roundCountQty(Number(currentSystemStock) || 0);
+    return {
+      countBaseline: liveQtyAtCapture == null ? 0 : roundCountQty(Number(liveQtyAtCapture) || 0),
+      currentSystemStock: current,
+      movementSinceBaseline: 0,
+      drifted: false,
+    };
+  }
+  return compareBaselineToCurrent(liveQtyAtCapture, currentSystemStock, epsilon);
 }
 
 /** Sum signed quantities of movements with created_at strictly after baselineAt. */

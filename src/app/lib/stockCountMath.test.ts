@@ -26,6 +26,13 @@ describe('stockCountMath', () => {
     assert.equal(computeDifference(physical, 2), 0);
   });
 
+  it('re-find accumulates: first 2 then +3 → 5 (not replace)', () => {
+    const first = applyIncrement(null, 2);
+    assert.equal(first, 2);
+    const afterRefind = applyIncrement(first, 3);
+    assert.equal(afterRefind, 5);
+  });
+
   it('System 2 and physical count 4 → delta +2', () => {
     assert.equal(computeAdjustmentDelta(4, 2), 2);
     assert.equal(computeDifference(4, 2), 2);

@@ -42,6 +42,10 @@ import {
 import { summarizeStockMovements } from '@/app/lib/stockLedgerSummary';
 import { categorizeStockMovement, withRunningBalance } from '@/app/lib/stockCountDisplay';
 import { countRowPresentation } from '@/app/lib/stockCountRowPresentation';
+import {
+  stockCountVarianceWarning,
+  summarizeVarianceWarnings,
+} from '@/app/lib/stockCountVarianceWarning';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -81,8 +85,10 @@ function statusBadge(status: string) {
     draft: 'bg-slate-500/20 text-slate-300',
     in_progress: 'bg-sky-500/20 text-sky-300',
     pending_review: 'bg-amber-500/20 text-amber-300',
+    awaiting_approval: 'bg-violet-500/20 text-violet-300',
     posted: 'bg-emerald-500/20 text-emerald-300',
     cancelled: 'bg-rose-500/20 text-rose-300',
+    reversed: 'bg-orange-500/20 text-orange-300',
   };
   return map[status] || map.draft;
 }
@@ -116,7 +122,7 @@ function StockChangedBadge({ visible }: { visible: boolean }) {
   );
 }
 
-/** Card metrics: Current Stock + Physical + Difference (when counted). No baseline essay. */
+/** Card metrics: Live now + Physical + Difference (vs as-of). No baseline essay. */
 function CountMetrics({
   current,
   physical,
@@ -125,6 +131,8 @@ function CountMetrics({
   drifted,
   partialPhysical,
   compact,
+  asOfDate,
+  systemBaseline,
 }: {
   current: number | null | undefined;
   physical: number | null;
@@ -133,16 +141,38 @@ function CountMetrics({
   drifted?: boolean;
   partialPhysical?: boolean;
   compact?: boolean;
+  asOfDate?: string | null;
+  systemBaseline?: number | null;
 }) {
   const pres = countRowPresentation({
     physicalQty: physical,
     countStatus,
     baselineDrifted: drifted,
+    asOfDate,
   });
+  const vw = stockCountVarianceWarning(physical, systemBaseline);
   return (
+    <div className="shrink-0 space-y-1">
+      {systemBaseline != null && (
+        <div className="text-[10px] text-muted-foreground text-center tabular-nums">
+          {pres.systemAsOfLabel}: {formatQty(systemBaseline)}
+        </div>
+      )}
+      {vw.badgeLabel ? (
+        <div
+          className={cn(
+            'text-[10px] font-semibold uppercase tracking-wide text-center rounded px-1.5 py-0.5',
+            vw.kind === 'over'
+              ? 'bg-amber-500/20 text-amber-200'
+              : 'bg-rose-500/20 text-rose-200'
+          )}
+        >
+          {vw.badgeLabel}
+        </div>
+      ) : null}
     <div
       className={cn(
-        'grid shrink-0 text-center',
+        'grid text-center',
         compact ? 'grid-cols-3 gap-2 min-w-[11rem]' : 'grid-cols-3 gap-3 min-w-[13.5rem] sm:min-w-[15rem]'
       )}
     >
@@ -152,7 +182,7 @@ function CountMetrics({
         </div>
         <div
           className={cn('font-semibold tabular-nums', compact ? 'text-base' : 'text-lg')}
-          aria-label="Current stock"
+          aria-label="Live stock now"
         >
           {current == null ? '—' : formatQty(current)}
         </div>
@@ -191,10 +221,10 @@ function CountMetrics({
             compact ? 'text-base' : 'text-lg',
             !pres.showDifference
               ? 'text-muted-foreground'
-              : difference != null && difference < 0
+              : vw.diffTone === 'short'
                 ? 'text-rose-400'
-                : difference != null && difference > 0
-                  ? 'text-emerald-400'
+                : vw.diffTone === 'over'
+                  ? 'text-amber-300'
                   : ''
           )}
           aria-label="Difference versus count baseline"
@@ -202,6 +232,7 @@ function CountMetrics({
           {pres.showDifference && difference != null ? formatQty(difference) : '—'}
         </div>
       </div>
+    </div>
     </div>
   );
 }
@@ -480,6 +511,11 @@ export const InventoryCountPage = () => {
   const [unmatchedDesc, setUnmatchedDesc] = useState('');
   const [unmatchedNotes, setUnmatchedNotes] = useState('');
   const [postConfirmOpen, setPostConfirmOpen] = useState(false);
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [reverseConfirmOpen, setReverseConfirmOpen] = useState(false);
+  const [showArchivedSessions, setShowArchivedSessions] = useState(false);
+  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [historyLine, setHistoryLine] = useState<StockCountLine | null>(null);
   const [historyProductGroup, setHistoryProductGroup] = useState<{
     product_id: string;
@@ -502,7 +538,12 @@ export const InventoryCountPage = () => {
     permissionEngine.has('inventory', 'post_count') ||
     permissionEngine.has('inventory', 'adjust');
 
-  const locked = session?.status === 'posted' || session?.status === 'cancelled';
+  const locked =
+    session?.status === 'posted' ||
+    session?.status === 'cancelled' ||
+    session?.status === 'reversed' ||
+    session?.status === 'awaiting_approval';
+  const awaitingApproval = session?.status === 'awaiting_approval';
   const isAllBranchesSession =
     stockCountService.isAllBranchesSession(session) ||
     selectedBranchId === ALL_BRANCHES_SCOPE;
@@ -671,7 +712,8 @@ export const InventoryCountPage = () => {
       const created = await stockCountService.createSession(
         allBr ? null : selectedBranchId,
         undefined,
-        allBr
+        allBr,
+        asOfDate || null
       );
       toast.success(allBr ? 'All-branches count session created' : 'Count session created');
       await refreshSessions();
@@ -877,7 +919,7 @@ export const InventoryCountPage = () => {
     if (locked) return;
     if (
       !window.confirm(
-        'Start a fresh recount? Physical count clears. Count baseline refreshes to Current System Stock. Earlier pass stays in audit history.'
+        'Start a fresh recount? Physical count clears. As-of baseline and live capture refresh. Earlier pass stays in audit history.'
       )
     ) {
       return;
@@ -963,18 +1005,98 @@ export const InventoryCountPage = () => {
       );
       toast.success(
         result.idempotent
-          ? 'Already posted (idempotent)'
-          : `Posted: ${result.posted_movements} movement(s), ${result.zero_variance} zero-variance`
+          ? 'Already submitted (idempotent)'
+          : `Submitted for approval — stock not updated yet. Over ${result.qty_over ?? 0} / Short ${result.qty_short ?? 0}`
       );
       setPostConfirmOpen(false);
       await loadSession(session.id);
       await refreshSessions();
     } catch (e: any) {
-      toast.error(e?.message || 'Post failed');
+      toast.error(e?.message || 'Submit failed');
     } finally {
       setBusy(false);
     }
   };
+
+  const onApprove = async () => {
+    if (!session || !canPost) return;
+    setBusy(true);
+    try {
+      const result = await stockCountService.approveSession(session.id);
+      toast.success(
+        result.idempotent
+          ? `Already approved (${result.document_no || 'STK'})`
+          : `Approved ${result.document_no || 'STK'}: ${result.posted_movements} movement(s)`
+      );
+      setApproveConfirmOpen(false);
+      await loadSession(session.id);
+      await refreshSessions();
+    } catch (e: any) {
+      toast.error(e?.message || 'Approve failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onReject = async () => {
+    if (!session || !canPost) return;
+    setBusy(true);
+    try {
+      await stockCountService.rejectSession(session.id);
+      toast.success('Rejected — count reopened');
+      setApproveConfirmOpen(false);
+      await loadSession(session.id);
+      await refreshSessions();
+    } catch (e: any) {
+      toast.error(e?.message || 'Reject failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onCancelSession = async () => {
+    if (!session || !stockCountService.isCancellable(session)) return;
+    setBusy(true);
+    try {
+      await stockCountService.cancelSession(session.id);
+      toast.success('Session cancelled — removed from Recent (still in archive)');
+      setCancelConfirmOpen(false);
+      setShowArchivedSessions(false);
+      setSession(null);
+      setLines([]);
+      await refreshSessions();
+    } catch (e: any) {
+      toast.error(e?.message || 'Cancel failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onReverseSession = async () => {
+    if (!session || !stockCountService.isReversible(session) || !canPost) return;
+    setBusy(true);
+    try {
+      const result = await stockCountService.reverseSession(
+        session.id,
+        'Reversed from web stock count'
+      );
+      toast.success(
+        `Reversed ${result.document_no || 'STK'}: ${result.reversed_movements} opposite movement(s)`
+      );
+      setReverseConfirmOpen(false);
+      await loadSession(session.id);
+      await refreshSessions();
+    } catch (e: any) {
+      toast.error(e?.message || 'Reverse failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const varianceWarnSummary = useMemo(
+    () => summarizeVarianceWarnings(lines),
+    [lines]
+  );
 
   const saveUnmatched = async () => {
     if (!session) return;
@@ -1012,7 +1134,11 @@ export const InventoryCountPage = () => {
     !!session &&
     (canPost || previewMode) &&
     session.status !== 'posted' &&
-    session.status !== 'cancelled';
+    session.status !== 'cancelled' &&
+    session.status !== 'reversed' &&
+    session.status !== 'awaiting_approval';
+  const showApprove =
+    !!session && canPost && session.status === 'awaiting_approval';
 
   return (
     <ErpPage className="overflow-x-hidden max-w-full relative">
@@ -1024,8 +1150,8 @@ export const InventoryCountPage = () => {
               Inventory Count
             </ErpPageTitle>
             <ErpPageDescription className="hidden sm:block">
-              Physical count is draft until posted. Live stock stays on stock movements only.
-              Difference posts as Physical − Count Baseline (later movements stay intact).
+              Count against as-of closing stock, review &amp; submit (no stock write), then approve
+              to assign STK number and post dated adjustments (Physical − as-of baseline).
             </ErpPageDescription>
             {previewMode ? (
               <div
@@ -1100,11 +1226,21 @@ export const InventoryCountPage = () => {
               ))}
             </select>
             {!session && !previewMode && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 items-end">
+                <label className="text-xs text-muted-foreground flex flex-col gap-1">
+                  As-of date
+                  <Input
+                    type="date"
+                    className="h-10 w-[11rem]"
+                    value={asOfDate}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setAsOfDate(e.target.value)}
+                  />
+                </label>
                 <Button
                   className={cn(TOUCH_BTN, 'flex-1 sm:flex-none')}
                   onClick={createSession}
-                  disabled={busy || !canCount || !selectedBranchId}
+                  disabled={busy || !canCount || !selectedBranchId || !asOfDate}
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'New count session'}
                 </Button>
@@ -1146,55 +1282,85 @@ export const InventoryCountPage = () => {
         </div>
       ) : !session ? (
         <div className="space-y-3 px-4 md:px-0">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Sessions · {countScopeLabel || 'selected scope'}
-          </h2>
-          {sessions.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-8">
-              No count sessions yet. Select a physical branch or All Branches, then start a
-              session.
-            </p>
-          ) : (
-            <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
-              {sessions.map((s) => {
-                const allBr = stockCountService.isAllBranchesSession(s);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3.5 min-h-14 text-left hover:bg-muted/40 touch-manipulation"
-                    onClick={() => loadSession(s.id)}
-                  >
-                    <div>
-                      <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
-                        {allBr ? (
-                          <span className="text-violet-300">All Branches</span>
-                        ) : (
-                          branches.find((b) => b.id === s.branch_id)?.name || s.branch_id
-                        )}
-                        {allBr ? (
-                          <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-violet-500/20 text-violet-300">
-                            multi-branch
-                          </span>
-                        ) : null}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Sessions · {countScopeLabel || 'selected scope'}
+            </h2>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs h-9"
+              onClick={() => setShowArchivedSessions((v) => !v)}
+            >
+              {showArchivedSessions ? 'Hide archived' : 'Show archived'}
+            </Button>
+          </div>
+          {(() => {
+            const visible = sessions.filter((s) =>
+              showArchivedSessions
+                ? stockCountService.isActiveInRecentList(s) ||
+                  stockCountService.isArchivedSession(s)
+                : stockCountService.isActiveInRecentList(s)
+            );
+            if (visible.length === 0) {
+              return (
+                <p className="text-muted-foreground text-sm py-8">
+                  {showArchivedSessions
+                    ? 'No count sessions yet. Select a physical branch or All Branches, then start a session.'
+                    : 'No active sessions. Cancelled counts are in archive (Show archived).'}
+                </p>
+              );
+            }
+            return (
+              <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+                {visible.map((s) => {
+                  const allBr = stockCountService.isAllBranchesSession(s);
+                  const archived = stockCountService.isArchivedSession(s);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={cn(
+                        'w-full flex items-center justify-between gap-3 px-4 py-3.5 min-h-14 text-left hover:bg-muted/40 touch-manipulation',
+                        archived && 'opacity-70'
+                      )}
+                      onClick={() => loadSession(s.id)}
+                    >
+                      <div>
+                        <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                          {allBr ? (
+                            <span className="text-violet-300">All Branches</span>
+                          ) : (
+                            branches.find((b) => b.id === s.branch_id)?.name || s.branch_id
+                          )}
+                          {allBr ? (
+                            <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-violet-500/20 text-violet-300">
+                              multi-branch
+                            </span>
+                          ) : null}
+                          {s.document_no ? (
+                            <span className="text-xs text-muted-foreground">{s.document_no}</span>
+                          ) : null}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {s.updated_at
+                            ? new Date(s.updated_at).toLocaleString()
+                            : s.id.slice(0, 8)}
+                          {s.posted_at
+                            ? ` · posted ${new Date(s.posted_at).toLocaleString()}`
+                            : ''}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {s.updated_at
-                          ? new Date(s.updated_at).toLocaleString()
-                          : s.id.slice(0, 8)}
-                        {s.posted_at
-                          ? ` · posted ${new Date(s.posted_at).toLocaleString()}`
-                          : ''}
-                      </div>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded ${statusBadge(s.status)}`}>
-                      {s.status}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                      <span className={`text-xs px-2 py-1 rounded ${statusBadge(s.status)}`}>
+                        {s.status.replace(/_/g, ' ')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       ) : (
         <div
@@ -1240,7 +1406,36 @@ export const InventoryCountPage = () => {
                   onClick={() => setPostConfirmOpen(true)}
                   disabled={busy}
                 >
-                  {previewMode ? 'Review preview post' : 'Review & post'}
+                  {previewMode ? 'Review preview submit' : 'Review & submit'}
+                </Button>
+              )}
+              {showApprove && (
+                <Button
+                  className={TOUCH_BTN}
+                  onClick={() => setApproveConfirmOpen(true)}
+                  disabled={busy}
+                >
+                  Approve stock
+                </Button>
+              )}
+              {session && stockCountService.isCancellable(session) && (
+                <Button
+                  variant="destructive"
+                  className={TOUCH_BTN}
+                  onClick={() => setCancelConfirmOpen(true)}
+                  disabled={busy}
+                >
+                  Cancel session
+                </Button>
+              )}
+              {session && stockCountService.isReversible(session) && canPost && (
+                <Button
+                  variant="secondary"
+                  className={TOUCH_BTN}
+                  onClick={() => setReverseConfirmOpen(true)}
+                  disabled={busy}
+                >
+                  Reverse approved
                 </Button>
               )}
             </div>
@@ -1339,8 +1534,8 @@ export const InventoryCountPage = () => {
                       <div className="text-sm tabular-nums text-muted-foreground text-right">
                         <div className="text-[10px] uppercase leading-tight">
                           {isAllBranchesSession
-                            ? 'Current System Stock (all)'
-                            : 'Current System Stock'}
+                            ? 'Current Stock (all branches)'
+                            : 'Live now'}
                         </div>
                         {formatQty(hit.system_qty)}
                       </div>
@@ -1451,6 +1646,11 @@ export const InventoryCountPage = () => {
                         }
                         drifted={anyDrift}
                         partialPhysical={phys.partial}
+                        asOfDate={session?.as_of_date}
+                        systemBaseline={group.lines.reduce(
+                          (s, l) => s + Number(l.system_qty_baseline || 0),
+                          0
+                        )}
                       />
                       <div className="flex flex-wrap gap-2 xl:ml-auto shrink-0 w-full xl:w-auto">
                         <Button
@@ -1518,6 +1718,8 @@ export const InventoryCountPage = () => {
                                 difference={bDiff}
                                 countStatus={line.count_status}
                                 drifted={!!line.baseline_drifted}
+                                asOfDate={session?.as_of_date}
+                                systemBaseline={line.system_qty_baseline}
                               />
                               <CountRowActions
                                 line={line}
@@ -1595,6 +1797,8 @@ export const InventoryCountPage = () => {
                       difference={diff}
                       countStatus={line.count_status}
                       drifted={!!line.baseline_drifted}
+                      asOfDate={session?.as_of_date}
+                      systemBaseline={line.system_qty_baseline}
                     />
 
                     <CountRowActions
@@ -1624,20 +1828,27 @@ export const InventoryCountPage = () => {
             )}
           </div>
 
+          {awaitingApproval && (
+            <div className="rounded-md border border-violet-500/40 bg-violet-500/10 p-3 text-sm">
+              Awaiting approval — qty locked. As of{' '}
+              <strong>{session.as_of_date || '—'}</strong>. Stock not updated until Approve.
+            </div>
+          )}
+
           {session.status === 'posted' && (
             <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm flex items-start gap-2">
               <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
               <div>
-                Posted {session.posted_at ? new Date(session.posted_at).toLocaleString() : ''}.
-                Non-zero variances created stock movements (
-                <code className="text-xs">reference_type=stock_count</code>). Zero-variance lines
-                reconciled without a movement.
+                Approved {session.document_no ? <strong>{session.document_no}</strong> : ''}{' '}
+                {session.posted_at ? new Date(session.posted_at).toLocaleString() : ''}.
+                As of {session.as_of_date || '—'}. Non-zero variances created stock movements (
+                <code className="text-xs">reference_type=stock_count</code>).
               </div>
             </div>
           )}
 
-          {/* Phone sticky Review & post — sits above BottomNav + safe area */}
-          {showReviewPost && (
+          {/* Phone sticky Review & submit / Approve */}
+          {(showReviewPost || showApprove) && (
             <div
               className="md:hidden fixed inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur-sm px-4 pt-3 shadow-[0_-4px_16px_rgba(0,0,0,0.25)]"
               style={{
@@ -1645,22 +1856,33 @@ export const InventoryCountPage = () => {
                 paddingBottom: '0.75rem',
               }}
             >
-              <Button
-                className={cn(TOUCH_BTN, 'w-full text-base font-semibold')}
-                onClick={() => setPostConfirmOpen(true)}
-                disabled={busy || driftBlocked.length > 0}
-              >
-                {busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : previewMode ? (
-                  'Review preview post'
-                ) : (
-                  `Review & post · ${counts.counted.length} counted`
-                )}
-              </Button>
+              {showReviewPost && (
+                <Button
+                  className={cn(TOUCH_BTN, 'w-full text-base font-semibold')}
+                  onClick={() => setPostConfirmOpen(true)}
+                  disabled={busy || driftBlocked.length > 0}
+                >
+                  {busy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : previewMode ? (
+                    'Review preview submit'
+                  ) : (
+                    `Review & submit · ${counts.counted.length} counted`
+                  )}
+                </Button>
+              )}
+              {showApprove && (
+                <Button
+                  className={cn(TOUCH_BTN, 'w-full text-base font-semibold')}
+                  onClick={() => setApproveConfirmOpen(true)}
+                  disabled={busy}
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve stock update'}
+                </Button>
+              )}
               {driftBlocked.length > 0 ? (
                 <p className="text-[11px] text-amber-300 mt-1.5 text-center">
-                  Resolve Stock changed lines before posting
+                  Resolve Stock changed lines before submit
                 </p>
               ) : null}
             </div>
@@ -1783,24 +2005,32 @@ export const InventoryCountPage = () => {
       <Dialog open={postConfirmOpen} onOpenChange={setPostConfirmOpen}>
         <DialogContent className="max-h-[min(90dvh,40rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Post stock count?</DialogTitle>
+            <DialogTitle>Submit stock count for approval?</DialogTitle>
           </DialogHeader>
           <div className="text-sm space-y-2 text-muted-foreground">
             <p>
-              Posting formula:{' '}
+              Variance formula:{' '}
               <strong className="text-foreground">
-                adjustment = Physical Count − Count Baseline
-              </strong>{' '}
-              (not Current System Stock). Later movements after the baseline stay intact.
+                Physical − as-of baseline ({session?.as_of_date || '—'})
+              </strong>
+              . This step locks the count —{' '}
+              <strong className="text-amber-200">stock is not updated yet</strong>. Approve later
+              to write dated adjustments and assign an STK document number.
               Scope: <strong className="text-foreground">{countScopeLabel}</strong>.
-              {isAllBranchesSession
-                ? ' Each branch variance posts its own movement — never one company aggregate.'
-                : null}
             </p>
             <p>
               Counted: {counts.counted.length} · Uncounted: {counts.uncounted.length} · Variance
               lines: {counts.variance.length}
             </p>
+            <p>
+              Over lines: {varianceWarnSummary.over} · Short lines: {varianceWarnSummary.short}
+            </p>
+            {varianceWarnSummary.over > 0 && (
+              <p className="text-amber-300">
+                {varianceWarnSummary.over} item(s) counted higher than as-of system — recheck
+                before submit (still allowed).
+              </p>
+            )}
             {driftBlocked.length > 0 && (
               <p className="text-amber-400">
                 {driftBlocked.length} drifted line(s) still need recount or acknowledge
@@ -1814,7 +2044,7 @@ export const InventoryCountPage = () => {
             )}
             {counts.uncounted.length > 0 && (
               <p className="text-amber-400">
-                Uncounted lines will be skipped (partial post). Prefer counting them first.
+                Uncounted lines will be skipped (partial submit). Prefer counting them first.
               </p>
             )}
           </div>
@@ -1833,10 +2063,87 @@ export const InventoryCountPage = () => {
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : previewMode ? (
-                'Preview post (no writes)'
+                'Preview submit (no writes)'
               ) : (
-                'Confirm post'
+                'Submit for approval'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={approveConfirmOpen} onOpenChange={setApproveConfirmOpen}>
+        <DialogContent className="max-h-[min(90dvh,40rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Approve &amp; update stock?</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm space-y-2 text-muted-foreground">
+            <p>
+              Final OK assigns an STK document number and writes dated stock adjustments as of{' '}
+              <strong className="text-foreground">{session?.as_of_date || '—'}</strong> (GL via
+              existing inventory adjustment path).
+            </p>
+            <p>
+              Variance lines: {counts.variance.length} · Over {varianceWarnSummary.over} · Short{' '}
+              {varianceWarnSummary.short} · Scope:{' '}
+              <strong className="text-foreground">{countScopeLabel}</strong>
+            </p>
+            {varianceWarnSummary.over > 0 && (
+              <p className="text-amber-300">
+                Recheck overages before final approve — still allowed if the count is correct.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setApproveConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={onReject} disabled={busy || !canPost}>
+              Reject — reopen
+            </Button>
+            <Button onClick={onApprove} disabled={busy || !canPost}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve — update stock'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel session?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Soft-cancel this unfinished count. It leaves Recent and stays in archive only — stock/GL
+            are not touched. Posted counts must use Reverse instead.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelConfirmOpen(false)}>
+              Keep
+            </Button>
+            <Button variant="destructive" onClick={onCancelSession} disabled={busy}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel session'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reverseConfirmOpen} onOpenChange={setReverseConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reverse approved count?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Creates opposite stock adjustments and journals for{' '}
+            <strong className="text-foreground">{session?.document_no || 'this STK'}</strong>. Keeps
+            the document number. Cannot hard-delete posted history.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReverseConfirmOpen(false)}>
+              Keep posted
+            </Button>
+            <Button onClick={onReverseSession} disabled={busy || !canPost}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reverse stock update'}
             </Button>
           </DialogFooter>
         </DialogContent>
