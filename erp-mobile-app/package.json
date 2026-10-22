@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build",
     "build:mobile": "vite build",
     "build:mobile:prod": "tsc -b && vite build --mode production",
-    "build:mobile:pwa": "VITE_BASE=/m/ vite build && node scripts/rewrite-pwa-base.js",
+    "build:mobile:pwa": "VITE_BASE=/m/ VITE_TARGET= vite build && node scripts/rewrite-pwa-base.js",
     "cap:sync": "npm run build:mobile:prod && node scripts/verify-dist-for-capacitor.mjs && npx cap sync && node scripts/verify-dist-for-capacitor.mjs",
     "cap:sync:android": "npm run cap:sync:android:prod",
     "cap:sync:android:prod": "npm run build:mobile:prod && node scripts/verify-dist-for-capacitor.mjs && npx cap sync android && node scripts/verify-dist-for-capacitor.mjs",

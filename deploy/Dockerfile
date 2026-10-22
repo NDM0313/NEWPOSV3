@@ -43,6 +43,8 @@ ARG VITE_SUPABASE_URL_MOBILE=https://supabase.dincouture.pk
 ARG VITE_SUPABASE_ANON_KEY=placeholder-key
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL_MOBILE
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+# Never bake Capacitor APK mode into /m/ PWA (inlineDynamicImports → multi‑MB single JS breaks Safari).
+ENV VITE_TARGET=
 RUN npm run build:mobile:pwa
 
 # Stage 3: Serve
