@@ -16,14 +16,22 @@ export type FabricPickerProduct = {
   isDyeable?: boolean;
   imageUrl?: string;
   stock?: number;
+  totalStock?: number;
+  trackStock?: boolean;
 };
 
 export function mapApiProductToFabricPicker(p: productsApi.Product): FabricPickerProduct {
+  const variationFallback =
+    p.variations?.reduce((best, v) => {
+      const vp = Number(v.price) || 0;
+      return vp > best ? vp : best;
+    }, 0) ?? 0;
+  const retail = Number(p.retailPrice) || variationFallback || 0;
   return {
     id: p.id,
     name: p.name,
-    price: p.retailPrice ?? 0,
-    wholesalePrice: p.wholesalePrice ?? p.retailPrice ?? 0,
+    price: retail,
+    wholesalePrice: p.wholesalePrice ?? p.costPrice ?? retail * 0.8,
     sku: p.sku,
     barcode: p.barcode,
     unit: p.unit ?? 'Piece',
@@ -33,5 +41,8 @@ export function mapApiProductToFabricPicker(p: productsApi.Product): FabricPicke
     isDyeable: Boolean(p.isDyeable),
     imageUrl: p.imageUrls?.[0],
     stock: p.stock ?? 0,
+    // Must pass through — DIN CHINA qty often sits on inactive variation keys.
+    totalStock: p.totalStock ?? p.stock ?? 0,
+    trackStock: true,
   };
 }

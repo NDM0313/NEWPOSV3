@@ -61,6 +61,7 @@ interface ProductForPurchase {
   variations?: ProductVariationRow[];
   unitAllowDecimal?: boolean;
   stock?: number;
+  totalStock?: number;
 }
 
 interface CreatePurchaseFlowProps {
@@ -164,6 +165,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                 variations: p.variations,
                 unitAllowDecimal: p.unitAllowDecimal ?? false,
                 stock: p.stock ?? 0,
+                totalStock: p.totalStock ?? p.stock ?? 0,
               }))
         );
       });
