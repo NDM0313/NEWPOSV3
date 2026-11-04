@@ -1,0 +1,7 @@
+# Optional origin TLS material for erp.ndmcore.com (self-signed or Cloudflare Origin CA).
+# Install beside certs under /etc/dokploy/traefik/dynamic/
+# Prefer Cloudflare Origin CA when SSL/TLS mode is Full (strict).
+tls:
+  certificates:
+    - certFile: /etc/dokploy/traefik/dynamic/certificates/erp.ndmcore.com.crt
+      keyFile: /etc/dokploy/traefik/dynamic/certificates/erp.ndmcore.com.key
