@@ -29,7 +29,7 @@ export const checkDateConflict = (
   const activeBookings = existingBookings.filter(
     booking => 
       booking.productId === productId &&
-      booking.id !== excludeBookingId &&
+      String(booking.id) !== String(excludeBookingId || '') &&
       (booking.status === 'booked' ||
         booking.status === 'picked_up' ||
         booking.status === 'active' ||
@@ -44,6 +44,8 @@ export const checkDateConflict = (
     const hasOverlap = pickupDate < booking.returnDate && returnDate > booking.pickupDate;
 
     if (hasOverlap) {
+      const who = [booking.invoiceNumber, booking.customerName].filter(Boolean).join(' — ');
+      const range = `${booking.pickupDate.toLocaleDateString()} to ${booking.returnDate.toLocaleDateString()}`;
       return {
         hasConflict: true,
         conflictingBookingId: booking.id,
@@ -52,7 +54,9 @@ export const checkDateConflict = (
           returnDate: booking.returnDate
         },
         availableFrom: booking.returnDate,
-        message: `Already booked from ${booking.pickupDate.toLocaleDateString()} to ${booking.returnDate.toLocaleDateString()}`
+        message: who
+          ? `Already booked ${who} (${range})`
+          : `Already booked from ${range}`
       };
     }
   }
@@ -172,12 +176,14 @@ export const releaseProductStock = (
  */
 export const getAllowedStatusTransitions = (currentStatus: RentalStatus): RentalStatus[] => {
   const transitions: Record<RentalStatus, RentalStatus[]> = {
-    reserved: ['picked_up', 'cancelled'],
-    picked_up: ['returned', 'overdue'],
+    reserved: ['booked', 'picked_up', 'cancelled'],
+    booked: ['picked_up', 'active', 'cancelled'],
+    picked_up: ['returned', 'overdue', 'active'],
+    active: ['returned', 'overdue'],
     returned: ['closed'],
     closed: [],
     cancelled: [],
-    overdue: ['returned']
+    overdue: ['returned'],
   };
   
   return transitions[currentStatus] || [];

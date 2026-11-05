@@ -1,0 +1,56 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "mobile-role-qa-readiness",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "overall_device_qa": "PARTIAL_DEVICE_QA",
+  "admin": {
+    "status": "ADMIN_QA_PASS",
+    "score": "21/21",
+    "operator": "Nadeem Khan",
+    "device": "Pixel 6 Pro",
+    "golden_totals_verified": true,
+    "evidence": "reports/mobile-apk-manual-admin-qa-20260701/"
+  },
+  "manager": {
+    "status": "MANAGER_QA_PENDING_CREDENTIALS",
+    "credentials_required": true
+  },
+  "salesman": {
+    "status": "SALESMAN_QA_PENDING_CREDENTIALS",
+    "credentials_required": true
+  },
+  "manager_checklist": [
+    "Install same internal QA APK if not present (com.dincouture.erp debug 1.0.5/39)",
+    "Unlock device; confirm network to production Supabase",
+    "Login with Manager credentials (do not record password in evidence)",
+    "Confirm home/dashboard loads without crash",
+    "Open Reports Hub — verify Financial Statements section visible",
+    "Balance Sheet — open, load, no blank screen (any permitted company)",
+    "Profit & Loss — open, load, no blank screen",
+    "Trial Balance — open, load",
+    "Cash Flow — open, load",
+    "Ledger V2 — open, search a party, view statement",
+    "Account Ledger — open, select account, view entries",
+    "Verify Manager cannot access Admin-only settings (if applicable to role)",
+    "Create/view permitted operational screen (sales or inventory per role policy)",
+    "Confirm no unintended production mutations during QA",
+    "Logout works"
+  ],
+  "salesman_checklist": [
+    "Install same internal QA APK if not present",
+    "Login with Salesman credentials (do not record password in evidence)",
+    "Confirm home/POS or sales entry loads",
+    "Open permitted reports (per salesman RBAC — may be subset of Admin)",
+    "Verify salesman cannot access admin company settings or GL journals",
+    "Complete a read-only navigation pass on assigned branch screens",
+    "Confirm no crash, no blank screen",
+    "Confirm no production mutations unless explicitly approved test sale",
+    "Logout works"
+  ],
+  "public_release_blocked_until": [
+    "DIN BRIDAL monitoring drift understood or operator-approved golden refresh",
+    "Required role QA policy decided and Manager/Salesman QA completed if policy requires"
+  ],
+  "play_store_upload": false,
+  "apk_committed": false
+}

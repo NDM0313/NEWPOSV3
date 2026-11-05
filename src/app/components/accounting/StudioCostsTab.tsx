@@ -159,8 +159,8 @@ export const StudioCostsTab: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <AlertCircle size={48} className="text-amber-500 mb-4" />
-        <h3 className="text-lg font-semibold text-white mb-2">Company context required</h3>
-        <p className="text-sm text-gray-400 max-w-md">
+        <h3 className="text-lg font-semibold text-foreground mb-2">Company context required</h3>
+        <p className="text-sm text-muted-foreground max-w-md">
           Log in or select a company to view Studio Production Costs. Data is loaded from journal entries (accounts 5000, 2010) and studio productions.
         </p>
       </div>
@@ -172,8 +172,8 @@ export const StudioCostsTab: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h3 className="text-lg font-bold text-white">Studio Production Costs</h3>
-          <p className="text-sm text-gray-400">
+          <h3 className="text-lg font-bold text-foreground">Studio Production Costs</h3>
+          <p className="text-sm text-muted-foreground">
             Worker payments and job costs by production (standard method: Cost of Production / Worker Payable)
           </p>
         </div>
@@ -181,7 +181,7 @@ export const StudioCostsTab: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            className="border-gray-600 text-gray-300 hover:bg-gray-800"
+            className="border-gray-600 text-muted-foreground hover:bg-muted"
             onClick={() => load()}
           >
             Refresh
@@ -190,7 +190,7 @@ export const StudioCostsTab: React.FC = () => {
             <select
               value={selectedBranchId || 'all'}
               onChange={(e) => setSelectedBranchId(e.target.value === 'all' ? undefined : e.target.value)}
-              className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
+              className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-gray-500"
             >
               <option value="all">All Branches</option>
               {branches.map((b) => (
@@ -200,14 +200,14 @@ export const StudioCostsTab: React.FC = () => {
               ))}
             </select>
           )}
-          <div className="flex rounded-lg border border-gray-700 overflow-hidden">
+          <div className="flex rounded-lg border border-border overflow-hidden">
             <button
               onClick={() => setViewMode('workers')}
               className={cn(
                 'px-4 py-2 text-sm font-medium transition-colors',
                 viewMode === 'workers'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
               )}
             >
               By Worker
@@ -218,7 +218,7 @@ export const StudioCostsTab: React.FC = () => {
                 'px-4 py-2 text-sm font-medium transition-colors',
                 viewMode === 'productions'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
               )}
             >
               By Production
@@ -231,17 +231,17 @@ export const StudioCostsTab: React.FC = () => {
       {!hasAnyData && (
         <div className="bg-amber-950/20 border border-amber-800/50 rounded-xl p-6 text-center">
           <Package size={48} className="mx-auto text-amber-500/80 mb-3" />
-          <h4 className="text-base font-semibold text-white mb-2">No studio cost data yet</h4>
-          <p className="text-sm text-gray-400 max-w-lg mx-auto mb-2">
+          <h4 className="text-base font-semibold text-foreground mb-2">No studio cost data yet</h4>
+          <p className="text-sm text-muted-foreground max-w-lg mx-auto mb-2">
             Data comes from completed studio production stages (with worker and cost) and journal entries (Cost of Production 5000 / Worker Payable 2010).
           </p>
-          <p className="text-xs text-gray-500 mb-4">
-            Ensure Chart of Accounts has accounts <strong className="text-gray-400">5000</strong> (Cost of Production) and <strong className="text-gray-400">2010</strong> (Worker Payable).
+          <p className="text-xs text-muted-foreground mb-4">
+            Ensure Chart of Accounts has accounts <strong className="text-muted-foreground">5000</strong> (Cost of Production) and <strong className="text-muted-foreground">2010</strong> (Worker Payable).
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button
               size="sm"
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-amber-600 hover:bg-amber-700 text-foreground"
               onClick={ensureDefaultAccounts}
               disabled={ensuringAccounts}
             >
@@ -257,57 +257,57 @@ export const StudioCostsTab: React.FC = () => {
 
       <div className="rounded-lg border border-violet-500/25 bg-violet-950/20 px-3 py-2 text-[11px] text-violet-100/90 leading-relaxed">
         <strong className="text-violet-200">Basis:</strong> Studio production stage costs and worker ledger / journal flags —{' '}
-        <span className="text-gray-400">operational / job costing</span>. Outstanding is unpaid worker obligations from this view, not GL 2010 alone (compare via Contacts worker tile or TB).
+        <span className="text-muted-foreground">operational / job costing</span>. Outstanding is unpaid worker obligations from this view, not GL 2010 alone (compare via Contacts worker tile or TB).
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign size={20} className="text-gray-500" />
-            <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Cost</span>
+            <DollarSign size={20} className="text-muted-foreground" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Total Cost</span>
           </div>
-          <p className="text-xl font-bold text-white">{formatCurrency(effectiveSummary.totalCost)}</p>
-          <p className="text-xs text-gray-500 mt-1">Stage costs (operational)</p>
+          <p className="text-xl font-bold text-foreground">{formatCurrency(effectiveSummary.totalCost)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Stage costs (operational)</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle2 size={20} className="text-green-500" />
-            <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Paid</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Paid</span>
           </div>
-          <p className="text-xl font-bold text-green-400">{formatCurrency(effectiveSummary.totalPaid)}</p>
-          <p className="text-xs text-gray-500 mt-1">Worker payments</p>
+          <p className="text-xl font-bold text-[var(--erp-money-positive)]">{formatCurrency(effectiveSummary.totalPaid)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Worker payments</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertCircle size={20} className="text-amber-500" />
-            <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Outstanding</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Outstanding</span>
           </div>
           <p className="text-xl font-bold text-amber-400">{formatCurrency(effectiveSummary.totalUnpaid)}</p>
-          <p className="text-xs text-gray-500 mt-1">To pay workers</p>
+          <p className="text-xs text-muted-foreground mt-1">To pay workers</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Users size={20} className="text-blue-500" />
-            <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Workers</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Workers</span>
           </div>
-          <p className="text-xl font-bold text-white">{effectiveSummary.workersCount}</p>
-          <p className="text-xs text-gray-500 mt-1">With costs</p>
+          <p className="text-xl font-bold text-foreground">{effectiveSummary.workersCount}</p>
+          <p className="text-xs text-muted-foreground mt-1">With costs</p>
         </div>
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Package size={20} className="text-purple-500" />
-            <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Productions</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Productions</span>
           </div>
-          <p className="text-xl font-bold text-white">{effectiveSummary.productionsCount}</p>
-          <p className="text-xs text-gray-500 mt-1">With stages</p>
+          <p className="text-xl font-bold text-foreground">{effectiveSummary.productionsCount}</p>
+          <p className="text-xs text-muted-foreground mt-1">With stages</p>
         </div>
       </div>
 
       {/* Cost by Stage Type */}
       {(effectiveSummary.byStageType.dyer > 0 || effectiveSummary.byStageType.stitching > 0 || effectiveSummary.byStageType.handwork > 0) && (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-          <h4 className="text-sm font-semibold text-white mb-3">Cost by Stage Type</h4>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-foreground mb-3">Cost by Stage Type</h4>
           <div className="flex flex-wrap gap-4">
             {effectiveSummary.byStageType.dyer > 0 && (
               <div className="flex items-center gap-2">
@@ -315,8 +315,8 @@ export const StudioCostsTab: React.FC = () => {
                   <Palette size={16} className="text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Dyeing</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(effectiveSummary.byStageType.dyer)}</p>
+                  <p className="text-xs text-muted-foreground">Dyeing</p>
+                  <p className="text-sm font-semibold text-foreground">{formatCurrency(effectiveSummary.byStageType.dyer)}</p>
                 </div>
               </div>
             )}
@@ -326,8 +326,8 @@ export const StudioCostsTab: React.FC = () => {
                   <Scissors size={16} className="text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Stitching</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(effectiveSummary.byStageType.stitching)}</p>
+                  <p className="text-xs text-muted-foreground">Stitching</p>
+                  <p className="text-sm font-semibold text-foreground">{formatCurrency(effectiveSummary.byStageType.stitching)}</p>
                 </div>
               </div>
             )}
@@ -337,8 +337,8 @@ export const StudioCostsTab: React.FC = () => {
                   <Sparkles size={16} className="text-pink-400" />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Handwork</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(effectiveSummary.byStageType.handwork)}</p>
+                  <p className="text-xs text-muted-foreground">Handwork</p>
+                  <p className="text-sm font-semibold text-foreground">{formatCurrency(effectiveSummary.byStageType.handwork)}</p>
                 </div>
               </div>
             )}
@@ -348,22 +348,22 @@ export const StudioCostsTab: React.FC = () => {
 
       {/* Workers View */}
       {viewMode === 'workers' && (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800">
-            <h4 className="text-sm font-semibold text-white">Worker-wise Cost Breakdown</h4>
-            <p className="text-xs text-gray-500 mt-0.5">Click worker to view full ledger</p>
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h4 className="text-sm font-semibold text-foreground">Worker-wise Cost Breakdown</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">Click worker to view full ledger</p>
           </div>
           {workers.length === 0 ? (
             <div className="text-center py-12">
-              <Users size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">No worker costs found</p>
-              <p className="text-gray-500 text-xs mt-1">Studio production stages will appear here</p>
+              <Users size={48} className="mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground text-sm">No worker costs found</p>
+              <p className="text-muted-foreground text-xs mt-1">Studio production stages will appear here</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-900 border-b border-gray-800">
-                  <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <thead className="bg-card border-b border-border">
+                  <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <th className="px-4 py-3 text-left w-8"></th>
                     <th className="px-4 py-3 text-left">Worker</th>
                     <th className="px-4 py-3 text-right">Jobs</th>
@@ -377,15 +377,15 @@ export const StudioCostsTab: React.FC = () => {
                   {workers.map((w) => (
                     <React.Fragment key={w.workerId}>
                       <tr
-                        className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                        className="border-b border-border hover:bg-accent/30 transition-colors"
                         onClick={() => setExpandedWorker(expandedWorker === w.workerId ? null : w.workerId)}
                       >
                         <td className="px-4 py-3">
                           {w.ledgerEntries.length > 0 ? (
                             expandedWorker === w.workerId ? (
-                              <ChevronDown size={16} className="text-gray-500" />
+                              <ChevronDown size={16} className="text-muted-foreground" />
                             ) : (
-                              <ChevronRight size={16} className="text-gray-500" />
+                              <ChevronRight size={16} className="text-muted-foreground" />
                             )
                           ) : null}
                         </td>
@@ -401,17 +401,17 @@ export const StudioCostsTab: React.FC = () => {
                             {w.workerCode ? ` (${w.workerCode})` : ''}
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-300">{w.jobsCount}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-white">
+                        <td className="px-4 py-3 text-right text-sm text-muted-foreground">{w.jobsCount}</td>
+                        <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">
                           {formatCurrency(w.totalCost)}
                         </td>
-                        <td className="px-4 py-3 text-right text-sm text-green-400">
+                        <td className="px-4 py-3 text-right text-sm text-[var(--erp-money-positive)]">
                           {formatCurrency(w.paidAmount)}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <span className={cn(
                             'text-sm font-semibold',
-                            w.unpaidAmount > 0 ? 'text-amber-400' : 'text-gray-500'
+                            w.unpaidAmount > 0 ? 'text-amber-400' : 'text-muted-foreground'
                           )}>
                             {formatCurrency(w.unpaidAmount)}
                           </span>
@@ -431,49 +431,49 @@ export const StudioCostsTab: React.FC = () => {
                         </td>
                       </tr>
                       {expandedWorker === w.workerId && w.ledgerEntries.length > 0 && (
-                        <tr className="bg-gray-950/50">
+                        <tr className="bg-muted/40">
                           <td colSpan={7} className="px-4 py-3">
-                            <div className="space-y-2 pl-6 border-l-2 border-gray-700">
-                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            <div className="space-y-2 pl-6 border-l-2 border-border">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                 Ledger Entries
                               </p>
                               {w.ledgerEntries.map((e: WorkerLedgerEntry) => (
                                 <div
                                   key={e.id}
-                                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-900/50 border border-gray-800"
+                                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-card border border-border"
                                 >
                                   <div className="flex items-center gap-3">
                                     <Badge
                                       className={cn(
                                         'text-xs capitalize',
                                         e.status === 'paid'
-                                          ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                          ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                                           : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
                                       )}
                                     >
                                       {e.status}
                                     </Badge>
-                                    <span className="text-sm text-gray-300">
+                                    <span className="text-sm text-muted-foreground">
                                       {e.documentNo || '—'} • {getStageTypeLabel(e.stageType || '')}
                                     </span>
                                     {e.productionNo && (
-                                      <span className="text-xs text-gray-500">{e.productionNo}</span>
+                                      <span className="text-xs text-muted-foreground">{e.productionNo}</span>
                                     )}
                                     {e.saleInvoice && (
-                                      <span className="text-xs text-gray-500">{e.saleInvoice}</span>
+                                      <span className="text-xs text-muted-foreground">{e.saleInvoice}</span>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-4">
-                                    <span className="text-sm font-semibold text-white">
+                                    <span className="text-sm font-semibold text-foreground">
                                       {formatCurrency(e.amount)}
                                     </span>
                                     {e.paidAt && (
-                                      <span className="text-xs text-gray-500">
+                                      <span className="text-xs text-muted-foreground">
                                         Paid {format(new Date(e.paidAt), 'dd MMM yyyy')}
                                       </span>
                                     )}
                                     {e.paymentReference && (
-                                      <span className="text-xs text-gray-500">{e.paymentReference}</span>
+                                      <span className="text-xs text-muted-foreground">{e.paymentReference}</span>
                                     )}
                                   </div>
                                 </div>
@@ -493,36 +493,36 @@ export const StudioCostsTab: React.FC = () => {
 
       {/* Productions View */}
       {viewMode === 'productions' && (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800 flex flex-wrap items-start justify-between gap-3">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-white">Production-wise Cost Breakdown</h4>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h4 className="text-sm font-semibold text-foreground">Production-wise Cost Breakdown</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Each production with stages and worker costs. Cancelled-sale document reversals run automatically; unpaid stage
                 bills reverse on cancel — paid stages may need manual GL review (badge).
               </p>
             </div>
-            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer shrink-0">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer shrink-0">
               <input
                 type="checkbox"
                 checked={hideCancelledSales}
                 onChange={(e) => setHideCancelledSales(e.target.checked)}
-                className="rounded border-gray-600 bg-gray-800"
+                className="rounded border-gray-600 bg-muted"
               />
               Hide cancelled sales
             </label>
           </div>
           {visibleProductions.length === 0 ? (
             <div className="text-center py-12">
-              <Package size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">No productions found</p>
-              <p className="text-gray-500 text-xs mt-1">Studio productions will appear here</p>
+              <Package size={48} className="mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground text-sm">No productions found</p>
+              <p className="text-muted-foreground text-xs mt-1">Studio productions will appear here</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-900 border-b border-gray-800">
-                  <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <thead className="bg-card border-b border-border">
+                  <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <th className="px-4 py-3 text-left w-8"></th>
                     <th className="px-4 py-3 text-left">Production</th>
                     <th className="px-4 py-3 text-left">Sale / Customer</th>
@@ -536,7 +536,7 @@ export const StudioCostsTab: React.FC = () => {
                   {visibleProductions.map((p) => (
                     <React.Fragment key={p.productionId}>
                       <tr
-                        className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                        className="border-b border-border hover:bg-accent/30 transition-colors"
                         onClick={() =>
                           setExpandedProduction(expandedProduction === p.productionId ? null : p.productionId)
                         }
@@ -544,15 +544,15 @@ export const StudioCostsTab: React.FC = () => {
                         <td className="px-4 py-3">
                           {p.stages.length > 0 ? (
                             expandedProduction === p.productionId ? (
-                              <ChevronDown size={16} className="text-gray-500" />
+                              <ChevronDown size={16} className="text-muted-foreground" />
                             ) : (
-                              <ChevronRight size={16} className="text-gray-500" />
+                              <ChevronRight size={16} className="text-muted-foreground" />
                             )
                           ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-sm font-medium text-white">{p.productionNo}</span>
+                            <span className="text-sm font-medium text-foreground">{p.productionNo}</span>
                             {String(p.saleStatus || '').toLowerCase() === 'cancelled' && (
                               <Badge
                                 variant="outline"
@@ -573,13 +573,13 @@ export const StudioCostsTab: React.FC = () => {
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-sm">
-                            <span className="text-gray-300">{p.saleInvoice || '—'}</span>
+                            <span className="text-muted-foreground">{p.saleInvoice || '—'}</span>
                             {p.customerName && (
-                              <p className="text-xs text-gray-500">{p.customerName}</p>
+                              <p className="text-xs text-muted-foreground">{p.customerName}</p>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-300">
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
                           <div className="font-medium text-gray-200">{p.productName || '—'}</div>
                           {p.productSourceKind === 'studio_created' && (
                             <Badge
@@ -592,14 +592,14 @@ export const StudioCostsTab: React.FC = () => {
                           {p.productSourceKind === 'sale_line' && (
                             <Badge
                               variant="outline"
-                              className="mt-1.5 text-[10px] font-normal border-slate-600 text-gray-400 bg-gray-800/50"
+                              className="mt-1.5 text-[10px] font-normal border-slate-600 text-muted-foreground bg-muted/50"
                             >
                               From sale (catalog)
                             </Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-300">{p.stages.length}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-white">
+                        <td className="px-4 py-3 text-right text-sm text-muted-foreground">{p.stages.length}</td>
+                        <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">
                           {formatCurrency(p.totalStageCost)}
                         </td>
                         <td className="px-4 py-3">
@@ -607,10 +607,10 @@ export const StudioCostsTab: React.FC = () => {
                             className={cn(
                               'text-xs capitalize',
                               p.status === 'completed'
-                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                                 : p.status === 'in_progress'
                                 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                                : 'bg-gray-500/20 text-muted-foreground border-gray-500/30'
                             )}
                           >
                             {p.status}
@@ -618,10 +618,10 @@ export const StudioCostsTab: React.FC = () => {
                         </td>
                       </tr>
                       {expandedProduction === p.productionId && p.stages.length > 0 && (
-                        <tr className="bg-gray-950/50">
+                        <tr className="bg-muted/40">
                           <td colSpan={7} className="px-4 py-3">
-                            <div className="space-y-2 pl-6 border-l-2 border-gray-700">
-                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            <div className="space-y-2 pl-6 border-l-2 border-border">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                                 Stage Details
                               </p>
                               {p.stages.map((s: StageCostDetail) => {
@@ -629,17 +629,17 @@ export const StudioCostsTab: React.FC = () => {
                                 return (
                                   <div
                                     key={s.stageId}
-                                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-900/50 border border-gray-800"
+                                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-card border border-border"
                                   >
                                     <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center">
-                                        <StageIcon size={16} className="text-gray-400" />
+                                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                                        <StageIcon size={16} className="text-muted-foreground" />
                                       </div>
                                       <div>
-                                        <p className="text-sm font-medium text-white">
+                                        <p className="text-sm font-medium text-foreground">
                                           {getStageTypeLabel(s.stageType)}
                                         </p>
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-muted-foreground">
                                           {s.workerName || 'Unassigned'} • {s.status}
                                         </p>
                                       </div>
@@ -649,17 +649,17 @@ export const StudioCostsTab: React.FC = () => {
                                         className={cn(
                                           'text-xs',
                                           s.ledgerStatus === 'paid'
-                                            ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                            ? 'bg-green-500/20 text-[var(--erp-money-positive)] border-green-500/30'
                                             : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
                                         )}
                                       >
                                         {s.ledgerStatus || 'unpaid'}
                                       </Badge>
-                                      <span className="text-sm font-semibold text-white">
+                                      <span className="text-sm font-semibold text-foreground">
                                         {formatCurrency(s.cost)}
                                       </span>
                                       {s.documentNo && (
-                                        <span className="text-xs text-gray-500">{s.documentNo}</span>
+                                        <span className="text-xs text-muted-foreground">{s.documentNo}</span>
                                       )}
                                     </div>
                                   </div>
@@ -679,14 +679,14 @@ export const StudioCostsTab: React.FC = () => {
       )}
 
       {/* Standard Method Note */}
-      <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-4">
+      <div className="bg-muted/30 border border-border rounded-xl p-4">
         <div className="flex items-start gap-3">
-          <FileText size={20} className="text-gray-500 shrink-0 mt-0.5" />
+          <FileText size={20} className="text-muted-foreground shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-gray-400">
+            <p className="text-sm font-semibold text-muted-foreground">
               Standard Accounting Method
               {effectiveSummary.fromJournal === true && (
-                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-normal">
+                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-[var(--erp-money-positive)] border border-green-500/30 font-normal">
                   Live from Journal Entries
                 </span>
               )}
@@ -696,7 +696,7 @@ export const StudioCostsTab: React.FC = () => {
                 </span>
               )}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Studio costs are recorded as <strong>Cost of Production</strong> (account 5000) / <strong>Worker Payable</strong> (account 2010).
               Summary cards read directly from <strong>journal_entry_lines</strong>. Payments reduce Worker Payable and debit Cash/Bank.
             </p>

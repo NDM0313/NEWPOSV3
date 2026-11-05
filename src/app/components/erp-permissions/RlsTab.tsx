@@ -60,20 +60,20 @@ export function RlsTab() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-white">RLS Simulator</h2>
-        <p className="text-gray-400 text-sm mt-1">Simulate Row Level Security policies for different users and modules</p>
+        <p className="text-muted-foreground text-sm mt-1">Simulate Row Level Security policies for different users and modules</p>
       </div>
       <div className="grid grid-cols-2 gap-4 max-w-2xl">
         <div>
-          <label className="block text-sm text-gray-400 mb-2">Select User</label>
-          <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white">
+          <label className="block text-sm text-muted-foreground mb-2">Select User</label>
+          <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="w-full bg-muted border border-border rounded-lg px-4 py-2 text-white">
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.name} - {u.role.toUpperCase()}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-sm text-gray-400 mb-2">Select Module</label>
-          <select value={selectedModule} onChange={(e) => setSelectedModule(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white">
+          <label className="block text-sm text-muted-foreground mb-2">Select Module</label>
+          <select value={selectedModule} onChange={(e) => setSelectedModule(e.target.value)} className="w-full bg-muted border border-border rounded-lg px-4 py-2 text-white">
             {MODULES.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
@@ -86,34 +86,34 @@ export function RlsTab() {
         </Button>
       </div>
       {result && (
-        <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 max-w-2xl space-y-2">
-          <p className="text-sm font-medium text-white">Result for {selectedModule} (role: {current?.role})</p>
-          <p className="text-xs text-green-400 flex items-center gap-1"><Check size={14} /> Allowed: {result.allowed.join(', ')}</p>
+        <div className="bg-muted/60 border border-border rounded-lg p-4 max-w-2xl space-y-2">
+          <p className="text-sm font-medium text-foreground">Result for {selectedModule} (role: {current?.role})</p>
+          <p className="text-xs text-[var(--erp-money-positive)] flex items-center gap-1"><Check size={14} /> Allowed: {result.allowed.join(', ')}</p>
           {result.denied.length > 0 && <p className="text-xs text-red-400 flex items-center gap-1"><X size={14} /> Denied: {result.denied.join(', ')}</p>}
         </div>
       )}
       {current && (
-        <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 flex items-center gap-3 max-w-2xl">
+        <div className="bg-muted/60 border border-border rounded-lg p-4 flex items-center gap-3 max-w-2xl">
           <Info className="text-amber-500 shrink-0" size={24} />
           <div className="flex-1">
-            <p className="font-semibold text-white">{current.name}</p>
-            <p className="text-sm text-gray-400">{current.email}</p>
+            <p className="font-semibold text-foreground">{current.name}</p>
+            <p className="text-sm text-muted-foreground">{current.email}</p>
           </div>
           <span className="px-3 py-1 rounded bg-amber-500/20 text-amber-400 text-sm font-medium">{current.role.toUpperCase()}</span>
         </div>
       )}
       <div className="border border-purple-500/30 bg-purple-500/5 rounded-lg p-4 max-w-3xl">
-        <h3 className="font-semibold text-white flex items-center gap-2 mb-2">
+        <h3 className="font-semibold text-foreground flex items-center gap-2 mb-2">
           <Info className="text-amber-500" size={18} /> How RLS Works
         </h3>
-        <p className="text-sm text-gray-300 mb-3">Row Level Security (RLS) enforces access control at the database level.</p>
-        <ul className="text-sm text-gray-400 space-y-1 list-disc list-inside">
+        <p className="text-sm text-muted-foreground mb-3">Row Level Security (RLS) enforces access control at the database level.</p>
+        <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
           <li>Owner/Admin: Access to all company data</li>
           <li>Manager: Access to assigned branch data</li>
           <li>Salesman: Access to own records or branch records (configurable)</li>
           <li>User: Access to own records only</li>
         </ul>
-        <p className="text-sm text-gray-400 mt-3">The RLS policy automatically filters queries based on the user&apos;s role and branch assignments, ensuring data security at the database level.</p>
+        <p className="text-sm text-muted-foreground mt-3">The RLS policy automatically filters queries based on the user&apos;s role and branch assignments, ensuring data security at the database level.</p>
       </div>
     </div>
   );

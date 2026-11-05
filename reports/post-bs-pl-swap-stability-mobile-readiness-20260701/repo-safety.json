@@ -1,0 +1,17 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "repo-safety",
+  "generated_at": "2026-07-01T09:30:00.000Z",
+  "branch": "main",
+  "head": "42459bde8322eb95869d6bf4eaa09e982f448282",
+  "origin_main": "42459bde8322eb95869d6bf4eaa09e982f448282",
+  "synced_with_origin": true,
+  "required_commits_present": {
+    "db499995": "feat(accounting): wire bs pl unified main loaders",
+    "98d2f4c8": "docs(accounting): complete bs pl unified loader swap evidence",
+    "42459bde": "docs(accounting): add bs pl swap push verification"
+  },
+  "staged_credentials": false,
+  "unrelated_dirty_left_unstaged": true,
+  "status": "PASS"
+}

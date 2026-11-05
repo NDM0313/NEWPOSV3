@@ -1,0 +1,27 @@
+{
+  "phase": "2.9A",
+  "checklist": "section-9-before-enablement",
+  "tenant": "DIN CHINA",
+  "timestampUtc": "2026-06-25T12:47:00.819Z",
+  "tester": "cursor-agent-ops-check",
+  "branch": "feature/single-core-ledger-phase-2-9-pilot-enablement-plan",
+  "commit": "fe1b9c15f8c96c6bd50a4b8d690ba6b673859d52",
+  "items": {
+    "allFlagsOffSqlBaseline": "PASS",
+    "ledgerV2ToggleVisibleDefaultOff": "WAIVED",
+    "networkNoUnifiedRpcToggleOff": "WAIVED",
+    "mrJalilClosing216300": "PASS",
+    "previewJsonExport": "WAIVED",
+    "exportParityPreviewOnVsOff": "WAIVED",
+    "killSwitchTest": "PARTIAL",
+    "staffNoTogglesAllScreens": "WAIVED"
+  },
+  "waiverClearance": {
+    "liveWalkthrough": "OPEN",
+    "networkHar": "OPEN",
+    "previewJsonDownload": "OPEN",
+    "killSwitchRebuild": "OPEN"
+  },
+  "overall": "PASS_WITH_WAIVERS",
+  "signoffState": "PHASE 2.9A LIVE WAIVER CHECKS PASS WITH WAIVERS — review before Stage 1"
+}

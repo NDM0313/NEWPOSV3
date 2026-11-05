@@ -1,0 +1,19 @@
+{
+  "artifact": "2026-06-30T15-07-43-057Z",
+  "overall": "FAIL",
+  "expectedFailure": true,
+  "failureReason": "Trial Balance golden total drift +136500 from approved additive correction JEs",
+  "dinChina": "PASS",
+  "dinBridal": "FAIL",
+  "dinCouture": "PASS",
+  "dinBridalTrialBalanceBalanced": true,
+  "trialBalanceGolden": {
+    "expected": 21919575,
+    "actual": 22056075,
+    "delta": 136500
+  },
+  "adminCompare9of9": "PASS on din-china; waived on din-bridal",
+  "otherCompanyLoadersOn": 0,
+  "migrationsRun": false,
+  "approvedGlMutations": ["JV-000209", "JV-000210"]
+}

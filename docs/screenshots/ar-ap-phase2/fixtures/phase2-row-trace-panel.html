@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phase 2 — Row trace panel (RCV-0017)</title>
+  <link rel="stylesheet" href="_shared.css" />
+</head>
+<body>
+  <div class="backdrop trace-backdrop">
+    <aside class="trace-panel" aria-label="Row trace read-only">
+      <div class="trace-header">
+        <div>
+          <h2 style="margin:0;">Row trace</h2>
+          <p class="sub" style="margin:4px 0 0;font-size:12px;">Read-only — Phase 2</p>
+        </div>
+        <button type="button" class="btn btn-outline" style="padding:4px 8px;">✕</button>
+      </div>
+      <div class="trace-body">
+        <div class="badges">
+          <span class="badge badge-emerald">low risk</span>
+          <span class="badge badge-cyan">Likely mapped — heuristic false positive</span>
+        </div>
+        <p class="section-title">Why in queue</p>
+        <p class="section-body">Unmapped AR/AP line (heuristic).</p>
+        <p class="section-title">Suggested fix</p>
+        <p class="section-body">Mark manual reviewed or hide after Phase 3 whitelist fix. Do not relink unless business confirms wrong customer.</p>
+        <p class="section-title">Payment</p>
+        <dl class="panel">
+          <div class="row"><dt>Ref</dt><dd>RCV-0017</dd></div>
+          <div class="row"><dt>Amount</dt><dd>Rs 20,000</dd></div>
+          <div class="row"><dt>Contact</dt><dd>Walk-in Customer old</dd></div>
+          <div class="row"><dt>Pay ref type</dt><dd>on_account</dd></div>
+        </dl>
+        <p class="section-title">JE header</p>
+        <dl class="panel">
+          <div class="row"><dt>Entry</dt><dd class="mono-blue">RCV-0017</dd></div>
+          <div class="row"><dt>JE ref type</dt><dd>payment</dd></div>
+          <div class="row"><dt>Branch</dt><dd>HQ</dd></div>
+        </dl>
+        <p class="section-title">Account / contact mapping</p>
+        <dl class="panel">
+          <div class="row"><dt>Account</dt><dd>Walk-in Customer (AR-CUS0001)</dd></div>
+          <div class="row"><dt>Linked contact</dt><dd>Walk-in Customer old</dd></div>
+        </dl>
+        <p class="section-title">JE lines</p>
+        <table class="lines">
+          <thead>
+            <tr><th>Account</th><th class="num">Dr</th><th class="num">Cr</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1002</td><td class="num">Rs 20,000</td><td class="num">—</td></tr>
+            <tr><td>AR-CUS0001</td><td class="num">—</td><td class="num">Rs 20,000</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  </div>
+  <div class="caption">AR/AP Reconciliation Center — Row trace panel · RCV-0017</div>
+</body>
+</html>

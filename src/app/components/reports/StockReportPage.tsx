@@ -20,10 +20,15 @@ import {
   MovementAggregate,
 } from '../../services/inventoryService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
-import { exportToCSV, exportToExcel, exportToPDF, ExportData } from '../../utils/exportUtils';
+import { exportToCSV, exportToExcel, ExportData } from '../../utils/exportUtils';
 import { ListToolbar } from '../ui/list-toolbar';
 import { Pagination } from '../ui/pagination';
 import { toast } from 'sonner';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { TabularReportPreview } from './shared/TabularReportPreview';
+import { buildTabularPrintSnapshot } from './shared/buildTabularPrintSnapshot';
+import { useReportExport } from './shared/useReportExport';
+import { formatQty } from '@/app/utils/quantity';
 
 // --------------- Types ---------------
 
@@ -52,7 +57,14 @@ export const StockReportPage = () => {
   const { inventorySettings } = useSettings();
   const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'stock' });
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
+  const tabularPrint = reportExport.tabularPrintOptions;
   const enablePacking = inventorySettings.enablePacking;
+
+  useEffect(() => {
+    setPrintOrientation(tabularPrint.orientation);
+  }, [tabularPrint.orientation]);
 
   // Data state
   const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
@@ -93,6 +105,10 @@ export const StockReportPage = () => {
       setLoading(false);
     }
   }, [companyId, branchId]);
+
+  useEffect(() => {
+    if (companyId) void reportExport.ensureBrand();
+  }, [companyId, reportExport.ensureBrand]);
 
   useEffect(() => {
     if (companyId) loadData();
@@ -238,93 +254,166 @@ export const StockReportPage = () => {
   const filterActiveCount = [categoryFilter !== 'all', statusFilter !== 'all'].filter(Boolean).length;
 
   const columnsList = useMemo(() => [
-    { key: 'sku', label: 'SKU' },
-    { key: 'product', label: 'Product' },
-    { key: 'variation', label: 'Variation' },
-    { key: 'category', label: 'Category' },
-    { key: 'unit', label: 'Unit' },
-    { key: 'purchasePrice', label: 'Purchase Price' },
-    { key: 'sellingPrice', label: 'Selling Price' },
-    { key: 'currentStock', label: 'Current Stock' },
-    { key: 'stockValueCost', label: 'Value (Cost)' },
-    { key: 'stockValueRetail', label: 'Value (Retail)' },
-    { key: 'totalSold', label: 'Total Sold' },
-    { key: 'totalTransferred', label: 'Total Transferred' },
-    { key: 'totalAdjusted', label: 'Total Adjusted' },
+    { key: 'sku', label: 'SKU', align: 'left' as const },
+    { key: 'product', label: 'Product', align: 'left' as const },
+    { key: 'variation', label: 'Variation', align: 'left' as const },
+    { key: 'category', label: 'Category', align: 'left' as const },
+    { key: 'unit', label: 'Unit', align: 'center' as const },
+    { key: 'purchasePrice', label: 'Purchase Price', align: 'right' as const },
+    { key: 'sellingPrice', label: 'Selling Price', align: 'right' as const },
+    { key: 'currentStock', label: 'Current Stock', align: 'center' as const },
+    { key: 'stockValueCost', label: 'Value (Cost)', align: 'right' as const },
+    { key: 'stockValueRetail', label: 'Value (Retail)', align: 'right' as const },
+    { key: 'totalSold', label: 'Total Sold', align: 'center' as const },
+    { key: 'totalTransferred', label: 'Total Transferred', align: 'center' as const },
+    { key: 'totalAdjusted', label: 'Total Adjusted', align: 'center' as const },
   ], []);
 
   const visibleCols = columnsList.filter(c => visibleColumns[c.key] !== false).map(c => c.key);
 
+  const stockRowValue = useCallback(
+    (row: StockReportRow, key: string, forExport = false): string | number => {
+      switch (key) {
+        case 'sku': return row.sku;
+        case 'product': return row.productName;
+        case 'variation': return row.variationLabel;
+        case 'category': return row.category;
+        case 'unit': return row.unit;
+        case 'purchasePrice': return forExport ? row.purchasePrice : formatCurrency(row.purchasePrice);
+        case 'sellingPrice': return forExport ? row.sellingPrice : formatCurrency(row.sellingPrice);
+        case 'currentStock': return row.currentStock;
+        case 'stockValueCost': return forExport ? row.stockValueAtCost : formatCurrency(row.stockValueAtCost);
+        case 'stockValueRetail': return forExport ? row.stockValueAtRetail : formatCurrency(row.stockValueAtRetail);
+        case 'totalSold': return row.totalSold;
+        case 'totalTransferred': return row.totalTransferred;
+        case 'totalAdjusted': return row.totalAdjusted;
+        default: return '';
+      }
+    },
+    [formatCurrency],
+  );
+
+  const stockCurrencyFormatCell = useCallback(
+    (key: string, value: string | number): string | number => {
+      if (typeof value !== 'number') return value;
+      if (['purchasePrice', 'sellingPrice', 'stockValueCost', 'stockValueRetail'].includes(key)) {
+        return formatCurrency(value);
+      }
+      return value;
+    },
+    [formatCurrency],
+  );
+
+  const buildStockExportData = useCallback((): ExportData => {
+    const snap = buildTabularPrintSnapshot({
+      allColumns: columnsList,
+      visibleColumns,
+      rows: filteredRows,
+      cellValue: stockRowValue,
+    });
+    return {
+      title: 'Stock Report',
+      headers: snap.columns.map((c) => c.label),
+      rows: snap.rows,
+    };
+  }, [columnsList, visibleColumns, filteredRows, stockRowValue]);
+
+  const previewTable = useMemo(
+    () =>
+      buildTabularPrintSnapshot({
+        allColumns: columnsList,
+        visibleColumns,
+        rows: filteredRows,
+        cellValue: stockRowValue,
+        formatCell: stockCurrencyFormatCell,
+      }),
+    [columnsList, visibleColumns, filteredRows, stockRowValue, stockCurrencyFormatCell],
+  );
+
   // --------------- Export ---------------
 
   const handleExportCSV = useCallback(() => {
-    const data: ExportData = {
-      title: 'Stock Report',
-      headers: ['SKU', 'Product', 'Variation', 'Category', 'Unit', 'Purchase Price', 'Selling Price', 'Current Stock', 'Value (Cost)', 'Value (Retail)', 'Total Sold', 'Total Transferred', 'Total Adjusted'],
-      rows: filteredRows.map(r => [
-        r.sku, r.productName, r.variationLabel, r.category, r.unit,
-        r.purchasePrice, r.sellingPrice, r.currentStock,
-        r.stockValueAtCost, r.stockValueAtRetail,
-        r.totalSold, r.totalTransferred, r.totalAdjusted,
-      ]),
-    };
-    exportToCSV(data, 'Stock_Report');
+    exportToCSV(buildStockExportData(), 'Stock_Report');
     toast.success('CSV exported');
-  }, [filteredRows]);
+  }, [buildStockExportData]);
 
   const handleExportExcel = useCallback(() => {
-    const data: ExportData = {
-      title: 'Stock Report',
-      headers: ['SKU', 'Product', 'Variation', 'Category', 'Unit', 'Purchase Price', 'Selling Price', 'Current Stock', 'Value (Cost)', 'Value (Retail)', 'Total Sold', 'Total Transferred', 'Total Adjusted'],
-      rows: filteredRows.map(r => [
-        r.sku, r.productName, r.variationLabel, r.category, r.unit,
-        r.purchasePrice, r.sellingPrice, r.currentStock,
-        r.stockValueAtCost, r.stockValueAtRetail,
-        r.totalSold, r.totalTransferred, r.totalAdjusted,
-      ]),
-    };
-    exportToExcel(data, 'Stock_Report');
+    exportToExcel(buildStockExportData(), 'Stock_Report');
     toast.success('Excel exported');
-  }, [filteredRows]);
+  }, [buildStockExportData]);
 
-  const handleExportPDF = useCallback(() => {
-    const data: ExportData = {
-      title: 'Stock Report',
-      headers: ['SKU', 'Product', 'Variation', 'Category', 'Unit', 'Purchase Price', 'Selling Price', 'Stock', 'Value (Cost)', 'Value (Retail)', 'Sold', 'Transferred', 'Adjusted'],
-      rows: filteredRows.map(r => [
-        r.sku, r.productName, r.variationLabel, r.category, r.unit,
-        r.purchasePrice, r.sellingPrice, r.currentStock,
-        r.stockValueAtCost, r.stockValueAtRetail,
-        r.totalSold, r.totalTransferred, r.totalAdjusted,
-      ]),
-    };
-    exportToPDF(data, 'Stock_Report');
-    toast.success('PDF exported');
-  }, [filteredRows]);
+  const handleExportPDF = useCallback(async () => {
+    await reportExport.preparePrint();
+    void reportExport.openPreview();
+  }, [reportExport]);
 
   // --------------- Number formatting ---------------
 
-  const fmtNum = (v: number) => Number(v).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const fmtQty = formatQty;
 
   // --------------- Render ---------------
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[#0B0F19]">
+    <div className="flex flex-col h-full min-h-0 bg-secondary">
+      {reportExport.previewOpen && reportExport.brand ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Stock Report"
+          documentType="ledger"
+          reference="Stock"
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          fitSinglePage={filteredRows.length <= 50}
+          pageNumbers={tabularPrint.showFooter}
+        >
+          <TabularReportPreview
+            brand={reportExport.brand}
+            title="Stock Report"
+            subtitle={`${filteredRows.length} product row(s)`}
+            generatedAt={new Date().toLocaleString()}
+            columns={previewTable.columns}
+            rows={previewTable.rows}
+            fieldVisibility={tabularPrint.fieldVisibility}
+            showHeader={tabularPrint.showHeader}
+            showFooter={tabularPrint.showFooter}
+            compact={filteredRows.length <= 50}
+            fontSize={tabularPrint.fontSize}
+            dataListFontSize={tabularPrint.dataListFontSize}
+            tableHeaderFontSize={tabularPrint.tableHeaderFontSize}
+            summaryFontSize={tabularPrint.summaryFontSize}
+            columnPaddingPx={tabularPrint.columnPaddingPx}
+            showCurrencySymbol={tabularPrint.showCurrencySymbol}
+            fontFamily={tabularPrint.fontFamily}
+            margins={tabularPrint.margins}
+            orientation={printOrientation}
+            stats={[
+              { label: 'Closing (Cost)', value: formatCurrency(summary.closingCost) },
+              { label: 'Closing (Retail)', value: formatCurrency(summary.closingRetail) },
+              { label: 'Potential Profit', value: formatCurrency(summary.potentialProfit) },
+              { label: 'Margin %', value: `${summary.profitMargin.toFixed(2)}%` },
+            ]}
+          />
+        </PdfPreviewModal>
+      ) : null}
+
       {/* Header */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800 flex justify-between items-start">
+      <div className="shrink-0 px-6 py-4 border-b border-border flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <FileBarChart className="text-blue-400" size={24} />
             Stock Report
           </h1>
-          <p className="text-sm text-gray-400 mt-0.5">Complete inventory overview with stock values and movement summary</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Complete inventory overview with stock values and movement summary</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('inventory')}>
+          <Button variant="outline" className="gap-2 border-border text-muted-foreground" onClick={() => setCurrentView('inventory')}>
             <Package size={16} />
             Inventory
           </Button>
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => setCurrentView('inventory-analytics-test')}>
+          <Button variant="outline" className="gap-2 border-border text-muted-foreground" onClick={() => setCurrentView('inventory-analytics-test')}>
             <BarChart3 size={16} />
             Analytics
           </Button>
@@ -360,7 +449,7 @@ export const StockReportPage = () => {
       </div>
 
       {/* Toolbar */}
-      <div className="shrink-0 border-b border-gray-800">
+      <div className="shrink-0 border-b border-border">
         <ListToolbar
           search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search by product name, SKU, or variation...' }}
           rowsSelector={{
@@ -381,22 +470,22 @@ export const StockReportPage = () => {
             onToggle: () => setFilterOpen(o => !o),
             activeCount: filterActiveCount,
             renderPanel: () => (
-              <div className="absolute right-0 top-12 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+              <div className="absolute right-0 top-12 w-72 bg-card border border-border rounded-lg shadow-2xl p-4 z-50">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-white">Filters</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Filters</h3>
                   <button onClick={() => { setCategoryFilter('all'); setStatusFilter('all'); }} className="text-xs text-blue-400 hover:text-blue-300">Clear All</button>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-gray-400 block font-medium mb-1">Category</label>
-                    <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2">
+                    <label className="text-xs text-muted-foreground block font-medium mb-1">Category</label>
+                    <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2">
                       <option value="all">All categories</option>
                       {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 block font-medium mb-1">Stock Status</label>
-                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2">
+                    <label className="text-xs text-muted-foreground block font-medium mb-1">Stock Status</label>
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full rounded-md bg-muted border border-border text-foreground text-sm px-3 py-2">
                       <option value="all">All</option>
                       <option value="OK">In Stock</option>
                       <option value="Low">Low Stock</option>
@@ -417,50 +506,50 @@ export const StockReportPage = () => {
 
       {/* Table */}
       <div className="flex-1 min-h-0 flex flex-col px-6 py-4">
-        <div className="flex-1 min-h-0 bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
           <div className="flex-1 min-h-0 overflow-auto">
             <table className="w-full min-w-[1200px] text-base leading-snug">
-              <thead className="bg-gray-950/50 border-b border-gray-800 sticky top-0 z-10">
+              <thead className="bg-muted/40 border-b border-border sticky top-0 z-10">
                 <tr>
-                  {visibleCols.includes('sku') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left min-w-[120px]">SKU</th>}
-                  {visibleCols.includes('product') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left min-w-[180px]">Product</th>}
-                  {visibleCols.includes('variation') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left min-w-[140px]">Variation</th>}
-                  {visibleCols.includes('category') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left">Category</th>}
-                  {visibleCols.includes('unit') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Unit</th>}
-                  {visibleCols.includes('purchasePrice') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Purchase Price</th>}
-                  {visibleCols.includes('sellingPrice') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Selling Price</th>}
-                  {visibleCols.includes('currentStock') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Current Stock</th>}
-                  {visibleCols.includes('stockValueCost') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Value (Cost)</th>}
-                  {visibleCols.includes('stockValueRetail') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Value (Retail)</th>}
-                  {visibleCols.includes('totalSold') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Total Sold</th>}
-                  {visibleCols.includes('totalTransferred') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Total Transferred</th>}
-                  {visibleCols.includes('totalAdjusted') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Total Adjusted</th>}
+                  {visibleCols.includes('sku') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-left min-w-[120px]">SKU</th>}
+                  {visibleCols.includes('product') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-left min-w-[180px]">Product</th>}
+                  {visibleCols.includes('variation') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-left min-w-[140px]">Variation</th>}
+                  {visibleCols.includes('category') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-left">Category</th>}
+                  {visibleCols.includes('unit') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-center">Unit</th>}
+                  {visibleCols.includes('purchasePrice') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-right">Purchase Price</th>}
+                  {visibleCols.includes('sellingPrice') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-right">Selling Price</th>}
+                  {visibleCols.includes('currentStock') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-center">Current Stock</th>}
+                  {visibleCols.includes('stockValueCost') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-right">Value (Cost)</th>}
+                  {visibleCols.includes('stockValueRetail') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-right">Value (Retail)</th>}
+                  {visibleCols.includes('totalSold') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-center">Total Sold</th>}
+                  {visibleCols.includes('totalTransferred') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-center">Total Transferred</th>}
+                  {visibleCols.includes('totalAdjusted') && <th className="px-4 py-3 text-base font-medium text-muted-foreground uppercase text-center">Total Adjusted</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
                     <td colSpan={visibleCols.length} className="px-6 py-12 text-center">
                       <Loader2 size={40} className="mx-auto text-blue-500 animate-spin mb-2" />
-                      <p className="text-gray-400 text-sm">Loading stock report...</p>
+                      <p className="text-muted-foreground text-sm">Loading stock report...</p>
                     </td>
                   </tr>
                 ) : paginatedRows.length === 0 && filteredRows.length === 0 ? (
                   <tr>
                     <td colSpan={visibleCols.length} className="px-6 py-12 text-center">
-                      <Package size={40} className="mx-auto text-gray-600 mb-2" />
-                      <p className="text-gray-400 text-sm">No products found</p>
+                      <Package size={40} className="mx-auto text-muted-foreground mb-2" />
+                      <p className="text-muted-foreground text-sm">No products found</p>
                     </td>
                   </tr>
                 ) : (
                   paginatedRows.map((row, idx) => (
-                    <tr key={`${row.productId}-${row.variationId || 'base'}-${idx}`} className="hover:bg-gray-800/30 transition-colors">
+                    <tr key={`${row.productId}-${row.variationId || 'base'}-${idx}`} className="hover:bg-accent/30 transition-colors">
                       {visibleCols.includes('sku') && (
-                        <td className="px-4 py-3 text-gray-400 font-mono text-base whitespace-nowrap">{row.sku}</td>
+                        <td className="px-4 py-3 text-muted-foreground font-mono text-base whitespace-nowrap">{row.sku}</td>
                       )}
                       {visibleCols.includes('product') && (
                         <td className="px-4 py-3">
-                          <div className="font-medium text-white text-base leading-tight">{row.productName}</div>
+                          <div className="font-medium text-foreground text-base leading-tight">{row.productName}</div>
                         </td>
                       )}
                       {visibleCols.includes('variation') && (
@@ -468,55 +557,55 @@ export const StockReportPage = () => {
                           {row.variationLabel !== '-' ? (
                             <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">{row.variationLabel}</Badge>
                           ) : (
-                            <span className="text-gray-600">-</span>
+                            <span className="text-muted-foreground">-</span>
                           )}
                         </td>
                       )}
                       {visibleCols.includes('category') && (
                         <td className="px-4 py-3">
-                          <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-xs">{row.category}</Badge>
+                          <Badge className="bg-muted/50 text-muted-foreground border-gray-600 text-xs">{row.category}</Badge>
                         </td>
                       )}
                       {visibleCols.includes('unit') && (
-                        <td className="px-4 py-3 text-center text-gray-400 text-base">{row.unit}</td>
+                        <td className="px-4 py-3 text-center text-muted-foreground text-base">{row.unit}</td>
                       )}
                       {visibleCols.includes('purchasePrice') && (
-                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.purchasePrice < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.purchasePrice < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]')}>
                           {formatCurrency(row.purchasePrice)}
                         </td>
                       )}
                       {visibleCols.includes('sellingPrice') && (
-                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.sellingPrice < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]')}>
                           {formatCurrency(row.sellingPrice)}
                         </td>
                       )}
                       {visibleCols.includes('currentStock') && (
                         <td className="px-4 py-3 text-center">
-                          <span className={cn('font-semibold tabular-nums text-base', row.currentStock <= 0 ? 'text-red-400' : 'text-white')}>
-                            {fmtNum(row.currentStock)}
+                          <span className={cn('font-semibold tabular-nums text-base', row.currentStock <= 0 ? 'text-red-400' : 'text-foreground')}>
+                            {fmtQty(row.currentStock)}
                           </span>
                         </td>
                       )}
                       {visibleCols.includes('stockValueCost') && (
-                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.stockValueAtCost < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.stockValueAtCost < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]')}>
                           {formatCurrency(row.stockValueAtCost)}
                         </td>
                       )}
                       {visibleCols.includes('stockValueRetail') && (
-                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.stockValueAtRetail < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.stockValueAtRetail < 0 ? 'text-red-400' : 'text-[var(--erp-money-positive)]')}>
                           {formatCurrency(row.stockValueAtRetail)}
                         </td>
                       )}
                       {visibleCols.includes('totalSold') && (
-                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtNum(row.totalSold)}</td>
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-muted-foreground">{fmtQty(row.totalSold)}</td>
                       )}
                       {visibleCols.includes('totalTransferred') && (
-                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtNum(row.totalTransferred)}</td>
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-muted-foreground">{fmtQty(row.totalTransferred)}</td>
                       )}
                       {visibleCols.includes('totalAdjusted') && (
-                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">
-                          <span className={row.totalAdjusted < 0 ? 'text-red-400' : row.totalAdjusted > 0 ? 'text-green-400' : ''}>
-                            {fmtNum(row.totalAdjusted)}
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-muted-foreground">
+                          <span className={row.totalAdjusted < 0 ? 'text-red-400' : row.totalAdjusted > 0 ? 'text-[var(--erp-money-positive)]' : ''}>
+                            {fmtQty(row.totalAdjusted)}
                           </span>
                         </td>
                       )}
@@ -526,43 +615,43 @@ export const StockReportPage = () => {
               </tbody>
               {/* Table Footer Totals */}
               {!loading && filteredRows.length > 0 && (
-                <tfoot className="bg-gray-950/70 border-t-2 border-gray-700">
+                <tfoot className="bg-input-background/70 border-t-2 border-border">
                   <tr className="font-semibold text-base">
-                    {visibleCols.includes('sku') && <td className="px-4 py-3 text-gray-300">Totals</td>}
-                    {visibleCols.includes('product') && <td className="px-4 py-3 text-gray-400">{filteredRows.length} rows</td>}
+                    {visibleCols.includes('sku') && <td className="px-4 py-3 text-muted-foreground">Totals</td>}
+                    {visibleCols.includes('product') && <td className="px-4 py-3 text-muted-foreground">{filteredRows.length} rows</td>}
                     {visibleCols.includes('variation') && <td className="px-4 py-3" />}
                     {visibleCols.includes('category') && <td className="px-4 py-3" />}
                     {visibleCols.includes('unit') && <td className="px-4 py-3" />}
                     {visibleCols.includes('purchasePrice') && <td className="px-4 py-3" />}
                     {visibleCols.includes('sellingPrice') && <td className="px-4 py-3" />}
                     {visibleCols.includes('currentStock') && (
-                      <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.currentStock, 0))}
+                      <td className="px-4 py-3 text-center text-foreground tabular-nums">
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.currentStock, 0))}
                       </td>
                     )}
                     {visibleCols.includes('stockValueCost') && (
-                      <td className="px-4 py-3 text-right text-green-400 tabular-nums">
+                      <td className="px-4 py-3 text-right text-[var(--erp-money-positive)] tabular-nums">
                         {formatCurrency(filteredRows.reduce((s, r) => s + r.stockValueAtCost, 0))}
                       </td>
                     )}
                     {visibleCols.includes('stockValueRetail') && (
-                      <td className="px-4 py-3 text-right text-green-400 tabular-nums">
+                      <td className="px-4 py-3 text-right text-[var(--erp-money-positive)] tabular-nums">
                         {formatCurrency(filteredRows.reduce((s, r) => s + r.stockValueAtRetail, 0))}
                       </td>
                     )}
                     {visibleCols.includes('totalSold') && (
-                      <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.totalSold, 0))}
+                      <td className="px-4 py-3 text-center text-foreground tabular-nums">
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.totalSold, 0))}
                       </td>
                     )}
                     {visibleCols.includes('totalTransferred') && (
-                      <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.totalTransferred, 0))}
+                      <td className="px-4 py-3 text-center text-foreground tabular-nums">
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.totalTransferred, 0))}
                       </td>
                     )}
                     {visibleCols.includes('totalAdjusted') && (
-                      <td className="px-4 py-3 text-center text-white tabular-nums">
-                        {fmtNum(filteredRows.reduce((s, r) => s + r.totalAdjusted, 0))}
+                      <td className="px-4 py-3 text-center text-foreground tabular-nums">
+                        {fmtQty(filteredRows.reduce((s, r) => s + r.totalAdjusted, 0))}
                       </td>
                     )}
                   </tr>
@@ -595,19 +684,19 @@ const SummaryCard = ({ title, value, icon, color }: {
 }) => {
   const colorMap = {
     blue: 'text-blue-400 bg-blue-500/10',
-    green: 'text-green-400 bg-green-500/10',
+    green: 'text-[var(--erp-money-positive)] bg-green-500/10',
     emerald: 'text-emerald-400 bg-emerald-500/10',
     purple: 'text-purple-400 bg-purple-500/10',
   };
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 relative overflow-hidden">
+    <div className="bg-card border border-border rounded-xl p-4 relative overflow-hidden">
       <div className="flex items-center gap-3">
         <div className={cn('p-2 rounded-lg', colorMap[color])}>
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="text-xs text-gray-400 font-medium truncate">{title}</p>
-          <p className="text-lg font-bold text-white mt-0.5 tabular-nums">{value}</p>
+          <p className="text-xs text-muted-foreground font-medium truncate">{title}</p>
+          <p className="text-lg font-bold text-foreground mt-0.5 tabular-nums">{value}</p>
         </div>
       </div>
     </div>

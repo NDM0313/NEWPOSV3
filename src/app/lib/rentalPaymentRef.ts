@@ -1,4 +1,10 @@
-/** Canonical rental payment voucher ref: `{booking_no}-PAY` (e.g. REN-0002-PAY). */
+/** Customer receipt ref (RCV-0001 or branch-prefixed HQ-RCV-0001). */
+export function isRcvReference(ref: string | null | undefined): boolean {
+  const t = String(ref || '').trim();
+  return /(?:^|-)RCV-\d/i.test(t);
+}
+
+/** Canonical rental payment voucher ref: `{booking_no}-PAY` (e.g. REN-0002-PAY). Legacy — new rows use RCV. */
 
 export function formatRentalPaymentRef(bookingNo: string): string {
   const b = String(bookingNo || '').trim().replace(/-PAY$/i, '');
@@ -20,6 +26,7 @@ export function resolveRentalPaymentDisplay(opts: {
   const stored = String(opts.storedReference || '').trim();
   const canonical = formatRentalPaymentRef(bookingNo);
   const referenceNo =
+    (isRcvReference(stored) ? stored : '') ||
     (stored && !isGenericRentalPaymentReference(stored) ? stored : '') ||
     canonical ||
     stored;

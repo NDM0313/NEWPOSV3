@@ -1,0 +1,11 @@
+{
+  "stability_window_start": "2026-07-01",
+  "stability_day": 2,
+  "date": "2026-07-02",
+  "classification": "STABILITY_DAY_PASS",
+  "monitoring_artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T08-12-08-313Z.json",
+  "production_mutation": false,
+  "fixture_refresh": false,
+  "r8_blocked": true,
+  "mobile_release_separate": true
+}

@@ -1,0 +1,118 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0B0F19;
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  color: #f3f4f6;
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.dialog {
+  background: #030712;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  width: 512px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  padding: 24px;
+}
+.dialog.wide { width: 672px; }
+h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+.sub { margin: 0 0 16px; color: #9ca3af; font-size: 14px; line-height: 1.4; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid;
+}
+.badge-slate { background: rgba(100,116,139,.15); color: #cbd5e1; border-color: rgba(100,116,139,.4); }
+.badge-emerald { background: rgba(16,185,129,.15); color: #6ee7b7; border-color: rgba(16,185,129,.4); }
+.badge-cyan { background: rgba(6,182,212,.15); color: #a5f3fc; border-color: rgba(6,182,212,.4); }
+.badge-amber { background: rgba(245,158,11,.15); color: #fde68a; border-color: rgba(245,158,11,.4); }
+.panel {
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  background: rgba(17,24,39,.6);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.row { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; margin: 4px 0; }
+.row dt { color: #6b7280; flex-shrink: 0; }
+.row dd { margin: 0; text-align: right; word-break: break-word; }
+.mono-blue { font-family: ui-monospace, monospace; color: #93c5fd; }
+.section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  font-weight: 600;
+  margin: 12px 0 4px;
+}
+.section-body { font-size: 12px; color: #d1d5db; line-height: 1.5; }
+.alert {
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+.alert-cyan { border: 1px solid rgba(6,182,212,.3); background: rgba(8,51,68,.2); color: rgba(165,243,252,.9); }
+.alert-slate { border: 1px solid rgba(100,116,139,.5); background: rgba(15,23,42,.4); color: #e2e8f0; }
+.alert-amber { border: 1px solid rgba(245,158,11,.3); background: rgba(69,26,3,.2); color: #fde68a; }
+.footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+.btn {
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  cursor: default;
+}
+.btn-outline { background: transparent; color: #e5e7eb; }
+.btn-primary { background: #2563eb; border-color: #2563eb; color: white; }
+.btn-disabled { background: #374151; color: #9ca3af; opacity: 0.6; }
+.steps { font-size: 10px; color: #6b7280; margin-bottom: 12px; }
+.steps .active { color: #60a5fa; font-weight: 600; }
+table.lines { width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; }
+table.lines th { background: #111827; color: #6b7280; text-align: left; padding: 8px; font-weight: 500; }
+table.lines th.num, table.lines td.num { text-align: right; }
+table.lines td { padding: 8px; border-top: 1px solid #1f2937; vertical-align: top; }
+.desc { display: block; color: #4b5563; font-size: 11px; margin-top: 2px; }
+.caption { position: fixed; bottom: 12px; left: 0; right: 0; text-align: center; color: #4b5563; font-size: 11px; }
+/* Row trace slide-over */
+.trace-backdrop { justify-content: flex-end; padding: 0; }
+.trace-panel {
+  width: 448px;
+  max-width: 100%;
+  height: 100vh;
+  background: #030712;
+  border-left: 1px solid #1f2937;
+  overflow-y: auto;
+  padding: 0;
+  border-radius: 0;
+  max-height: none;
+}
+.trace-header {
+  position: sticky;
+  top: 0;
+  background: rgba(3,7,18,.95);
+  border-bottom: 1px solid #1f2937;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.trace-body { padding: 16px; }

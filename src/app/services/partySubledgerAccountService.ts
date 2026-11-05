@@ -126,7 +126,8 @@ export async function ensurePayableSubaccountForContact(companyId: string, conta
   const contact = await getContactRow(companyId, contactId);
   if (!contact) return null;
   const t = String(contact.type || '').toLowerCase();
-  if (!t.includes('supplier') && t !== 'both') return null;
+  // money_exchange agents get AP under 2000 (dual-credit Agent FX).
+  if (!t.includes('supplier') && t !== 'both' && t !== 'money_exchange') return null;
 
   const slug = slugFromContactCode(contact.code, contactId);
   const code = `AP-${slug}`;
@@ -179,11 +180,18 @@ export async function ensurePayableSubaccountForContact(companyId: string, conta
 export async function ensurePartySubledgersForContact(
   companyId: string,
   contactId: string,
-  type: 'customer' | 'supplier' | 'both' | 'worker' | string
+  type: 'customer' | 'supplier' | 'both' | 'worker' | 'money_exchange' | 'courier' | string
 ): Promise<void> {
   const t = String(type || '').toLowerCase();
   if (t === 'customer' || t === 'both') await ensureReceivableSubaccountForContact(companyId, contactId);
-  if (t === 'supplier' || t === 'both') await ensurePayableSubaccountForContact(companyId, contactId);
+  if (t === 'supplier' || t === 'both' || t === 'money_exchange') {
+    await ensurePayableSubaccountForContact(companyId, contactId);
+  }
+  if (t === 'worker' || t.includes('worker')) {
+    await ensureWorkerPayableSubaccountForContact(companyId, contactId);
+    await ensureWorkerAdvanceSubaccountForContact(companyId, contactId);
+  }
+  // Courier leaves: use get_or_create_courier_payable_account via courierService — not AP.
 }
 
 /**
@@ -282,6 +290,81 @@ export async function resolvePayablePostingAccountId(
   return child || control.id;
 }
 
+/**
+ * Ensure Worker Advance child under 1180 for worker contacts.
+ * Prefers DB helper RPC; does not permanently post to control 1180 when a WA leaf can be created.
+ */
+export async function ensureWorkerAdvanceSubaccountForContact(
+  companyId: string,
+  workerContactId: string
+): Promise<string | null> {
+  if (!companyId || !workerContactId) return null;
+  const control = await accountHelperService.getAccountByCode('1180', companyId);
+  if (!control?.id) return null;
+
+  const existing = await findSubledgerByContact(companyId, workerContactId, control.id);
+  if (existing) return existing;
+
+  try {
+    const { data, error } = await supabase.rpc('_ensure_worker_advance_subaccount', {
+      p_company_id: companyId,
+      p_contact_id: workerContactId,
+    });
+    if (!error && data) return String(data);
+  } catch {
+    // Fall through to local creation path.
+  }
+
+  const worker = await getContactRow(companyId, workerContactId);
+  const t = String(worker?.type || '').toLowerCase();
+  if (t && t !== 'worker' && !t.includes('worker')) return control.id;
+
+  const slug = slugFromContactCode(worker?.code, workerContactId);
+  const code = `WA-${slug}`;
+  const name = `Worker Advance — ${worker?.name ?? 'Worker'}`.slice(0, 250);
+
+  try {
+    const created = await accountService.createAccount({
+      company_id: companyId,
+      code,
+      name,
+      type: 'asset',
+      balance: 0,
+      is_active: true,
+      parent_id: control.id,
+      linked_contact_id: workerContactId,
+    });
+    return created?.id ?? null;
+  } catch (e: any) {
+    if (String(e?.message || '').includes('linked_contact') || String(e?.code || '') === 'PGRST204') {
+      try {
+        const created = await accountService.createAccount({
+          company_id: companyId,
+          code,
+          name,
+          type: 'asset',
+          balance: 0,
+          is_active: true,
+          parent_id: control.id,
+        });
+        return created?.id ?? null;
+      } catch {
+        return control.id;
+      }
+    }
+    if (String(e?.message || '').toLowerCase().includes('unique') || String(e?.code || '') === '23505') {
+      const { data: byCode } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('code', code)
+        .maybeSingle();
+      return (byCode as { id?: string } | null)?.id ?? control.id;
+    }
+    return control.id;
+  }
+}
+
 /** GL account id to use for worker payable lines (child if available, else 2010). */
 export async function resolveWorkerPayablePostingAccountId(
   companyId: string,
@@ -291,5 +374,17 @@ export async function resolveWorkerPayablePostingAccountId(
   if (!control?.id) return null;
   if (!workerContactId) return control.id;
   const child = await ensureWorkerPayableSubaccountForContact(companyId, workerContactId);
+  return child || control.id;
+}
+
+/** GL account id to use for worker advance lines (WA-* leaf if available, else 1180). */
+export async function resolveWorkerAdvancePostingAccountId(
+  companyId: string,
+  workerContactId: string | null | undefined
+): Promise<string | null> {
+  const control = await accountHelperService.getAccountByCode('1180', companyId);
+  if (!control?.id) return null;
+  if (!workerContactId) return control.id;
+  const child = await ensureWorkerAdvanceSubaccountForContact(companyId, workerContactId);
   return child || control.id;
 }

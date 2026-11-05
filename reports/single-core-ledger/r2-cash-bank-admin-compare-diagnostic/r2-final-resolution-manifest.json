@@ -1,0 +1,58 @@
+{
+  "phase": "R2-cash-bank-admin-compare-diagnostic",
+  "status": "CLOSED_SAFE_DIAGNOSTIC_FIX",
+  "r1b_docs_cleanup": true,
+  "company": "DIN CHINA",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "din_china_closed": true,
+  "program_status": "ACTIVE_FUTURE_PHASES_REMAIN",
+  "latest_main_commit_before": "73debbc4",
+  "resolution": {
+    "type": "CLOSED_SAFE_DIAGNOSTIC_FIX",
+    "blocked_reason": null,
+    "live_loader_uses": "assembleRoznamchaUnifiedParityMain",
+    "admin_compare_compares": "legacy_roznamcha_vs_raw_unified_gl_diagnostic",
+    "production_truth": "reports/single-core-ledger/phase-2-16-monitoring/final-production-verify.md"
+  },
+  "files_changed": {
+    "source": [
+      "src/app/components/admin/unified-ledger-compare/CashBankCompareTab.tsx",
+      "src/app/services/unifiedLedgerCashBankCompareService.ts",
+      "src/app/lib/unifiedLedgerCompareTypes.ts"
+    ],
+    "docs": [
+      "docs/accounting/SINGLE_CORE_LEDGER_PRODUCTION_READY.md",
+      "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9A_CB_CASH_BANK_PARITY_PLAN.md",
+      "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_9_PILOT_ENABLEMENT_PLAN.md",
+      "docs/accounting/SINGLE_CORE_LEDGER_PHASE_2_ROLLOUT_PLAN.md",
+      "docs/accounting/SINGLE_CORE_LEDGER_MIGRATION_MASTER_EXECUTION_PLAN_v3.md",
+      "docs/accounting/SINGLE_CORE_LEDGER_COMPANY_EXPANSION_READINESS_CHECKLIST.md",
+      "reports/single-core-ledger/master-roadmap-after-din-china-closure/master-remaining-roadmap.md"
+    ],
+    "evidence": [
+      "reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-report.md",
+      "reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-final-resolution-manifest.json",
+      "reports/single-core-ledger/r2-cash-bank-admin-compare-diagnostic/r2-admin-compare-cash-bank-findings.md"
+    ]
+  },
+  "tests": {
+    "command": "npm run test:unified-ledger",
+    "result": "PASS",
+    "count": 240,
+    "fail": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "result": "PASS"
+  },
+  "flags_changed": false,
+  "migrations_run": false,
+  "sql_executed": false,
+  "gl_mutations": false,
+  "other_company_expansion": false,
+  "fx_app_touched": false,
+  "source_accounting_logic_changed": false,
+  "live_loader_behavior_changed": false,
+  "recommended_next_phase": "R3-other-company-pre-expansion-audit-after-finance-sign-off",
+  "generated_at": "2026-06-27T09:22:12Z"
+}

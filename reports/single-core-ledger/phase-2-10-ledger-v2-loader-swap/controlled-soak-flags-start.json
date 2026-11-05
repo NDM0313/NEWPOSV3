@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-06-26T13:05:51.243388Z",
+  "phase": "2.10D-controlled-soak-enabled",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "companyName": "DIN CHINA",
+  "database": "supabase-db (shared production DB — ops-approved soak)",
+  "soakOption": "A — 2-hour controlled soak (accelerated QA checkpoints in-session)",
+  "loaderFlagEnabledAt": "2026-06-26T13:05:51.243388Z",
+  "flags": [
+    {
+      "feature_key": "unified_ledger_engine",
+      "enabled": true,
+      "updated_at": "2026-06-25T18:05:23.850288+00"
+    },
+    {
+      "feature_key": "unified_ledger_loader_ledger_v2",
+      "enabled": true,
+      "updated_at": "2026-06-26T13:05:51.243388Z"
+    },
+    {
+      "feature_key": "unified_ledger_pilot",
+      "enabled": true,
+      "updated_at": "2026-06-25T17:28:52.061434+00"
+    },
+    {
+      "feature_key": "unified_ledger_screen_ledger_v2",
+      "enabled": true,
+      "updated_at": "2026-06-25T18:05:23.855813+00"
+    }
+  ],
+  "crossCompanyLoaderRows": 1,
+  "crossCompanyLoaderOnlyDinChina": true,
+  "otherUnifiedLedgerFlags": "none beyond pilot/engine/screen/loader",
+  "productionFrontend": "untouched",
+  "previewFrontend": "erp-frontend-preview :3003 phase-210c-fix",
+  "soakEndState": "loader flag remains ON after soak PASS — L1 rollback SQL ready if needed"
+}

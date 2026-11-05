@@ -1,0 +1,218 @@
+{
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "current_main_commit": "fdb68235",
+  "program_status": "PRODUCTION_OPS_MODE",
+  "program_mode": "REMAINING_TASKS_MASTER_REGISTER_COMPLETE",
+  "three_company_baseline": "COMPLETE",
+  "final_production_ops_handoff": {
+    "status": "COMPLETE",
+    "evidence": "reports/single-core-ledger/final-production-ops-handoff/final-production-ops-handoff-manifest.json"
+  },
+  "remaining_tasks_clarity": {
+    "register": "reports/single-core-ledger/final-production-ops-handoff/remaining-tasks-master-register.md",
+    "seven_phase_plan": "reports/single-core-ledger/final-production-ops-handoff/seven-phase-remaining-plan.md",
+    "operator_dashboard": "reports/single-core-ledger/final-production-ops-handoff/operator-decision-dashboard.md",
+    "local_cleanup_inventory": "reports/single-core-ledger/final-production-ops-handoff/office-pc-local-change-inventory.md"
+  },
+  "credential_hardening": "COMPLETE",
+  "migration_closure": "COMPLETE",
+  "pending_approved_migrations": false,
+  "phases_classified_not_auto_approved": true,
+  "safe_next_step": "Operator provides written approval for Phase 3B-M loader-swap execution; until then planning only — no flag toggle or deploy",
+  "ops_schedule_closure": {
+    "status": "COMPLETE",
+    "evidence": "reports/single-core-ledger/operational-monitoring/ops-schedule-closure-report.md"
+  },
+  "password_rotation": {
+    "rotation_completed": true,
+    "post_rotation_monitoring_status": "PASS",
+    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json"
+  },
+  "remaining_optional_screens_audit": {
+    "status": "COMPLETE",
+    "completed_at": "2026-06-29",
+    "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/",
+    "runtime_changed": false,
+    "implementation_auto_approved": false,
+    "finance_golden_required": true
+  },
+  "phase_3a_bs_pl_preview": {
+    "status": "COMPLETE",
+    "previewOnly": true,
+    "deployedToProduction": true,
+    "productionUrl": "https://erp.dincouture.pk",
+    "productionCommit": "4a5dc304",
+    "deployedAt": "2026-06-29",
+    "defaultRuntimeChanged": false,
+    "loaderSwapApproved": false,
+    "financeGoldenRequired": true,
+    "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/"
+  },
+  "phase_3d_bs_pl_candidate_golden_capture": {
+    "status": "COMPLETE",
+    "candidateOnly": true,
+    "financeApproved": false,
+    "completedAt": "2026-06-29",
+    "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+    "allZeroDiff": true,
+    "loaderSwapApproved": false,
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/"
+  },
+  "phase_3d_signoff_finance_pack": {
+    "status": "PREPARED",
+    "financeStatus": "PENDING",
+    "preparedAt": "2026-06-29",
+    "loaderSwapApproved": false,
+    "evidence": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/finance-signoff-pack.md",
+    "loader_swap_gate": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/bs-pl-loader-swap-gate.md"
+  },
+  "phase_3b_cash_flow_preview": {
+    "status": "DEPLOYED",
+    "previewOnly": true,
+    "deployedToProduction": true,
+    "productionUrl": "https://erp.dincouture.pk",
+    "productionCommit": "99f2e3b3",
+    "deployedAt": "2026-06-29",
+    "implementedAt": "2026-06-29",
+    "defaultRuntimeChanged": false,
+    "loaderSwapApproved": false,
+    "financeGoldenRequired": true,
+    "bs_pl_finance_status": "PENDING",
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
+  },
+  "phase_3b_d_cash_flow_candidate_golden_capture": {
+    "status": "COMPLETE",
+    "candidateOnly": true,
+    "financeApproved": false,
+    "completedAt": "2026-06-29",
+    "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+    "zeroDiffCompanies": ["DIN COUTURE"],
+    "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+    "loaderSwapApproved": false,
+    "bs_pl_finance_status": "PENDING",
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/"
+  },
+  "phase_3b_e_cash_flow_delta_investigation": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "candidateOnly": true,
+    "financeApproved": false,
+    "loaderSwapApproved": false,
+    "bs_pl_finance_status": "PENDING",
+    "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+    "zeroDiffCompanies": ["DIN COUTURE"],
+    "recommendedNext": "D+E — deeper row export then finance approval",
+    "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/"
+  },
+  "phase_3b_f_cash_flow_row_export": {
+    "status": "DEPLOYED",
+    "completedAt": "2026-06-29",
+    "productionCommit": "5433ac2c",
+    "evidenceCommit": "14e12671",
+    "diagnosticOnly": true,
+    "officialTotalsChanged": false,
+    "deployedToProduction": true,
+    "loaderSwapApproved": false,
+    "financeRuleConfirmationRequired": ["DIN CHINA", "DIN BRIDAL"],
+    "bs_pl_finance_status": "PENDING",
+    "migrationsRun": false,
+    "flagsToggled": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/"
+  },
+  "phase_3b_g_cash_flow_finance_decision_pack": {
+    "status": "RECORDED",
+    "preparedAt": "2026-06-29",
+    "recordedAt": "2026-06-29",
+    "reviewer": "Nadeem Khan",
+    "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
+    "loaderSwapApproved": false,
+    "evidence": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/"
+  },
+  "phase_3b_h_cash_flow_preview_alignment": {
+    "status": "DEPLOYED",
+    "completedAt": "2026-06-29",
+    "deployedCommit": "d2401b1f",
+    "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
+    "previewAlignmentOnly": true,
+    "officialLegacyUnchanged": true,
+    "deployedToProduction": true,
+    "loaderSwapApproved": false,
+    "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
+  },
+  "phase_3b_i_aligned_cash_flow_candidate_golden_capture": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "approvalStatus": "CANDIDATE_ONLY",
+    "financeStatus": "PENDING",
+    "zeroDiffCompanies": ["DIN COUTURE"],
+    "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+    "loaderSwapApproved": false,
+    "officialLegacyUnchanged": true,
+    "migrationsRun": false,
+    "glMutations": false,
+    "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/"
+  },
+  "phase_3b_j_cash_flow_residual_delta_bridge": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "selectedBasisOption": "B",
+    "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+    "loaderSwapApproved": false,
+    "officialLegacyUnchanged": true,
+    "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+  },
+  "phase_3b_k_cash_flow_finance_signoff": {
+    "status": "COMPLETE",
+    "completedAt": "2026-06-29",
+    "selectedBasisOption": "B",
+    "reviewer": "Nadeem Khan",
+    "companyFinanceStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+    "loaderSwapApproved": false,
+    "officialLegacyUnchanged": true,
+    "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/"
+  },
+  "phase_3b_l_cash_flow_loader_swap_readiness": {
+    "status": "PREPARED",
+    "completedAt": "2026-06-29",
+    "planningOnly": true,
+    "loaderSwapApproved": false,
+    "operatorApprovalReceived": false,
+    "proposedNextPhase": "3B-M",
+    "officialLegacyUnchanged": true,
+    "deployed": false,
+    "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/"
+  },
+  "recommended_next_phase": {
+    "mode": "PHASE_3B_M_LOADER_SWAP_EXECUTION",
+    "action": "Operator written approval required; then controlled loader swap implementation — not before",
+    "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/operator-loader-swap-approval-template.md",
+    "command": "npm run monitor:three-company-unified-ledger",
+    "credential_policy": "per-company only"
+  },
+  "blocked_phases": [
+    { "id": "R7", "status": "DESIGN_ONLY" },
+    { "id": "R8", "status": "BLOCKED" },
+    { "id": "next-company", "status": "BLOCKED" }
+  ],
+  "latest_monitoring": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+  "constraints": {
+    "migrations_run": false,
+    "gl_mutations": false,
+    "credentials_committed": false,
+    "passwords_printed": false,
+    "r7_applied": false,
+    "r8_started": false,
+    "fx_app_touched": false,
+    "other_company_enabled": false
+  }
+}

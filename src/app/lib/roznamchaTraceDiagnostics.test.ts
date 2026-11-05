@@ -62,7 +62,7 @@ test('explainRoznamchaInclusion marks loser merged into payment stream', () => {
   const post = [paymentWinner];
   const out = explainRoznamchaInclusion(journalLoser, post);
   assert.equal(out.included, false);
-  assert.match(out.reason, /merged/i);
+  assert.match(out.reason, /Excluded duplicate/i);
 });
 
 test('buildRoznamchaTraceCandidates filters by query', () => {

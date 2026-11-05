@@ -2,7 +2,7 @@
  * Sale-level commission capture (pending until Commission Report batch post).
  */
 import { supabase } from './supabase';
-import { isAdminOrOwnerAppRole } from '../config/functionalRoles';
+import { mapAppRoleToEngineRole } from '../config/functionalRoles';
 
 export type SaleCommissionPatch = {
   salesman_id: string | null;
@@ -12,8 +12,10 @@ export type SaleCommissionPatch = {
   commission_status: string | null;
 };
 
+/** Owner/admin/manager + platform operators (developer/super_admin → admin engine). Workers cannot pick. */
 export function canAssignSaleCommission(role: string | null | undefined): boolean {
-  return isAdminOrOwnerAppRole(role);
+  const r = mapAppRoleToEngineRole(role);
+  return r === 'owner' || r === 'admin' || r === 'manager';
 }
 
 async function loadDefaultCommissionPercent(userId: string): Promise<number | null> {

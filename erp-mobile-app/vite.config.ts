@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 /** Kong may reject WS/API when forwarded Origin is localhost; set on the Node→Kong leg only. */
-const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.dincouture.pk';
-const supabaseProxyHost = 'supabase.dincouture.pk';
+const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://api.ndmcore.com';
+const supabaseProxyHost = 'api.ndmcore.com';
 
 type ProxyWithEvents = {
   on: (event: string, fn: (...args: unknown[]) => void) => void;
@@ -60,7 +60,7 @@ function attachSupabaseProxyOrigin(proxy: ProxyWithEvents) {
 }
 
 const supabaseProxy = (extra: { ws?: boolean } = {}) => ({
-  target: 'https://supabase.dincouture.pk',
+  target: 'https://api.ndmcore.com',
   changeOrigin: true,
   secure: false,
   ws: extra.ws === true,
@@ -107,12 +107,27 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-        ...(useMlKitStub && {
-          '@capacitor-mlkit/barcode-scanning': path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
-        }),
-      },
+      // Prefer specific @/app/* aliases so mobile can share stock-count pure libs from web src.
+      // Use trailing-slash finds so `@/app/lib/foo` is a prefix match (exact `@/app/lib` alone is not).
+      alias: [
+        {
+          find: '@/app/lib/',
+          replacement: `${path.resolve(__dirname, '../src/app/lib')}/`,
+        },
+        {
+          find: '@/app/utils/',
+          replacement: `${path.resolve(__dirname, '../src/app/utils')}/`,
+        },
+        { find: '@', replacement: path.resolve(__dirname, './src') },
+        ...(useMlKitStub
+          ? [
+              {
+                find: '@capacitor-mlkit/barcode-scanning',
+                replacement: path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
+              },
+            ]
+          : []),
+      ],
     },
     plugins: [react(), bootScriptOnErrorPlugin()],
     server: {
@@ -136,7 +151,23 @@ export default defineConfig(({ mode }) => {
       modulePreload: isCapacitorBuild ? false : undefined,
       rollupOptions: isCapacitorBuild
         ? { output: { inlineDynamicImports: true } }
-        : undefined,
+        : {
+            output: {
+              manualChunks(id) {
+                if (!id.includes('node_modules')) return;
+                if (id.includes('@supabase')) return 'vendor-supabase';
+                if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf';
+                if (id.includes('lucide-react')) return 'vendor-icons';
+                if (
+                  id.includes('/react/') ||
+                  id.includes('/react-dom/') ||
+                  id.includes('/scheduler/')
+                ) {
+                  return 'vendor-react';
+                }
+              },
+            },
+          },
     },
   };
 });

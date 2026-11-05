@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { Loader2, Printer, Scan } from 'lucide-react';
 import * as settingsApi from '../../api/settings';
 import type { ReceiptFieldToggles } from '../../api/printingSettings';
+import {
+  MobileBarcodeLabelContentToggles,
+  MobileBarcodeLabelSheetControls,
+  MobileBarcodeLabelSizePreview,
+} from './BarcodeLabelSettingsControls';
 
 export interface SettingsPrinterSectionProps {
   companyId: string | null;
@@ -17,6 +22,8 @@ export interface SettingsPrinterSectionProps {
   labelSettings: settingsApi.MobileBarcodeLabelSettings;
   barcodeSettings: settingsApi.MobileBarcodeScannerSettings;
   barcodeSaving: boolean;
+  companyName?: string;
+  branchName?: string;
   onPrinterMode: (mode: settingsApi.MobilePrinterMode) => void;
   onPaperSize: (size: settingsApi.MobilePrinterPaperSize) => void;
   onAutoPrint: (enabled: boolean) => void;
@@ -44,6 +51,8 @@ export function SettingsPrinterSection({
   labelSettings,
   barcodeSettings,
   barcodeSaving,
+  companyName,
+  branchName,
   onPrinterMode,
   onPaperSize,
   onAutoPrint,
@@ -182,8 +191,15 @@ export function SettingsPrinterSection({
         </details>
       </div>
 
-      <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
-        <p className="font-medium text-white text-sm">Barcode labels</p>
+      <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="font-medium text-white text-sm">Barcode labels</p>
+            <p className="text-[10px] text-[#6B7280]">Defaults for product / purchase label print (synced with web)</p>
+          </div>
+          {labelBusy && <Loader2 className="w-4 h-4 text-[#3B82F6] animate-spin shrink-0" />}
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {(['thermal', 'a4'] as const).map((layout) => (
             <button
@@ -199,6 +215,75 @@ export function SettingsPrinterSection({
             </button>
           ))}
         </div>
+
+        <div className="space-y-2 border-t border-[#374151] pt-3">
+          <p className="text-xs text-[#6B7280] font-medium uppercase tracking-wide">Label content</p>
+          <MobileBarcodeLabelContentToggles
+            disabled={labelBusy}
+            companyName={companyName}
+            branchName={branchName}
+            flags={{
+              showName: labelSettings.showName,
+              showPrice: labelSettings.showPrice,
+              showVariation: labelSettings.showVariation,
+              showPacking: labelSettings.showPacking,
+              showCompanyName: labelSettings.showCompanyName,
+              showBranchName: labelSettings.showBranchName,
+            }}
+            onChange={(patch) => {
+              const next = {
+                ...labelSettings,
+                ...patch,
+                showBusinessName: patch.showCompanyName ?? labelSettings.showCompanyName,
+              };
+              if (patch.showCompanyName !== undefined) {
+                next.showBusinessName = patch.showCompanyName;
+              }
+              persistLabel(next);
+            }}
+          />
+        </div>
+
+        <div className="space-y-2 border-t border-[#374151] pt-3">
+          <p className="text-xs text-[#6B7280] font-medium uppercase tracking-wide">Sheet layout</p>
+          <MobileBarcodeLabelSheetControls
+            disabled={labelBusy}
+            a4Columns={labelSettings.a4Columns}
+            maxLabelsPerSheet={labelSettings.maxLabelsPerSheet}
+            useFixedLabelSize={labelSettings.useFixedLabelSize === true}
+            labelWidthMm={labelSettings.labelWidthMm ?? 65}
+            labelHeightMm={labelSettings.labelHeightMm ?? 25}
+            onChange={(patch) => {
+              const next: settingsApi.MobileBarcodeLabelSettings = {
+                ...labelSettings,
+                ...patch,
+              };
+              if (patch.useFixedLabelSize === false) {
+                delete next.labelWidthMm;
+                delete next.labelHeightMm;
+                next.useFixedLabelSize = false;
+              } else if (next.useFixedLabelSize) {
+                next.labelWidthMm = patch.labelWidthMm ?? next.labelWidthMm ?? 65;
+                next.labelHeightMm = patch.labelHeightMm ?? next.labelHeightMm ?? 25;
+              }
+              persistLabel(next);
+            }}
+          />
+        </div>
+
+        {labelSettings.useFixedLabelSize ? (
+          <div className="border-t border-[#374151] pt-3">
+            <p className="text-xs text-[#6B7280] font-medium uppercase tracking-wide mb-2">Preview</p>
+            <MobileBarcodeLabelSizePreview
+              widthMm={labelSettings.labelWidthMm ?? 65}
+              heightMm={labelSettings.labelHeightMm ?? 25}
+              showName={labelSettings.showName}
+              showPrice={labelSettings.showPrice}
+              showCompany={labelSettings.showCompanyName}
+              companyName={companyName}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">

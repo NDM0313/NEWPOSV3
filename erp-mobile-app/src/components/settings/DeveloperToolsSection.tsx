@@ -11,6 +11,8 @@ import {
 import { getUnsynced, getOfflineQueueMetrics, type PendingRecord } from '../../lib/offlineStore';
 import { subscribeNetworkConnectivity } from '../../lib/networkBridge';
 import { MobileDebugLogSection } from './MobileDebugLogSection';
+import { purgeApiHostSessionAndReload } from '../../lib/apiHostSessionGuard';
+import { getResolvedSupabaseUrl } from '../../lib/supabase';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 
@@ -139,6 +141,28 @@ export function DeveloperToolsSection() {
           </button>
           <p className="text-xs text-[#6B7280] mt-1">Keeps login (Supabase session keys) and developer flags.</p>
           {cacheHint ? <p className="text-xs text-emerald-400 mt-1">{cacheHint}</p> : null}
+        </div>
+
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Clear Supabase session for ${getResolvedSupabaseUrl()} and reload? Use this after switching API hosts (e.g. old VPS → Mini PC).`,
+                )
+              ) {
+                void purgeApiHostSessionAndReload();
+              }
+            }}
+            className="inline-flex items-center gap-2 px-3 py-2 bg-amber-900/40 border border-amber-700/50 text-amber-100 rounded-lg text-sm hover:bg-amber-900/60"
+          >
+            <Trash2 className="w-4 h-4" />
+            Clear session for this API
+          </button>
+          <p className="text-xs text-[#6B7280] mt-1">
+            Signs out locally and drops auth tokens so an old VPS session cannot be reused.
+          </p>
         </div>
 
         <MobileDebugLogSection />

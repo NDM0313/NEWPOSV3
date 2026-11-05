@@ -1,0 +1,18 @@
+{
+  "run": "POST_BS_PL_SWAP_STABILITY_MOBILE_READINESS",
+  "task": "stability-monitoring",
+  "generated_at": "2026-07-01T09:21:45.789Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "report_path": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T08-53-31-767Z.json",
+  "overall": "PASS",
+  "companies": {
+    "din-china": { "pass": true, "expected_flags": "18/18", "loaders_on": 8 },
+    "din-bridal": { "pass": true, "expected_flags": "18/18", "loaders_on": 8 },
+    "din-couture": { "pass": true, "expected_flags": "18/18", "loaders_on": 8 }
+  },
+  "admin_compare": "9/9 PASS per company",
+  "flag_guard": { "ok": true, "other_company_loaders_on": 0 },
+  "migrations_run": false,
+  "gl_mutations": false,
+  "status": "PASS"
+}

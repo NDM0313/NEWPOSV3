@@ -1,0 +1,56 @@
+# Traefik dynamic config for ERP frontend
+# Install/sync to: /etc/dokploy/traefik/dynamic/erp.yml
+# Serves erp.dincouture.pk + erp.ndmcore.com → erp-frontend:80
+#
+# NOTE: Public https://erp.ndmcore.com also requires Cloudflare DNS/SSL
+# to target this VPS (A/AAAA → 72.62.254.176) or a healthy Cloudflare Tunnel
+# ingress to erp-frontend:80. Traefik Host rules alone are not enough if CF
+# origin/tunnel points elsewhere.
+http:
+  routers:
+    erp-dincouture:
+      rule: Host(`erp.dincouture.pk`)
+      service: erp-dincouture
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    erp-http-redirect:
+      rule: Host(`erp.dincouture.pk`)
+      middlewares:
+        - redirect-to-https
+      service: erp-dincouture
+      entryPoints:
+        - web
+    erp-ndmcore:
+      rule: Host(`erp.ndmcore.com`)
+      service: erp-dincouture
+      entryPoints:
+        - websecure
+      tls: {}
+    erp-ndmcore-http:
+      rule: Host(`erp.ndmcore.com`)
+      middlewares:
+        - redirect-to-https
+      service: erp-dincouture
+      entryPoints:
+        - web
+    erp-via-ip:
+      rule: Host(`72.62.254.176`)
+      service: erp-dincouture
+      entryPoints:
+        - websecure
+      tls: {}
+    erp-via-ip-http:
+      rule: Host(`72.62.254.176`)
+      middlewares:
+        - redirect-to-https
+      service: erp-dincouture
+      entryPoints:
+        - web
+  services:
+    erp-dincouture:
+      loadBalancer:
+        servers:
+          - url: http://erp-frontend:80
+        passHostHeader: true

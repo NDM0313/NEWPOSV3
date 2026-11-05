@@ -19,6 +19,8 @@ interface LongPressCardProps {
   customMenuItems?: ActionMenuItem[];
   canEdit?: boolean;
   canDelete?: boolean;
+  /** Override danger-slot label (e.g. Cancel Payment). Defaults to Delete. */
+  deleteLabel?: string;
   children: React.ReactNode;
   className?: string;
 }
@@ -38,6 +40,7 @@ export function LongPressCard({
   customMenuItems = [],
   canEdit = true,
   canDelete = true,
+  deleteLabel = 'Delete',
   children,
   className = '',
 }: LongPressCardProps) {
@@ -142,7 +145,7 @@ export function LongPressCard({
       show: !!onDuplicate,
     },
     {
-      label: 'Delete',
+      label: deleteLabel,
       icon: <Trash2 className="w-4 h-4" />,
       onClick: () => handleMenuAction(onDelete!),
       variant: 'danger',

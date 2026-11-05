@@ -9,6 +9,7 @@ import {
   Trash2,
   Clock,
   RotateCcw,
+  Paperclip,
 } from 'lucide-react';
 import * as activityApi from '../../api/activityLog';
 
@@ -32,6 +33,10 @@ function actionIcon(action: string) {
       return <DollarSign className="w-4 h-4 text-[#EF4444]" />;
     case 'payment_edited':
       return <DollarSign className="w-4 h-4 text-[#F59E0B]" />;
+    case 'attachment_added':
+      return <Paperclip className="w-4 h-4 text-[#60A5FA]" />;
+    case 'attachment_removed':
+      return <Paperclip className="w-4 h-4 text-[#F97316]" />;
     case 'update':
     case 'sale_component_edited':
       return <Edit className="w-4 h-4 text-[#F59E0B]" />;
@@ -48,6 +53,10 @@ function actionBg(action: string): string {
       return 'bg-[#3B82F6]/20';
     case 'payment_deleted':
       return 'bg-[#EF4444]/20';
+    case 'attachment_added':
+      return 'bg-[#3B82F6]/20';
+    case 'attachment_removed':
+      return 'bg-[#F97316]/20';
     case 'status_change':
       return 'bg-[#10B981]/20';
     case 'update':

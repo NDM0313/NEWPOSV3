@@ -1,0 +1,20 @@
+{
+  "phase": "3B-K",
+  "run": "cash-flow-loader-swap-gate-checklist",
+  "generated_at": "2026-06-29T16:00:00.000Z",
+  "loaderSwapApproved": false,
+  "loaderSwapExecutionPlanned": false,
+  "nextPossiblePhase": "loader-swap readiness/planning only — not execution",
+  "checklist": [
+    { "item": "Finance basis sign-off (Phase 3B-K)", "status": "COMPLETE", "required": true },
+    { "item": "Production monitoring PASS post-swap", "status": "REQUIRED", "required": true },
+    { "item": "Rollback plan documented and tested", "status": "REQUIRED", "required": true },
+    { "item": "Loader flag design reviewed", "status": "REQUIRED", "required": true },
+    { "item": "User-facing change warning prepared", "status": "REQUIRED", "required": true },
+    { "item": "Operator written approval for loader swap", "status": "REQUIRED_NOT_RECEIVED", "required": true },
+    { "item": "DIN CHINA / DIN BRIDAL delta acceptance on record", "status": "COMPLETE", "required": true },
+    { "item": "DIN COUTURE zero-diff on record", "status": "COMPLETE", "required": true }
+  ],
+  "operatorApprovalRequired": true,
+  "notes": "Finance basis candidate sign-off does not authorize loader swap. Separate explicit operator approval required before any loader flag or official behavior change."
+}

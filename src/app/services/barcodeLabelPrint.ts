@@ -85,19 +85,48 @@ export function buildA4SheetHtml(jobs: LabelPrintJob[], settings: BarcodeLabelSe
   const maxPerSheet = Math.max(6, settings.maxLabelsPerSheet || 30);
   const capped = jobs.slice(0, maxPerSheet);
   const cells = capped.map((j) => buildLabelHtml(j, settings)).join('');
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Barcode labels</title><style>
-    @page { size: A4; margin: 10mm; }
-    body { font-family: Arial, sans-serif; margin: 0; }
-    .grid { display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 8px; }
-    .label { border: 1px dashed #ccc; padding: 8px; text-align: center; break-inside: avoid; page-break-inside: avoid; }
-    .biz { font-size: 8px; font-weight: bold; text-transform: uppercase; color: #555; }
+
+  const useFixed =
+    settings.useFixedLabelSize === true &&
+    settings.labelWidthMm != null &&
+    settings.labelHeightMm != null &&
+    Number.isFinite(settings.labelWidthMm) &&
+    Number.isFinite(settings.labelHeightMm);
+
+  const wMm = useFixed ? Math.round(settings.labelWidthMm!) : 0;
+  const hMm = useFixed ? Math.round(settings.labelHeightMm!) : 0;
+  const shortSticker = useFixed && hMm <= 30;
+
+  const gridCss = useFixed
+    ? `.grid { display: grid; grid-template-columns: repeat(${cols}, ${wMm}mm); gap: 2mm; justify-content: start; align-content: start; }
+    .label { width: ${wMm}mm; height: ${hMm}mm; box-sizing: border-box; overflow: hidden; border: 1px dashed #ccc; padding: 1.5mm; text-align: center; break-inside: avoid; page-break-inside: avoid; display: flex; flex-direction: column; justify-content: center; }`
+    : `.grid { display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 8px; }
+    .label { border: 1px dashed #ccc; padding: 8px; text-align: center; break-inside: avoid; page-break-inside: avoid; }`;
+
+  const typeCss = shortSticker
+    ? `.biz { font-size: 6px; font-weight: bold; text-transform: uppercase; color: #555; }
+    .branch { font-size: 6px; color: #666; margin-top: 1px; }
+    .name { font-size: 8px; font-weight: bold; line-height: 1.1; margin: 1px 0; }
+    .var { font-size: 7px; color: #444; margin: 1px 0; }
+    .pack { font-size: 6px; color: #555; margin-top: 1px; }
+    .sku { font-size: 7px; font-family: monospace; letter-spacing: 0.05em; margin-top: 1px; }
+    .price { font-size: 8px; font-weight: bold; margin-top: 1px; }
+    .bc { display: flex; justify-content: center; margin: 1px 0; }
+    .bc svg { height: 18px; width: auto; }`
+    : `.biz { font-size: 8px; font-weight: bold; text-transform: uppercase; color: #555; }
     .branch { font-size: 8px; color: #666; margin-top: 2px; }
     .name { font-size: 11px; font-weight: bold; line-height: 1.2; margin: 4px 0; }
     .var { font-size: 9px; color: #444; margin: 2px 0; }
     .pack { font-size: 8px; color: #555; margin-top: 2px; }
     .sku { font-size: 10px; font-family: monospace; letter-spacing: 0.1em; margin-top: 4px; }
     .price { font-size: 12px; font-weight: bold; margin-top: 4px; }
-    .bc { display: flex; justify-content: center; margin: 4px 0; }
+    .bc { display: flex; justify-content: center; margin: 4px 0; }`;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Barcode labels</title><style>
+    @page { size: A4; margin: 10mm; }
+    body { font-family: Arial, sans-serif; margin: 0; }
+    ${gridCss}
+    ${typeCss}
   </style></head><body><div class="grid">${cells}</div></body></html>`;
 }
 

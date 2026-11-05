@@ -126,6 +126,7 @@ export function registerAllSyncHandlers(): void {
       saleChargeId?: string | null;
       tailorContactId?: string | null;
       expenseCategoryId?: string | null;
+      clearingAllocations?: Array<{ saleChargeId: string; amount: number }>;
     };
     const { data, error } = await expensesApi.createExpense({
       companyId: p.companyId,
@@ -144,6 +145,7 @@ export function registerAllSyncHandlers(): void {
       saleChargeId: p.saleChargeId,
       tailorContactId: p.tailorContactId,
       expenseCategoryId: p.expenseCategoryId,
+      clearingAllocations: p.clearingAllocations,
     });
     if (error) return { error };
     return { serverId: data!.id };

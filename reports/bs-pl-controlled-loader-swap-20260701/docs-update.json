@@ -1,0 +1,17 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "phase": "docs-update",
+  "updatedFiles": [
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md",
+    "docs/accounting/OFFICE_HANDOFF_2026-06-29_PARTY_DISCOUNT_SIGNUP_OTP_AND_REMAINING_TASKS.md",
+    "reports/office-resume-bs-pl-approval-20260701/bs-pl-finance-approval-pack.md"
+  ],
+  "swapStatus": "BLOCKED_CODE_NOT_WIRED",
+  "approvalRecorded": true,
+  "finalCompare": "ZERO_DIFF_READY_FOR_SWAP (all 6 screens)",
+  "flagsEnabled": false,
+  "frontendDeploy": false,
+  "monitoringTestsBuild": "PASS",
+  "nextAction": "Implement BS/P&L main-loader runtime wiring (mirror Cash Flow), deploy frontend if needed, re-run controlled swap"
+}

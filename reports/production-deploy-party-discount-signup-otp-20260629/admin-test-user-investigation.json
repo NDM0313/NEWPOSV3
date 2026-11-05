@@ -1,0 +1,23 @@
+{
+  "generated": "2026-06-29",
+  "email": "admin@test.com",
+  "authUserExists": true,
+  "authUserId": "db6e3907-94be-4162-922b-9544a0e5e34a",
+  "authCreatedAt": "2026-06-29T19:21:08Z",
+  "linkedRecords": {
+    "publicUsers": 1,
+    "companies": 1,
+    "companyId": "d7dac58b-a731-42cb-bc26-0bf7a1b8e292",
+    "companyName": "QA Test Business Mac",
+    "userBranches": 1,
+    "branches": 1,
+    "accounts": 6,
+    "contacts": 1,
+    "sales": 0,
+    "purchases": 0,
+    "journalEntries": 0,
+    "identities": 1
+  },
+  "decision": "CLEANUP_REQUIRED_DO_NOT_DELETE",
+  "reason": "Linked business and bootstrap data exist; not orphan auth-only"
+}

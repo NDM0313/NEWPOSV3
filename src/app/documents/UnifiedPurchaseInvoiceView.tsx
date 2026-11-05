@@ -2,12 +2,12 @@
  * Unified document engine: Purchase Invoice / Purchase Order.
  * Reads layout/fields from company printing_settings. Same flow as Sales.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { purchaseService } from '@/app/services/purchaseService';
 import { convertFromSupabasePurchase } from '@/app/context/PurchaseContext';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { purchaseToInvoiceDocument } from './adapters/purchaseToInvoiceDocument';
+import { purchaseToInvoiceDocument, purchaseInvoiceDisplayCurrency } from './adapters/purchaseToInvoiceDocument';
 import { PurchaseInvoiceTemplate } from './templates/PurchaseInvoiceTemplate';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -60,6 +60,12 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const invoiceCurrency = purchaseInvoiceDisplayCurrency(purchase);
+  const formatInvoiceCurrency = useMemo(
+    () => (n: number) => formatCurrency(n, invoiceCurrency),
+    [formatCurrency, invoiceCurrency],
+  );
 
   const loadPurchase = useCallback(async () => {
     if (!purchaseId) {
@@ -146,7 +152,7 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
       <PurchaseInvoiceTemplate
         document={document}
         template={template}
-        formatCurrency={formatCurrency}
+        formatCurrency={formatInvoiceCurrency}
         onPrint={handlePrint}
         onClose={onClose}
         actionChildren={actionChildren}

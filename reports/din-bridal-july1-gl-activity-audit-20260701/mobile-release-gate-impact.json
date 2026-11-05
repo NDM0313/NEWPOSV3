@@ -1,0 +1,16 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "mobile-release-gate-impact",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "release_gate": "BLOCKED_PENDING_GOLDEN_REFRESH_APPROVAL_AND_PARTIAL_DEVICE_QA",
+  "components": {
+    "monitoring": "BLOCKED_PENDING_GOLDEN_REFRESH_APPROVAL",
+    "device_qa": "BLOCKED_PARTIAL_DEVICE_QA_PENDING_ROLES"
+  },
+  "admin_qa_valid": true,
+  "manager_qa": "MANAGER_QA_PENDING_CREDENTIALS",
+  "salesman_qa": "SALESMAN_QA_PENDING_CREDENTIALS",
+  "monitoring_drift_explained": true,
+  "play_store_approved": false,
+  "apk_public_release": false
+}

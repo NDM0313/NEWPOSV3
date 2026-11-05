@@ -1,0 +1,88 @@
+{
+  "run": "single-core-ledger-migration-closure",
+  "generated_at": "2026-06-27T17:45:00Z",
+  "method": "read_only_sql",
+  "writes_performed": false,
+  "production_database": "postgres",
+  "counts": {
+    "production_schema_migrations": 559,
+    "repo_migrations": 470,
+    "missing_from_production": 0,
+    "extra_in_production": 89
+  },
+  "missing_from_production": [],
+  "phase_15_canonical_pack": [
+    {
+      "file": "20260620140000_get_unified_party_ledger_shadow.sql",
+      "applied": true,
+      "applied_at": "2026-06-23T14:53:34.700722Z",
+      "sha256": "f222f2080294c60169af74edc40881d97b36e64642ff0dca9ca3b6ceddace1df"
+    },
+    {
+      "file": "20260621120000_single_core_ledger_systemwide_diagnostics.sql",
+      "applied": true,
+      "applied_at": "2026-06-23T14:53:34.944403Z",
+      "sha256": "030cc6d96d7122a0326159016d6d5f39bba84cc985259ca7421f4d2108c394d9"
+    },
+    {
+      "file": "20260621150000_unified_ledger_phase_15_rpcs.sql",
+      "applied": true,
+      "applied_at": "2026-06-23T14:53:35.158942Z",
+      "sha256": "fa6a29416498d52324191a0caa570670d39a933b9fa50b9a39407c3cd2d6250f"
+    },
+    {
+      "file": "20260621151000_unified_ledger_phase_15_indexes.sql",
+      "applied": true,
+      "applied_at": "2026-06-23T14:53:35.36516Z",
+      "sha256": "2ebd63ec802a273aef90d699cbb361b1cf6ceb89259f31d026321e2f08f27bf9"
+    }
+  ],
+  "single_core_ledger_repo_migrations": [
+    {
+      "file": "20260433_phase4_transaction_mutations_unified_feed.sql",
+      "applied": true,
+      "classification": "APPLIED"
+    },
+    {
+      "file": "20260620140000_get_unified_party_ledger_shadow.sql",
+      "applied": true,
+      "classification": "APPLIED"
+    },
+    {
+      "file": "20260621120000_single_core_ledger_systemwide_diagnostics.sql",
+      "applied": true,
+      "classification": "APPLIED"
+    },
+    {
+      "file": "20260621150000_unified_ledger_phase_15_rpcs.sql",
+      "applied": true,
+      "classification": "APPLIED"
+    },
+    {
+      "file": "20260621151000_unified_ledger_phase_15_indexes.sql",
+      "applied": true,
+      "classification": "APPLIED"
+    },
+    {
+      "file": "20260621120000_drop_duplicate_party_gl_balances_overload.sql",
+      "applied": true,
+      "classification": "APPLIED",
+      "note": "Excluded from Phase 1.5 bundle per plan; already on production"
+    }
+  ],
+  "unified_rpcs": {
+    "expected": 5,
+    "present": 5,
+    "functions": [
+      "get_single_core_ledger_systemwide_diagnostics",
+      "get_unified_account_ledger",
+      "get_unified_cash_bank_ledger",
+      "get_unified_party_ledger",
+      "get_unified_trial_balance"
+    ]
+  },
+  "r7_roznamcha_payment_migration_file": null,
+  "r7_status": "DESIGN_ONLY",
+  "r8_status": "BLOCKED",
+  "extra_in_production_note": "89 legacy/bootstrap entries in production not matching current repo filenames; all 470 repo files present in production"
+}

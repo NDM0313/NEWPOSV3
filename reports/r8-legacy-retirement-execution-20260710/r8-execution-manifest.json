@@ -1,0 +1,15 @@
+{
+  "run": "R8_OPERATIONAL_RETIREMENT_EXECUTION",
+  "generated_at": "2026-07-10T16:37:28.000Z",
+  "approval_phrase_present": true,
+  "operator_go_ahead": true,
+  "pre_r8_tag": "r8-pre-operational-retirement-20260710",
+  "pre_r8_commit": "ba7dadd7",
+  "monitoring_artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-10T16-26-36-059Z.json",
+  "monitoring_overall": "PASS",
+  "loader_guard_ok": true,
+  "legacy_code_deleted": false,
+  "db_migrations": false,
+  "production_gl_mutation": false,
+  "vps_deploy": "skipped"
+}

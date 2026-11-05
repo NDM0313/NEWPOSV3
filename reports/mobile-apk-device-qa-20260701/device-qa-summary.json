@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_APK_DEVICE_QA",
+  "task": "device-qa-summary",
+  "generated_at": "2026-07-01T12:00:00.000Z",
+  "classification": "BLOCKED_DEVICE_QA",
+  "apk_installed": false,
+  "app_launched": false,
+  "admin_qa": "BLOCKED_NOT_RUN",
+  "manager_qa": "MANAGER_QA_PENDING_DEVICE",
+  "salesman_qa": "SALESMAN_QA_PENDING_DEVICE",
+  "crashes_observed": false,
+  "production_mutations": false,
+  "blocker": "DEVICE_QA_BLOCKED_NO_ADB_DEVICE"
+}

@@ -1,0 +1,24 @@
+{
+  "run": "BS_PL_CONTROLLED_LOADER_SWAP",
+  "phase": "pre-swap-baseline",
+  "timestamp": "2026-07-01T07:58:12.791Z",
+  "status": "PASS",
+  "monitoring": {
+    "command": "npm run monitor:three-company-unified-ledger",
+    "result": "PASS",
+    "report": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-01T07-58-12-791Z.json",
+    "companies": {
+      "din-china": "PASS",
+      "din-bridal": "PASS",
+      "din-couture": "PASS"
+    },
+    "adminCompare": "9/9 PASS (Phase 2.16 per company)",
+    "migrations_run": false,
+    "gl_mutations": false
+  },
+  "tests": {
+    "unifiedLedger": { "command": "npm run test:unified-ledger", "pass": 303, "total": 303, "result": "PASS" },
+    "unit": { "command": "npm run test:unit", "pass": 122, "total": 122, "result": "PASS" },
+    "build": { "command": "npm run build", "result": "PASS", "durationSec": 39.86 }
+  }
+}

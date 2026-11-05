@@ -1,0 +1,14 @@
+# Populated after: docker exec erp-frontend-preview bundle grep
+# Expected: FOUND for all four strings
+
+checked_at=
+container=erp-frontend-preview
+port=3002
+commit=ae646222
+
+Unified engine preview=
+Load MR JALIL=
+phase2-compare-ledger-v2=
+unified-ledger-tieout=
+
+result=

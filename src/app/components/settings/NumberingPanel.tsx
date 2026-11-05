@@ -31,14 +31,14 @@ export function NumberingPanel({
             <Hash className="text-cyan-500" size={24} />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">Numbering</h3>
-            <p className="text-sm text-gray-400">Rules, sequence sync, and audit log</p>
+            <h3 className="text-xl font-bold text-foreground">Numbering</h3>
+            <p className="text-sm text-muted-foreground">Prefixes and sequence sync for RCV / PAY / EXP (and other modules)</p>
           </div>
         </div>
         <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-8 flex flex-col items-center justify-center gap-4 min-h-[200px]">
           <Lock className="w-12 h-12 text-amber-400" />
           <p className="text-amber-200 font-medium">Access restricted</p>
-          <p className="text-gray-400 text-sm text-center max-w-md">
+          <p className="text-muted-foreground text-sm text-center max-w-md">
             Numbering rules, maintenance, and audit log are available only to Admin or Owner.
           </p>
         </div>
@@ -53,15 +53,15 @@ export function NumberingPanel({
           <Hash className="text-cyan-500" size={24} />
         </div>
         <div>
-          <h3 className="text-xl font-bold text-white">Numbering</h3>
-          <p className="text-sm text-gray-400">Rules, sequence sync, and audit log</p>
+          <h3 className="text-xl font-bold text-foreground">Numbering</h3>
+            <p className="text-sm text-muted-foreground">Prefixes and sequence sync for RCV / PAY / EXP (and other modules)</p>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-4">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-4">
         <Button
           variant={tab === 'rules' ? 'default' : 'ghost'}
           size="sm"
-          className={tab === 'rules' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+          className={tab === 'rules' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-muted-foreground hover:text-foreground'}
           onClick={() => setInnerTab('rules')}
         >
           Numbering Rules
@@ -69,7 +69,7 @@ export function NumberingPanel({
         <Button
           variant={tab === 'maintenance' ? 'default' : 'ghost'}
           size="sm"
-          className={tab === 'maintenance' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+          className={tab === 'maintenance' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-muted-foreground hover:text-foreground'}
           onClick={() => setInnerTab('maintenance')}
         >
           Numbering Maintenance
@@ -77,7 +77,7 @@ export function NumberingPanel({
         <Button
           variant={tab === 'audit' ? 'default' : 'ghost'}
           size="sm"
-          className={tab === 'audit' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+          className={tab === 'audit' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-muted-foreground hover:text-foreground'}
           onClick={() => setInnerTab('audit')}
         >
           Number Audit Log

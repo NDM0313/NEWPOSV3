@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-30T12:46:00.000Z",
+  "decision": "CLEANUP_AUTH_ONLY_ALLOWED",
+  "deleted": {
+    "auth.identities": 1,
+    "auth.users": 1
+  },
+  "company_deleted": false
+}

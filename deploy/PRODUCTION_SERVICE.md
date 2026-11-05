@@ -141,3 +141,29 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
 | Systemd | `systemctl start erp-frontend` | `journalctl -u erp-frontend -f` | Auto (enable) |
 
 **Recommended:** Docker – isolated, healthcheck, same config across environments.
+
+---
+
+## Supabase healthcheck CPU relief (VPS)
+
+Self-hosted Supabase lives **outside** this repo (`/root/supabase/docker` on the VPS). Aggressive `5s` healthchecks on `meta` and `studio` spawn zombie `[node]` processes and add CPU load.
+
+**Patch (no full stack restart):**
+
+```bash
+cd /root/NEWPOSV3 && bash deploy/vps-patch-supabase-healthchecks.sh
+```
+
+This backs up `docker-compose.yml`, sets `interval: 30s` for `meta` and `studio`, and runs `docker compose up -d meta studio` only.
+
+**Do not run** on production VPS during active DB maintenance without coordinating with the team. Does not touch Postgres data volumes.
+
+---
+
+## Frontend API load (ERP)
+
+If PostgREST shows continuous fetches to `journal_entries`, `sales`, or `rentals`:
+
+1. Ensure production uses the **built ERP container** (`erp-frontend`), not `vite preview` / port `5173` on the VPS.
+2. Deploy latest ERP after loop/pagination fixes: `cd /root/NEWPOSV3 && bash deploy/deploy.sh`
+3. Apply query indexes: run forward migration `migrations/20260608_query_filter_indexes.sql` via your usual migration path.

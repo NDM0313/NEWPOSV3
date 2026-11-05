@@ -1,4 +1,5 @@
 import { fetchReferenceAttachments } from '../api/transactionDetail';
+import { fetchInBatches } from './chunkInQuery';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { normalizeAttachments, type NormalizedAttachment } from './normalizeAttachments';
 
@@ -79,6 +80,31 @@ export async function loadMergedAttachmentsForJournalEntry(
   return mergeAttachmentLists(jeFromDb, paymentAtt, refAtt);
 }
 
+/** Expense ids with a non-empty receipt_url (batch, for hasAttachments hints). */
+export async function batchExpenseIdsWithReceiptUrl(
+  companyId: string,
+  expenseIds: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const ids = Array.from(new Set(expenseIds.filter((id) => id.trim() !== '')));
+  if (!isSupabaseConfigured || !companyId || ids.length === 0) return out;
+  const rows = await fetchInBatches(ids, async (chunk) => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('id, receipt_url')
+      .eq('company_id', companyId)
+      .in('id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
+  for (const row of rows) {
+    const id = String((row as Record<string, unknown>).id ?? '');
+    const ru = String((row as Record<string, unknown>).receipt_url ?? '').trim();
+    if (id && ru) out.add(id);
+  }
+  return out;
+}
+
 /** Batch flag for ledger lines (RPC / worker ledgers without attachment columns). */
 export async function batchJournalEntryHasAttachments(
   companyId: string,
@@ -88,11 +114,15 @@ export async function batchJournalEntryHasAttachments(
   const ids = Array.from(new Set(journalEntryIds.filter((id) => id.trim() !== '')));
   if (!isSupabaseConfigured || !companyId || ids.length === 0) return result;
 
-  const { data: jeRows } = await supabase
-    .from('journal_entries')
-    .select('id, attachments, payment_id, reference_type, reference_id')
-    .eq('company_id', companyId)
-    .in('id', ids);
+  const jeRows = await fetchInBatches(ids, async (chunk) => {
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('id, attachments, payment_id, reference_type, reference_id')
+      .eq('company_id', companyId)
+      .in('id', chunk);
+    if (error) throw error;
+    return data || [];
+  });
 
   const paymentIds = new Set<string>();
   const jeMeta = new Map<
@@ -100,7 +130,7 @@ export async function batchJournalEntryHasAttachments(
     { attachments: NormalizedAttachment[]; paymentId: string | null; referenceType: string; referenceId: string | null }
   >();
 
-  for (const row of jeRows || []) {
+  for (const row of jeRows) {
     const id = String((row as Record<string, unknown>).id ?? '');
     if (!id) continue;
     const paymentId =
@@ -123,16 +153,36 @@ export async function batchJournalEntryHasAttachments(
 
   const paymentAttById = new Map<string, NormalizedAttachment[]>();
   if (paymentIds.size > 0) {
-    const { data: payRows } = await supabase
-      .from('payments')
-      .select('id, attachments')
-      .in('id', Array.from(paymentIds));
-    for (const row of payRows || []) {
+    const payRows = await fetchInBatches(Array.from(paymentIds), async (chunk) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id, attachments')
+        .in('id', chunk);
+      if (error) throw error;
+      return data || [];
+    });
+    for (const row of payRows) {
       const id = String((row as Record<string, unknown>).id ?? '');
       if (!id) continue;
       paymentAttById.set(id, normalizeAttachments((row as Record<string, unknown>).attachments));
     }
   }
+
+  const expenseRefIds: string[] = [];
+  for (const id of ids) {
+    const meta = jeMeta.get(id);
+    if (!meta) continue;
+    const rt = meta.referenceType.toLowerCase();
+    if (
+      (rt === 'expense' || rt === 'expense_payment') &&
+      meta.referenceId &&
+      meta.attachments.length === 0 &&
+      !(meta.paymentId && (paymentAttById.get(meta.paymentId)?.length ?? 0) > 0)
+    ) {
+      expenseRefIds.push(meta.referenceId);
+    }
+  }
+  const expenseWithReceipt = await batchExpenseIdsWithReceiptUrl(companyId, expenseRefIds);
 
   for (const id of ids) {
     const meta = jeMeta.get(id);
@@ -140,9 +190,15 @@ export async function batchJournalEntryHasAttachments(
       result.set(id, false);
       continue;
     }
+    const rt = meta.referenceType.toLowerCase();
+    const hasExpenseReceipt =
+      (rt === 'expense' || rt === 'expense_payment') &&
+      !!meta.referenceId &&
+      expenseWithReceipt.has(meta.referenceId);
     const has =
       meta.attachments.length > 0 ||
-      (meta.paymentId ? (paymentAttById.get(meta.paymentId)?.length ?? 0) > 0 : false);
+      (meta.paymentId ? (paymentAttById.get(meta.paymentId)?.length ?? 0) > 0 : false) ||
+      hasExpenseReceipt;
     result.set(id, has);
   }
   return result;

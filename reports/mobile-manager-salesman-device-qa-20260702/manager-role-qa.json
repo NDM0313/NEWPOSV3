@@ -1,0 +1,5 @@
+{
+  "classification": "MANAGER_QA_BLOCKED",
+  "executed": false,
+  "blockers": ["MANAGER_QA_BLOCKED_CREDENTIALS", "NO_ADB_DEVICE"]
+}

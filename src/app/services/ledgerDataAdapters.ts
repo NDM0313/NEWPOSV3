@@ -77,6 +77,21 @@ export async function getSupplierOperationalLedgerData(
 
   const supplierPurchaseIds = new Set(purchaseRows.map((p: { id: string }) => p.id));
 
+  const { data: fxSettleRows } = await supabase
+    .from('fx_currency_purchase_settlements')
+    .select('payment_id, status, voided_at')
+    .eq('company_id', companyId);
+  const agentSettlementPaymentIds = new Set(
+    (fxSettleRows || [])
+      .filter((r: { status?: string | null; voided_at?: string | null }) => {
+        if (r.voided_at) return false;
+        const st = String(r.status || 'active').toLowerCase();
+        return st === 'active' || st === '';
+      })
+      .map((r: { payment_id?: string }) => (r.payment_id ? String(r.payment_id) : ''))
+      .filter(Boolean)
+  );
+
   const { data: payments } = await supabase
     .from('payments')
     .select('id, payment_date, amount, reference_number, reference_type, reference_id, contact_id, payment_type, notes, voided_at')
@@ -140,6 +155,7 @@ export async function getSupplierOperationalLedgerData(
 
   (payments || []).forEach((p: any) => {
     if (p.voided_at) return;
+    if (agentSettlementPaymentIds.has(String(p.id))) return;
     const rt = String(p.reference_type || '').toLowerCase();
     const isSupplier =
       p.contact_id === supplierId ||

@@ -13,6 +13,7 @@ import { saleService, type Sale, type SaleItem } from '@/app/services/saleServic
 import { productService } from '@/app/services/productService';
 import { studioProductionV2Service } from '@/app/services/studioProductionV2Service';
 import { accountHelperService } from '@/app/services/accountHelperService';
+import { getCanonicalSalesRevenueAccountId } from '@/app/lib/canonicalSalesRevenueAccount';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
 
 export const STUDIO_CUSTOMER_INVOICE_SOURCE = 'studio_production';
@@ -226,7 +227,8 @@ export async function generateCustomerInvoiceFromProduction(params: {
   // Accounting: Dr AR Cr Sales; Dr COGS Cr Inventory (studio invoice)
   try {
     const arAccount = await accountHelperService.getAccountByCode('1100', saleInfo.company_id);
-    const salesAccount = await accountHelperService.getAccountByCode('4000', saleInfo.company_id);
+    const salesAccountId = await getCanonicalSalesRevenueAccountId(saleInfo.company_id);
+    const salesAccount = { id: salesAccountId };
     if (arAccount?.id && salesAccount?.id) {
       const lines: JournalEntryLine[] = [
         { id: '', journal_entry_id: '', account_id: arAccount.id, debit: customerPrice, credit: 0, description: `AR – ${invoiceNo}` },

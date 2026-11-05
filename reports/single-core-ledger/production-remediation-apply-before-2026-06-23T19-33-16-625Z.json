@@ -1,0 +1,580 @@
+{
+  "run_at": "2026-06-23T19:33:16.625Z",
+  "backup_id": "/root/NEWPOSV3/backups/supabase_db_20260623_192408.dump",
+  "rows": [
+    {
+      "id": "5c8b039e-a7d0-4adf-a4c8-79f86a781bcc",
+      "contact_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "4d932503-587e-4c09-bb90-f781187bbe84",
+      "contact_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "1f3ef1a7-3be8-4753-9a02-dd17ef291ae2",
+      "contact_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "4cea032a-11a1-4bf8-8eaa-a3aae9501baa",
+      "contact_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "070543a4-6386-4d79-8b8b-c363c6c34c64",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "5421b5b1-4cb7-4263-b7e4-4e3be67185f6",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "f66c1879-a7f7-4847-9bad-bb5b599a7915",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "fff56208-12ad-46ff-b71e-50ac8c4a3234",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "15778d57-4ba1-49cc-a57d-ae872805494d",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "3f18f092-3a51-407f-8c5a-7e3caaa37963",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "06445805-3e79-48a8-b97d-6090d4a9b949",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "1ee946ab-7426-4aa9-88bc-4cc44fbbcba8",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "1fee1834-9c1b-4380-a574-f74e0967d949",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "0ca84408-729f-4685-b239-17f66250094c",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "38a28a85-15c3-492d-af57-47fadd7d80f2",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "1ccd12ec-4b70-4b91-b730-fec5d6e31f6c",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "53f497ba-ab30-403a-9e01-f8febf94ba3d",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "48312c00-9571-4a25-b041-5aaa13061566",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "843cb0a6-4966-472b-8af8-bd4907b588a3",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "e29e1665-2725-4bbd-8862-563b408bf51b",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "760181c4-1355-49a8-b16d-6c79a398f422",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "d36e9933-ba77-439d-ba57-79c86cc1315b",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "6213a1fa-2493-481f-a054-a975c6bd3af4",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "293baec6-2e0c-4354-a7bb-14918c80c368",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "4c024d62-2009-491f-9271-6b7ba8893976",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "fa14f2a4-e70a-4d65-84c7-1d22d082914f",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "b3b51a71-026c-47dd-9752-115beb03b4a2",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "67cbd21c-af1b-4b49-ab6c-254ce7027b3d",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "db393008-1d3b-49ca-b414-fc972c7f8d62",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "42c68216-c716-48d1-8403-a5a8953d760e",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "135db619-fe50-4013-8903-335757f4cffb",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "d39d263a-f395-4f66-a31f-f8d880818bec",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "6b187f3c-025d-4f33-81d3-7902ee1ead9e",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "c4dfa21a-b0b3-45d4-a2bd-cdfc806fc330",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "2243be0c-140a-418d-8368-52009a23098b",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "d225d447-ad8a-46b1-8a41-5c6840631a56",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "183d3a21-07d2-4f6a-8abd-1f33814c6b7c",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "da9783e4-eb22-4907-94d6-89cd9ee7cc25",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "b64fa83d-d984-4007-be44-dfe7d52f989f",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "f865a8f0-e7ea-4c83-994f-3c4314b50ca2",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "e15f5929-ef70-44c8-b8bb-93b5a57bb0b5",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "0a5ad4c5-7aee-4652-931c-60f875685928",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "c5b02a9f-1d98-4e3a-aea5-f860a1302207",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "f135b3df-46f0-4cde-9fc3-708ef4bfe91f",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "8182fab1-66fa-4bf1-a46b-3934ff6f873b",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "d0be950c-cc07-4b0d-bafe-299beb0b5830",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "725222e6-e144-4d72-bd2c-c42f117384c5",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "564d68c1-2bbe-4e19-8a02-f7eb36c7bbbf",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "61b221df-823d-4972-9b03-32f6fdc924c8",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "3ecbc087-e043-4692-afa1-0cb43c4fada1",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "bf3ea189-d3d5-477b-9037-d8ef2c5244b0",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "17251d90-5900-4428-9b19-1acaf31b8ebb",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "1375da9b-359d-48fa-bbea-f536d30e50c0",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "3ee4881f-297b-4dd1-8ec8-7be517057bad",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "f8c83910-9fe6-4cf2-bc3e-4d9937549daa",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "9bf3ec77-d2e3-4590-a703-8ca2841358b4",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "8bf3c509-4c46-43e3-9896-2abc7bafc302",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "7b9eb9eb-0fe9-4f59-9b2b-4fe663869eff",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "0321d540-cf02-4549-bfe6-a58293d32b66",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "35e75b94-c193-4752-bcb9-63a66a582c64",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "00f59e57-b37a-4454-b36a-9f75b728c83e",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "b221c1d0-1666-4780-ae50-d7fd7d0fb255",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "35e50a69-a9ef-462c-9901-27f1e936857d",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "6b3e41d5-1edb-49b4-96e1-9c61b92b06c9",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "49c069da-9281-4301-adbe-970e0464a8a1",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "64c9a1b6-6a6c-4e45-a2c1-b5ab64856357",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "a4951616-f6bc-4558-b0b9-212a5e131206",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "94db7959-ffd2-4910-9c6c-a1d62140f580",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "24947de6-adbc-4aee-9229-57a9b481e7ae",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "f4a53495-b1d0-406b-8ea9-06679841b443",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "cb34464f-a202-4b49-ab15-cd2e3fdb7100",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "850cd4de-ec20-426d-a985-533e9610d27b",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "d71fddfe-31f2-456e-a5a9-609b1c0b521b",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "9e286ca6-605f-46c3-adb7-55fe35665013",
+      "contact_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "voided_at": null,
+      "repair_type": "payment_contact_backfill"
+    },
+    {
+      "id": "33e20c3b-89c3-48a0-9d09-f545a4e02555",
+      "branch_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "is_void": false,
+      "repair_type": "branch_auto"
+    },
+    {
+      "id": "7a1cbbbe-bfd2-4c43-bca4-8863df99b0a4",
+      "branch_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "is_void": false,
+      "repair_type": "branch_auto"
+    },
+    {
+      "id": "0a573122-9cd1-4192-a61c-b948fd14abe8",
+      "branch_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "is_void": false,
+      "repair_type": "branch_manual"
+    },
+    {
+      "id": "21401d60-1e89-422d-bcdb-59310556d600",
+      "branch_id": null,
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "is_void": false,
+      "repair_type": "branch_manual"
+    },
+    {
+      "id": "1dd932ff-8798-46b4-8e47-b55832611515",
+      "branch_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "is_void": false,
+      "repair_type": "branch_manual"
+    },
+    {
+      "id": "653e66d2-6c38-41fc-b396-306488ae52e7",
+      "branch_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "is_void": false,
+      "repair_type": "branch_manual"
+    },
+    {
+      "id": "a1e0faf5-30ca-499b-9ba2-cc1bd8e25a67",
+      "branch_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "is_void": false,
+      "repair_type": "branch_manual"
+    },
+    {
+      "id": "a1cc92d7-443f-465d-9473-9d6b526fdb99",
+      "branch_id": null,
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "is_void": false,
+      "repair_type": "branch_manual"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "run": "SINGLE_CORE_ENGINE_STABILITY_WINDOW_START",
+  "task": "tests-build",
+  "generated_at": "2026-07-01T15:16:00.000Z",
+  "unified_ledger": { "pass": 328, "fail": 0 },
+  "unit": { "pass": 122, "fail": 0 },
+  "build": "PASS",
+  "exit_code": 0
+}

@@ -1,0 +1,19 @@
+AR/AP Phase 2b — Deployment note (parity FAIL gate)
+
+This session did NOT perform a new frontend deploy (STOP RULE after DIN BRIDAL parity FAIL).
+
+Observed VPS state at investigation time:
+  git HEAD: aff7c1d3
+  VITE_BUILD_COMMIT: aff7c1d3
+  erp-frontend health: healthy
+  production HTTP: 200
+  Bundle markers FOUND:
+    get_unified_contact_party_gl_balances
+    arApUnifiedPartyBalanceService
+    party_gl_balance_source
+
+Note: Operator brief listed prior VPS HEAD 8bbb01f0; production already had Phase 2b frontend
+on aff7c1d3 before/during this session. No rollback executed (requires separate approval).
+
+Rollback candidate if operator requests:
+  rebuild erp-frontend from 8bbb01f0 (pre-Phase-2b runtime)

@@ -337,18 +337,18 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
 
   const ledgerPanel = useMemo(() => {
     if (!contactId) {
-      return <p className="text-center text-gray-500 py-8">Contact ID missing — cannot load ledger.</p>;
+      return <p className="text-center text-muted-foreground py-8">Contact ID missing — cannot load ledger.</p>;
     }
     if (contactType === 'customer' || contactType === 'both') {
       return (
-        <div className="min-h-[420px] max-h-[58vh] overflow-y-auto rounded-lg border border-gray-800 bg-[#0B0F19] p-3">
+        <div className="min-h-[420px] max-h-[58vh] overflow-y-auto rounded-lg border border-border bg-secondary p-3">
           <CustomerLedgerPageOriginal embedded initialCustomerId={contactId} />
         </div>
       );
     }
     if (contactType === 'supplier' || contactType === 'worker') {
       return (
-        <div className="min-h-[420px] max-h-[58vh] overflow-y-auto rounded-lg border border-gray-800 bg-[#0B0F19] p-3">
+        <div className="min-h-[420px] max-h-[58vh] overflow-y-auto rounded-lg border border-border bg-secondary p-3">
           <GenericLedgerView
             ledgerType={contactType === 'supplier' ? 'supplier' : 'worker'}
             entityId={contactId}
@@ -357,13 +357,13 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
         </div>
       );
     }
-    return <p className="text-center text-gray-500 py-8">Ledger for this contact type is not configured.</p>;
+    return <p className="text-center text-muted-foreground py-8">Ledger for this contact type is not configured.</p>;
   }, [contactId, contactType, contact.name]);
 
   return (
     <>
       <Tabs value={tab} onValueChange={setTab} className="w-full flex-1 flex flex-col min-h-0">
-        <div className="border-b border-gray-800 shrink-0">
+        <div className="border-b border-border shrink-0">
           <TabsList className="bg-transparent h-auto p-0 w-full justify-start overflow-x-auto flex-wrap gap-0">
             {[
               { id: 'ledger', label: 'Ledger' },
@@ -377,7 +377,7 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
                 <TabsTrigger
                   key={t.id}
                   value={t.id}
-                  className="bg-transparent border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 text-gray-400 rounded-none px-4 py-3 text-sm"
+                  className="bg-transparent border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent data-[state=active]:text-blue-400 text-muted-foreground rounded-none px-4 py-3 text-sm"
                 >
                   {t.label}
                 </TabsTrigger>
@@ -391,43 +391,43 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
 
         <TabsContent value="purchases" className="flex-1 mt-4 min-h-0 data-[state=inactive]:hidden">
           {!showPurchasesTab ? (
-            <p className="text-gray-500 text-sm py-8 text-center">
+            <p className="text-muted-foreground text-sm py-8 text-center">
               Purchases list applies to suppliers. This contact is not a supplier.
             </p>
           ) : purchasesLoading ? (
-            <div className="flex justify-center py-16 text-gray-400">
+            <div className="flex justify-center py-16 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : purchasesError ? (
             <p className="text-red-400 text-sm py-6">{purchasesError}</p>
           ) : purchases.length === 0 ? (
-            <p className="text-gray-500 text-sm py-8 text-center">No purchase orders for this supplier.</p>
+            <p className="text-muted-foreground text-sm py-8 text-center">No purchase orders for this supplier.</p>
           ) : (
-            <div className="max-h-[58vh] overflow-auto rounded-lg border border-gray-800">
+            <div className="max-h-[58vh] overflow-auto rounded-lg border border-border">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-800 hover:bg-transparent">
-                    <TableHead className="text-gray-400">PO</TableHead>
-                    <TableHead className="text-gray-400">Date</TableHead>
-                    <TableHead className="text-gray-400 text-right">Total</TableHead>
-                    <TableHead className="text-gray-400 text-right">Paid</TableHead>
-                    <TableHead className="text-gray-400 text-right">Due</TableHead>
-                    <TableHead className="text-gray-400">Status</TableHead>
-                    <TableHead className="text-gray-400 w-[100px]" />
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground">PO</TableHead>
+                    <TableHead className="text-muted-foreground">Date</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Total</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Paid</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Due</TableHead>
+                    <TableHead className="text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-muted-foreground w-[100px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {purchases.map((p) => (
-                    <TableRow key={p.id} className="border-gray-800">
-                      <TableCell className="text-white font-mono text-sm">{p.po_no || '—'}</TableCell>
-                      <TableCell className="text-gray-300 text-sm">
+                    <TableRow key={p.id} className="border-border">
+                      <TableCell className="text-foreground font-mono text-sm">{p.po_no || '—'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
                         {p.po_date ? formatDate(p.po_date) : '—'}
                       </TableCell>
                       <TableCell className="text-right text-gray-200">{formatCurrency(Number(p.total) || 0)}</TableCell>
                       <TableCell className="text-right text-gray-200">{formatCurrency(Number(p.paid_amount) || 0)}</TableCell>
                       <TableCell className="text-right text-gray-200">{formatCurrency(Number(p.due_amount) || 0)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="border-gray-600 text-gray-300 text-xs">
+                        <Badge variant="outline" className="border-gray-600 text-muted-foreground text-xs">
                           {p.status || '—'}
                         </Badge>
                       </TableCell>
@@ -452,26 +452,26 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
 
         <TabsContent value="stock-history" className="flex-1 mt-4 min-h-0 data-[state=inactive]:hidden">
           {stockLoading ? (
-            <div className="flex justify-center py-16 text-gray-400">
+            <div className="flex justify-center py-16 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : stockError ? (
             <p className="text-red-400 text-sm py-6">{stockError}</p>
           ) : stockRows.length === 0 ? (
-            <p className="text-gray-500 text-sm py-8 text-center">
+            <p className="text-muted-foreground text-sm py-8 text-center">
               No stock movements linked to this contact&apos;s sales or purchases (final documents with inventory
               posting).
             </p>
           ) : (
-            <div className="max-h-[58vh] overflow-auto rounded-lg border border-gray-800">
+            <div className="max-h-[58vh] overflow-auto rounded-lg border border-border">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-800 hover:bg-transparent">
-                    <TableHead className="text-gray-400">When</TableHead>
-                    <TableHead className="text-gray-400">Product</TableHead>
-                    <TableHead className="text-gray-400">Type</TableHead>
-                    <TableHead className="text-gray-400">Ref</TableHead>
-                    <TableHead className="text-gray-400 text-right">Qty</TableHead>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground">When</TableHead>
+                    <TableHead className="text-muted-foreground">Product</TableHead>
+                    <TableHead className="text-muted-foreground">Type</TableHead>
+                    <TableHead className="text-muted-foreground">Ref</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Qty</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -479,15 +479,15 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
                     const qty = Number(m.quantity) || 0;
                     const inflow = qty > 0;
                     return (
-                      <TableRow key={m.id} className="border-gray-800">
-                        <TableCell className="text-gray-300 text-sm whitespace-nowrap">
+                      <TableRow key={m.id} className="border-border">
+                        <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                           {m.created_at ? formatDate(m.created_at) : '—'}
                         </TableCell>
                         <TableCell className="text-gray-200 text-sm max-w-[200px] truncate">
                           {(m.product as any)?.name || '—'}
                         </TableCell>
                         <TableCell>
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             {inflow ? (
                               <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-400" />
                             ) : (
@@ -496,7 +496,7 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
                             {m.movement_type || '—'}
                           </span>
                         </TableCell>
-                        <TableCell className="text-gray-500 text-xs font-mono">
+                        <TableCell className="text-muted-foreground text-xs font-mono">
                           {(m.reference_type || '') + (m.reference_id ? ` · ${String(m.reference_id).slice(0, 8)}…` : '')}
                         </TableCell>
                         <TableCell className={cn('text-right font-mono', inflow ? 'text-emerald-400' : 'text-amber-300')}>
@@ -513,25 +513,25 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
 
         <TabsContent value="documents" className="flex-1 mt-4 min-h-0 data-[state=inactive]:hidden">
           {documentsLoading ? (
-            <div className="flex justify-center py-16 text-gray-400">
+            <div className="flex justify-center py-16 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : documentsError ? (
             <p className="text-red-400 text-sm py-6">{documentsError}</p>
           ) : documents.length === 0 ? (
-            <p className="text-gray-500 text-sm py-8 text-center">
+            <p className="text-muted-foreground text-sm py-8 text-center">
               No attachments on sales, purchases, or payments for this contact.
             </p>
           ) : (
-            <div className="max-h-[58vh] overflow-auto rounded-lg border border-gray-800 divide-y divide-gray-800">
+            <div className="max-h-[58vh] overflow-auto rounded-lg border border-border divide-y divide-border">
               {documents.map((d) => (
-                <div key={d.key} className="flex items-center justify-between gap-3 p-4 hover:bg-gray-900/40">
+                <div key={d.key} className="flex items-center justify-between gap-3 p-4 hover:bg-card/40">
                   <div className="flex items-start gap-3 min-w-0">
                     <FileText className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
                     <div className="min-w-0">
-                      <p className="text-sm text-white truncate">{d.title}</p>
-                      <p className="text-xs text-gray-500">
-                        <Badge variant="outline" className="mr-2 border-gray-600 text-gray-400 text-[10px]">
+                      <p className="text-sm text-foreground truncate">{d.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <Badge variant="outline" className="mr-2 border-gray-600 text-muted-foreground text-[10px]">
                           {d.source}
                         </Badge>
                         {d.subtitle || ''}
@@ -563,35 +563,35 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
 
         <TabsContent value="payments" className="flex-1 mt-4 min-h-0 data-[state=inactive]:hidden">
           {paymentsLoading ? (
-            <div className="flex justify-center py-16 text-gray-400">
+            <div className="flex justify-center py-16 text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : paymentsError ? (
             <p className="text-red-400 text-sm py-6">{paymentsError}</p>
           ) : payments.length === 0 ? (
-            <p className="text-gray-500 text-sm py-8 text-center">No payment rows for this contact.</p>
+            <p className="text-muted-foreground text-sm py-8 text-center">No payment rows for this contact.</p>
           ) : (
-            <div className="max-h-[58vh] overflow-auto rounded-lg border border-gray-800">
+            <div className="max-h-[58vh] overflow-auto rounded-lg border border-border">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-800 hover:bg-transparent">
-                    <TableHead className="text-gray-400">Date</TableHead>
-                    <TableHead className="text-gray-400">Ref</TableHead>
-                    <TableHead className="text-gray-400">Type</TableHead>
-                    <TableHead className="text-gray-400 text-right">Amount</TableHead>
-                    <TableHead className="text-gray-400">Method</TableHead>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground">Date</TableHead>
+                    <TableHead className="text-muted-foreground">Ref</TableHead>
+                    <TableHead className="text-muted-foreground">Type</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Amount</TableHead>
+                    <TableHead className="text-muted-foreground">Method</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {payments.map((p) => (
-                    <TableRow key={p.id} className="border-gray-800 opacity-100">
-                      <TableCell className="text-gray-300 text-sm whitespace-nowrap">
+                    <TableRow key={p.id} className="border-border opacity-100">
+                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                         {p.payment_date ? formatDate(p.payment_date) : '—'}
                       </TableCell>
                       <TableCell className="text-gray-200 text-sm font-mono">{p.reference_number || p.id.slice(0, 8)}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          <Badge variant="outline" className="border-gray-600 text-gray-300 text-[10px]">
+                          <Badge variant="outline" className="border-gray-600 text-muted-foreground text-[10px]">
                             {p.reference_type || p.payment_type || '—'}
                           </Badge>
                           {p.voided_at && (
@@ -601,10 +601,10 @@ export const ContactProfileActivityTabs: React.FC<{ contact: ProfileContact }> =
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right text-white font-medium">
+                      <TableCell className="text-right text-foreground font-medium">
                         {formatCurrency(Number(p.amount) || 0)}
                       </TableCell>
-                      <TableCell className="text-gray-400 text-sm">{p.payment_method || '—'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{p.payment_method || '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

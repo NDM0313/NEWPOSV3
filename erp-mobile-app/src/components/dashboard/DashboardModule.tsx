@@ -30,9 +30,8 @@ import { getMyWorkerDashboardMetrics } from '../../api/myWorkerDashboard';
 
 import { getDashboardMetrics, type FinancialDashboardMetrics } from '../../api/dashboardMetrics';
 
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../../utils/localDate';
-
-import { getThisBusinessWeekRange } from '../../utils/businessWeek';
+import { DateRangeBar, makeInitialRange, type DateRangeValue } from '../shared/DateRangeBar';
+import { dateRangePresetLabel } from '../../lib/dateRangePresets';
 
 import {
 
@@ -160,34 +159,6 @@ function StatCard({
 
 
 
-function getRangeForPreset(timeRange: 'today' | 'week' | 'month'): { fromDate: string; toDate: string } {
-
-  const toDate = localNowDateString();
-
-  if (timeRange === 'today') {
-
-    return { fromDate: toDate, toDate };
-
-  }
-
-  if (timeRange === 'week') {
-
-    const { startDate } = getThisBusinessWeekRange(new Date());
-
-    return { fromDate: formatLocalDateYYYYMMDD(startDate), toDate };
-
-  }
-
-  const start = new Date();
-
-  start.setDate(start.getDate() - 29);
-
-  return { fromDate: formatLocalDateYYYYMMDD(start), toDate };
-
-}
-
-
-
 export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, onNewPurchase }: DashboardModuleProps) {
 
   const { isAdminOrOwner } = usePermissions();
@@ -196,7 +167,7 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
   const effectiveProfileId = useEffectiveWorkerProfileId();
 
-  const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange());
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -240,11 +211,19 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
     const showLegacyCombined = pu === 0 && opEx === 0 && combined > 0;
 
+    const periodSales = Number(m.today_sales) || Number(m.monthly_revenue) || 0;
+    const periodPurchases = Number(m.period_purchases) || 0;
+    const periodOpEx = Number(m.period_operating_expenses) || 0;
+    const periodProfit =
+      Number(m.today_profit) ||
+      Number(m.monthly_profit) ||
+      periodSales - periodPurchases - periodOpEx;
+
     return {
 
-      periodSales: m.today_sales,
+      periodSales,
 
-      periodProfit: m.today_profit,
+      periodProfit,
 
       purchases: pu,
 
@@ -278,7 +257,8 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
     const invBranch = branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
 
-    const { fromDate, toDate } = getRangeForPreset(timeRange);
+    const fromDate = dateRange.from;
+    const toDate = dateRange.to;
 
 
 
@@ -382,35 +362,11 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
     if (metrics && !metricsErr) {
 
-      if (timeRange === 'today') {
+      setIncome(metrics.revenue);
 
-        setIncome(metrics.revenue);
+      setExpense(metrics.cost);
 
-        setExpense(metrics.cost);
-
-        setProfit(metrics.profit);
-
-      } else if (timeRange === 'week') {
-
-        const salesSum = metrics.salesTrend.slice(-7).reduce((s, p) => s + p.value, 0);
-
-        const profitSum = metrics.profitTrend.slice(-7).reduce((s, p) => s + p.value, 0);
-
-        setIncome(salesSum);
-
-        setExpense(metrics.cost);
-
-        setProfit(profitSum);
-
-      } else {
-
-        setIncome(metrics.revenue);
-
-        setExpense(metrics.cost);
-
-        setProfit(metrics.profit);
-
-      }
+      setProfit(metrics.profit);
 
       setReceivable(metrics.receivables);
 
@@ -456,7 +412,7 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
     void loadData();
 
-  }, [companyId, branchId, timeRange, effectiveUserId, effectiveProfileId, isAdminOrOwner]);
+  }, [companyId, branchId, dateRange.from, dateRange.to, dateRange.preset, effectiveUserId, effectiveProfileId, isAdminOrOwner]);
 
 
 
@@ -510,11 +466,11 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
     };
 
-  }, [branchId, companyId, timeRange, effectiveUserId, effectiveProfileId, isAdminOrOwner]);
+  }, [branchId, companyId, dateRange.from, dateRange.to, dateRange.preset, effectiveUserId, effectiveProfileId, isAdminOrOwner]);
 
 
 
-  const periodLabel = timeRange === 'today' ? 'Today' : timeRange === 'week' ? 'Period' : 'Period';
+  const periodLabel = dateRangePresetLabel(dateRange);
 
   const branchLabel =
 
@@ -568,30 +524,15 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
         </div>
 
-        <div className="flex gap-2 px-4 pb-3">
-
-          {(['today', 'week', 'month'] as const).map((range) => (
-
-            <button
-
-              key={range}
-
-              onClick={() => setTimeRange(range)}
-
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-
-                timeRange === range ? 'bg-[#3B82F6] text-white' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151]'
-
-              }`}
-
-            >
-
-              {range === 'today' ? 'Today' : range === 'week' ? 'This Week' : 'This Month'}
-
-            </button>
-
-          ))}
-
+        <div className="px-4 pb-3">
+          <DateRangeBar
+            value={dateRange}
+            onChange={setDateRange}
+            variant="dark"
+            hidePresets={['all', 'quarter', 'year', 'custom']}
+            companyId={companyId}
+            branchId={branchId}
+          />
         </div>
 
       </div>
@@ -606,7 +547,7 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
             <p className="text-[11px] text-[#6B7280] leading-snug">
 
-              Company-wide executive metrics for {branchLabel} ({periodLabel} range: Sat–Fri week when &quot;This Week&quot; is selected). Period net = sales − purchases − operating expenses.
+              Company-wide executive metrics for {branchLabel} ({periodLabel}; Sat–Fri for This week / Last week). Period net = sales − purchases − operating expenses.
 
             </p>
 
@@ -622,7 +563,7 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
                 <StatCard
 
-                  title={timeRange === 'today' ? 'Today sales' : 'Period sales'}
+                  title={dateRange.preset === 'today' ? 'Today sales' : 'Period sales'}
 
                   value={executiveDisplay.periodSales}
 
@@ -634,7 +575,7 @@ export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, 
 
                 <StatCard
 
-                  title={timeRange === 'today' ? 'Today net profit' : 'Period net profit'}
+                  title={dateRange.preset === 'today' ? 'Today net profit' : 'Period net profit'}
 
                   value={executiveDisplay.periodProfit}
 

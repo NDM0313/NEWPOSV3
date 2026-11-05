@@ -45,16 +45,16 @@ export function StudioStageTimeline({
   return (
     <div className="space-y-3 text-sm">
       <div>
-        <p className="text-white font-medium">{displayName}</p>
-        <p className="text-xs text-gray-400 capitalize">{stageType.replace(/_/g, ' ')}</p>
+        <p className="text-foreground font-medium">{displayName}</p>
+        <p className="text-xs text-muted-foreground capitalize">{stageType.replace(/_/g, ' ')}</p>
       </div>
-      <div className="space-y-2 border-t border-gray-700 pt-2">
+      <div className="space-y-2 border-t border-border pt-2">
         <Row label="Assigned" date={assignedAt} />
         <Row label="Sent to worker" date={sentDate} note={sendNote} />
         <Row label="Received" date={receivedDate} note={receiveNote} />
         <Row label="Completed" date={completedDate} />
       </div>
-      <div className="space-y-1.5 border-t border-gray-700 pt-2">
+      <div className="space-y-1.5 border-t border-border pt-2">
         <Money label="Expected worker cost" value={expectedCost} />
         <Money label="Worker cost (recorded)" value={workerCost} />
         <Money label="Customer charge" value={customerCharge} accent />
@@ -66,14 +66,14 @@ export function StudioStageTimeline({
         )}
       </div>
       {paymentNote && (
-        <div className="border-t border-gray-700 pt-2">
-          <p className="text-xs text-gray-400 mb-0.5">Payment remarks</p>
+        <div className="border-t border-border pt-2">
+          <p className="text-xs text-muted-foreground mb-0.5">Payment remarks</p>
           <p className="text-xs text-gray-200 whitespace-pre-wrap">{paymentNote}</p>
         </div>
       )}
       {otherNotes && (
-        <div className="border-t border-gray-700 pt-2">
-          <p className="text-xs text-gray-400 mb-0.5">Other notes</p>
+        <div className="border-t border-border pt-2">
+          <p className="text-xs text-muted-foreground mb-0.5">Other notes</p>
           <p className="text-xs text-gray-200 whitespace-pre-wrap">{otherNotes}</p>
         </div>
       )}
@@ -85,10 +85,10 @@ function Row({ label, date, note }: { label: string; date?: string | null; note?
   return (
     <div>
       <div className="flex justify-between gap-2">
-        <span className="text-gray-400 text-xs">{label}</span>
-        <span className="text-white text-xs">{formatIsoDateShort(date ?? undefined)}</span>
+        <span className="text-muted-foreground text-xs">{label}</span>
+        <span className="text-foreground text-xs">{formatIsoDateShort(date ?? undefined)}</span>
       </div>
-      {note && <p className="text-xs text-gray-300 mt-0.5 pl-2 border-l-2 border-purple-500/50 whitespace-pre-wrap">{note}</p>}
+      {note && <p className="text-xs text-muted-foreground mt-0.5 pl-2 border-l-2 border-purple-500/50 whitespace-pre-wrap">{note}</p>}
     </div>
   );
 }
@@ -96,8 +96,8 @@ function Row({ label, date, note }: { label: string; date?: string | null; note?
 function Money({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
     <div className="flex justify-between gap-2">
-      <span className="text-gray-400 text-xs">{label}</span>
-      <span className={`text-xs font-medium tabular-nums ${accent ? 'text-green-400' : 'text-white'}`}>
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <span className={`text-xs font-medium tabular-nums ${accent ? 'text-[var(--erp-money-positive)]' : 'text-foreground'}`}>
         Rs. {value.toLocaleString()}
       </span>
     </div>

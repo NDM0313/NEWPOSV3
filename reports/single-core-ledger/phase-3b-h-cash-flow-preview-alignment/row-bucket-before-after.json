@@ -1,0 +1,13 @@
+{
+  "run": "PHASE_3B_H_ROW_BUCKET_BEFORE_AFTER",
+  "status": "UNIT_EVIDENCE_ONLY_PENDING_DEPLOY",
+  "dinChina": {
+    "transferRowsExcluded": 80,
+    "preTransferNetInNormalTotals": -56889891,
+    "rule": "Q5=C"
+  },
+  "dinBridal": {
+    "openingRowsExcludedFromPeriodCashIn": 1,
+    "rule": "Q4=A"
+  }
+}

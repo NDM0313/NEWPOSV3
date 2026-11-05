@@ -175,9 +175,11 @@ export const useDocumentNumbering = () => {
         };
 
       case 'production':
+        // Product SKU: Settings loads/saves productPrefix/productNextNumber (ERP PRODUCT).
+        // Legacy production* keys are fallback only.
         return {
-          prefix: numbering.productionPrefix || 'PRD-',
-          nextNumber: numbering.productionNextNumber ?? 1,
+          prefix: numbering.productPrefix || numbering.productionPrefix || 'PRD-',
+          nextNumber: numbering.productNextNumber ?? numbering.productionNextNumber ?? 1,
           padding: 4
         };
       
@@ -328,7 +330,8 @@ export const useDocumentNumbering = () => {
         updatedNumbering.journalNextNumber = (updatedNumbering.journalNextNumber ?? config.nextNumber ?? 1) + 1;
         break;
       case 'production':
-        updatedNumbering.productionNextNumber = (config.nextNumber || 1) + 1;
+        updatedNumbering.productNextNumber = (config.nextNumber || 1) + 1;
+        updatedNumbering.productionNextNumber = updatedNumbering.productNextNumber;
         break;
     }
 

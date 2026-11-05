@@ -1,0 +1,11 @@
+{
+  "run": "POST_REFRESH_MONITORING",
+  "artifact": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-07-02T07-24-30-196Z.json",
+  "overall": "PASS",
+  "din_china": "PASS",
+  "din_bridal": "PASS",
+  "din_couture": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "flags_unchanged": true
+}

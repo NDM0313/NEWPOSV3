@@ -1,0 +1,15 @@
+{
+  "runLocalDateTime": "2026-07-03T02:47:21+05:00",
+  "filesUpdated": [
+    "docs/MOBILE_RELEASE_PLAN.md",
+    "docs/accounting/FULL_SINGLE_CORE_LEDGER_REMAINING_EXECUTION_PLAN_2026-06-30.md",
+    "docs/accounting/OFFICE_TO_HOME_FINAL_HANDOFF_2026-06-30.md"
+  ],
+  "managerQa": "NA_WAIVED",
+  "adminQa": "PASS_21_21",
+  "salesmanQa": "PENDING",
+  "deviceStatus": "DEVICE_NOT_AVAILABLE_HOME_MAC",
+  "mobileReleaseGate": "BLOCKED_SALESMAN_DEVICE_QA_PENDING",
+  "playStore": "NOT_RELEASED",
+  "r8": "BLOCKED"
+}

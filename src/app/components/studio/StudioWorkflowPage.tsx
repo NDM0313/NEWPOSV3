@@ -72,7 +72,7 @@ const getDepartmentIcon = (dept: DepartmentType) => {
 
 const getStatusColor = (status: WorkerStatus) => {
   switch (status) {
-    case 'Available': return 'bg-green-500/10 text-green-400 border-green-500/20';
+    case 'Available': return 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20';
     case 'Busy': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     case 'Overloaded': return 'bg-red-500/10 text-red-400 border-red-500/20';
   }
@@ -271,13 +271,13 @@ export const StudioWorkflowPage: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-500">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-gray-800 pb-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-border pb-4">
           <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h2 className="text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
             <Users className="text-blue-400" size={32} />
             Workers Management
           </h2>
-          <p className="text-gray-400 mt-1">Monitor workload, progress, and production involvement</p>
+          <p className="text-muted-foreground mt-1">Monitor workload, progress, and production involvement</p>
           </div>
 
         <div className="flex items-center gap-3">
@@ -293,11 +293,11 @@ export const StudioWorkflowPage: React.FC = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Total Workers</p>
-              <p className="text-2xl font-bold text-white mt-1">{stats.totalWorkers}</p>
+              <p className="text-muted-foreground text-sm">Total Workers</p>
+              <p className="text-2xl font-bold text-foreground mt-1">{stats.totalWorkers}</p>
             </div>
             <div className="h-12 w-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
               <Users className="text-blue-400" size={24} />
@@ -305,10 +305,10 @@ export const StudioWorkflowPage: React.FC = () => {
               </div>
             </div>
 
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Active Workers</p>
+              <p className="text-muted-foreground text-sm">Active Workers</p>
               <p className="text-2xl font-bold text-yellow-400 mt-1">{stats.activeWorkers}</p>
             </div>
             <div className="h-12 w-12 rounded-lg bg-yellow-500/10 flex items-center justify-center">
@@ -317,26 +317,26 @@ export const StudioWorkflowPage: React.FC = () => {
             </div>
           </div>
 
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Available</p>
-              <p className="text-2xl font-bold text-green-400 mt-1">{stats.availableWorkers}</p>
+              <p className="text-muted-foreground text-sm">Available</p>
+              <p className="text-2xl font-bold text-[var(--erp-money-positive)] mt-1">{stats.availableWorkers}</p>
             </div>
             <div className="h-12 w-12 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <CheckCircle2 className="text-green-400" size={24} />
+              <CheckCircle2 className="text-[var(--erp-money-positive)]" size={24} />
             </div>
           </div>
         </div>
 
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Pending Payments</p>
+              <p className="text-muted-foreground text-sm">Pending Payments</p>
               <p className="text-2xl font-bold text-orange-400 mt-1">
                 Rs {stats.totalPendingAmount.toLocaleString()}
               </p>
-              <p className="text-[10px] text-gray-500 mt-1 max-w-[220px] leading-snug">
+              <p className="text-[10px] text-muted-foreground mt-1 max-w-[220px] leading-snug">
                 Same method as Studio Costs and Worker Detail: journal + worker payments (FIFO) when data exists. Otherwise legacy operational ledger. Not the same as Contacts / party GL 2010 unless you tie out in accounting.
               </p>
             </div>
@@ -348,13 +348,13 @@ export const StudioWorkflowPage: React.FC = () => {
                 </div>
 
       {/* Quick Filters */}
-      <div className="bg-gray-900/80 border border-gray-800 rounded-lg px-4 py-3">
+      <div className="bg-card border border-border rounded-lg px-4 py-3">
         <div className="flex items-center gap-3 flex-wrap">
           <Button
             variant={departmentFilter === 'all' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setDepartmentFilter('all')}
-            className={departmentFilter === 'all' ? 'bg-blue-600' : 'border-gray-700 text-gray-400'}
+            className={departmentFilter === 'all' ? 'bg-blue-600' : 'border-border text-muted-foreground'}
           >
             All Departments
           </Button>
@@ -362,7 +362,7 @@ export const StudioWorkflowPage: React.FC = () => {
             variant={departmentFilter === 'Dyeing' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setDepartmentFilter('Dyeing')}
-            className={departmentFilter === 'Dyeing' ? 'bg-purple-600' : 'border-gray-700 text-gray-400'}
+            className={departmentFilter === 'Dyeing' ? 'bg-purple-600' : 'border-border text-muted-foreground'}
           >
             <Palette size={14} className="mr-2" />
             Dyeing
@@ -371,7 +371,7 @@ export const StudioWorkflowPage: React.FC = () => {
             variant={departmentFilter === 'Stitching' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setDepartmentFilter('Stitching')}
-            className={departmentFilter === 'Stitching' ? 'bg-blue-600' : 'border-gray-700 text-gray-400'}
+            className={departmentFilter === 'Stitching' ? 'bg-blue-600' : 'border-border text-muted-foreground'}
           >
             <Scissors size={14} className="mr-2" />
             Stitching
@@ -380,19 +380,19 @@ export const StudioWorkflowPage: React.FC = () => {
             variant={departmentFilter === 'Handwork' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setDepartmentFilter('Handwork')}
-            className={departmentFilter === 'Handwork' ? 'bg-pink-600' : 'border-gray-700 text-gray-400'}
+            className={departmentFilter === 'Handwork' ? 'bg-pink-600' : 'border-border text-muted-foreground'}
           >
             <Sparkles size={14} className="mr-2" />
             Handwork
           </Button>
 
-          <div className="h-6 w-px bg-gray-700 mx-2" />
+          <div className="h-6 w-px bg-muted mx-2" />
 
           <Button
             variant={statusFilter === 'all' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('all')}
-            className={statusFilter === 'all' ? 'bg-blue-600' : 'border-gray-700 text-gray-400'}
+            className={statusFilter === 'all' ? 'bg-blue-600' : 'border-border text-muted-foreground'}
           >
             All Status
           </Button>
@@ -400,7 +400,7 @@ export const StudioWorkflowPage: React.FC = () => {
             variant={statusFilter === 'Available' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('Available')}
-            className={statusFilter === 'Available' ? 'bg-green-600' : 'border-gray-700 text-gray-400'}
+            className={statusFilter === 'Available' ? 'bg-green-600' : 'border-border text-muted-foreground'}
           >
             Available
                             </Button>
@@ -408,7 +408,7 @@ export const StudioWorkflowPage: React.FC = () => {
             variant={statusFilter === 'Busy' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('Busy')}
-            className={statusFilter === 'Busy' ? 'bg-yellow-600' : 'border-gray-700 text-gray-400'}
+            className={statusFilter === 'Busy' ? 'bg-yellow-600' : 'border-border text-muted-foreground'}
           >
             Busy
                             </Button>
@@ -416,7 +416,7 @@ export const StudioWorkflowPage: React.FC = () => {
             variant={statusFilter === 'Overloaded' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('Overloaded')}
-            className={statusFilter === 'Overloaded' ? 'bg-red-600' : 'border-gray-700 text-gray-400'}
+            className={statusFilter === 'Overloaded' ? 'bg-red-600' : 'border-border text-muted-foreground'}
           >
             Overloaded
                             </Button>
@@ -424,16 +424,16 @@ export const StudioWorkflowPage: React.FC = () => {
       </div>
 
       {/* Search & Export Toolbar */}
-      <div className="bg-gray-900/80 border border-gray-800 rounded-lg px-4 py-3">
+      <div className="bg-card border border-border rounded-lg px-4 py-3">
         <div className="flex items-center gap-3">
           {/* Search */}
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search by name, phone, department..."
-              className="pl-10 bg-gray-900 border-gray-700 text-white h-10"
+              className="pl-10 bg-card border-border text-foreground h-10"
             />
           </div>
 
@@ -441,7 +441,7 @@ export const StudioWorkflowPage: React.FC = () => {
           <select
             value={pageSize}
             onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm h-10 min-w-[100px]"
+            className="bg-card border border-border rounded-lg px-3 py-2 text-foreground text-sm h-10 min-w-[100px]"
           >
             <option value={25}>25 rows</option>
             <option value={50}>50 rows</option>
@@ -453,7 +453,7 @@ export const StudioWorkflowPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            className="border-gray-700 text-gray-300 hover:bg-gray-800 h-10 gap-2"
+            className="border-border text-muted-foreground hover:bg-muted h-10 gap-2"
             onClick={handleExportCSV}
           >
             <Download size={16} />
@@ -463,10 +463,10 @@ export const StudioWorkflowPage: React.FC = () => {
           </div>
 
       {/* Workers Table */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+            <thead className="text-xs text-muted-foreground uppercase bg-muted/40 border-b border-border">
               <tr>
                 <th className="px-6 py-3 font-medium">Worker</th>
                 <th className="px-6 py-3 font-medium">Department</th>
@@ -478,7 +478,7 @@ export const StudioWorkflowPage: React.FC = () => {
                 <th className="px-6 py-3 font-medium text-center">Actions</th>
                 </tr>
               </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {paginatedWorkers.map((worker) => {
                 const DeptIcon = getDepartmentIcon(worker.department);
                 const StatusIcon = getStatusIcon(worker.status);
@@ -486,18 +486,18 @@ export const StudioWorkflowPage: React.FC = () => {
                 return (
                   <tr 
                     key={worker.id} 
-                    className="group hover:bg-gray-800/30 transition-colors cursor-pointer"
+                    className="group hover:bg-accent/30 transition-colors cursor-pointer"
                     onClick={() => handleViewWorkerDetail(worker.id)}
                   >
                     {/* Worker Info */}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-foreground font-bold">
                           {worker.name.charAt(0)}
                         </div>
                         <div>
-                          <p className="font-medium text-white">{worker.name}</p>
-                          <p className="text-xs text-gray-500">{worker.phone}</p>
+                          <p className="font-medium text-foreground">{worker.name}</p>
+                          <p className="text-xs text-muted-foreground">{worker.phone}</p>
                         </div>
                       </div>
                     </td>
@@ -515,7 +515,7 @@ export const StudioWorkflowPage: React.FC = () => {
                       <span className={`inline-flex items-center justify-center h-7 w-7 rounded-full text-sm font-semibold ${
                         worker.activeJobs > 0 
                           ? 'bg-yellow-500/20 text-yellow-400' 
-                          : 'bg-gray-800 text-gray-500'
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         {worker.activeJobs}
                       </span>
@@ -526,7 +526,7 @@ export const StudioWorkflowPage: React.FC = () => {
                       <span className={`inline-flex items-center justify-center h-7 w-7 rounded-full text-sm font-semibold ${
                         worker.pendingJobs > 0 
                           ? 'bg-orange-500/20 text-orange-400' 
-                          : 'bg-gray-800 text-gray-500'
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         {worker.pendingJobs}
                       </span>
@@ -534,7 +534,7 @@ export const StudioWorkflowPage: React.FC = () => {
 
                     {/* Completed */}
                     <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center gap-1 text-green-400 font-medium">
+                      <span className="inline-flex items-center gap-1 text-[var(--erp-money-positive)] font-medium">
                         <CheckCircle2 size={14} />
                         {worker.completedJobs}
                       </span>
@@ -597,9 +597,9 @@ export const StudioWorkflowPage: React.FC = () => {
         {/* Empty State */}
         {paginatedWorkers.length === 0 && (
           <div className="text-center py-12">
-            <Users className="mx-auto text-gray-600 mb-3" size={48} />
-            <p className="text-gray-400 text-lg font-medium">No workers found</p>
-            <p className="text-gray-600 text-sm mt-1">Try adjusting your filters or search term</p>
+            <Users className="mx-auto text-muted-foreground mb-3" size={48} />
+            <p className="text-muted-foreground text-lg font-medium">No workers found</p>
+            <p className="text-muted-foreground text-sm mt-1">Try adjusting your filters or search term</p>
         </div>
       )}
         </div>

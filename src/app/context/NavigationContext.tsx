@@ -1,6 +1,15 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
+import { parseNavLocationFromUrl, type FinancialReportType } from '@/app/lib/navDeepLinks';
+import { clearStuckModalLocks, shouldClearStuckModalLocks } from '@/app/lib/clearStuckModalLocks';
+import type { LedgerStatementV2Initial } from '@/app/features/ledger-statement-center-v2/types';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
 
-type View = 
+export type AccountingTabInitial = 'account_statements' | null;
+
+export type View = 
   | 'dashboard' 
   | 'products' 
   | 'pos' 
@@ -66,6 +75,7 @@ type View =
   | 'developer-integrity-lab'
   | 'accounting-developer-center'
   | 'ar-ap-reconciliation-center'
+  | 'financial-trace-center'
   | 'erp-permissions'
   | 'permission-inspector'
   | 'studio-order-detail-v3'
@@ -74,7 +84,67 @@ type View =
   | 'manufacturing-workflow'
   | 'party-ledger'
   | 'stock-report'
+  | 'stock-movement-history'
+  | 'inventory-count'
   | 'bespoke-work-orders';
+
+/** Data-heavy list modules: collapse sidebar to icon rail for more content width. */
+const SIDEBAR_AUTO_COLLAPSE_VIEWS = new Set<View>([
+  'sales',
+  'purchases',
+  'products',
+  'contacts',
+  'customers',
+  'inventory',
+  'stock',
+  'stock-report',
+  'stock-movement-history',
+  'inventory-count',
+  'rentals',
+  'expenses',
+  'reports',
+  'accounting',
+  'party-ledger',
+]);
+
+const SIDEBAR_AUTO_EXPAND_VIEWS = new Set<View>([
+  'dashboard',
+  'settings',
+]);
+
+const SIDEBAR_PIN_KEY_PREFIX = 'erp.sidebarPin.';
+
+function defaultSidebarOpenForView(view: View): boolean {
+  if (SIDEBAR_AUTO_COLLAPSE_VIEWS.has(view)) return false;
+  if (SIDEBAR_AUTO_EXPAND_VIEWS.has(view)) return true;
+  // Developer / diagnostics surfaces stay expanded by default
+  if (
+    view.includes('test') ||
+    view.includes('developer') ||
+    view === 'erp-permissions' ||
+    view === 'permission-inspector' ||
+    view === 'accounting-developer-center' ||
+    view === 'developer-integrity-lab' ||
+    view === 'ar-ap-reconciliation-center' ||
+    view === 'financial-trace-center' ||
+    view === 'accounting-integrity-lab' ||
+    view === 'accounting-test-bench'
+  ) {
+    return true;
+  }
+  return true;
+}
+
+function readSidebarPin(view: View): boolean | null {
+  const raw = safeSessionStorageGetItem(`${SIDEBAR_PIN_KEY_PREFIX}${view}`);
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return null;
+}
+
+function writeSidebarPin(view: View, open: boolean): void {
+  safeSessionStorageSetItem(`${SIDEBAR_PIN_KEY_PREFIX}${view}`, open ? '1' : '0');
+}
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -86,7 +156,7 @@ interface NavigationContextType {
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean; bespokeOrder?: boolean }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; duplicateFrom?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean; bespokeOrder?: boolean }) => void;
   closeDrawer: () => void;
   /** True when sale drawer opened via Create New → Custom / Bespoke Order */
   saleDrawerBespokeMode: boolean;
@@ -97,6 +167,9 @@ interface NavigationContextType {
   /** When set and user is on Sales view, open the sale details drawer for this invoice (e.g. after Generate Sale Invoice from Studio). */
   openSaleIdForView?: string | null;
   setOpenSaleIdForView?: (id: string | null) => void;
+  /** When set and user is on Rentals view, open the booking details drawer for this rental. */
+  openRentalIdForView?: string | null;
+  setOpenRentalIdForView?: (id: string | null) => void;
   selectedProductionId?: string;
   setSelectedProductionId?: (id: string) => void;
   selectedStudioOrderIdV3?: string | null;
@@ -122,6 +195,19 @@ interface NavigationContextType {
   partyLedgerParams?: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' } | null;
   setPartyLedgerParams?: (p: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' } | null) => void;
   openPartyLedger?: (params: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' }) => void;
+  /** Set from `?financial=` when opening Reports via deep link. */
+  reportsFinancialInitial: FinancialReportType | null;
+  /** Pre-select party/account when opening Account Statements (embedded V2) from Balance Sheet etc. */
+  accountStatementV2Initial: LedgerStatementV2Initial | null;
+  setAccountStatementV2Initial: (p: LedgerStatementV2Initial | null) => void;
+  /** One-shot tab to open when navigating to Accounting (e.g. account_statements). */
+  accountingTabInitial: AccountingTabInitial;
+  setAccountingTabInitial: (tab: AccountingTabInitial) => void;
+  openLedgerStatementV2: (params: LedgerStatementV2Initial) => void;
+  /** @deprecated use accountStatementV2Initial */
+  ledgerV2Initial: LedgerStatementV2Initial | null;
+  /** @deprecated use setAccountStatementV2Initial */
+  setLedgerV2Initial: (p: LedgerStatementV2Initial | null) => void;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -140,6 +226,8 @@ const defaultNavigationContext: NavigationContextType = {
   parentDrawer: null,
   openSaleIdForView: null,
   setOpenSaleIdForView: () => {},
+  openRentalIdForView: null,
+  setOpenRentalIdForView: () => {},
   setCreatedContactId: () => {},
   createdProduct: null,
   setCreatedProduct: () => {},
@@ -152,15 +240,36 @@ const defaultNavigationContext: NavigationContextType = {
   openPartyLedger: () => {},
   saleDrawerBespokeMode: false,
   clearSaleDrawerBespokeMode: () => {},
+  reportsFinancialInitial: null,
+  accountStatementV2Initial: null,
+  setAccountStatementV2Initial: () => {},
+  accountingTabInitial: null,
+  setAccountingTabInitial: () => {},
+  ledgerV2Initial: null,
+  setLedgerV2Initial: () => {},
+  openLedgerStatementV2: () => {},
 };
 
 export const NavigationProvider = ({ children }: { children: ReactNode }) => {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [currentView, setCurrentViewState] = useState<View>('dashboard');
+  const currentViewRef = useRef<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>('none');
   const [parentDrawer, setParentDrawer] = useState<DrawerType | null>(null);
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
   const [openSaleIdForView, setOpenSaleIdForView] = useState<string | null>(null);
+  const [openRentalIdForView, setOpenRentalIdForView] = useState<string | null>(null);
+
+  const applySidebarForView = useCallback((view: View) => {
+    const pinned = readSidebarPin(view);
+    setIsSidebarOpen(pinned !== null ? pinned : defaultSidebarOpenForView(view));
+  }, []);
+
+  const setCurrentView = useCallback((view: View) => {
+    currentViewRef.current = view;
+    setCurrentViewState(view);
+    applySidebarForView(view);
+  }, [applySidebarForView]);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>(undefined);
   const [selectedProductionId, setSelectedProductionId] = useState<string | undefined>(undefined);
   const [selectedStudioOrderIdV3, setSelectedStudioOrderIdV3] = useState<string | null>(null);
@@ -173,6 +282,27 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [createdContactType, setCreatedContactType] = useState<'customer' | 'supplier' | 'both' | null>(null);
   const [createdProduct, setCreatedProduct] = useState<any | null>(null);
   const [saleDrawerBespokeMode, setSaleDrawerBespokeMode] = useState(false);
+  const [reportsFinancialInitial, setReportsFinancialInitial] = useState<FinancialReportType | null>(null);
+  const [accountStatementV2Initial, setAccountStatementV2Initial] = useState<LedgerStatementV2Initial | null>(null);
+  const [accountingTabInitial, setAccountingTabInitial] = useState<AccountingTabInitial>(null);
+
+  useEffect(() => {
+    const { view, financial, openAccountStatements } = parseNavLocationFromUrl();
+    if (view) {
+      const v = view as View;
+      currentViewRef.current = v;
+      setCurrentViewState(v);
+      applySidebarForView(v);
+      if (financial) setReportsFinancialInitial(financial);
+      if (openAccountStatements) {
+        setAccountingTabInitial('account_statements');
+      }
+    } else {
+      applySidebarForView(currentViewRef.current);
+    }
+    // Initial URL / default sidebar only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearSaleDrawerBespokeMode = useCallback(() => {
     setSaleDrawerBespokeMode(false);
@@ -212,10 +342,22 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const openPartyLedger = useCallback((params: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' }) => {
     setPartyLedgerParams(params);
     setCurrentView('party-ledger');
-  }, []);
+  }, [setCurrentView]);
 
-  // Use functional updater to avoid stale closure on isSidebarOpen
-  const toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), []);
+  const openLedgerStatementV2 = useCallback((params: LedgerStatementV2Initial) => {
+    setAccountStatementV2Initial(params);
+    setAccountingTabInitial('account_statements');
+    setCurrentView('accounting');
+  }, [setCurrentView]);
+
+  // Manual chevron: pin open/closed for this view so auto-collapse does not fight the user
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      writeSidebarPin(currentViewRef.current, next);
+      return next;
+    });
+  }, []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
   const openDrawer = useCallback((drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean; bespokeOrder?: boolean }) => {
@@ -249,6 +391,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setDrawerData({ purchase: options.purchase });
     } else if (options?.product) {
       setDrawerData({ product: options.product });
+    } else if (options?.duplicateFrom) {
+      setDrawerData({ duplicateFrom: options.duplicateFrom });
     } else if (options?.contact) {
       setDrawerData({ contact: options.contact });
     } else {
@@ -288,6 +432,10 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setActiveDrawer('none');
       return null;
     });
+    // Release orphaned Radix scroll-lock if modal layers desync
+    window.setTimeout(() => {
+      if (shouldClearStuckModalLocks()) clearStuckModalLocks();
+    }, 400);
     // Note: Don't clear createdContactId here - let the parent form use it first
   }, []);
 
@@ -306,6 +454,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     setSelectedStudioSaleId,
     openSaleIdForView,
     setOpenSaleIdForView,
+    openRentalIdForView,
+    setOpenRentalIdForView,
     selectedWorkerId,
     setSelectedWorkerId,
     selectedProductionId,
@@ -332,13 +482,22 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     openPartyLedger,
     saleDrawerBespokeMode,
     clearSaleDrawerBespokeMode,
+    reportsFinancialInitial,
+    accountStatementV2Initial,
+    setAccountStatementV2Initial,
+    accountingTabInitial,
+    setAccountingTabInitial,
+    ledgerV2Initial: accountStatementV2Initial,
+    setLedgerV2Initial: setAccountStatementV2Initial,
+    openLedgerStatementV2,
   }), [
     currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
-    selectedStudioSaleId, openSaleIdForView, selectedWorkerId, selectedProductionId,
+    selectedStudioSaleId, openSaleIdForView, openRentalIdForView, selectedWorkerId, selectedProductionId,
     selectedStudioOrderIdV3, selectedManufacturingOrderId, drawerContactType, drawerData, drawerPrefillName,
     drawerPrefillPhone, createdContactId, createdContactType, createdProduct, packingModalOpen,
-    packingModalData, partyLedgerParams, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
-    openPackingModal, closePackingModal, openPartyLedger, saleDrawerBespokeMode, clearSaleDrawerBespokeMode
+    packingModalData, partyLedgerParams, toggleSidebar, setCurrentView, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
+    openPackingModal, closePackingModal, openPartyLedger, openLedgerStatementV2, saleDrawerBespokeMode, clearSaleDrawerBespokeMode,
+    reportsFinancialInitial, accountStatementV2Initial, accountingTabInitial,
   ]);
 
   return (

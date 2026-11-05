@@ -142,7 +142,7 @@ export function classifyStorageUploadError(
     return {
       kind: 'bucket',
       userMessage:
-        'Storage bucket "expense-receipts" missing on server. Ask admin to run deploy on VPS (apply-fixes-now.sh). You can save without the attachment.',
+        'Storage bucket "expense-receipts" missing on server. Ask admin to run: bash deploy/run-migrations-vps.sh on VPS.',
     };
   }
   if (isStorageUpstreamUnavailableError(err)) {

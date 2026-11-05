@@ -20,9 +20,10 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { perfStart } from '@/app/utils/perfTiming';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
-import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
+import { dispatchDataInvalidated, DATA_INVALIDATED_EVENT, shouldAcceptInvalidation, type DataInvalidationDetail } from '@/app/lib/dataInvalidationBus';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -77,6 +78,8 @@ export interface PurchaseItem {
   unit?: string; // Short code (pcs, m, yd) for view
   packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; [k: string]: unknown };
   variation?: { id: string; sku?: string; attributes?: Record<string, string> };
+  foreignUnitPrice?: number | null;
+  foreignLineTotal?: number | null;
 }
 
 export interface Purchase {
@@ -99,6 +102,8 @@ export interface Purchase {
   discount: number;
   tax: number;
   shippingCost: number;
+  freightSettlement?: 'supplier' | 'courier';
+  clearanceCourierId?: string | null;
   total: number;
   paid: number;
   due: number;
@@ -112,11 +117,18 @@ export interface Purchase {
   createdBy?: string; // CRITICAL FIX: User who created the purchase (for "Added By" display)
   createdAt: string;
   updatedAt: string;
+  /** Import FX — only set when multiCurrencyEnabled; otherwise omit / null. */
+  documentCurrency?: string | null;
+  fxRateToBase?: number | null;
+  foreignSubtotal?: number | null;
+  foreignTotal?: number | null;
 }
 
 interface PurchaseContextType {
   purchases: Purchase[];
   loading: boolean;
+  /** Increments on every successful list fetch — forces UI re-sync even when row fields look identical. */
+  listEpoch: number;
   totalCount: number;
   page: number;
   pageSize: number;
@@ -148,6 +160,7 @@ export const usePurchases = () => {
       return {
         purchases: [],
         loading: false,
+        listEpoch: 0,
         getPurchaseById: () => undefined,
         createPurchase: defaultError,
         updatePurchase: defaultError,
@@ -176,11 +189,19 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
   // UI Rule: Show only branch NAME (not code, never UUID)
   let locationDisplay = '';
   if (supabasePurchase.branch) {
-    // Branch data joined from API - show NAME only
     locationDisplay = supabasePurchase.branch.name || '';
   }
-  // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
-  
+  // Do NOT put branch_id UUID into location — page resolves via branchId + branchMap
+
+  const rawItems = Array.isArray(supabasePurchase.items) ? supabasePurchase.items : [];
+  const enrichedCount = Number(supabasePurchase.items_count);
+  const itemsCount =
+    rawItems.length > 0
+      ? rawItems.length
+      : Number.isFinite(enrichedCount) && enrichedCount > 0
+        ? enrichedCount
+        : rawItems.length;
+
   const displayPo = getPurchaseDisplayNumber(supabasePurchase);
   return {
     id: supabasePurchase.id,
@@ -192,11 +213,12 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     contactNumber: supabasePurchase.supplier?.phone || '',
     date: supabasePurchase.po_date || localNowDateString(),
     expectedDelivery: supabasePurchase.expected_delivery_date,
-    location: locationDisplay, // NOW uses resolved branch name/code instead of raw UUID
+    location: locationDisplay,
+    branchId: supabasePurchase.branch_id || supabasePurchase.branch?.id || undefined,
     status: supabasePurchase.status || 'draft',
     // CRITICAL FIX: Include user info for "Added By" display
     createdBy: supabasePurchase.created_by_user?.full_name || supabasePurchase.created_by_user?.email || 'System',
-    items: (supabasePurchase.items || []).map((item: any) => ({
+    items: rawItems.map((item: any) => ({
       id: item.id || '',
       productId: item.product_id || '',
       variationId: item.variation_id || undefined, // Include variation ID
@@ -211,15 +233,26 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
       unit: item.unit || undefined,
       packingDetails: item.packing_details || undefined,
       variation: item.variation || item.product_variations || undefined,
+      foreignUnitPrice:
+        item.foreign_unit_price != null && item.foreign_unit_price !== ''
+          ? Number(item.foreign_unit_price)
+          : item.foreignUnitPrice != null
+            ? Number(item.foreignUnitPrice)
+            : null,
+      foreignLineTotal:
+        item.foreign_line_total != null && item.foreign_line_total !== ''
+          ? Number(item.foreign_line_total)
+          : item.foreignLineTotal != null
+            ? Number(item.foreignLineTotal)
+            : null,
     })),
-    // 🔒 CRITICAL FIX: Items count from joined purchase_items array
-    // If items array is missing or empty, count is 0
-    // This should match the actual COUNT(*) FROM purchase_items WHERE purchase_id = ...
-    itemsCount: Array.isArray(supabasePurchase.items) ? supabasePurchase.items.length : 0,
+    itemsCount,
     subtotal: supabasePurchase.subtotal || 0,
     discount: supabasePurchase.discount_amount || 0,
     tax: supabasePurchase.tax_amount || 0,
     shippingCost: supabasePurchase.shipping_cost || 0,
+    freightSettlement: (supabasePurchase.freight_settlement === 'courier' ? 'courier' : 'supplier') as 'supplier' | 'courier',
+    clearanceCourierId: supabasePurchase.clearance_courier_id ?? null,
     total: supabasePurchase.total || 0,
     paid: supabasePurchase.paid_amount || 0,
     due: supabasePurchase.due_amount || 0,
@@ -233,6 +266,25 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     reference: supabasePurchase.notes || supabasePurchase.reference || undefined,
     createdAt: supabasePurchase.created_at || getCurrentLocalTimestamp(),
     updatedAt: supabasePurchase.updated_at || getCurrentLocalTimestamp(),
+    documentCurrency: supabasePurchase.document_currency ?? supabasePurchase.documentCurrency ?? null,
+    fxRateToBase:
+      supabasePurchase.fx_rate_to_base != null
+        ? Number(supabasePurchase.fx_rate_to_base)
+        : supabasePurchase.fxRateToBase != null
+          ? Number(supabasePurchase.fxRateToBase)
+          : null,
+    foreignSubtotal:
+      supabasePurchase.foreign_subtotal != null
+        ? Number(supabasePurchase.foreign_subtotal)
+        : supabasePurchase.foreignSubtotal != null
+          ? Number(supabasePurchase.foreignSubtotal)
+          : null,
+    foreignTotal:
+      supabasePurchase.foreign_total != null
+        ? Number(supabasePurchase.foreign_total)
+        : supabasePurchase.foreignTotal != null
+          ? Number(supabasePurchase.foreignTotal)
+          : null,
   };
 };
 
@@ -243,6 +295,7 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
 export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listEpoch, setListEpoch] = useState(0);
   const accounting = useAccountingOptional();
   const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId, user } = useSupabase();
@@ -272,6 +325,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const PAGE_SIZE = 50;
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPageState] = useState(0);
+  /** Prevent loadPurchases ↔ advance-repair reload loops. */
+  const skipAdvanceRepairRef = React.useRef(false);
+  const loadPurchasesRef = React.useRef<() => Promise<void>>(async () => {});
+
+  const applySupplierAdvancesIfPosted = useCallback(
+    async (status: string | undefined, supplierId: string | null | undefined) => {
+      if (!companyId || !supplierId) return false;
+      if (!canPostAccountingForPurchaseStatus(status)) return false;
+      try {
+        const { applyUnappliedManualSupplierPaymentsToOpenBills } = await import(
+          '@/app/services/paymentAllocationService'
+        );
+        const result = await applyUnappliedManualSupplierPaymentsToOpenBills(companyId, String(supplierId));
+        return result.applied;
+      } catch (err) {
+        console.warn('[PURCHASE CONTEXT] apply supplier advances failed:', err);
+        return false;
+      }
+    },
+    [companyId],
+  );
 
   // Load purchases from database (paginated)
   const loadPurchases = useCallback(async () => {
@@ -286,8 +360,38 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
       const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
-      setPurchases(data.map(convertFromSupabasePurchase));
+      const converted = data.map(convertFromSupabasePurchase);
+      setPurchases(converted);
       setTotalCount(total);
+      setListEpoch((n) => n + 1);
+
+      // Background: settle open dues with unapplied manual_payment advances (existing Unpaid rows).
+      if (!skipAdvanceRepairRef.current) {
+        const supplierIds = [
+          ...new Set(
+            converted
+              .filter((p) => canPostAccountingForPurchaseStatus(p.status) && Number(p.due) > 0.009 && p.supplier)
+              .map((p) => String(p.supplier)),
+          ),
+        ];
+        if (supplierIds.length > 0) {
+          void (async () => {
+            let anyApplied = false;
+            for (const sid of supplierIds) {
+              const did = await applySupplierAdvancesIfPosted('final', sid);
+              if (did) anyApplied = true;
+            }
+            if (anyApplied) {
+              skipAdvanceRepairRef.current = true;
+              try {
+                await loadPurchasesRef.current();
+              } finally {
+                skipAdvanceRepairRef.current = false;
+              }
+            }
+          })();
+        }
+      }
     } catch (error) {
       console.error('[PURCHASE CONTEXT] Error loading purchases:', error);
       toast.error('Failed to load purchases');
@@ -296,8 +400,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, page]);
+  }, [companyId, branchId, page, applySupplierAdvancesIfPosted]);
 
+  loadPurchasesRef.current = loadPurchases;
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
   }, []);
@@ -313,6 +418,39 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     else if (!companyId) setLoading(false);
   }, [companyId, activated, loadPurchases]);
 
+  // Single-flight list reload: header refresh, realtime, create/update invalidations
+  useEffect(() => {
+    if (!companyId || !activated) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void loadPurchases();
+      }, 220);
+    };
+    const onDataInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['purchases', 'accounting', 'contacts'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    };
+  }, [branchId, companyId, activated, loadPurchases]);
+
   // Get purchase by ID
   const getPurchaseById = (id: string): Purchase | undefined => {
     return purchases.find(p => p.id === id);
@@ -323,6 +461,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     purchaseData: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
     providedPurchaseNo?: string
   ): Promise<Purchase> => {
+    const perf = perfStart('createPurchase');
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
@@ -389,6 +528,10 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         due_amount: purchaseData.due || 0,
         notes: purchaseData.notes,
         created_by: user.id,
+        document_currency: purchaseData.documentCurrency ?? null,
+        fx_rate_to_base: purchaseData.fxRateToBase ?? null,
+        foreign_subtotal: purchaseData.foreignSubtotal ?? null,
+        foreign_total: purchaseData.foreignTotal ?? null,
       };
 
       // Validate items before mapping
@@ -418,6 +561,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           discount_amount: item.discount || 0,
           tax_amount: item.tax || 0,
           total: item.total || 0,
+          foreign_unit_price: (item as any).foreignUnitPrice ?? (item as any).foreign_unit_price ?? null,
+          foreign_line_total: (item as any).foreignLineTotal ?? (item as any).foreign_line_total ?? null,
           // Include packing data
           packing_type: (item as any).packingDetails?.packing_type || null,
           packing_quantity: (item as any).packingDetails?.total_meters || (item as any).meters || null,
@@ -492,11 +637,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // PURCHASE DOCUMENT JE — single posting engine (reads purchase + purchase_charges from DB after createPurchase)
+      // PURCHASE DOCUMENT JE — pass in-memory header + charges to skip re-select
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.total > 0) {
         try {
           const { postPurchaseDocumentAccounting } = await import('@/app/services/documentPostingEngine');
-          const jeId = await postPurchaseDocumentAccounting(newPurchase.id);
+          const jeId = await postPurchaseDocumentAccounting(newPurchase.id, result as any, charges);
           if (!jeId) {
             throw new Error('Final/received purchase was saved but no canonical purchase document JE exists.');
           }
@@ -521,21 +666,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         console.log('[PURCHASE CONTEXT] Stock for purchase', newPurchase.id, 'handled by DB trigger (single posting).');
       }
 
-      // Z1: Reconcile lines vs stock_movements after trigger + any race
+      // Z1: Reconcile lines vs stock_movements after trigger — background (do not block save UI)
       const pst = normalizePurchaseStatusForPosting(newPurchase.status);
       if (
         newPurchase.id &&
         (canPostStockForPurchaseStatus(pst) || String(newPurchase.status).toLowerCase() === 'cancelled')
       ) {
-        try {
-          const { syncPurchaseStockForDocument } = await import('@/app/services/documentStockSyncService');
-          const z1 = await syncPurchaseStockForDocument(newPurchase.id);
-          if (z1.adjustmentsInserted > 0) {
-            console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
-          }
-        } catch (z1Err) {
-          console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err);
-        }
+        void import('@/app/services/documentStockSyncService')
+          .then(({ syncPurchaseStockForDocument }) => syncPurchaseStockForDocument(newPurchase.id))
+          .then((z1) => {
+            if (z1.adjustmentsInserted > 0) {
+              console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+            }
+          })
+          .catch((z1Err) => console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err));
       }
       
       // 🔒 CRITICAL FIX: Record initial payment in payments table (like Sale module) — posted POs only (no payment JE for draft/ordered)
@@ -600,7 +744,12 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      toast.success(`Purchase Order ${purchaseNo} created successfully!`);
+      if (import.meta.env?.DEV) {
+        console.info('[PURCHASE CONTEXT] createPurchase complete:', purchaseNo);
+      }
+
+      // Settle unapplied supplier advances onto this posted bill (FIFO → recalc Paid/Partial).
+      await applySupplierAdvancesIfPosted(newPurchase.status, newPurchase.supplier);
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
@@ -608,7 +757,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (newPurchase.supplier) {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: newPurchase.supplier } }));
       }
-      
+
+      perf.end({ status: newPurchase.status, items: newPurchase.items?.length ?? 0 });
       return newPurchase;
     } catch (error: any) {
       console.error('[PURCHASE CONTEXT] Error creating purchase:', error);
@@ -662,6 +812,18 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       }
       if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
       if (updates.purchaseNo !== undefined) supabaseUpdates.po_no = updates.purchaseNo;
+      if (updates.documentCurrency !== undefined) {
+        supabaseUpdates.document_currency = updates.documentCurrency;
+      }
+      if (updates.fxRateToBase !== undefined) {
+        supabaseUpdates.fx_rate_to_base = updates.fxRateToBase;
+      }
+      if (updates.foreignSubtotal !== undefined) {
+        supabaseUpdates.foreign_subtotal = updates.foreignSubtotal;
+      }
+      if (updates.foreignTotal !== undefined) {
+        supabaseUpdates.foreign_total = updates.foreignTotal;
+      }
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating purchase_items
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items
@@ -937,6 +1099,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             discount_amount: item.discount || 0,
             tax_amount: item.tax || 0,
             total: lineTotal,
+            foreign_unit_price: item.foreignUnitPrice ?? item.foreign_unit_price ?? null,
+            foreign_line_total: item.foreignLineTotal ?? item.foreign_line_total ?? null,
             packing_type: item.packingDetails?.packing_type || null,
             packing_quantity: item.packingDetails?.total_meters || item.meters || null,
             packing_unit: item.packingDetails?.unit || 'meters',
@@ -1244,38 +1408,39 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               }
               if (!apAccountId) apAccountId = await getAccId('2000');
 
-              // Rebuild JE lines: delete old lines and insert fresh correct ones
-              // (the old per-line update was buggy: freight+subtotal lines shared same account_id
-              //  so both got the same amount, doubling the JE)
+              const freightSettlement = String((updated as any).freight_settlement ?? 'supplier');
+              const clearanceCourierId = (updated as any).clearance_courier_id ?? null;
+              const headerTax = Number((updated as any).tax_amount ?? 0) || 0;
+              const headerShipping = Number((updated as any).shipping_cost ?? 0) || 0;
+
               await sbPur.from('journal_entry_lines').delete().eq('journal_entry_id', jeId);
 
-              const newLines: { journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }[] = [];
-              const itemsSubtotal = newSnapshot.subtotal;
-              const freight = newSnapshot.otherCharges;
-              const discount = newSnapshot.discount;
+              const { buildPurchaseDocumentJournalLines } = await import('@/app/services/purchaseAccountingService');
+              const lineSpecs = await buildPurchaseDocumentJournalLines({
+                companyId,
+                purchaseId: id,
+                poNo,
+                supplierName: (updated as any).supplier_name || 'Supplier',
+                subtotal: newSnapshot.subtotal,
+                discount: newSnapshot.discount,
+                tax: headerTax,
+                shippingCost: headerShipping,
+                freightSettlement,
+                clearanceCourierId,
+                supplierContactId: supplierId,
+                charges: (updated as any).purchase_charges ?? (updated as any).charges ?? [],
+                inventoryAccountId: inventoryId!,
+                apAccountId: apAccountId!,
+                discountAccountId: discountId,
+              });
 
-              // DR Inventory = subtotal (items)
-              if (itemsSubtotal > 0) {
-                newLines.push({ journal_entry_id: jeId, account_id: inventoryId!, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` });
-              }
-              // CR AP = subtotal (items)
-              if (itemsSubtotal > 0) {
-                newLines.push({ journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: itemsSubtotal, description: `Payable — ${(updated as any).supplier_name || 'Supplier'}` });
-              }
-              // DR Inventory = freight, CR AP = freight (if any)
-              if (freight > 0) {
-                newLines.push(
-                  { journal_entry_id: jeId, account_id: inventoryId!, debit: freight, credit: 0, description: `Freight (purchase)` },
-                  { journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: freight, description: `Payable — freight` },
-                );
-              }
-              // DR AP = discount, CR Discount Received (if any)
-              if (discount > 0 && discountId) {
-                newLines.push(
-                  { journal_entry_id: jeId, account_id: apAccountId!, debit: discount, credit: 0, description: `Purchase discount` },
-                  { journal_entry_id: jeId, account_id: discountId, debit: 0, credit: discount, description: `Discount received` },
-                );
-              }
+              const newLines = lineSpecs.map((l) => ({
+                journal_entry_id: jeId,
+                account_id: l.account_id,
+                debit: l.debit,
+                credit: l.credit,
+                description: l.description,
+              }));
               if (newLines.length > 0) {
                 await sbPur.from('journal_entry_lines').insert(newLines);
               }
@@ -1299,7 +1464,6 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               await sbPur.from('journal_entries').update({ description: `${baseDesc} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
               console.log('[PURCHASE CONTEXT] In-place updated purchase JE', jeId, 'for', poNo);
-              if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
             } else {
               // Fallback: use old adjustment approach
               const newSnapshotFb = pac.getPurchaseAccountingSnapshot(updated);
@@ -1324,10 +1488,17 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
           try {
             const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-            notifyAccountingEntriesChanged();
+            notifyAccountingEntriesChanged({
+              companyId,
+              branchId: effectiveBranchId ?? null,
+              entityId: id,
+              reason: 'purchase-updated',
+            });
           } catch {
             if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              window.dispatchEvent(
+                new CustomEvent('accountingEntriesChanged', { detail: { entityId: id } }),
+              );
             }
           }
         } catch (repostErr: any) {
@@ -1405,9 +1576,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
       
-      // 🔒 CRITICAL FIX: Refresh purchases list after update to show correct items count
-      // This ensures UI reflects the actual DB state after items update
-      await loadPurchases();
+      // List refresh: emitPurchaseInvalidation → PurchaseContext DATA_INVALIDATED (single flight).
+      // Do not also call loadPurchases here — that double-fetched after every update.
+
+      // Posted bill: consume unapplied manual_payment advances before list reload.
+      const statusAfter =
+        updates.status !== undefined
+          ? (updates.status === 'completed' || updates.status === 'final'
+              ? 'final'
+              : updates.status === 'cancelled'
+                ? 'draft'
+                : String(updates.status))
+          : purchase?.status;
+      const supplierAfter = updates.supplier ?? purchase?.supplier;
+      await applySupplierAdvancesIfPosted(statusAfter, supplierAfter);
       
       // Dispatch event to refresh inventory if stock movements were created
       if (stockMovementDeltas.length > 0) {
@@ -1644,6 +1826,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo<PurchaseContextType>(() => ({
     purchases,
     loading,
+    listEpoch,
     getPurchaseById,
     createPurchase,
     updatePurchase,
@@ -1657,8 +1840,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     setPage,
     refreshPurchases: loadPurchases,
     __activate: activate,
-  }), [
-    purchases, loading, totalCount, page, setPage, getPurchaseById, createPurchase, updatePurchase,
+  } as PurchaseContextType & { __activate: () => void }), [
+    purchases, loading, listEpoch, totalCount, page, setPage, getPurchaseById, createPurchase, updatePurchase,
     deletePurchase, recordPayment, updateStatus, receiveStock, loadPurchases, activate,
   ]);
 

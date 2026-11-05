@@ -1,0 +1,10 @@
+{
+  "capturedAt": "2026-06-26T16:30:00Z",
+  "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+  "unified_ledger_loader_trial_balance": true,
+  "unified_ledger_screen_trial_balance": true,
+  "unified_ledger_loader_ledger_v2": true,
+  "unified_ledger_loader_account_statement": true,
+  "enabled_at_loader": "2026-06-26T16:15:08Z",
+  "re_enabled_after_rollback": "2026-06-26T16:27:00Z"
+}

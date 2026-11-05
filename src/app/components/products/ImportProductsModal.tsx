@@ -270,17 +270,17 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div
-          className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl pointer-events-auto max-h-[92vh] flex flex-col"
+          className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-4xl pointer-events-auto max-h-[92vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 shrink-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
                 <Upload size={20} className="text-blue-500" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Import Products</h2>
-                <p className="text-xs text-gray-400">
+                <h2 className="text-lg font-bold text-foreground">Import Products</h2>
+                <p className="text-xs text-muted-foreground">
                   CSV workbench — validate in preview, then import.
                   {isRealBranchUuid(branchId)
                     ? ' Opening stock is saved for the branch selected in the header.'
@@ -292,7 +292,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
               type="button"
               onClick={handleClose}
               disabled={isImportBusy}
-              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-40 disabled:pointer-events-none"
+              className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
             >
               <X size={18} />
             </button>
@@ -301,7 +301,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
           <div className="relative p-6 space-y-5 overflow-y-auto flex-1">
             {isImportBusy && (
               <div
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-gray-950/70 rounded-b-2xl px-6 text-center max-w-md mx-auto"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-input-background/70 rounded-b-2xl px-6 text-center max-w-md mx-auto"
                 aria-busy="true"
                 aria-live="polite"
               >
@@ -314,19 +314,19 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                     : 'Validating rows…'}
                 </p>
                 {importStatus === 'processing' && importProgress && importProgress.total > 0 ? (
-                  <p className="text-base md:text-lg text-gray-300">
+                  <p className="text-base md:text-lg text-muted-foreground">
                     {importProgress.phase === 'groups'
                       ? `${importProgress.completed} / ${importProgress.total} product groups`
                       : `${importProgress.completed} / ${importProgress.total} opening stock entries`}
                   </p>
                 ) : null}
-                <p className="text-sm text-gray-400">Please wait — do not close this window</p>
+                <p className="text-sm text-muted-foreground">Please wait — do not close this window</p>
               </div>
             )}
             <div className={cn('space-y-5', isImportBusy && 'pointer-events-none select-none opacity-60')}>
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex gap-3">
               <Info size={20} className="text-blue-400 shrink-0 mt-0.5" />
-              <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
                 <li><strong>name</strong> and <strong>selling_price</strong> required on every row.</li>
                 <li>Matrix import: rows with the same <strong>name</strong> form one product; parent row has empty <strong>variation_name</strong>.</li>
                 <li>
@@ -341,30 +341,30 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
               </ul>
             </div>
 
-            <label className={cn('flex items-center gap-2 text-sm text-gray-300', !isImportBusy && 'cursor-pointer')}>
-              <input type="checkbox" checked={autoGenerateSku} onChange={(e) => setAutoGenerateSku(e.target.checked)} disabled={isImportBusy} className="rounded border-gray-600 bg-gray-800 text-blue-500 disabled:opacity-50" />
+            <label className={cn('flex items-center gap-2 text-sm text-muted-foreground', !isImportBusy && 'cursor-pointer')}>
+              <input type="checkbox" checked={autoGenerateSku} onChange={(e) => setAutoGenerateSku(e.target.checked)} disabled={isImportBusy} className="rounded border-gray-600 bg-muted text-blue-500 disabled:opacity-50" />
               Use ERP numbering for blank parent SKU (Settings → Numbering → Production)
             </label>
 
-            <label className={cn('flex items-center gap-2 text-sm text-gray-300', !isImportBusy && 'cursor-pointer')}>
-              <input type="checkbox" checked={autoCreateCatalog} onChange={(e) => setAutoCreateCatalog(e.target.checked)} disabled={isImportBusy} className="rounded border-gray-600 bg-gray-800 text-blue-500 disabled:opacity-50" />
+            <label className={cn('flex items-center gap-2 text-sm text-muted-foreground', !isImportBusy && 'cursor-pointer')}>
+              <input type="checkbox" checked={autoCreateCatalog} onChange={(e) => setAutoCreateCatalog(e.target.checked)} disabled={isImportBusy} className="rounded border-gray-600 bg-muted text-blue-500 disabled:opacity-50" />
               Create missing categories, units, and brands during import
             </label>
 
             <div>
-              <p className="text-sm font-semibold text-white mb-2">Step 1: Download template</p>
+              <p className="text-sm font-semibold text-foreground mb-2">Step 1: Download template</p>
               <div className="flex gap-3">
-                <Button type="button" variant="outline" disabled={isImportBusy} className="flex-1 h-11 bg-gray-800 border-gray-700 text-white gap-2" onClick={() => downloadTemplate(true)}>
+                <Button type="button" variant="outline" disabled={isImportBusy} className="flex-1 h-11 bg-muted border-border text-foreground gap-2" onClick={() => downloadTemplate(true)}>
                   <Download size={16} /> Blank template
                 </Button>
-                <Button type="button" variant="outline" disabled={isImportBusy} className="flex-1 h-11 bg-gray-800 border-gray-700 text-white gap-2" onClick={() => downloadTemplate(false)}>
+                <Button type="button" variant="outline" disabled={isImportBusy} className="flex-1 h-11 bg-muted border-border text-foreground gap-2" onClick={() => downloadTemplate(false)}>
                   <Download size={16} /> Sample with examples
                 </Button>
               </div>
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-white mb-2">Step 2: Upload file</p>
+              <p className="text-sm font-semibold text-foreground mb-2">Step 2: Upload file</p>
               <div
                 onDragOver={(e) => { if (isImportBusy) return; e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
@@ -377,20 +377,20 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                 }}
                 className={cn(
                   'border-2 border-dashed rounded-xl p-8 transition-all',
-                  isDragging ? 'border-blue-500 bg-blue-500/10' : selectedFile ? 'border-green-500 bg-green-500/10' : 'border-gray-700 bg-gray-800/30'
+                  isDragging ? 'border-blue-500 bg-blue-500/10' : selectedFile ? 'border-green-500 bg-green-500/10' : 'border-border bg-accent/30'
                 )}
               >
                 {selectedFile ? (
                   <div className="text-center">
                     <FileText size={32} className="text-green-500 mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-white">{selectedFile.name}</p>
-                    <p className="text-xs text-green-400 mt-1">{parsedRows.length} row(s) parsed</p>
+                    <p className="text-sm font-semibold text-foreground">{selectedFile.name}</p>
+                    <p className="text-xs text-[var(--erp-money-positive)] mt-1">{parsedRows.length} row(s) parsed</p>
                     <button type="button" disabled={isImportBusy} onClick={() => { setSelectedFile(null); setParsedRows([]); }} className="text-xs text-red-400 mt-2 hover:text-red-300 disabled:opacity-50">Remove file</button>
                   </div>
                 ) : (
                   <div className="text-center">
-                    <Upload size={32} className="text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-white mb-2">Drag and drop CSV here</p>
+                    <Upload size={32} className="text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-foreground mb-2">Drag and drop CSV here</p>
                     <label className={cn('inline-block px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg', isImportBusy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer')}>
                       Browse
                       <input type="file" accept=".csv" disabled={isImportBusy} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} className="hidden" />
@@ -411,17 +411,17 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
             )}
 
             {summary && (
-              <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 space-y-2">
-                <p className="font-semibold text-white text-sm">Summary</p>
+              <div className="rounded-xl border border-border bg-muted/50 p-4 space-y-2">
+                <p className="font-semibold text-foreground text-sm">Summary</p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                  <span className="text-green-400">Created: {summary.created}</span>
+                  <span className="text-[var(--erp-money-positive)]">Created: {summary.created}</span>
                   <span className="text-blue-400">Updated: {summary.updated}</span>
                   <span className="text-amber-400">Skipped: {summary.skipped}</span>
                   <span className="text-red-400">Failed: {summary.failed}</span>
                 </div>
                 {summary.errors.length > 0 && (
                   <>
-                    <ul className="text-xs text-gray-300 max-h-24 overflow-y-auto space-y-0.5">
+                    <ul className="text-xs text-muted-foreground max-h-24 overflow-y-auto space-y-0.5">
                       {summary.errors.slice(0, 8).map((e, i) => (
                         <li key={i}>Row {e.rowIndex}: {e.productName} — {e.message}</li>
                       ))}
@@ -438,7 +438,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
               <div className={cn(
                 'p-4 rounded-xl border flex items-center gap-3 text-sm',
                 importStatus === 'processing' && 'bg-blue-500/10 border-blue-500/30 text-blue-400',
-                importStatus === 'success' && 'bg-green-500/10 border-green-500/30 text-green-400',
+                importStatus === 'success' && 'bg-green-500/10 border-green-500/30 text-[var(--erp-money-positive)]',
                 importStatus === 'error' && 'bg-red-500/10 border-red-500/30 text-red-400'
               )}>
                 {importStatus === 'processing' && <span>Processing import…</span>}
@@ -459,8 +459,8 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-800 shrink-0">
-            <Button onClick={handleClose} disabled={isImportBusy} variant="outline" className="h-10 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white disabled:opacity-50">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border shrink-0">
+            <Button onClick={handleClose} disabled={isImportBusy} variant="outline" className="h-10 bg-muted border-border hover:bg-muted text-foreground disabled:opacity-50">
               {importStatus === 'success' ? 'Close' : 'Cancel'}
             </Button>
             {importStatus !== 'success' && (

@@ -1,0 +1,7 @@
+{
+  "generated_at": "2026-06-30T12:24:00.000Z",
+  "test_unified_ledger": { "tests": 303, "pass": 303, "fail": 0 },
+  "test_unit": { "tests": 122, "pass": 122, "fail": 0 },
+  "build": { "exit_code": 0, "duration_s": 42.46 },
+  "deploy": "NO FRONTEND DEPLOY"
+}

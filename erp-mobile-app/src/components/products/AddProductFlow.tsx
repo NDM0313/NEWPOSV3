@@ -86,6 +86,8 @@ interface AddProductFlowProps {
   onClose: () => void;
   onSave: (payload: AddProductFlowSavePayload) => void;
   product?: Product | null;
+  /** Pre-filled create mode from an existing product (save creates new row). */
+  duplicateFrom?: Product | null;
   companyId?: string | null;
   branchId?: string | null;
   sessionUserId?: string | null;
@@ -95,7 +97,19 @@ interface AddProductFlowProps {
 
 const FALLBACK_UNITS = ['Piece', 'Meter', 'Yard', 'Set', 'Pair', 'Dozen'];
 
-export function AddProductFlow({ onClose, onSave, product: editProduct, companyId, branchId, sessionUserId, saving, error }: AddProductFlowProps) {
+export function AddProductFlow({
+  onClose,
+  onSave,
+  product: editProduct,
+  duplicateFrom,
+  companyId,
+  branchId,
+  sessionUserId,
+  saving,
+  error,
+}: AddProductFlowProps) {
+  const seedProduct = duplicateFrom ?? editProduct;
+  const isDuplicateMode = !!duplicateFrom && !editProduct;
   const effectiveUserId = useEffectiveWorkerId(sessionUserId ?? '');
   const [categories, setCategories] = useState<productCategoriesApi.ProductCategory[]>([]);
   const [brands, setBrands] = useState<brandsApi.Brand[]>([]);
@@ -108,22 +122,22 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   const [newUnitName, setNewUnitName] = useState('');
 
   const [formData, setFormData] = useState({
-    sku: editProduct?.sku || '',
-    name: editProduct?.name || '',
-    categoryId: (editProduct as Product & { categoryId?: string })?.categoryId || '',
-    category: editProduct?.category || '',
-    brandId: (editProduct as Product & { brandId?: string })?.brandId || '',
-    description: (editProduct as { description?: string })?.description || '',
-    costPrice: editProduct ? String(editProduct.costPrice) : '',
-    retailPrice: editProduct ? String(editProduct.retailPrice) : '',
-    wholesalePrice: (editProduct as { wholesalePrice?: number })?.wholesalePrice ? String((editProduct as { wholesalePrice?: number }).wholesalePrice) : '',
-    stock: editProduct ? String(editProduct.stock) : '',
-    minStock: (editProduct as { minStock?: number })?.minStock ? String((editProduct as { minStock?: number }).minStock) : '',
-    unitId: (editProduct as Product & { unitId?: string })?.unitId || '',
-    unit: editProduct?.unit || 'Piece',
-    barcode: (editProduct as { barcode?: string })?.barcode || '',
-    status: (editProduct?.status || 'active') as 'active' | 'inactive',
-    hasVariations: (editProduct as { hasVariations?: boolean })?.hasVariations || false,
+    sku: seedProduct?.sku || '',
+    name: seedProduct?.name || '',
+    categoryId: (seedProduct as Product & { categoryId?: string })?.categoryId || '',
+    category: seedProduct?.category || '',
+    brandId: (seedProduct as Product & { brandId?: string })?.brandId || '',
+    description: (seedProduct as { description?: string })?.description || '',
+    costPrice: seedProduct ? String(seedProduct.costPrice) : '',
+    retailPrice: seedProduct ? String(seedProduct.retailPrice) : '',
+    wholesalePrice: (seedProduct as { wholesalePrice?: number })?.wholesalePrice ? String((seedProduct as { wholesalePrice?: number }).wholesalePrice) : '',
+    stock: isDuplicateMode ? '0' : seedProduct ? String(seedProduct.stock) : '',
+    minStock: (seedProduct as { minStock?: number })?.minStock ? String((seedProduct as { minStock?: number }).minStock) : '',
+    unitId: (seedProduct as Product & { unitId?: string })?.unitId || '',
+    unit: seedProduct?.unit || 'Piece',
+    barcode: isDuplicateMode ? '' : ((seedProduct as { barcode?: string })?.barcode || ''),
+    status: (seedProduct?.status || 'active') as 'active' | 'inactive',
+    hasVariations: (seedProduct as { hasVariations?: boolean })?.hasVariations || false,
   });
 
   // Image upload state (mobile parity with web EnhancedProductForm)
@@ -132,13 +146,13 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [imagePickNotice, setImagePickNotice] = useState<string | null>(null);
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>(
-    Array.isArray((editProduct as { imageUrls?: string[] } | undefined)?.imageUrls)
-      ? ((editProduct as { imageUrls?: string[] }).imageUrls as string[])
+    Array.isArray((seedProduct as { imageUrls?: string[] } | undefined)?.imageUrls)
+      ? ((seedProduct as { imageUrls?: string[] }).imageUrls as string[])
       : [],
   );
   // Combo product state
   const [isCombo, setIsCombo] = useState<boolean>(
-    Boolean((editProduct as { isCombo?: boolean } | undefined)?.isCombo),
+    Boolean((seedProduct as { isCombo?: boolean } | undefined)?.isCombo),
   );
   const [comboItems, setComboItems] = useState<
     Array<{ productId: string; variationId?: string | null; name: string; quantity: number; unitPrice: number }>
@@ -185,7 +199,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     companyId: companyId ?? null,
     ownerUserId: effectiveUserId,
     draftId: 'product-add',
-    enabled: Boolean(companyId && effectiveUserId && !editProduct),
+    enabled: Boolean(companyId && effectiveUserId && !editProduct && !duplicateFrom),
     getSnapshot: () => ({
       formData,
       isCombo,
@@ -213,12 +227,12 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
       if (cancelled) return;
       const list = data ?? [];
       setCompanyBranches(list.map((b) => ({ id: b.id, name: b.name })));
-      if (list.length > 1 && !editProduct) {
+      if (list.length > 1 && !editProduct && !duplicateFrom) {
         setSelectedBranchIds(list.map((b) => b.id));
       }
     });
     return () => { cancelled = true; };
-  }, [companyId, editProduct]);
+  }, [companyId, editProduct, duplicateFrom]);
 
   useEffect(() => {
     if (!companyId || !editProduct?.id || companyBranches.length <= 1) return;
@@ -249,14 +263,14 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
 
   // Auto-fill SKU with next number (PRD-0001 format, same as web ERP) when creating new product
   useEffect(() => {
-    if (editProduct || !companyId) return;
+    if (editProduct || duplicateFrom || !companyId) return;
     let cancelled = false;
     productsApi.getNextProductSKU(companyId, branchId ?? null).then((sku) => {
       if (cancelled) return;
       setFormData((prev) => (prev.sku ? prev : { ...prev, sku })); // Only set if user hasn't typed
     });
     return () => { cancelled = true; };
-  }, [companyId, branchId, editProduct]);
+  }, [companyId, branchId, editProduct, duplicateFrom]);
 
   // Load products with variations for "copy from" (when variations enabled)
   useEffect(() => {
@@ -274,37 +288,40 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     return () => { cancelled = true; };
   }, [companyId, formData.hasVariations]);
 
-  // Reset form when parent passes a fresh product (e.g. getProductById after list tap → Edit).
+  // Reset form when parent passes duplicate seed or edit product
   useEffect(() => {
-    if (!editProduct) return;
+    if (!duplicateFrom && !editProduct) return;
+    const source = duplicateFrom ?? editProduct;
+    if (!source) return;
     setFormData({
-      sku: editProduct.sku || '',
-      name: editProduct.name || '',
-      categoryId: editProduct.categoryId || '',
-      category: editProduct.category || '',
-      brandId: editProduct.brandId || '',
-      description: editProduct.description ?? '',
-      costPrice: String(editProduct.costPrice ?? ''),
-      retailPrice: String(editProduct.retailPrice ?? ''),
-      wholesalePrice: editProduct.wholesalePrice != null ? String(editProduct.wholesalePrice) : '',
-      stock: String(editProduct.stock ?? ''),
-      minStock: editProduct.minStock != null ? String(editProduct.minStock) : '',
-      unitId: editProduct.unitId || '',
-      unit: editProduct.unit || 'Piece',
-      barcode: editProduct.barcode ?? '',
-      status: (editProduct.status || 'active') as 'active' | 'inactive',
-      hasVariations: editProduct.hasVariations || false,
+      sku: source.sku || '',
+      name: source.name || '',
+      categoryId: source.categoryId || '',
+      category: source.category || '',
+      brandId: source.brandId || '',
+      description: source.description ?? '',
+      costPrice: String(source.costPrice ?? ''),
+      retailPrice: String(source.retailPrice ?? ''),
+      wholesalePrice: source.wholesalePrice != null ? String(source.wholesalePrice) : '',
+      stock: duplicateFrom ? '0' : String(source.stock ?? ''),
+      minStock: source.minStock != null ? String(source.minStock) : '',
+      unitId: source.unitId || '',
+      unit: source.unit || 'Piece',
+      barcode: duplicateFrom ? '' : (source.barcode ?? ''),
+      status: (source.status || 'active') as 'active' | 'inactive',
+      hasVariations: source.hasVariations || false,
     });
-    setExistingImageUrls(Array.isArray(editProduct.imageUrls) ? editProduct.imageUrls : []);
+    setExistingImageUrls(Array.isArray(source.imageUrls) ? source.imageUrls : []);
     setImageFiles([]);
     setImagePreviews([]);
     setImagePickNotice(null);
-  }, [editProduct]);
+  }, [duplicateFrom, editProduct]);
 
-  // Hydrate from editProduct when it has variations
+  // Hydrate variations from duplicate or edit product
   useEffect(() => {
-    if (!editProduct?.hasVariations || !(editProduct as Product & { variations?: Array<{ attributes?: Record<string, string> }> }).variations?.length) return;
-    const vars = (editProduct as Product & { variations?: Array<{ attributes?: Record<string, string> }> }).variations || [];
+    const source = duplicateFrom ?? editProduct;
+    if (!source?.hasVariations || !source.variations?.length) return;
+    const vars = source.variations || [];
     const attrMap: Record<string, Set<string>> = {};
     for (const v of vars) {
       const attrs = v.attributes || {};
@@ -316,7 +333,20 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     }
     const derived = Object.entries(attrMap).map(([name, set]) => ({ name, values: Array.from(set).sort() }));
     if (derived.length > 0) setVariantAttributes(derived);
-  }, [editProduct?.id]);
+    if (duplicateFrom) {
+      const baseSku = (source.sku || formData.sku || `PRD-${String(Date.now()).slice(-4)}`).trim();
+      const retailPrice = source.retailPrice ?? 0;
+      setGeneratedVariations(
+        vars.map((v, i) => ({
+          combination: { ...(v.attributes || {}) },
+          sku: `${baseSku}-V${i + 1}`,
+          price: retailPrice,
+          stock: 0,
+          barcode: '',
+        })),
+      );
+    }
+  }, [duplicateFrom, editProduct?.id]);
 
   const unitOptions = units.length > 0 ? units : FALLBACK_UNITS.map((u) => ({ id: '', name: u }));
 
@@ -592,7 +622,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     <FlowScreenRoot
       className="fixed inset-0 bg-[#111827] z-50 overflow-y-auto pb-24"
       blocking={saving}
-      blockingLabel={editProduct ? 'Updating product...' : 'Saving product...'}
+      blockingLabel={editProduct ? 'Updating product...' : isDuplicateMode ? 'Saving duplicate...' : 'Saving product...'}
     >
       <FormDraftRestoredBanner show={showRestoredBanner} onDismiss={dismissRestoredBanner} />
       <FlowScreenHeader innerClassName="justify-between gap-2">
@@ -611,7 +641,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               <Package size={18} className="text-white" />
             </div>
             <h1 className="text-white font-semibold text-base truncate">
-              {editProduct ? 'Edit Product' : 'Add New Product'}
+              {editProduct ? 'Edit Product' : isDuplicateMode ? 'Duplicate Product' : 'Add New Product'}
             </h1>
           </div>
           <button
@@ -1341,7 +1371,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
           }
           className="w-full h-12 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#6B7280] text-white rounded-lg font-semibold transition-colors"
         >
-          {saving ? 'Saving...' : editProduct ? 'Update Product' : 'Add Product'}
+          {saving ? 'Saving...' : editProduct ? 'Update Product' : isDuplicateMode ? 'Save Duplicate' : 'Add Product'}
         </button>
       </div>
     </FlowScreenRoot>

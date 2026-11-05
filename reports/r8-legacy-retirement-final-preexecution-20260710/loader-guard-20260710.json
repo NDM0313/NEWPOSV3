@@ -1,0 +1,14 @@
+{
+  "run": "THREE_COMPANY_LOADER_GUARD_READ_ONLY",
+  "generated_at": "2026-07-10T15:10:00.000Z",
+  "source": "scripts/single-core-ledger/threeCompanyLoaderGuard.mjs via SSH dincouture-vps",
+  "ok": true,
+  "rows": [
+    { "name": "DIN BRIDAL", "loaders_on": 8 },
+    { "name": "DIN CHINA", "loaders_on": 8 },
+    { "name": "DIN COUTURE", "loaders_on": 8 }
+  ],
+  "unexpected_companies": [],
+  "migrations_run": false,
+  "gl_mutations": false
+}

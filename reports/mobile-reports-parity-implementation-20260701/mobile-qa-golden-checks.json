@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_REPORTS_PARITY_IMPLEMENTATION",
+  "task": "mobile-qa-golden-checks",
+  "status": "PASS_STRUCTURAL",
+  "mapper_parity": "web balanceSheetUnifiedMainMapper + profitLossUnifiedMainMapper logic ported",
+  "web_reference": "reports/single-core-ledger/phase-3d-bs-pl-golden-capture/exports/ 6/6 zero-diff",
+  "automated_script": "scripts/single-core-ledger/verify-mobile-unified-report-goldens.mjs",
+  "script_note": "Requires authenticated Supabase session (RLS); anon-only returns empty — use logged-in mobile or monitoring credentials",
+  "goldens": {
+    "DIN CHINA": { "bsAssets": 89754087.52, "plNet": 8465730.87 },
+    "DIN BRIDAL": { "bsAssets": 13521792, "plNet": 119992 },
+    "DIN COUTURE": { "bsAssets": 22667273, "plNet": -16750 }
+  }
+}

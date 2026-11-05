@@ -1,0 +1,12 @@
+{
+  "run": "WEB_PAYMENT_ORPHAN_RECEIPT_FIX_REPO_SAFETY",
+  "generated_at": "2026-07-01T15:28:00.000Z",
+  "branch": "main",
+  "head": "adea2e425614936450da4db3fa938cd616085155",
+  "origin_main": "adea2e425614936450da4db3fa938cd616085155",
+  "stability_baseline_commit": "adea2e42",
+  "din_bridal_golden_commits": ["455bd28a", "f9d46e3f"],
+  "staged_credentials": false,
+  "staged_apk_aab": false,
+  "verdict": "SAFE"
+}

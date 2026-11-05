@@ -61,6 +61,16 @@ if (isCapacitorBuild) {
   if (/src="\/assets\//.test(html) || /href="\/assets\//.test(html)) {
     fail('dist/index.html uses absolute /assets/ paths — Capacitor builds need relative ./assets/ (check vite base).');
   }
+  const assetsDir = resolve(distDir, 'assets');
+  if (existsSync(assetsDir)) {
+    for (const name of readdirSync(assetsDir)) {
+      if (!name.endsWith('.js')) continue;
+      const js = readFileSync(join(assetsDir, name), 'utf8');
+      if (js.includes("camera: 'denied'") && js.includes('barcodes: []')) {
+        fail(`dist/assets/${name} contains mlkit-stub — set VITE_TARGET=capacitor in .env.production before native build.`);
+      }
+    }
+  }
 }
 
 for (const ref of refs) {

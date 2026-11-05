@@ -64,8 +64,13 @@ Full verification output: [`docs/public_schema_wipe_verify.txt`](public_schema_w
 
 Required for fresh registration with the **same email** on the **same Supabase project**:
 
+- [ ] **Auth orphan cleanup** — Run preview: `docker exec -i supabase-db psql -U postgres -d postgres < deploy/wipe-auth-orphans.sql`  
+  To delete non-system orphans (keeps admin/info/demo):  
+  `docker exec -i supabase-db psql -U postgres -d postgres -v delete_orphans=true < deploy/wipe-auth-orphans.sql`  
+  Or diagnose: `bash scripts/diagnostics/diagnose-signup-vps.sh` on VPS.
+
 - [ ] **Auth user deleted** — Supabase Dashboard → **Authentication → Users** → delete account  
-  The wipe script does **not** remove `auth.users`. Without this step, signup with the same email fails ("User already registered") and login is broken because `public.users` is empty.
+  The wipe script does **not** remove `auth.users`. Without cleanup, signup with the same email fails ("User already registered") and login is broken because `public.users` is empty.
 
 - [ ] **Storage buckets cleared** (optional) — Dashboard → **Storage** → empty product image / expense receipt buckets
 

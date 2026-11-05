@@ -1,0 +1,92 @@
+{
+  "run": "PHASE_3_REMAINING_OPTIONAL_SCREEN_AUDIT",
+  "generatedAt": "2026-06-29",
+  "surfaces": [
+    {
+      "id": "balance_sheet",
+      "route": "Reports → Financial Reports → Balance Sheet",
+      "component": "src/app/components/reports/BalanceSheetPage.tsx",
+      "service": "src/app/services/accountingReportsService.ts#getBalanceSheet",
+      "dataSource": "legacy",
+      "dataSourceDetail": "getTrialBalance via journal_entry_lines; not get_unified_trial_balance",
+      "unifiedLoaderFlag": false,
+      "companyFilter": "companyId from SupabaseContext",
+      "branchFilter": "optional branchId; journalEntryMatchesBranchFilter",
+      "dateBehavior": "as-of reportEndDate (cumulative)",
+      "exportPrint": { "excel": true, "print": true, "whatsapp": true, "pdf": false },
+      "reportVisibilityContract": false,
+      "reversalVisibility": "void excluded; correction_reversal included in legacy TB",
+      "knownRisks": ["TB unified main vs BS legacy divergence"],
+      "previewOnlyParitySafe": true
+    },
+    {
+      "id": "profit_loss",
+      "route": "Reports → Financial Reports → P&L",
+      "component": "src/app/components/reports/ProfitLossPage.tsx",
+      "service": "src/app/services/accountingReportsService.ts#getProfitLoss",
+      "dataSource": "legacy",
+      "unifiedLoaderFlag": false,
+      "companyFilter": "companyId",
+      "branchFilter": "optional branchId",
+      "dateBehavior": "period start-end; optional prior period comparison",
+      "exportPrint": { "excel": true, "print": true, "whatsapp": true },
+      "reportVisibilityContract": false,
+      "reversalVisibility": "same as legacy TB",
+      "knownRisks": ["COGS mapping heuristics vs unified basis"],
+      "previewOnlyParitySafe": true
+    },
+    {
+      "id": "cash_flow_web",
+      "route": "Accounting → Cash Flow tab",
+      "component": "src/app/components/reports/CashFlowReportPage.tsx",
+      "service": "src/app/services/cashFlowReportService.ts",
+      "dataSource": "legacy_mixed",
+      "dataSourceDetail": "roznamchaService.getRoznamcha; not unified main when Roznamcha loader ON",
+      "unifiedLoaderFlag": false,
+      "companyFilter": "companyId",
+      "branchFilter": "branch select + account filter",
+      "dateBehavior": "dateFrom-dateTo",
+      "exportPrint": { "csv": true, "pdfPreview": true, "print": true },
+      "reportVisibilityContract": "partial",
+      "reversalVisibility": "normal hides void/correction_reversal; audit shows trails",
+      "knownRisks": ["divergence from unified Roznamcha main"],
+      "previewOnlyParitySafe": true
+    },
+    {
+      "id": "mobile_reports_hub",
+      "route": "erp-mobile-app Accounts → Reports",
+      "component": "erp-mobile-app/src/components/accounts/reports/ReportsHub.tsx",
+      "dataSource": "legacy",
+      "unifiedLoaderFlag": false,
+      "reports": [
+        "customer-ledger",
+        "supplier-ledger",
+        "worker-ledger",
+        "account-ledger",
+        "cash-summary",
+        "bank-summary",
+        "wallet-summary",
+        "daybook",
+        "receivables",
+        "payables",
+        "sales-report",
+        "purchase-report"
+      ],
+      "missingVsWeb": ["balance_sheet", "profit_loss", "trial_balance", "cash_flow_statement"],
+      "exportPrint": { "ledgerPdf": true, "roznamchaPdf": true },
+      "previewOnlyParitySafe": true
+    }
+  ],
+  "liveUnifiedLoadersOutOfScope": [
+    "ledger_v2",
+    "account_statement",
+    "trial_balance",
+    "party_ledger",
+    "roznamcha"
+  ],
+  "reportVisibilityContractModules": [
+    "src/app/lib/reportVisibilityContract.ts",
+    "src/app/lib/cashFlowReportLogic.ts",
+    "src/app/lib/unifiedLedgerBasisFilter.ts"
+  ]
+}

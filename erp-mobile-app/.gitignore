@@ -6,7 +6,9 @@ dist
 .env
 .env.local
 .env.production
+.env.staging
 .env.*.local
+!.env.staging.example
 
 # Local release APK copies for sideload / GitHub uploads (large binary; do not commit)
 releases/*.apk

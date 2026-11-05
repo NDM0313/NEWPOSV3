@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** VPS anon sync first; fall back to local .env when SSH unavailable. */
+/** Prefer local Mini PC env; fall back to VPS key pull (URL still forced to api.ndmcore.com). */
 import { spawnSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,9 +11,13 @@ function run(script) {
   return r.status === 0;
 }
 
+if (run('sync-env-production-from-local.mjs')) {
+  process.exit(0);
+}
+
+console.warn(
+  '[prepare-release-env] Local env sync failed — trying VPS key pull (URL will still be api.ndmcore.com)',
+);
 if (!run('sync-env-from-vps.mjs')) {
-  console.warn('[prepare-release-env] VPS sync failed — using local env');
-  if (!run('sync-env-production-from-local.mjs')) {
-    process.exit(1);
-  }
+  process.exit(1);
 }

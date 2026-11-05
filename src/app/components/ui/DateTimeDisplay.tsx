@@ -24,19 +24,19 @@ export const DateTimeDisplay: React.FC<DateTimeDisplayProps> = ({
   const { formatDate, formatTime } = useFormatDate();
   const d = typeof date === 'object' && date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) {
-    return <span className={cn('text-gray-500', className)}>—</span>;
+    return <span className={cn('text-muted-foreground', className)}>—</span>;
   }
   const dateStr = formatDate(d);
   const timeStr = formatTime(d);
 
   if (dateOnly) {
-    return <span className={cn('text-gray-300', className)}>{dateStr}</span>;
+    return <span className={cn('text-muted-foreground', className)}>{dateStr}</span>;
   }
 
   return (
     <div className={cn('flex flex-col leading-tight', className)}>
-      <span className="text-gray-300 text-sm">{dateStr}</span>
-      <span className="text-xs text-gray-500 font-normal italic mt-0.5">{timeStr}</span>
+      <span className="text-muted-foreground text-sm">{dateStr}</span>
+      <span className="text-xs text-muted-foreground font-normal italic mt-0.5">{timeStr}</span>
     </div>
   );
 };

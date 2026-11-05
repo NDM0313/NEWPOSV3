@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-06-30T07:46:42.420Z",
+  "journal_entry_id": "9c7a1bd2-af96-4436-9c14-1b804f9a3773",
+  "entry_no": "JE-0003",
+  "action_fingerprint": "party_discount:30bd8592-3384-4f34-899a-f3907e336485:customer:fe7ec33d-fd6d-4aa6-8d21-416e383b4c93:2026-06-30:1",
+  "auto_reverse": false,
+  "recommendation": "KEEP_OR_OPERATOR_APPROVED_VOID",
+  "options": [
+    {
+      "option": "KEEP",
+      "note": "Harmless PKR 1 QA entry; documents party_discount flow in production GL."
+    },
+    {
+      "option": "VOID_REVERSE",
+      "note": "Use existing void/reversal workflow per accounting policy — requires separate operator approval.",
+      "requires_approval": true
+    }
+  ]
+}

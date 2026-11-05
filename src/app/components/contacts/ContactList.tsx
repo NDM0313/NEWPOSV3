@@ -217,12 +217,12 @@ export const ContactList = () => {
   };
 
   return (
-    <div className="min-h-full bg-[#0B0F19] text-white space-y-6 p-6 animate-in fade-in duration-500">
+    <div className="min-h-full bg-secondary text-foreground space-y-6 p-6 animate-in fade-in duration-500">
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Contacts</h2>
-          <p className="text-gray-400 text-sm">Manage your suppliers and customers.</p>
+          <h2 className="text-2xl font-bold text-foreground">Contacts</h2>
+          <p className="text-muted-foreground text-sm">Manage your suppliers and customers.</p>
         </div>
         <Button 
           onClick={() => openDrawer('addContact')}
@@ -249,39 +249,39 @@ export const ContactList = () => {
           subtitle={`To ${contacts.filter(c => c.type === 'Supplier').length} Suppliers`}
           trend="-5%"
           trendUp={false}
-          highlightColor="text-white"
+          highlightColor="text-foreground"
         />
         <GlassCard 
           title="Active Contacts" 
           value={contacts.length.toString()} 
           subtitle={`${contacts.filter(c => c.status === 'Active').length} Active`}
-          highlightColor="text-white"
+          highlightColor="text-foreground"
         />
       </div>
 
       {/* Table Section */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         {/* Table Toolbar */}
-        <div className="p-4 border-b border-gray-800 flex gap-4 bg-gray-900/50">
+        <div className="p-4 border-b border-border flex gap-4 bg-muted/40">
           <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input 
               placeholder="Search contacts..." 
-              className="pl-9 bg-gray-950 border-gray-800 text-white focus:border-blue-500 transition-all"
+              className="pl-9 bg-input-background border-border text-foreground focus:border-blue-500 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="flex gap-2 ml-auto">
-             <Button variant="outline" className="border-gray-800 text-gray-300 hover:bg-gray-800">Filter</Button>
-             <Button variant="outline" className="border-gray-800 text-gray-300 hover:bg-gray-800">Export</Button>
+             <Button variant="outline" className="border-border text-muted-foreground hover:bg-muted">Filter</Button>
+             <Button variant="outline" className="border-border text-muted-foreground hover:bg-muted">Export</Button>
           </div>
         </div>
 
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-950/50 text-gray-400 font-medium border-b border-gray-800">
+            <thead className="bg-muted/40 text-muted-foreground font-medium border-b border-border">
               <tr>
                 <th className="px-6 py-4 w-20"></th>
                 <th className="px-6 py-4">Name</th>
@@ -292,20 +292,20 @@ export const ContactList = () => {
                 <th className="px-6 py-4 text-center">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-                    <p className="text-gray-400 text-sm">Loading contacts...</p>
+                    <p className="text-muted-foreground text-sm">Loading contacts...</p>
                   </td>
                 </tr>
               ) : filteredContacts.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center">
-                    <Users size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No contacts found</p>
-                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search</p>
+                    <Users size={48} className="mx-auto text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground text-sm">No contacts found</p>
+                    <p className="text-muted-foreground text-xs mt-1">Try adjusting your search</p>
                   </td>
                 </tr>
               ) : (
@@ -313,17 +313,17 @@ export const ContactList = () => {
                 const hasOutstanding = contact.type === 'Supplier' ? contact.payables > 0 : contact.receivables > 0;
                 
                 return (
-                  <tr key={contact.id} className="hover:bg-gray-800/50 transition-colors group">
+                  <tr key={contact.id} className="hover:bg-muted/50 transition-colors group">
                     <td className="px-6 py-4 text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                             <MoreVertical size={16} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-56 bg-gray-900 border-gray-800 text-white" align="end">
+                        <DropdownMenuContent className="w-56 bg-card border-border text-foreground" align="end">
                           <DropdownMenuItem 
-                            className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
+                            className="flex items-center gap-2 hover:bg-muted cursor-pointer"
                             onClick={() => handleViewLedger(contact)}
                           >
                             <Receipt size={16} />
@@ -331,26 +331,26 @@ export const ContactList = () => {
                           </DropdownMenuItem>
                           {hasOutstanding && (
                             <DropdownMenuItem 
-                              className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
+                              className="flex items-center gap-2 hover:bg-muted cursor-pointer"
                               onClick={() => handleMakePayment(contact)}
                             >
                               <DollarSign size={16} />
                               {contact.type === 'Supplier' ? 'Make Payment' : 'Receive Payment'}
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuSeparator className="bg-gray-800" />
-                          <DropdownMenuItem className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer">
+                          <DropdownMenuSeparator className="bg-muted" />
+                          <DropdownMenuItem className="flex items-center gap-2 hover:bg-muted cursor-pointer">
                             <Eye size={16} />
                             View Details
                           </DropdownMenuItem>
                           <DropdownMenuItem 
-                            className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
+                            className="flex items-center gap-2 hover:bg-muted cursor-pointer"
                             onClick={() => handleEdit(contact)}
                           >
                             <Edit size={16} />
                             Edit Contact
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-gray-800" />
+                          <DropdownMenuSeparator className="bg-muted" />
                           <DropdownMenuItem 
                             className="flex items-center gap-2 text-red-500 hover:bg-red-900/10 hover:text-red-400 cursor-pointer"
                             onClick={() => handleDeleteClick(contact)}
@@ -363,13 +363,13 @@ export const ContactList = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 border border-gray-700">
+                        <Avatar className="h-9 w-9 border border-border">
                           <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${contact.name}`} />
                           <AvatarFallback className="bg-blue-900 text-blue-200">{contact.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-medium text-white">{contact.name}</p>
-                          <p className="text-xs text-gray-500">ID: #{1000 + contact.id}</p>
+                          <p className="font-medium text-foreground">{contact.name}</p>
+                          <p className="text-xs text-muted-foreground">ID: #{1000 + contact.id}</p>
                         </div>
                       </div>
                     </td>
@@ -385,10 +385,10 @@ export const ContactList = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-1">
-                         <div className="flex items-center gap-2 text-gray-400 text-xs">
+                         <div className="flex items-center gap-2 text-muted-foreground text-xs">
                            <Mail size={12} /> {contact.email}
                          </div>
-                         <div className="flex items-center gap-2 text-gray-400 text-xs">
+                         <div className="flex items-center gap-2 text-muted-foreground text-xs">
                            <Phone size={12} /> {contact.phone}
                          </div>
                       </div>
@@ -396,17 +396,17 @@ export const ContactList = () => {
                     <td className="px-6 py-4 text-right">
                       {contact.receivables > 0 ? (
                         <span className="text-yellow-300 font-medium">Rs {contact.receivables.toLocaleString()}</span>
-                      ) : <span className="text-gray-600">-</span>}
+                      ) : <span className="text-muted-foreground">-</span>}
                     </td>
                     <td className="px-6 py-4 text-right">
                        {contact.payables > 0 ? (
                         <span className="text-red-400 font-medium">Rs {contact.payables.toLocaleString()}</span>
-                      ) : <span className="text-gray-600">-</span>}
+                      ) : <span className="text-muted-foreground">-</span>}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={cn(
                         "px-2.5 py-1 rounded-full text-xs font-medium",
-                        contact.status === 'Active' ? "bg-green-500/10 text-green-500" : "bg-gray-800 text-gray-400"
+                        contact.status === 'Active' ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground"
                       )}>
                         {contact.status}
                       </span>
@@ -475,21 +475,21 @@ export const ContactList = () => {
 const GlassCard = ({ title, value, subtitle, trend, trendUp, highlightColor }: any) => (
   <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-xl shadow-lg relative overflow-hidden group hover:border-white/20 transition-all">
     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-      <Users size={64} className="text-white" />
+      <Users size={64} className="text-foreground" />
     </div>
-    <p className="text-gray-400 text-sm font-medium">{title}</p>
+    <p className="text-muted-foreground text-sm font-medium">{title}</p>
     <div className="flex items-end gap-3 mt-1 mb-2">
-      <h3 className={cn("text-3xl font-bold", highlightColor || "text-white")}>{value}</h3>
+      <h3 className={cn("text-3xl font-bold", highlightColor || "text-foreground")}>{value}</h3>
       {trend && (
         <span className={cn(
           "flex items-center text-xs font-medium px-1.5 py-0.5 rounded mb-1.5",
-          trendUp ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+          trendUp ? "bg-green-500/10 text-[var(--erp-money-positive)]" : "bg-red-500/10 text-red-400"
         )}>
           {trendUp ? <ArrowUpRight size={12} className="mr-0.5" /> : <ArrowDownRight size={12} className="mr-0.5" />}
           {trend}
         </span>
       )}
     </div>
-    <p className="text-gray-500 text-xs">{subtitle}</p>
+    <p className="text-muted-foreground text-xs">{subtitle}</p>
   </div>
 );

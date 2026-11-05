@@ -1,0 +1,20 @@
+{
+  "classification": "READ_ONLY_DISCOVERY_OK",
+  "discovered_at": "2026-07-02T14:32:57.030Z",
+  "manager_count": 0,
+  "salesman_candidate_count": 8,
+  "salesman_qa_usable_count": 7,
+  "managers": [],
+  "salesman_candidates": [
+    { "masked_email": "no***@yahoo.com", "full_name": "Noman Ali", "company": "DIN BRIDAL", "is_active": true, "qa_usable": true },
+    { "masked_email": "na***@yahoo.com", "full_name": "Nabeel", "company": "DIN BRIDAL", "is_active": true, "qa_usable": true },
+    { "masked_email": "mo***@yahoo.com", "full_name": "Mohsin Ali", "company": "DIN BRIDAL", "is_active": true, "qa_usable": true },
+    { "masked_email": "al***@yahoo.com", "full_name": "Ali", "company": "DIN BRIDAL", "is_active": true, "qa_usable": true },
+    { "masked_email": "sa***@yahoo.com", "full_name": "Saghir", "company": "DIN COUTURE", "is_active": true, "qa_usable": true },
+    { "masked_email": "ar***@yahoo.com", "full_name": "Arslan", "company": "DIN COUTURE", "is_active": true, "qa_usable": true },
+    { "masked_email": "us***@yahoo.com", "full_name": "Usman", "company": "DIN COUTURE", "is_active": true, "qa_usable": true },
+    { "masked_email": "ab***@yahoo.com", "full_name": "abdullah", "company": "DIN BRIDAL", "is_active": false, "qa_usable": false }
+  ],
+  "users_created": false,
+  "production_mutation": false
+}

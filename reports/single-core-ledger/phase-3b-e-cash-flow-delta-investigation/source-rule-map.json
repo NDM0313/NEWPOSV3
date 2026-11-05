@@ -1,0 +1,105 @@
+{
+  "run": "PHASE_3B_E_SOURCE_RULE_MAP",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "rules": [
+    {
+      "id": "data_engine",
+      "name": "Primary data engine",
+      "legacy": "roznamchaService.getRoznamcha — payment/journal/rental stitch",
+      "preview": "get_unified_cash_bank_ledger RPC — GL liquidity lines",
+      "match": false,
+      "canExplainDelta": true,
+      "companies": ["DIN CHINA", "DIN BRIDAL"],
+      "risk": "HIGH",
+      "owner": "both"
+    },
+    {
+      "id": "transfer_gross_net",
+      "name": "Internal transfer legs",
+      "legacy": "Transfers often appear as cash-in legs in roznamcha stream (Transfers module dominant on DIN CHINA)",
+      "preview": "Unified RPC shows both debit and credit legs on liquidity accounts (transfer ref type: in + out)",
+      "match": false,
+      "canExplainDelta": true,
+      "companies": ["DIN CHINA"],
+      "risk": "HIGH",
+      "owner": "finance"
+    },
+    {
+      "id": "void_reversal_normal",
+      "name": "Void/reversal in normal mode",
+      "legacy": "getRoznamcha excludes voided_at / is_void when auditMode=false",
+      "preview": "effective_party basis excludes correction_reversal per RPC; void handling may differ",
+      "match": "partial",
+      "canExplainDelta": "partial",
+      "companies": ["DIN CHINA", "DIN BRIDAL"],
+      "risk": "MEDIUM",
+      "owner": "both"
+    },
+    {
+      "id": "opening_balance",
+      "name": "Opening balance rows",
+      "legacy": "Opening from roznamcha summary; period rows only in table",
+      "preview": "RPC period_opening_balance + may include opening_balance_account reference rows",
+      "match": false,
+      "canExplainDelta": true,
+      "companies": ["DIN BRIDAL"],
+      "risk": "MEDIUM",
+      "owner": "finance"
+    },
+    {
+      "id": "source_module_filter",
+      "name": "Source module filter",
+      "legacy": "filterCashFlowRowsBySourceModule on mapped rows",
+      "preview": "Same filter on inferred modules from unified rows",
+      "match": true,
+      "canExplainDelta": false,
+      "companies": [],
+      "risk": "LOW",
+      "owner": "engineering"
+    },
+    {
+      "id": "branch_scope",
+      "name": "Branch scope",
+      "legacy": "branchId from context; global filter may not override selected branch",
+      "preview": "Same branchId passed to RPC scope",
+      "match": true,
+      "canExplainDelta": "partial",
+      "companies": ["DIN CHINA"],
+      "risk": "MEDIUM",
+      "owner": "engineering"
+    },
+    {
+      "id": "liquidity_accounts",
+      "name": "Cash/bank account scope",
+      "legacy": "roznamcha liquidity filter (all/cash/bank)",
+      "preview": "RPC p_liquidity=all; 14 accounts (China) vs 9 (Couture)",
+      "match": "partial",
+      "canExplainDelta": true,
+      "companies": ["DIN CHINA"],
+      "risk": "MEDIUM",
+      "owner": "both"
+    },
+    {
+      "id": "running_balance",
+      "name": "Running balance",
+      "legacy": "recomputeCashFlowRunningBalance on legacy rows",
+      "preview": "RPC running balance on unified lines",
+      "match": "partial",
+      "canExplainDelta": false,
+      "companies": [],
+      "risk": "LOW",
+      "owner": "engineering"
+    },
+    {
+      "id": "preview_basis",
+      "name": "Preview basis",
+      "legacy": "Normal mode uses effective_party semantics via roznamcha",
+      "preview": "effective_party (default previewBasis in capture)",
+      "match": "partial",
+      "canExplainDelta": "partial",
+      "companies": [],
+      "risk": "MEDIUM",
+      "owner": "both"
+    }
+  ]
+}

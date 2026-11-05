@@ -1,0 +1,44 @@
+{
+  "reportType": "admin_compare_delta_after_fix",
+  "generatedAt": "2026-06-25T16:51:42Z",
+  "status": "PHASE_2_9A_7_OPERATOR_GATE_SIGNOFF",
+  "gateSignoff": "PHASE_2_9A_STILL_BLOCKED_PARTY_PILOT_LEDGER_V2_GATE_NOT_PASSED",
+  "previewBuildAfter": "312716e7+",
+  "documentationCommit": "7e8fef33",
+  "previewRedeployed": true,
+  "previewContainer": "erp-frontend-preview",
+  "previewPort": 3003,
+  "tunnel": "ssh -N -L 3002:127.0.0.1:3003 dincouture-vps",
+  "flags": {
+    "unified_ledger_pilot": "OFF",
+    "unified_ledger_engine": "OFF",
+    "unified_ledger_screen_ledger_v2": "OFF",
+    "din_china_unified_ledger_rows": 0
+  },
+  "stage1Sql": "NOT_RUN",
+  "stage2Sql": "NOT_RUN",
+  "stage1FlagScope": {
+    "enableOnly": "unified_ledger_pilot",
+    "doNotEnableInStage1": [
+      "unified_ledger_engine",
+      "unified_ledger_screen_ledger_v2",
+      "unified_ledger_screen_roznamcha"
+    ]
+  },
+  "cashBankWaiver": {
+    "stage1Blocker": false,
+    "remediationTrack": "Phase 2.9A-CB"
+  },
+  "gateConfirmation": {
+    "gate1_party_mr_jalil": "SKIP",
+    "gate2_pilot_batch_9_9": "SKIP",
+    "gate3_ledger_v2_browser": "SKIP",
+    "gate4_flags_off": "PASS"
+  },
+  "operatorNext": {
+    "script": "scripts/single-core-ledger/run-phase-29a7-operator-gate-signoff.mjs",
+    "requires": "QA_BROWSER_PASSWORD",
+    "targetStatus": "PHASE_2_9A_LEDGER_V2_GATE_PASS_WITH_CASH_BANK_WAIVER"
+  },
+  "detailJson": "phase-2.9a-7-gate-signoff.json"
+}

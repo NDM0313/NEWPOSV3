@@ -1,0 +1,50 @@
+{
+  "run": "FINAL_PRODUCTION_OPS_HANDOFF",
+  "generated_at": "2026-06-29T12:00:00.000Z",
+  "status": "FINAL_PRODUCTION_OPS_HANDOFF_COMPLETE",
+  "program_mode": "PRODUCTION_OPS",
+  "latest_main_commit_at_start": "6b701ed1",
+  "three_company_baseline": "COMPLETE",
+  "password_rotation": {
+    "rotation_completed": true,
+    "post_rotation_monitoring_status": "PASS",
+    "evidence": "reports/single-core-ledger/operational-monitoring/password-rotation-final-closure-manifest.json"
+  },
+  "monitoring": {
+    "overall": "PASS",
+    "evidence": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-42-30-177Z.json",
+    "latest_pointer": "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+    "credential_policy": "per-company",
+    "generic_fallback_allowed": false,
+    "other_company_loaders_on": 0,
+    "migrations_run": false,
+    "gl_mutations": false
+  },
+  "companies": {
+    "din-china": { "flags": "12/12 ON", "loaders": "5/5 ON", "status": "stable" },
+    "din-bridal": { "flags": "12/12 ON", "loaders": "5/5 ON", "status": "stable" },
+    "din-couture": { "flags": "12/12 ON", "loaders": "5/5 ON", "status": "stable" }
+  },
+  "blocked": {
+    "r7": "DESIGN_ONLY",
+    "r8": "BLOCKED",
+    "next_company": "BLOCKED"
+  },
+  "migration_closure": "COMPLETE",
+  "tests_unified_ledger": "256/256 PASS",
+  "build": "PASS",
+  "deploy": "SKIPPED",
+  "credentials_committed": false,
+  "passwords_printed": false,
+  "ongoing_command": "npm run monitor:three-company-unified-ledger",
+  "handoff_pack": [
+    "final-production-ops-handoff.md",
+    "final-production-ops-handoff-manifest.json",
+    "daily-monitoring-checklist.md",
+    "incident-quick-reference.md",
+    "blocked-future-work-register.md",
+    "operator-next-actions.md",
+    "deploy-or-skip-notes.md"
+  ],
+  "next_action": "Continue scheduled operational monitoring only. Do not start R7, R8, or another company without separate approval."
+}

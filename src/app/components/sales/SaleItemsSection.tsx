@@ -3,7 +3,9 @@ import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles, Scissors
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
+import { formatQty } from '@/app/utils/quantity';
+import { formatSaleLineVariationText } from '@/app/utils/saleLineVariation';
 import type { Variation } from "../ui/inline-variation-selector";
 import {
     Command,
@@ -56,6 +58,10 @@ interface SaleItem {
     bespokeParentCartId?: number;
     bespokeRole?: 'fabric';
     isBespokeInjected?: boolean;
+    /** Piece-type preset (Shirt/Dupatta/Trouser) — display on fabric cart lines. */
+    bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+    /** Catalog retail unit price for UI only — billed price stays 0. */
+    bespokeRefUnitPrice?: number;
     stock?: number;
     showVariations?: boolean; // Flag to show variation selector inline
     selectedVariationId?: string; // Currently selected variation ID (for edit preselect + read-only)
@@ -228,53 +234,53 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
     };
 
     return (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col h-full">
+        <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col h-full">
             {/* Header - Compact */}
-            <div className="px-4 py-2 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between shrink-0">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Items Entry</h3>
+            <div className="px-4 py-2 bg-muted/40 border-b border-border flex items-center justify-between shrink-0">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Items Entry</h3>
             </div>
 
             {/* Search Bar - Compact */}
-            <div className="p-3 border-b border-gray-800 shrink-0">
+            <div className="p-3 border-b border-border shrink-0">
                 <div className="flex items-center gap-2">
                     {/* Search Input - Compact */}
                     <div className="flex-1 relative">
                         <Popover open={productSearchOpen} onOpenChange={setProductSearchOpen}>
                             <PopoverTrigger asChild>
-                                <button className="group w-full h-10 px-4 bg-gradient-to-br from-gray-900/90 via-gray-900/70 to-gray-950/90 border border-gray-700/50 rounded-lg text-left flex items-center gap-2.5 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300 relative overflow-hidden">
+                                <button className="group w-full h-10 px-4 bg-gradient-to-br from-card via-card to-muted border border-border rounded-lg text-left flex items-center gap-2.5 hover:border-primary/40 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300 relative overflow-hidden">
                                     {/* Animated gradient overlay on hover */}
                                     <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/5 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                                     
-                                    <Search size={16} className="text-gray-400 group-hover:text-blue-400 shrink-0 transition-colors relative z-10" />
+                                    <Search size={16} className="text-muted-foreground group-hover:text-blue-400 shrink-0 transition-colors relative z-10" />
                                     <div className="flex-1 relative z-10">
-                                        <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">
+                                        <span className="text-xs text-muted-foreground group-hover:text-muted-foreground transition-colors">
                                             Search products by name, SKU...
                                         </span>
                                     </div>
-                                    <kbd className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-500 bg-gray-800/50 border border-gray-700 rounded relative z-10">
+                                    <kbd className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground bg-muted/50 border border-border rounded relative z-10">
                                         <span>⌘</span>
                                         <span>K</span>
                                     </kbd>
                                 </button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[600px] p-0 bg-gray-950 border-gray-800 text-white shadow-2xl shadow-black/50" align="start">
-                                <Command className="bg-gray-950 text-white" shouldFilter={false}>
+                            <PopoverContent className="w-[600px] p-0 bg-popover border-border text-popover-foreground shadow-2xl shadow-black/50" align="start">
+                                <Command className="bg-popover text-popover-foreground" shouldFilter={false}>
                                     <CommandInput 
                                         ref={searchInputRef}
                                         placeholder="Search by name, SKU, or numeric code (e.g., 001, 22)..." 
                                         value={productSearchTerm}
                                         onValueChange={setProductSearchTerm}
-                                        className="h-12 text-base border-b border-gray-800" 
+                                        className="h-12 text-base border-b border-border" 
                                     />
                                     <CommandList className="max-h-[400px]">
                                         {filteredProducts.length === 0 ? (
                                             <div className="p-4">
                                                 <div className="flex flex-col items-center justify-center py-8 text-center">
-                                                    <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center mb-4">
-                                                        <Package size={32} className="text-gray-600" />
+                                                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                                                        <Package size={32} className="text-muted-foreground" />
                                                     </div>
-                                                    <p className="text-gray-400 text-sm mb-1">No products found</p>
-                                                    <p className="text-gray-600 text-xs mb-6">
+                                                    <p className="text-muted-foreground text-sm mb-1">No products found</p>
+                                                    <p className="text-muted-foreground text-xs mb-6">
                                                         {productSearchTerm ? `No results for "${productSearchTerm}"` : 'Start typing to search'}
                                                     </p>
                                                     {filteredProducts.length === 0 && productSearchTerm && String(productSearchTerm).trim().length > 0 && (
@@ -283,7 +289,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                                 setProductSearchOpen(false);
                                                                 openDrawer('addProduct', 'addSale');
                                                             }}
-                                                            className="group relative flex items-center gap-3 px-5 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 rounded-lg transition-all duration-300 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105"
+                                                            className="group relative flex items-center gap-3 px-5 py-3 text-sm font-medium text-foreground bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 rounded-lg transition-all duration-300 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105"
                                                         >
                                                             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
                                                                 <Plus size={16} className="shrink-0" />
@@ -301,7 +307,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                         key={p.id}
                                                         value={`${p.name} ${p.sku}`}
                                                         onSelect={() => handleSelectProduct(p)}
-                                                        className="text-white hover:bg-gray-800/80 cursor-pointer px-4 py-3 data-[selected=true]:bg-gray-800"
+                                                        className="text-foreground hover:bg-accent cursor-pointer px-4 py-3 border-b border-border last:border-b-0 data-[selected=true]:bg-accent"
                                                     >
                                                         <div className="flex justify-between items-center w-full gap-4">
                                                             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -309,14 +315,14 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                                     <Package size={18} className="text-blue-400" />
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
-                                                                    <div className="font-medium text-white truncate">{p.name}</div>
-                                                                    <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                                                                    <div className="font-medium text-foreground truncate">{p.name}</div>
+                                                                    <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                                                                         <span className="font-mono">{p.sku}</span>
                                                                         {p.stock !== undefined && (
                                                                             <>
                                                                                 <span>•</span>
                                                                                 <span className={p.stock > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                                                    Stock: {formatDecimal(p.stock)}
+                                                                                    Stock: {formatQty(p.stock)}
                                                                                 </span>
                                                                             </>
                                                                         )}
@@ -334,7 +340,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                             <div className="text-right shrink-0">
                                                                 <div className="text-lg font-bold text-blue-400">${p.price}</div>
                                                                 {p.lastPurchasePrice && (
-                                                                    <div className="text-xs text-gray-600">
+                                                                    <div className="text-xs text-muted-foreground">
                                                                         Margin: ${p.price - p.lastPurchasePrice}
                                                                     </div>
                                                                 )}
@@ -353,7 +359,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                 </div>
                 
                 {/* Quick Info Helper Text */}
-                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
                         <span>Use search to add items</span>
@@ -370,23 +376,23 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
             <div className="flex-1 overflow-hidden flex flex-col">
                 {/* Table Headers - FIXED SPACING (Packing column when enablePacking) */}
                 <div className={enablePacking
-                    ? "grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0"
-                    : "grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0"
+                    ? "grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-muted/40 border-b border-border/50 shrink-0"
+                    : "grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-muted/40 border-b border-border/50 shrink-0"
                 }>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">#</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[100px]">Variation</div>
-                    {enablePacking && <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[120px]">Packing</div>}
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Qty</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Price</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Total</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Action</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">#</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[100px]">Variation</div>
+                    {enablePacking && <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[120px]">Packing</div>}
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Qty</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Price</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Total</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Action</div>
                 </div>
 
                 {/* Items List - Scrollable */}
                 <div className="flex-1 overflow-y-auto">
                     {items.length > 0 ? (
-                        <div className="divide-y divide-gray-800/50">
+                        <div className="divide-y divide-border">
                             {items.map((item, index) => {
                                 // In edit mode, if item has variation but missing size/color/sku, use selected variation from productVariations for display (same as add-mode row)
                                 const variations = productVariations?.[item.productId] ?? productVariations?.[String(item.productId)] ?? productVariations?.[Number(item.productId)] ?? [];
@@ -400,29 +406,12 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                            (typeof v.id === 'string' && typeof item.selectedVariationId === 'string' && v.id.trim() === item.selectedVariationId.trim());
                                 }) : null;
                                 
-                                // Extract variation attributes properly
-                                const variationAttrs = selectedVariationForDisplay?.attributes || {};
-                                
-                                // Build variation text - prioritize direct size/color, then attributes, then item's own size/color
-                                let variationText: string | null = null;
-                                
-                                // First try: Direct size/color from selected variation
-                                if (selectedVariationForDisplay?.size || selectedVariationForDisplay?.color) {
-                                    variationText = [selectedVariationForDisplay.size, selectedVariationForDisplay.color].filter(Boolean).join(' / ');
-                                }
-                                // Second try: Attributes from selected variation
-                                else if (variationAttrs && Object.keys(variationAttrs).length > 0) {
-                                    const attrEntries = Object.entries(variationAttrs)
-                                        .filter(([_, v]) => v != null && v !== '')
-                                        .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`);
-                                    if (attrEntries.length > 0) {
-                                        variationText = attrEntries.join(', ');
-                                    }
-                                }
-                                // Third try: Item's own size/color (set when variation was selected)
-                                if (!variationText && (item.size || item.color)) {
-                                    variationText = [item.size, item.color].filter(Boolean).join(' / ');
-                                }
+                                // Build variation text — public attributes only (no __erp_* keys)
+                                let variationText: string | null = formatSaleLineVariationText(
+                                    selectedVariationForDisplay,
+                                    item.size,
+                                    item.color,
+                                );
                                 
                                 // When a variation is selected, show variation SKU (not base product SKU)
                                 const displaySku = selectedVariationForDisplay
@@ -453,12 +442,12 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                 <div key={item.id}>
                                     {/* Main Item Row - FIXED SPACING (Packing cell when enablePacking) */}
                                     <div className={enablePacking
-                                        ? "group grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center"
-                                        : "group grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center"
+                                        ? "group grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-accent/50 transition-colors items-center"
+                                        : "group grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-accent/50 transition-colors items-center"
                                     }>
                                         {/* # (Fixed 32px) */}
                                         <div className="w-[32px]">
-                                            <span className="text-xs text-gray-500 font-medium">
+                                            <span className="text-xs text-muted-foreground font-medium">
                                                 {index + 1}
                                             </span>
                                         </div>
@@ -467,8 +456,8 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         <div className="min-w-0">
                                             <div className="flex items-start">
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="text-sm font-medium text-white leading-tight mb-0.5 truncate">{item.name}</div>
-                                                    <div className="flex items-center gap-1 text-[11px] text-gray-500">
+                                                    <div className="text-sm font-medium text-foreground leading-tight mb-0.5 truncate">{item.name}</div>
+                                                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                                                         <span className="font-mono">{displaySku}</span>
                                                         {variationText && (
                                                             <>
@@ -480,7 +469,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                         )}
                                                         <span>·</span>
                                                         <span className={displayStock > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                            {formatDecimal(displayStock)}
+                                                            {formatQty(displayStock)}
                                                         </span>
                                                         {item.lastPurchasePrice && (
                                                             <>
@@ -493,7 +482,11 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                     </div>
                                                     {enableBespoke &&
                                                       (item.isBespokeInjected || item.bespokeRole === 'fabric') ? (
-                                                        <div className="mt-1 text-[10px] text-amber-400/90">Fabric (linked to custom order)</div>
+                                                        <div className="mt-1 text-[10px] text-amber-400/90">
+                                                          {item.bespokeRefUnitPrice != null && item.bespokeRefUnitPrice > 0
+                                                            ? `Ref Rs. ${Number(item.bespokeRefUnitPrice).toLocaleString()}/m — dress price میں شامل`
+                                                            : 'Fabric (linked to custom order)'}
+                                                        </div>
                                                     ) : null}
                                                     {enableBespoke && onOpenBespokeModal && !isInjectedBespokeLine(item) && (
                                                         <button
@@ -506,7 +499,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                         </button>
                                                     )}
                                                     {item.customizationDetails && bespokeSummary.fabricLine && (
-                                                        <div className="mt-0.5 text-[10px] text-gray-500 truncate" title={bespokeSummary.fabricLine}>
+                                                        <div className="mt-0.5 text-[10px] text-muted-foreground truncate" title={bespokeSummary.fabricLine}>
                                                             {bespokeSummary.fabricLine}
                                                         </div>
                                                     )}
@@ -522,7 +515,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         {/* Variation (Fixed Width) - use variation attributes properly */}
                                         <div className="w-[100px]">
                                             {variationText ? (
-                                                <div className="text-[10px] text-gray-300 leading-tight">
+                                                <div className="text-[10px] text-muted-foreground leading-tight">
                                                     {variationText}
                                                 </div>
                                             ) : (
@@ -537,7 +530,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             {(item.thaans || item.meters || item.packingDetails) ? (
                                                 <button
                                                     onClick={() => handleOpenPackingModal(item.id)}
-                                                    className="text-xs text-gray-400 hover:text-blue-400 transition-colors flex items-center gap-1"
+                                                    className="text-xs text-muted-foreground hover:text-blue-400 transition-colors flex items-center gap-1"
                                                 >
                                                     {item.packingDetails ? (
                                                         <span className="text-[11px]">
@@ -574,7 +567,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             ref={(el) => (itemQtyRefs.current[item.id] = el)}
                                             type="number"
                                             step={item.unitAllowDecimal === false ? "1" : "0.01"}
-                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-border focus:bg-input-background focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.qty === 0 ? '' : item.qty}
                                             onChange={(e) => {
                                                 const raw = e.target.value;
@@ -596,7 +589,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         <Input 
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-border focus:bg-input-background focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={resolveEditablePrice(item) === 0 ? '' : resolveEditablePrice(item)}
                                             onChange={(e) => {
                                                 const raw = e.target.value;
@@ -609,7 +602,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         {item.customizationDetails &&
                                             (bespokeCharges > 0 ||
                                                 resolveUnitPrice(item) - resolveBasePrice(item) > 0) && (
-                                            <div className="text-[9px] text-gray-500 text-right mt-0.5 leading-tight">
+                                            <div className="text-[9px] text-muted-foreground text-right mt-0.5 leading-tight">
                                                 Base {formatMoney(resolveBasePrice(item))} + Custom{' '}
                                                 {formatMoney(
                                                     bespokeCharges > 0
@@ -622,7 +615,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
 
                                     {/* Total (Fixed 80px - RIGHT ALIGNED) */}
                                     <div className="w-[80px]">
-                                        <div className="text-right text-sm font-bold text-white">
+                                        <div className="text-right text-sm font-bold text-foreground">
                                             {(resolveUnitPrice(item) * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                         </div>
                                     </div>
@@ -681,7 +674,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                                 onClick={() => handleInlineVariationSelect(item.id, variation)}
                                                                 className={cn(
                                                                     "px-3 py-1.5 text-xs rounded border transition-all",
-                                                                    isSelected ? "bg-blue-600 text-white border-blue-500 font-semibold" : "bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 hover:border-gray-600"
+                                                                    isSelected ? "bg-primary text-primary-foreground border-primary font-semibold" : "bg-muted text-muted-foreground border-border hover:bg-accent hover:border-border"
                                                                 )}
                                                                 title={variationSku}
                                                             >
@@ -694,7 +687,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             {item.selectedVariationId && (() => {
                                                 const v = variations.find((x: any) => x.id === item.selectedVariationId);
                                                 const variationSku = v?.sku || (v ? `${item.sku}-${v.size || ''}-${v.color || ''}`.replace(/\s+/g, '-').toUpperCase() : item.sku);
-                                                return <div className="mt-2 text-[10px] text-gray-400 font-mono">SKU: {variationSku}</div>;
+                                                return <div className="mt-2 text-[10px] text-muted-foreground font-mono">SKU: {variationSku}</div>;
                                             })()}
                                             {!item.selectedVariationId && <div className="mt-2 text-[10px] text-amber-400">Select a variation above</div>}
                                         </div>
@@ -705,7 +698,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                         })}
                     </div>
                 ) : (
-                    <div className="py-20 text-center text-gray-500">
+                    <div className="py-20 text-center text-muted-foreground">
                         <Package size={56} className="mx-auto mb-4 opacity-20" />
                         <p className="text-sm">No items added yet. Search and add products above.</p>
                     </div>

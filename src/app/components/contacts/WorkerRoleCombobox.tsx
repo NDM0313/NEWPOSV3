@@ -145,7 +145,7 @@ export function WorkerRoleCombobox({
               aria-expanded={open}
               disabled={disabled || loading}
               className={cn(
-                'w-full justify-between bg-gray-900 border-gray-700 text-white hover:bg-gray-800 h-9',
+                'w-full justify-between bg-card border-border text-foreground hover:bg-muted h-9',
                 className,
               )}
             >
@@ -160,10 +160,10 @@ export function WorkerRoleCombobox({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-gray-950 border-gray-800 text-white z-[250]"
+            className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 bg-input-background border-border text-foreground z-[250]"
             align="start"
           >
-            <Command shouldFilter={false} className="bg-gray-950 text-white">
+            <Command shouldFilter={false} className="bg-input-background text-foreground">
               <CommandInput
                 placeholder="Search or type new role…"
                 value={searchTerm}
@@ -172,11 +172,11 @@ export function WorkerRoleCombobox({
               />
               <CommandList className="max-h-[240px]">
                 {canAddNew && (
-                  <div className="p-2 border-b border-gray-800">
+                  <div className="p-2 border-b border-border">
                     <button
                       type="button"
                       onClick={handleStartCreate}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-400 bg-green-500/10 hover:bg-green-500/20 rounded-lg border border-green-500/20"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--erp-money-positive)] bg-green-500/10 hover:bg-green-500/20 rounded-lg border border-green-500/20"
                     >
                       <Plus className="h-4 w-4 shrink-0" />
                       Add &quot;{trimmedSearch}&quot;…
@@ -197,7 +197,7 @@ export function WorkerRoleCombobox({
                           setOpen(false);
                           setSearchTerm('');
                         }}
-                        className="text-white hover:bg-gray-800 cursor-pointer"
+                        className="text-foreground hover:bg-muted cursor-pointer"
                       >
                         <Check
                           className={cn(
@@ -207,7 +207,7 @@ export function WorkerRoleCombobox({
                         />
                         {formatWorkerRoleOption(role)}
                         {role.isCustom && (
-                          <span className="ml-auto text-[10px] text-gray-500">custom</span>
+                          <span className="ml-auto text-[10px] text-muted-foreground">custom</span>
                         )}
                       </CommandItem>
                     ))}
@@ -221,7 +221,7 @@ export function WorkerRoleCombobox({
         <button
           type="button"
           onClick={() => setManageOpen(true)}
-          className="text-xs text-gray-500 hover:text-green-400 flex items-center gap-1"
+          className="text-xs text-muted-foreground hover:text-[var(--erp-money-positive)] flex items-center gap-1"
         >
           <Settings2 className="h-3 w-3" />
           Manage roles
@@ -229,33 +229,33 @@ export function WorkerRoleCombobox({
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-sm">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm">
           <DialogHeader>
             <DialogTitle>Add worker role</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-gray-300">Role name</Label>
-              <p className="mt-1 text-sm text-white font-medium">{pendingLabel}</p>
+              <Label className="text-muted-foreground">Role name</Label>
+              <p className="mt-1 text-sm text-foreground font-medium">{pendingLabel}</p>
             </div>
             <div>
-              <Label className="text-gray-300">Studio category</Label>
+              <Label className="text-muted-foreground">Studio category</Label>
               <Select
                 value={pendingCategory}
                 onValueChange={(v) => setPendingCategory(v as WorkerRoleCategory)}
               >
-                <SelectTrigger className="bg-gray-950 border-gray-700 mt-1">
+                <SelectTrigger className="bg-input-background border-border mt-1">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-950 border-gray-800">
+                <SelectContent className="bg-input-background border-border">
                   {CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c} className="text-white focus:bg-gray-800">
+                    <SelectItem key={c} value={c} className="text-foreground focus:bg-muted">
                       {c}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Used for Studio task assignment (Dyeing / Stitching / Handwork).
               </p>
             </div>

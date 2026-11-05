@@ -1,0 +1,35 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_DRIFT_MOBILE_ROLE_READINESS",
+  "task": "din-bridal-roznamcha-drift-diagnosis",
+  "generated_at": "2026-07-01T12:45:00.000Z",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "diagnosis_method": "read-only browser monitoring body-text summary (unified roznamcha loader)",
+  "failures": [
+    {
+      "metric": "cash_in",
+      "expected_pkr": 1836350,
+      "actual_pkr": 1916350,
+      "delta_pkr": 80000,
+      "status": "FAIL"
+    },
+    {
+      "metric": "closing",
+      "expected_pkr": 918570,
+      "actual_pkr": 998570,
+      "delta_pkr": 80000,
+      "status": "FAIL"
+    }
+  ],
+  "passing": {
+    "cash_out_pkr": 917780,
+    "main_loader": "unified",
+    "preview_compare": "legacy_shadow"
+  },
+  "opening_running_balance_delta_pkr": 80000,
+  "default_report_visibility_changed": false,
+  "correction_reversal_void_visibility": "not_indicated — cash out unchanged; party MR REHAN stable",
+  "cash_flow_bs_pl_flags_unrelated": true,
+  "rpc_proxy_baseline_cash_in_pkr": 1916350,
+  "rpc_proxy_note": "RPC proxy from 2026-06-27 differed from browser golden; live browser matched 1836350 until 2026-07-01T11:58Z then jumped +80k",
+  "classification_hint": "NEW_UNAPPROVED_DATA_DRIFT"
+}

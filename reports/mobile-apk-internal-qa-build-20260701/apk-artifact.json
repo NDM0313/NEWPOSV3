@@ -1,0 +1,14 @@
+{
+  "run": "MOBILE_APK_INTERNAL_QA_BUILD",
+  "task": "apk-artifact",
+  "generated_at": "2026-07-01T10:40:00.000Z",
+  "filename": "dincouture-erp-internal-qa-20260701-debug.apk",
+  "gradle_output_path": "erp-mobile-app/android/app/build/outputs/apk/debug/app-debug.apk",
+  "artifact_path": "erp-mobile-app/releases/internal-qa/20260701/dincouture-erp-internal-qa-20260701-debug.apk",
+  "size_bytes": 38128283,
+  "build_type": "debug",
+  "version_code": 39,
+  "version_name": "1.0.5",
+  "sha256": "8B7FF35AF80B54E011EE4858DE74D9C74B1DCD062DEACA90C127C5B90251BE00",
+  "committed_to_git": false
+}

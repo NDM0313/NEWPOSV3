@@ -25,60 +25,65 @@ export interface Account {
   linked_contact_id?: string | null;
 }
 
+const ACCOUNTS_PAGE_SIZE = 1000;
+
+function sortAccountsByCodeThenName<T extends { code?: string | null; name?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const ca = String(a.code ?? '').trim();
+    const cb = String(b.code ?? '').trim();
+    const na = Number(ca.replace(/\D/g, '')) || 0;
+    const nb = Number(cb.replace(/\D/g, '')) || 0;
+    if (na !== nb) return na - nb;
+    if (ca !== cb) return ca.localeCompare(cb, undefined, { numeric: true });
+    return String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { sensitivity: 'base' });
+  });
+}
+
 export const accountService = {
-  // Get all accounts - with company_id filter
+  // Get all accounts - with company_id filter (paginated past PostgREST ~1000 cap; ordered by code)
   async getAllAccounts(companyId: string, branchId?: string) {
     try {
-      // Try to fetch with company_id filter first
-      let query = supabase
-        .from('accounts')
-        .select('*')
-        .order('name');
-
-      // Try to filter by company_id if column exists
-      if (companyId) {
-        query = query.eq('company_id', companyId);
-      }
-
-      // Branch-aware COA: include company-wide rows (branch_id null) plus the selected branch.
-      // Matches AccountingContext usage when user picks a branch (was previously ignored here).
       const bid = branchId && String(branchId).trim() !== '' && String(branchId) !== 'all' ? String(branchId).trim() : '';
       const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bid);
-      if (uuidOk) {
-        query = query.or(`branch_id.is.null,branch_id.eq.${bid}`);
-      }
 
-      const { data, error } = await query;
+      const fetchPage = async (from: number, opts: { useCompany: boolean; useBranch: boolean }) => {
+        let query = supabase.from('accounts').select('*').order('code', { ascending: true }).range(from, from + ACCOUNTS_PAGE_SIZE - 1);
+        if (opts.useCompany && companyId) query = query.eq('company_id', companyId);
+        if (opts.useBranch && uuidOk) query = query.or(`branch_id.is.null,branch_id.eq.${bid}`);
+        return query;
+      };
 
-      if (error) {
+      const fetchAllPages = async (opts: { useCompany: boolean; useBranch: boolean }) => {
+        const out: Account[] = [];
+        for (let from = 0; ; from += ACCOUNTS_PAGE_SIZE) {
+          const { data, error } = await fetchPage(from, opts);
+          if (error) throw error;
+          const chunk = (data || []) as Account[];
+          out.push(...chunk);
+          if (chunk.length < ACCOUNTS_PAGE_SIZE) break;
+        }
+        return sortAccountsByCodeThenName(out);
+      };
+
+      try {
+        return await fetchAllPages({ useCompany: true, useBranch: uuidOk });
+      } catch (error: unknown) {
+        const err = error as { message?: string; details?: string; code?: string };
         // Older DBs without branch_id: retry without branch OR filter
         if (
           uuidOk &&
-          (error.message?.includes('branch_id') ||
-            String((error as { details?: string }).details || '').includes('branch_id'))
+          (err.message?.includes('branch_id') || String(err.details || '').includes('branch_id'))
         ) {
           console.warn('[ACCOUNT SERVICE] branch_id not available on accounts, retrying without branch scope');
-          let q2 = supabase.from('accounts').select('*').order('name');
-          if (companyId) q2 = q2.eq('company_id', companyId);
-          const { data: d2, error: e2 } = await q2;
-          if (e2) throw e2;
-          return d2 || [];
+          return await fetchAllPages({ useCompany: true, useBranch: false });
         }
         // If error related to company_id column, retry without it
-        if (error.message?.includes('company_id') || error.code === 'PGRST204') {
+        if (err.message?.includes('company_id') || err.code === 'PGRST204') {
           console.warn('[ACCOUNT SERVICE] company_id column not found, fetching all accounts');
-          const { data: allData, error: allError } = await supabase
-            .from('accounts')
-            .select('*')
-            .order('name');
-          
-          if (allError) throw allError;
-          return allData || [];
+          return await fetchAllPages({ useCompany: false, useBranch: false });
         }
         throw error;
       }
-      
-      return data || [];
     } catch (error) {
       console.error('[ACCOUNT SERVICE] Error fetching accounts:', error);
       // Final fallback - return empty array to prevent crashes
@@ -118,20 +123,37 @@ export const accountService = {
    * Excludes: AP, AR, expense, revenue, payable, receivable, production, shipping, control accounts.
    */
   async getPaymentAccountsOnly(companyId: string, _branchId?: string) {
-    const all = await this.getAllAccounts(companyId);
+    // Slim query — do not pull full COA via getAllAccounts just for a dropdown.
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('id, name, code, type, is_active, is_group, parent_id')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .or(
+        'type.ilike.%cash%,type.ilike.%bank%,type.ilike.%wallet%,code.eq.1000,code.eq.1010,code.eq.1020,name.ilike.%cash%,name.ilike.%bank%,name.ilike.%wallet%',
+      )
+      .limit(200);
+    if (error) {
+      if (import.meta.env?.DEV) console.warn('[getPaymentAccountsOnly] slim query failed, fallback:', error.message);
+      const all = await this.getAllAccounts(companyId);
+      return this.filterPaymentAccounts(all || []);
+    }
+    return this.filterPaymentAccounts(data || []);
+  },
+
+  filterPaymentAccounts(all: any[]) {
     const active = (all || []).filter((a: any) => a.is_active !== false);
     const roleOrType = (a: any) =>
       String(a.account_role ?? a.type ?? '').toLowerCase().trim();
     const name = (a: any) => String(a.name ?? '').toLowerCase();
     const code = (a: any) => String(a.code ?? '').toLowerCase();
-    const operational = active.filter((a: any) => {
+    return active.filter((a: any) => {
       if (a.is_group === true) return false;
       const r = roleOrType(a);
       const n = name(a);
       const rawCode = String(a.code ?? '').trim();
       if (COA_HEADER_CODES.has(rawCode)) return false;
       const c = rawCode.toLowerCase();
-      // Exclude non-payment: payable, receivable, expense, revenue, production, shipping
       if (n.includes('payable') || n.includes('receivable') || n.includes('ar ') || n.includes(' ap ') || c.startsWith('2') || c === '1100' || c === '2000' || c === '2010') return false;
       if (n.includes('expense') && !n.includes('payment')) return false;
       if (n.includes('revenue') || n.includes('income') || n.includes('production') || n.includes('shipping') || n.includes('courier')) return false;
@@ -152,7 +174,6 @@ export const accountService = {
         n.includes('wallet')
       );
     });
-    return operational;
   },
 
   // Create account

@@ -1,0 +1,35 @@
+{
+  "run": "PHASE_3A_BS_PL_PREVIEW",
+  "status": "COMPLETE",
+  "deployedToProduction": true,
+  "productionDeployAt": "2026-06-29",
+  "productionUrl": "https://erp.dincouture.pk",
+  "productionCommit": "4a5dc304",
+  "completedAt": "2026-06-29",
+  "previewOnly": true,
+  "defaultRuntimeChanged": false,
+  "loaderSwapApproved": false,
+  "financeGoldenStatus": "NEEDS_GOLDEN_CAPTURE",
+  "files": {
+    "lib": [
+      "src/app/lib/accounting/balanceSheetUnifiedPreviewMapper.ts",
+      "src/app/lib/accounting/profitLossUnifiedPreviewMapper.ts",
+      "src/app/lib/accounting/bsPlUnifiedPreviewDiff.ts",
+      "src/app/lib/accounting/bsPlUnifiedPreviewAccess.ts",
+      "src/app/lib/accounting/bsPlUnifiedPreviewAccountTypes.ts"
+    ],
+    "service": ["src/app/services/bsPlUnifiedPreviewService.ts"],
+    "ui": [
+      "src/app/components/accounting/BalanceSheetUnifiedPreviewPanel.tsx",
+      "src/app/components/accounting/ProfitLossUnifiedPreviewPanel.tsx",
+      "src/app/components/reports/BalanceSheetPage.tsx",
+      "src/app/components/reports/ProfitLossPage.tsx"
+    ],
+    "tests": [
+      "src/app/lib/accounting/balanceSheetUnifiedPreviewMapper.test.ts",
+      "src/app/lib/accounting/profitLossUnifiedPreviewMapper.test.ts",
+      "src/app/lib/accounting/bsPlUnifiedPreviewDiff.test.ts",
+      "src/app/lib/accounting/bsPlUnifiedPreviewAccess.test.ts"
+    ]
+  }
+}
