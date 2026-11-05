@@ -39,5 +39,9 @@
   "postedAt": "2026-11-05T12:09:38.665Z",
   "postedCount": 115,
   "skippedPosted": 15,
-  "status": "posted_115_skipped_15_missing_AR-CU0008"
+  "status": "complete_130",
+  "arCu0008Created": true,
+  "arCu0008PostedAt": "2026-11-05T12:35:00.000Z",
+  "arCu0008PostedCount": 15,
+  "finalCsvJeCount": 130
 }
