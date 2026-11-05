@@ -1,9 +1,9 @@
 /**
- * Shared wide date-range clamp for Dashboard / Day Book list fetches.
- * Does not change Global Filter meaning for Statements or other modules.
+ * Shared wide date-range clamp for Dashboard V2 (and similar heavy RPCs).
+ * Day Book / Journal Entries honor the header filter via resolveDayBookFetchRange — do not clamp there.
  */
 
-/** Wider than this → fetch window is clamped (From start ≈ 10y times out). */
+/** Wider than this → Dashboard fetch window is clamped (From start ≈ 10y times out). */
 export const WIDE_DATE_RANGE_MAX_SPAN_DAYS = 366;
 
 export type WideDateRangeClampResult = {

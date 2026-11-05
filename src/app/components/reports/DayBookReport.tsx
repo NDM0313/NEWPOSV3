@@ -35,7 +35,12 @@ import { Label } from '@/app/components/ui/label';
 import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 import { ReportBasisBanner } from '@/app/components/accounting/ReportBasisBanner';
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
-import { clampWideDateRange, wideDateRangeClampLimitation } from '@/app/lib/wideDateRangeClamp';
+import { isStatementTimeoutMessage } from '@/app/lib/wideDateRangeClamp';
+import {
+  DAY_BOOK_JE_CHUNK,
+  DAY_BOOK_MAX_JE_PAGES,
+  resolveDayBookFetchRange,
+} from '@/app/lib/dayBookFetchRange';
 
 export interface DayBookEntry {
   id: string;
@@ -158,12 +163,10 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     : dateRange.to
       ? formatLocalDateYYYYMMDD(dateRange.to)
       : rawDateFrom;
-  const dateClamp =
-    rawDateFrom && rawDateTo ? clampWideDateRange(rawDateFrom, rawDateTo) : null;
-  const dateFrom = dateClamp?.dateFrom ?? rawDateFrom;
-  const dateTo = dateClamp?.dateTo ?? rawDateTo;
-  const dateClampNote =
-    dateClamp?.clamped ? wideDateRangeClampLimitation(dateClamp, 'Day Book') : null;
+  const { dateFrom, dateTo } =
+    rawDateFrom && rawDateTo
+      ? resolveDayBookFetchRange(rawDateFrom, rawDateTo)
+      : { dateFrom: rawDateFrom, dateTo: rawDateTo };
 
   useEffect(() => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -176,9 +179,9 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     setLoadError(null);
     setTruncationWarning(null);
     (async () => {
-      // Cap pages under wide ranges (From start). Nested embeds / 200×500 pages → 57014.
-      const JE_CHUNK = 500;
-      const MAX_JE_PAGES = 2;
+      // Chunked fetch over the full selected range (no year clamp). Soft page ceiling only.
+      const JE_CHUNK = DAY_BOOK_JE_CHUNK;
+      const MAX_JE_PAGES = DAY_BOOK_MAX_JE_PAGES;
       const allHeaders: Array<Record<string, unknown>> = [];
       let offset = 0;
       let page = 0;
@@ -278,17 +281,23 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
           }
           page += 1;
           if (rows.length < JE_CHUNK) break;
+          if (page >= MAX_JE_PAGES) {
+            hitTruncationCap = true;
+            break;
+          }
           offset += JE_CHUNK;
-        }
-        if (page >= MAX_JE_PAGES) {
-          hitTruncationCap = true;
         }
 
         if (cancelled) return;
         if (fetchError) {
           setEntries([]);
           setJournalHeaderCount(0);
-          setLoadError(fetchError.message || 'Failed to load Day Book');
+          const msg = fetchError.message || 'Failed to load Day Book';
+          setLoadError(
+            isStatementTimeoutMessage(msg)
+              ? `${msg} — Day Book timed out on this wide range. Narrow the header date filter and retry.`
+              : msg,
+          );
           return;
         }
 
@@ -790,11 +799,6 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         )}
       </p>
 
-      {dateClampNote ? (
-        <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl text-amber-200 text-sm">
-          {dateClampNote} Statements still use the full header filter.
-        </div>
-      ) : null}
       {loadError && !loading && (
         <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-sm">
           Day Book failed to load: {loadError}

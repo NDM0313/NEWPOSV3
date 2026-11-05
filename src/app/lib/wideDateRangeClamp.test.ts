@@ -13,13 +13,13 @@ test('clampWideDateRange leaves short ranges alone', () => {
   assert.equal(r.dateTo, '2026-10-03');
 });
 
-test('clampWideDateRange caps From-start style decade span to calendar year start', () => {
+test('clampWideDateRange caps From-start style decade span to calendar year start (Dashboard)', () => {
   const r = clampWideDateRange('2016-01-01', '2026-10-03');
   assert.equal(r.clamped, true);
   assert.equal(r.dateFrom, '2026-01-01');
   assert.equal(r.dateTo, '2026-10-03');
   assert.equal(r.requestedDateFrom, '2016-01-01');
-  assert.match(wideDateRangeClampLimitation(r, 'Day Book'), /Day Book capped/);
+  assert.match(wideDateRangeClampLimitation(r, 'Dashboard'), /Dashboard capped/);
 });
 
 test('isStatementTimeoutMessage detects 57014', () => {

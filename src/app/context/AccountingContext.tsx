@@ -38,11 +38,7 @@ import { logPaymentCreated } from '@/app/services/auditLogService';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { mergeAttachmentLists, normalizeAttachmentList } from '@/app/utils/transactionAttachments';
 import { isOrphanReceiptJournalEntry } from '@/app/lib/orphanReceiptPolicy';
-import {
-  clampWideDateRange,
-  isStatementTimeoutMessage,
-  wideDateRangeClampLimitation,
-} from '@/app/lib/wideDateRangeClamp';
+import { isStatementTimeoutMessage } from '@/app/lib/wideDateRangeClamp';
 import {
   ENTRIES_FETCH_LIMIT,
   ENTRIES_FETCH_LIMIT_ON_TIMEOUT,
@@ -1088,12 +1084,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const branchArg = branchId === 'all' ? undefined : branchId || undefined;
-      const rawStart = startDateISO || undefined;
-      const rawEnd = endDateISO || undefined;
-      const clamp =
-        rawStart && rawEnd ? clampWideDateRange(rawStart, rawEnd) : null;
-      const startArg = clamp?.dateFrom ?? rawStart;
-      const endArg = clamp?.dateTo ?? rawEnd;
+      // Honor header Global Filter as-is (no year clamp). Pagination stays one page at a time.
+      const startArg = startDateISO || undefined;
+      const endArg = endDateISO || undefined;
       const pageIdx = Math.max(0, opts?.page ?? entriesPage);
       const fetchKey = `${companyId}|${branchArg ?? 'all'}|${startArg ?? ''}|${endArg ?? ''}|${pageIdx}`;
 
@@ -1133,17 +1126,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           }
 
           const adaptiveNote = (n: number) =>
-            `Day Book showing latest ${n} entries after a timeout — paginate or narrow dates for more.`;
+            `Journal list showing latest ${n} entries after a timeout — paginate or narrow dates for more.`;
 
-          if (clamp?.clamped) {
-            setDayBookDateRangeClamped(true);
-            setDayBookDateClampNote(wideDateRangeClampLimitation(clamp, 'Day Book'));
-          } else {
-            setDayBookDateRangeClamped(false);
-            setDayBookDateClampNote(null);
-          }
+          setDayBookDateRangeClamped(false);
+          setDayBookDateClampNote(null);
 
-          // True Day Book pagination: one lean page only (opts.page). Never loop the full range.
+          // One lean page only (opts.page). Full header date range; never rewrite From start.
           const pageSize = entriesPageSizeRef.current;
           const offset = pageIdx * pageSize;
 
@@ -1166,7 +1154,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             const fallbackLimit = ENTRIES_FETCH_LIMIT_ON_TIMEOUT;
             if (import.meta.env?.DEV) {
               console.warn(
-                `[ACCOUNTING CONTEXT] Day Book 57014 — retrying once after 1.5s with limit=${fallbackLimit}`
+                `[ACCOUNTING CONTEXT] Journal list 57014 — retrying once after 1.5s with limit=${fallbackLimit}`
               );
             }
             await new Promise((r) => setTimeout(r, 1500));
@@ -1175,13 +1163,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               result = await fetchPage(fallbackLimit, fallbackOffset);
               entriesPageSizeRef.current = fallbackLimit;
               setEntriesPageSize(fallbackLimit);
-              const note = clamp?.clamped
-                ? `${wideDateRangeClampLimitation(clamp, 'Day Book')} ${adaptiveNote(fallbackLimit)}`
-                : adaptiveNote(fallbackLimit);
-              setDayBookDateClampNote(note);
-              if (clamp?.clamped) setDayBookDateRangeClamped(true);
+              setDayBookDateClampNote(adaptiveNote(fallbackLimit));
+              setDayBookDateRangeClamped(false);
             } catch (retryErr) {
-              toast.error('Day Book timed out — narrow the date filter.');
+              toast.error('Journal list timed out — narrow the date filter.');
               throw retryErr;
             }
           }
