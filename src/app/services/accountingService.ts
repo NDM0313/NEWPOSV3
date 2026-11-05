@@ -694,8 +694,26 @@ export const accountingService = {
         `;
 
       // SOURCE LOCK (Phase 1): journal_entries (+ lines only in full mode) for GL.
-      // List mode: skip exact count — counting millions of From-start rows can 57014 even with lean select.
-      // Full/paginated callers that need a total still get an estimated floor from the page size.
+      // List mode: when a date window is set, take a cheap exact count (same filters, head-only).
+      // Unbounded From-start without dates still uses page-size hasMore estimate to avoid 57014.
+      let listExactTotal: number | null = null;
+      if (listMode && opts && (startStr || endStr)) {
+        let countQuery = supabase
+          .from('journal_entries')
+          .select('id', { count: 'exact', head: true })
+          .eq('company_id', companyId)
+          .or('is_void.is.null,is_void.eq.false');
+        if (branchId) {
+          countQuery = countQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+        if (startStr) countQuery = countQuery.gte('entry_date', startStr);
+        if (endStr) countQuery = countQuery.lte('entry_date', endStr);
+        const { count: exactCount, error: countErr } = await countQuery;
+        if (!countErr && typeof exactCount === 'number') {
+          listExactTotal = exactCount;
+        }
+      }
+
       let query = supabase
         .from('journal_entries')
         .select(selectClause, opts && !listMode ? { count: 'exact' } : undefined)
@@ -735,7 +753,7 @@ export const accountingService = {
       }
 
       if (!data || data.length === 0) {
-        return opts ? { data: [], total: count ?? 0 } : [];
+        return opts ? { data: [], total: listExactTotal ?? count ?? 0 } : [];
       }
 
       // PF-14.4: Exclude voided entries from business ledgers/reports (audit can show all via raw query).
@@ -863,10 +881,14 @@ export const accountingService = {
 
       // List mode: skip party/attachment/stock enrichment (detail modal loads as needed).
       if (listMode) {
-        // Without exact count: if the page is full, advertise at least one more row so UI can page.
+        // hasMore from raw fetch size BEFORE void/orphan filters — otherwise a full page
+        // that shrinks below `limit` is wrongly treated as EOF (e.g. "98 of 98").
+        const fetchedLen = (data as any[]).length;
+        const hasMore = fetchedLen >= limit;
         const listTotal =
+          listExactTotal ??
           count ??
-          (validEntries.length >= limit ? offset + validEntries.length + 1 : offset + validEntries.length);
+          (hasMore ? offset + Math.max(validEntries.length, 1) + 1 : offset + validEntries.length);
         return opts ? { data: validEntries, total: listTotal } : validEntries;
       }
 

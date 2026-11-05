@@ -2237,11 +2237,17 @@ export const AccountingDashboard = () => {
                     </tbody>
                   </table>
                 </div>
-                {totalJournalPages > 1 && (
+                {(totalJournalPages > 1 ||
+                  (accounting.entriesTotal > 0 &&
+                    accounting.entriesTotal > accounting.entries.length)) && (
                   <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
                     <p className="text-xs text-muted-foreground">
                       Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–
-                      {Math.min(currentPage * JOURNAL_PAGE_SIZE, journalServerTotal)} of {journalServerTotal}
+                      {Math.min(
+                        (currentPage - 1) * JOURNAL_PAGE_SIZE + accounting.entries.length,
+                        journalServerTotal,
+                      )}{' '}
+                      of {journalServerTotal}
                       {listForPagination.length !== accounting.entries.length
                         ? ` · ${listForPagination.length} after filters on this page`
                         : ''}

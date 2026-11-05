@@ -323,6 +323,21 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const useTransactionActionPanel = isTransactionActionPanelEnabled();
   const activitySectionRef = useRef<HTMLDivElement | null>(null);
   const [transaction, setTransaction] = useState<any>(null);
+
+  /** Prefer incremental journal merge (entityId) over full list reload after soft edits. */
+  const commitJournalEdit = useCallback(
+    (extra?: { customerId?: string; supplierId?: string; journalEntryId?: string }) => {
+      const jeId = extra?.journalEntryId || (transaction?.id ? String(transaction.id) : undefined);
+      dispatchAccountingEditCommitted({
+        journalEntryId: jeId,
+        companyId: companyId || undefined,
+        branchId: (transaction?.branch_id as string | null | undefined) ?? branchId ?? null,
+        customerId: extra?.customerId,
+        supplierId: extra?.supplierId,
+      });
+    },
+    [transaction, companyId, branchId],
+  );
   /** Active PF-07 reversal child exists for loaded header — locks edit/reverse like Journal list. */
   const [txnHasActiveCorrectionReversal, setTxnHasActiveCorrectionReversal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1242,7 +1257,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (ok) {
       toast.success('Reversal posted');
       await loadTransaction();
-      dispatchAccountingEditCommitted();
+      commitJournalEdit();
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
     } else {
       toast.error('Could not post reversal');
@@ -1273,8 +1288,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       if (!res.success) throw new Error(res.error || 'Void failed');
       toast.success('Reversal removed from live GL');
       await loadTransaction();
-      dispatchAccountingEditCommitted();
-      accounting.refreshEntries?.();
+      commitJournalEdit();
+      // Structural void — list must drop the live row.
+      await accounting.refreshEntries?.();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Remove from live GL failed');
     }
@@ -1314,7 +1330,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     const ok = await accounting.createReversalEntry(transaction.id);
     if (ok) {
       await loadTransaction();
-      dispatchAccountingEditCommitted();
+      commitJournalEdit();
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
     }
   };
@@ -1351,7 +1367,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       await cancelOrphanManualReceipt({ companyId, paymentId: String(paymentId) });
       toast.success('Orphan receipt hidden from operational views');
       onClose();
-      dispatchAccountingEditCommitted();
+      commitJournalEdit();
       await accounting.refreshEntries?.();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Could not hide orphan receipt');
@@ -1382,7 +1398,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (ok) {
       toast.success('Last change undone');
       await loadTransaction();
-      dispatchAccountingEditCommitted();
+      commitJournalEdit();
     } else {
       toast.error('Could not undo last change');
     }
@@ -1423,7 +1439,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       if (!res.success) throw new Error(res.error || 'Hard delete failed');
       toast.success(`${transaction.entry_no || 'Journal'} permanently deleted`);
       onClose();
-      dispatchAccountingEditCommitted();
+      commitJournalEdit();
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
       await accounting.refreshEntries?.();
     } catch (e: unknown) {
@@ -1614,8 +1630,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setEditAmountChanges({});
       await loadTransaction();
       await loadActivityLogs();
-      dispatchAccountingEditCommitted();
-      accounting.refreshEntries?.();
+      // Incremental merge only — avoid full journal+CoA reload after soft edits.
+      commitJournalEdit();
     } catch (e: any) {
       toast.error('Edit failed: ' + (e?.message || 'Unknown error'));
     }
@@ -2263,7 +2279,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               if (newJeId) {
                                 toast.success('Sale cancellation reversal rebuilt from cancelled sale.');
                                 await loadTransaction();
-                                dispatchAccountingEditCommitted();
+                                commitJournalEdit({ journalEntryId: String(newJeId) });
                                 accounting.refreshEntries?.();
                               } else {
                                 toast.error('Rebuild failed — check sale is cancelled.');
@@ -2276,7 +2292,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               if (newJeId) {
                                 toast.success('Sale document journal rebuilt from current invoice.');
                                 await loadTransaction();
-                                dispatchAccountingEditCommitted();
+                                commitJournalEdit({ journalEntryId: String(newJeId) });
                                 accounting.refreshEntries?.();
                               } else {
                                 toast.error('Rebuild failed — check sale is final with a positive total.');
@@ -2633,7 +2649,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           onSuccess={() => {
             setManualReceiptEditorOpen(false);
             void loadTransaction();
-            dispatchAccountingEditCommitted({ customerId: String(transaction.reference_id) });
+            commitJournalEdit({ customerId: String(transaction.reference_id) });
           }}
         />
       )}
@@ -2670,7 +2686,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           onSuccess={() => {
             setSupplierManualEditorOpen(false);
             void loadTransaction();
-            dispatchAccountingEditCommitted({ supplierId: String(transaction.reference_id) });
+            commitJournalEdit({ supplierId: String(transaction.reference_id) });
           }}
         />
       )}
@@ -2713,7 +2729,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           setRentalPaymentEditorOpen(false);
           setRentalForPaymentDialog(null);
           void loadTransaction();
-          dispatchAccountingEditCommitted();
+          commitJournalEdit();
           if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
         }}
       />
@@ -2816,7 +2832,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         onSuccess={() => {
           setGenericPaymentEditor(null);
           void loadTransaction();
-          dispatchAccountingEditCommitted({
+          commitJournalEdit({
             customerId: genericPaymentEditor.context === 'customer' ? genericPaymentEditor.entityId : undefined,
             supplierId: genericPaymentEditor.context === 'supplier' ? genericPaymentEditor.entityId : undefined,
           });
