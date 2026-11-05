@@ -38,9 +38,9 @@ describe('journalEntriesListSelect', () => {
     );
   });
 
-  it('uses adaptive page sizes (100 default, 50 on timeout)', () => {
-    assert.equal(ENTRIES_FETCH_LIMIT, 100);
+  it('uses 50-row page size aligned with Journal Entries UI pager', () => {
+    assert.equal(ENTRIES_FETCH_LIMIT, 50);
     assert.equal(ENTRIES_FETCH_LIMIT_ON_TIMEOUT, 50);
-    assert.ok(ENTRIES_FETCH_LIMIT_ON_TIMEOUT < ENTRIES_FETCH_LIMIT);
+    assert.ok(ENTRIES_FETCH_LIMIT_ON_TIMEOUT <= ENTRIES_FETCH_LIMIT);
   });
 });

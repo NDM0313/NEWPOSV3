@@ -10,6 +10,7 @@ import {
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/app/utils/formatDate';
 import { CALENDAR_DAYS, CalendarMonthYearHeader } from './calendarChrome';
+import { retargetDateToMonth } from '@/app/lib/retargetDateToMonth';
 
 interface CalendarDatePickerProps {
   value?: Date;
@@ -166,9 +167,19 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     setCurrentMonth(today);
   };
 
-  const effectiveDate = getDateValue(value) ?? selectedDate;
+  /** Month/year dropdowns must retarget selectedDate so Confirm saves the year/month user picked. */
+  const handleMonthYearNavigate = (next: Date) => {
+    setCurrentMonth(next);
+    if (!selectedDate) return;
+    setSelectedDate(retargetDateToMonth(selectedDate, next));
+  };
+
+  // While open, show retargeted selectedDate so year/month changes are visible before Confirm.
+  const effectiveDate = isOpen
+    ? selectedDate ?? getDateValue(value)
+    : getDateValue(value) ?? selectedDate;
   const timeForDisplay =
-    effectiveDate === selectedDate
+    effectiveDate && selectedDate && effectiveDate.toDateString() === selectedDate.toDateString()
       ? selectedTime
       : effectiveDate
         ? `${effectiveDate.getHours().toString().padStart(2, '0')}:${effectiveDate.getMinutes().toString().padStart(2, '0')}`
@@ -208,7 +219,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
           <div className="p-4">
             <CalendarMonthYearHeader
               currentMonth={currentMonth}
-              onMonthChange={setCurrentMonth}
+              onMonthChange={handleMonthYearNavigate}
               minDate={minDate}
               maxDate={maxDate}
               monthLabels="full"
