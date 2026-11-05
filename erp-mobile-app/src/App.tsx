@@ -30,6 +30,8 @@ import { CompanySelection } from './components/CompanySelection';
 import { HomeScreen } from './components/HomeScreen';
 import { isPlatformCompanyOperator } from './config/functionalRoles';
 import { getPlatformActiveCompany } from './api/platformCompany';
+import { getCompanyName } from './api/reports';
+import { invalidateProductsListCache } from './api/products';
 import { BottomNav } from './components/BottomNav';
 import { ModuleGrid } from './components/ModuleGrid';
 import { TabletSidebar } from './components/TabletSidebar';
@@ -478,6 +480,8 @@ export default function App() {
           }
           cid = activeId;
           cname = session.data?.companyName ?? null;
+        } else if (cid) {
+          cname = await getCompanyName(cid);
         }
         setCompanyId(cid || null);
         setCompanyName(cname);
@@ -492,6 +496,7 @@ export default function App() {
           const profileId = profile.profileId;
           if (cid) {
             await listCacheRemove(listCacheKeys.branches(cid));
+            await invalidateProductsListCache(cid);
             invalidateBranchAccessSessionCache();
           }
           const unrestricted = canPickAllCompanyBranches(profile.role);
@@ -587,25 +592,27 @@ export default function App() {
         setIsBranchResolving(false);
         return;
       }
-      const activeName = session.data?.companyName ?? null;
+      const activeName = session.data?.companyName ?? (await getCompanyName(activeId));
       setCompanyId(activeId);
       setCompanyName(activeName);
       setLastCounterCompanyId(activeId);
       const needsCounterLock = await safeShouldActivateCounterLockScreen(activeId);
       skipCounterBootLockAfterInteractiveLoginRef.current = !needsCounterLock;
       await listCacheRemove(listCacheKeys.branches(activeId));
+      await invalidateProductsListCache(activeId);
       invalidateBranchAccessSessionCache();
       await resolveBranchScreenForUser(u, activeId);
       return;
     }
 
     setCompanyId(cid);
-    setCompanyName(null);
+    setCompanyName(cid ? await getCompanyName(cid) : null);
     setLastCounterCompanyId(cid);
     const needsCounterLock = cid ? await safeShouldActivateCounterLockScreen(cid) : false;
     skipCounterBootLockAfterInteractiveLoginRef.current = !needsCounterLock;
     if (cid) {
       await listCacheRemove(listCacheKeys.branches(cid));
+      await invalidateProductsListCache(cid);
       invalidateBranchAccessSessionCache();
     }
     await resolveBranchScreenForUser(u, cid);
@@ -661,6 +668,7 @@ export default function App() {
     setSelectedBranch(null);
     setIsBranchResolving(true);
     await listCacheRemove(listCacheKeys.branches(company.id));
+    await invalidateProductsListCache(company.id);
     invalidateBranchAccessSessionCache();
     await resolveBranchScreenForUser(user, company.id);
   };
@@ -1185,7 +1193,7 @@ export default function App() {
     >
       <div className="flex items-center justify-between gap-2 min-h-[28px]">
         <span className={`text-sm font-semibold truncate ${staging ? 'text-[#1C1917]' : 'text-white'}`}>
-          {staging ? 'ERP Stage' : 'Din Collection'}
+          {staging ? 'ERP Stage' : companyName?.trim() || 'Din Collection'}
         </span>
         <SyncStatusBar
           status={status}
@@ -1220,6 +1228,7 @@ export default function App() {
             user={user}
             branch={selectedBranch}
             companyId={companyId}
+            companyName={companyName}
             currentScreen={currentScreen}
             onNavigate={navigateToModule}
             onLogout={handleLogout}

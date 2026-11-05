@@ -42,6 +42,9 @@ interface POSProduct {
   price: number;
   sku: string;
   stock: number;
+  /** Web-parity rollup (all movement keys for product_id). */
+  totalStock?: number;
+  hasVariations?: boolean;
   imageUrl?: string | null;
   variations?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }[];
 }
@@ -165,6 +168,8 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
       price: p.retailPrice ?? 0,
       sku: p.sku ?? '—',
       stock: p.stock ?? 0,
+      totalStock: p.totalStock ?? p.stock ?? 0,
+      hasVariations: p.hasVariations ?? Boolean(p.variations?.length),
       imageUrl: p.imageUrls?.[0] ?? null,
       variations: p.variations?.length
         ? p.variations.map((v) => ({
@@ -286,6 +291,8 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     price: p.retailPrice ?? 0,
     sku: p.sku ?? '—',
     stock: p.stock ?? 0,
+    totalStock: p.totalStock ?? p.stock ?? 0,
+    hasVariations: p.hasVariations ?? Boolean(p.variations?.length),
     imageUrl: p.imageUrls?.[0] ?? null,
     variations: p.variations?.length
       ? p.variations.map((v) => ({

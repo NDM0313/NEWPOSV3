@@ -167,30 +167,7 @@ export function AddProducts({
       if (cancelled) return;
       setLoading(false);
       if (error || !data.length) setAvailable([]);
-      else
-        setAvailable(
-          data.map((p) => {
-            const variationFallback =
-              p.variations?.reduce((best, v) => {
-                const vp = Number(v.price) || 0;
-                return vp > best ? vp : best;
-              }, 0) ?? 0;
-            return {
-              id: p.id,
-              name: p.name,
-              price: Number(p.retailPrice) || variationFallback || 0,
-              wholesalePrice: p.costPrice || (Number(p.retailPrice) || variationFallback) * 0.8,
-              sku: p.sku,
-              barcode: p.barcode,
-              unit: p.unit || 'Piece',
-              hasVariations: p.hasVariations ?? false,
-              variations: p.variations,
-              unitAllowDecimal: p.unitAllowDecimal ?? false,
-              stock: p.stock ?? 0,
-              imageUrl: p.imageUrls?.[0],
-            };
-          })
-        );
+      else setAvailable(data.map(mapApiProductToAvailable));
     });
     return () => {
       cancelled = true;
