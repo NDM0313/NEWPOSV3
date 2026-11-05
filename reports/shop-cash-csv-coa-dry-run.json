@@ -4,18 +4,40 @@
     "name": "DIN COLLECTION",
     "note": "SHOP CASH 180002 exists here (UI 'Cross office' is not a companies.name)"
   },
-  "cashAccount": { "code": "180002", "name": "SHOP CASH", "id": "34a421db-1d8b-4ab1-8612-d773e0832247" },
-  "branchDefault": { "id": "7977966a-a7a3-426d-9122-08f8abda6743", "name": "Main Branch" },
+  "cashAccount": {
+    "code": "180002",
+    "name": "SHOP CASH",
+    "id": "34a421db-1d8b-4ab1-8612-d773e0832247"
+  },
+  "branchDefault": {
+    "id": "7977966a-a7a3-426d-9122-08f8abda6743",
+    "name": "Main Branch"
+  },
   "csvRows": 130,
   "resolvedCodes": [
-    "110076", "180002", "180005", "190001", "210053", "210054", "210057", "210060", "210154", "210179"
+    "110076",
+    "180002",
+    "180005",
+    "190001",
+    "210053",
+    "210054",
+    "210057",
+    "210060",
+    "210154",
+    "210179"
   ],
-  "missingCodes": ["AR-CU0008"],
+  "missingCodes": [
+    "AR-CU0008"
+  ],
   "missingCodeRows": 15,
   "postableRows": 115,
   "mapping": {
     "IN": "Dr 180002 SHOP CASH / Cr ACCOUNT NUMBER",
     "OUT": "Dr ACCOUNT NUMBER / Cr 180002 SHOP CASH"
   },
-  "parseReport": "reports/shop-cash-csv-parse-dry-run.json"
+  "parseReport": "reports/shop-cash-csv-parse-dry-run.json",
+  "postedAt": "2026-11-05T12:09:38.665Z",
+  "postedCount": 115,
+  "skippedPosted": 15,
+  "status": "posted_115_skipped_15_missing_AR-CU0008"
 }
