@@ -658,7 +658,6 @@ export const AccountingDashboard = () => {
   const [showSubAccounts, setShowSubAccounts] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
-  const [currentPage, setCurrentPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   
   // Add Entry flow — opened via openAddEntryV2 event (AddEntryV2Host)
@@ -848,8 +847,12 @@ export const AccountingDashboard = () => {
       return;
     }
     let cancelled = false;
-    const end = new Date().toISOString().slice(0, 10);
-    const start = `${end.slice(0, 4)}-01-01`;
+    const end =
+      (globalEndDate && String(globalEndDate).trim().slice(0, 10)) ||
+      new Date().toISOString().slice(0, 10);
+    const start =
+      (globalStartDate && String(globalStartDate).trim().slice(0, 10)) ||
+      `${end.slice(0, 4)}-01-01`;
     const branch = branchId && branchId !== 'all' ? branchId : undefined;
     (async () => {
       try {
@@ -874,7 +877,7 @@ export const AccountingDashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, glSummaryEpoch]);
+  }, [companyId, branchId, glSummaryEpoch, globalStartDate, globalEndDate]);
 
   const displaySummary = canonicalGlSummary ?? summary;
 
@@ -1206,21 +1209,17 @@ export const AccountingDashboard = () => {
     });
   }, [filteredTransactions, journalSortKey, journalSortDir]);
 
-  // Journal entries pagination: 50 per page (grouped = by group, audit = by raw entry); use sorted lists
-  const JOURNAL_PAGE_SIZE = 50;
+  // Journal entries: one server page (AccountingContext entriesPageSize); Next/Prev → setEntriesPage
+  const JOURNAL_PAGE_SIZE = accounting.entriesPageSize || 50;
   const listForPagination = journalViewMode === 'grouped' ? sortedGroupedRows : sortedFlatEntries;
-  const totalJournalPages = Math.max(1, Math.ceil(listForPagination.length / JOURNAL_PAGE_SIZE));
-  const paginatedJournalEntries = useMemo(() => {
-    const start = (currentPage - 1) * JOURNAL_PAGE_SIZE;
-    return Array.isArray(listForPagination)
-      ? listForPagination.slice(start, start + JOURNAL_PAGE_SIZE)
-      : [];
-  }, [listForPagination, currentPage, JOURNAL_PAGE_SIZE]);
+  const journalServerTotal = Math.max(listForPagination.length, accounting.entriesTotal || 0);
+  const totalJournalPages = Math.max(1, Math.ceil(journalServerTotal / JOURNAL_PAGE_SIZE));
+  const currentPage = Math.max(1, (accounting.entriesPage ?? 0) + 1);
+  // Current server window already loaded; show filtered/sorted rows for this page (no second client slice).
+  const paginatedJournalEntries = listForPagination;
   useEffect(() => {
-    if (currentPage > totalJournalPages && totalJournalPages >= 1) setCurrentPage(1);
-  }, [currentPage, totalJournalPages]);
-  useEffect(() => {
-    setCurrentPage(1);
+    accounting.setEntriesPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset page on local filter/view only
   }, [searchTerm, typeFilter, journalViewMode]);
 
   // Permission gate – Accounting restricted to authorized roles
@@ -1403,11 +1402,19 @@ export const AccountingDashboard = () => {
                   {journalViewMode === 'grouped'
                     ? 'One row per document (e.g. sale); open a row to see original + edit adjustments.'
                     : 'All raw journal entries – audit view.'}
-                  {' '}(50 per page).
+                  {' '}({JOURNAL_PAGE_SIZE} per page).
                   {canPostAccounting
                     ? ' Use Cancel Payment or Cancel Entry on eligible rows, or Manual Entry for adjustments.'
                     : ' Posting and corrections require Manager or Admin role.'}
                 </p>
+                {globalStartDate && globalEndDate ? (
+                  <p className="text-xs text-muted-foreground mt-1" role="status">
+                    Showing entries in {String(globalStartDate).slice(0, 10)} → {String(globalEndDate).slice(0, 10)}
+                    {accounting.entriesTotal > 0
+                      ? ` · page ${currentPage} of ${totalJournalPages} (${accounting.entriesTotal} in range)`
+                      : ''}
+                  </p>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">View:</span>
@@ -2230,18 +2237,28 @@ export const AccountingDashboard = () => {
                     </tbody>
                   </table>
                 </div>
-                {totalJournalPages > 1 && (
+                {(totalJournalPages > 1 ||
+                  (accounting.entriesTotal > 0 &&
+                    accounting.entriesTotal > accounting.entries.length)) && (
                   <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-border bg-card">
                     <p className="text-xs text-muted-foreground">
-                      Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(currentPage * JOURNAL_PAGE_SIZE, listForPagination.length)} of {listForPagination.length}
+                      Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–
+                      {Math.min(
+                        (currentPage - 1) * JOURNAL_PAGE_SIZE + accounting.entries.length,
+                        journalServerTotal,
+                      )}{' '}
+                      of {journalServerTotal}
+                      {listForPagination.length !== accounting.entries.length
+                        ? ` · ${listForPagination.length} after filters on this page`
+                        : ''}
                     </p>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="outline"
                         size="sm"
                         className="h-8 border-border text-muted-foreground"
-                        disabled={currentPage <= 1}
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage <= 1 || accounting.backgroundSync}
+                        onClick={() => accounting.setEntriesPage(Math.max(0, accounting.entriesPage - 1))}
                       >
                         Previous
                       </Button>
@@ -2256,7 +2273,7 @@ export const AccountingDashboard = () => {
                                 'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
                                 p === currentPage ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted'
                               )}
-                              onClick={() => setCurrentPage(p)}
+                              onClick={() => accounting.setEntriesPage(p - 1)}
                             >
                               {p}
                             </button>
@@ -2266,8 +2283,12 @@ export const AccountingDashboard = () => {
                         variant="outline"
                         size="sm"
                         className="h-8 border-border text-muted-foreground"
-                        disabled={currentPage >= totalJournalPages}
-                        onClick={() => setCurrentPage((p) => Math.min(totalJournalPages, p + 1))}
+                        disabled={currentPage >= totalJournalPages || accounting.backgroundSync}
+                        onClick={() =>
+                          accounting.setEntriesPage(
+                            Math.min(totalJournalPages - 1, accounting.entriesPage + 1),
+                          )
+                        }
                       >
                         Next
                       </Button>

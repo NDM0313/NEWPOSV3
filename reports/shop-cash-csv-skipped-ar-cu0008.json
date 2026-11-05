@@ -1,0 +1,122 @@
+[
+  {
+    "no": "86",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-08-01",
+    "amount": 1000000,
+    "side": "IN"
+  },
+  {
+    "no": "91",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-08-05",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "93",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-08-13",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "95",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-08-20",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "101",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-08-27",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "102",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-09-03",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "105",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-09-05",
+    "amount": 1000000,
+    "side": "IN"
+  },
+  {
+    "no": "107",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-09-10",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "108",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-09-17",
+    "amount": 500000,
+    "side": "IN"
+  },
+  {
+    "no": "119",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-09-24",
+    "amount": 300000,
+    "side": "IN"
+  },
+  {
+    "no": "120",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-10-01",
+    "amount": 300000,
+    "side": "IN"
+  },
+  {
+    "no": "122",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-10-08",
+    "amount": 300000,
+    "side": "IN"
+  },
+  {
+    "no": "126",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-10-15",
+    "amount": 300000,
+    "side": "IN"
+  },
+  {
+    "no": "128",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-10-22",
+    "amount": 300000,
+    "side": "IN"
+  },
+  {
+    "no": "130",
+    "code": "AR-CU0008",
+    "name": "FIRDOUS FABRICS",
+    "date": "2026-10-29",
+    "amount": 300000,
+    "side": "IN"
+  }
+]
