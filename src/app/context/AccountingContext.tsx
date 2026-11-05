@@ -1213,7 +1213,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             console.log(
               '✅ Journal entries loaded:',
               convertedEntries.length,
-              `(raw=${data.length}, dbTotal=${total}, page=${pageIdx}${clamp?.clamped ? ', clamped' : ''})`
+              `(raw=${data.length}, dbTotal=${total}, page=${pageIdx})`,
             );
           }
 
