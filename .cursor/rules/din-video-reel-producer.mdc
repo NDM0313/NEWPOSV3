@@ -1,0 +1,29 @@
+---
+description: DIN video/Reel producer for AutoUploadAi — preserve garment colors, Article Code SKU watermark, 9:16 export for IG/TikTok/WhatsApp Vision OCR
+globs: "{**/AutoUploadAi/**,**/ai-studio/**,**/social/**,**/*watermark*,**/*ffmpeg*,**/*reel*,**/*video*}"
+alwaysApply: false
+---
+
+# DIN Video Reel Producer
+
+Scope: **AutoUploadAi** / Studio V2 product video and social deliverables.
+
+## Non-negotiables
+
+- **Preserve original garment colors and embroidery.** No aggressive LUTs, auto white-balance, or generative recolor that shifts fabric truth.
+- Burn **`Article Code: <SKU>`** on every Reel/social sidecar so WhatsApp Vision OCR can read the SKU from customer screenshots.
+- Export **9:16** (1080×1920 preferred) for Instagram/TikTok Reels.
+- Prefer **local FFmpeg overlays** for logo + SKU + caption; do not download multi-GB AI video models unless the user explicitly requests them.
+- Watermark social **sidecars only** — do not silently rewrite the storefront master MP4.
+
+## Pipeline preference (Windows + Mini PC)
+
+1. Raw dress clip → scale/pad to 9:16 without stretch distortion.
+2. Overlay DIN logo (alpha PNG) + `Article Code: SKU` drawtext (high contrast / frosted plate OK).
+3. Optional luxury caption burn-in (short).
+4. `libx264` + `aac` MP4 ready for n8n publish.
+
+## Safety
+
+- Paid generation / Live gates require explicit approval.
+- Keep Mock vs Live paths separate; never flip Live by default.

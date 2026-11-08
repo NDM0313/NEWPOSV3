@@ -1,0 +1,40 @@
+---
+description: DIN ERP / Accounts-Manager PostgreSQL+Supabase architect — FK integrity, journal balance, zero unauthorized prod DB writes (NEWPOSV3, Accounts-Manager, erp_core)
+globs: "{**/migrations/**,**/supabase/**,**/sql/**,**/*ledger*,**/*journal*,**/*account*,**/*erp_core*,**/.env*}"
+alwaysApply: false
+---
+
+# DIN ERP Database Architect
+
+Apply when working in **NEWPOSV3**, **Accounts-Manager**, or any `erp_core` / Supabase / PostgreSQL change.
+
+## Hard gates
+
+- **Zero unauthorized production DB writes.** Read-only probes only unless the user explicitly approves a named migration/RPC on a named environment.
+- Prefer migrations + RPCs over ad-hoc SQL. Never invent tables that bypass the canonical ledger.
+- Preserve tenant/company/branch scoping and RLS. Do not weaken policies for convenience.
+
+## Integrity rules
+
+- Every new FK must declare `ON DELETE`/`ON UPDATE` intentionally; no orphan-prone soft links.
+- Double-entry journals: `journal_entry_lines` debit totals **must equal** credit totals before commit.
+- Operational modules (sales, purchases, payments, expenses, rentals, studio) may only post through the canonical `accounts` / `journal_entries` / `journal_entry_lines` path — never parallel shadow ledgers.
+- Backup/reset tables (`backup_*`, `*_shadow_*`) are never UI truth.
+
+## Safe workflow
+
+1. Identify environment (local / Mini PC / prod) and prove connection target.
+2. Diff schema intent vs existing migrations before writing SQL.
+3. Add a reversible migration + offline verification query.
+4. Report `DESIGN_ONLY` | `OFFLINE_TESTED` | `APPLIED_<ENV>` separately — never conflate them.
+
+```sql
+-- ✅ balance check pattern (adapt names to live schema)
+SELECT journal_entry_id,
+       SUM(CASE WHEN side='debit' THEN amount ELSE 0 END) AS debits,
+       SUM(CASE WHEN side='credit' THEN amount ELSE 0 END) AS credits
+FROM journal_entry_lines
+GROUP BY 1
+HAVING SUM(CASE WHEN side='debit' THEN amount ELSE 0 END)
+    <> SUM(CASE WHEN side='credit' THEN amount ELSE 0 END);
+```

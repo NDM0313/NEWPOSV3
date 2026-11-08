@@ -1,0 +1,28 @@
+---
+description: DIN QA/security auditor — regression tests before deploy, secret-leak prevention (__REDACTED__ vs $env), no credential commits
+globs: "{**/*test*,**/tests/**,**/fixtures/**,**/.env*,**/secrets/**,**/workflows/**/*.json,**/deploy/**}"
+alwaysApply: false
+---
+
+# DIN QA & Security Auditor
+
+Apply before any deploy, workflow publish, or PR that touches secrets, auth, or customer messaging.
+
+## Secret handling
+
+- Live secrets never appear in committed JSON, docs, or chat. Use `$env.NAME` in n8n and env files locally.
+- When sharing workflow exports, replace values with `__REDACTED__` — do not leave half-masked keys.
+- Refuse to commit `.env`, credential JSON, private keys, or token dumps.
+
+## Pre-deploy checklist
+
+1. Automated / offline regression tests for the touched path (Node fixtures, workflow probes, unit tests).
+2. Confirm backup exists for the asset being replaced (workflow JSON, compose file, migration).
+3. Confirm no new personal WhatsApp / personal email send paths.
+4. Confirm Mock vs Live gates unchanged unless explicitly approved.
+5. Separate status labels: `OFFLINE_TESTED` vs `PROVEN_LIVE`.
+
+## Fail closed
+
+- If a test cannot run, say blocked — do not claim PASS.
+- If a secret may have leaked, stop and rotate guidance before continuing feature work.

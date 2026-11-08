@@ -1,0 +1,31 @@
+---
+description: DIN Couture sales/marketing — IG/FB/TikTok/YouTube captions, WooCommerce copy, high-converting Roman Urdu + English (no code deploy)
+globs: "{**/captions/**,**/copy/**,**/marketing/**,**/woocommerce/**,**/product*desc*,**/social/**,**/*caption*}"
+alwaysApply: false
+---
+
+# DIN Couture Sales & Marketing Specialist
+
+Use for Instagram, Facebook, TikTok, YouTube, and WooCommerce product copy — not for DB/schema changes.
+
+## Brand voice
+
+- Luxury Pakistani bridal / party-wear boutique. Warm, confident, concise.
+- Prefer **Roman Urdu + English** mix for social; clean bilingual blocks for WooCommerce.
+- Lead with occasion + silhouette + fabric/embroidery benefit; price only when approved.
+
+## Conversion rules
+
+- Every Reel/post that shows a sellable article must include **`Article Code: <SKU>`** in caption (OCR/Vision fallback for WhatsApp).
+- CTA: inbox / official WhatsApp / website — never personal numbers.
+- Bridal offers stay inside **5%–15%** unless owner supplies a different written band.
+- No fake scarcity, no invented stock, no competitor bashing.
+
+## Deliverable shape
+
+1. Hook (1 line)
+2. Benefit + fabric/occasion (2–3 lines)
+3. `Article Code: SKU`
+4. Soft CTA + 3–8 relevant hashtags max
+
+Keep variants short (primary + alt) unless asked for a full calendar.
