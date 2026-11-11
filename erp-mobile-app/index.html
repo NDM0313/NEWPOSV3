@@ -30,7 +30,7 @@
       <p id="boot-fallback-msg" style="margin:0 0 16px;font-size:14px;color:#9CA3AF">The app could not start.</p>
       <button
         type="button"
-        onclick="location.reload()"
+        id="boot-fallback-reload"
         style="padding:12px 24px;border-radius:12px;border:none;background:#3B82F6;color:white;font-weight:500;cursor:pointer"
       >
         Reload app
@@ -39,6 +39,34 @@
     <script>
       (function () {
         var bootTimer;
+        window.__ERP_RECOVER_BOOT = function () {
+          var finish = function () {
+            try {
+              var u = new URL(location.href);
+              u.searchParams.set('_sw', String(Date.now()));
+              location.replace(u.pathname + u.search + u.hash);
+            } catch (e) {
+              location.replace(location.pathname + '?_sw=' + Date.now());
+            }
+          };
+          var clearCaches = Promise.resolve();
+          try {
+            if ('caches' in window) {
+              clearCaches = caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              });
+            }
+          } catch (e) { /* ignore */ }
+          var unreg = Promise.resolve();
+          try {
+            if ('serviceWorker' in navigator) {
+              unreg = navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              });
+            }
+          } catch (e) { /* ignore */ }
+          Promise.all([clearCaches, unreg]).then(finish, finish);
+        };
         window.__ERP_SHOW_BOOT_FALLBACK = function (msg) {
           if (window.__ERP_BOOT_OK__) return;
           var fb = document.getElementById('boot-fallback');
@@ -50,6 +78,12 @@
           window.__ERP_BOOT_OK__ = true;
           if (bootTimer) clearTimeout(bootTimer);
         };
+        var btn = document.getElementById('boot-fallback-reload');
+        if (btn) {
+          btn.addEventListener('click', function () {
+            window.__ERP_RECOVER_BOOT();
+          });
+        }
         if (window.addEventListener) {
           window.addEventListener('error', function () {
             window.__ERP_SHOW_BOOT_FALLBACK('The app encountered an error during startup.');
