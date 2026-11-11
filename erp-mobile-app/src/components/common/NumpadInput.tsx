@@ -2,12 +2,9 @@ import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { Delete, CornerDownLeft } from 'lucide-react';
 
-const DEBOUNCE_MS = 80;
-
 /**
- * Custom Numpad Input - Sirf numpad + Enter button
- * System keyboard hide karta hai (readOnly) aur apna clean numpad dikhata hai
- * No password/card/location icons - sirf numpad
+ * Custom Numpad Input - calculator layout + Enter for packing flow.
+ * System keyboard hidden (readOnly); pointer-down for snappy mobile taps.
  */
 interface NumpadInputProps {
   value: number | string;
@@ -23,10 +20,11 @@ interface NumpadInputProps {
   disabled?: boolean;
 }
 
+/** Calculator order: 7–9 on top, 1–3 near bottom */
 const getKeys = (allowDecimal: boolean) => [
-  ['1', '2', '3'],
-  ['4', '5', '6'],
   ['7', '8', '9'],
+  ['4', '5', '6'],
+  ['1', '2', '3'],
   allowDecimal ? ['.', '0', 'back'] : ['0', 'back', ''],
 ];
 
@@ -45,9 +43,11 @@ function NumpadInputInner({
   const [showNumpad, setShowNumpad] = useState(false);
   const [localValue, setLocalValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localValueRef = useRef('');
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  /** Ignore synthetic click that follows pointerdown on the same key */
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     if (autoOpen) setShowNumpad(true);
@@ -61,12 +61,13 @@ function NumpadInputInner({
 
   useEffect(() => {
     const v = value === '' || value === null || value === undefined ? '' : String(value);
+    localValueRef.current = v;
     setLocalValue(v);
   }, [value]);
 
   useEffect(() => {
     if (!showNumpad) return;
-    const handleClickOutside = (e: MouseEvent) => {
+    const handlePointerOutside = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
       if (
         inputRef.current &&
@@ -76,56 +77,87 @@ function NumpadInputInner({
         setShowNumpad(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handlePointerOutside);
+    return () => document.removeEventListener('pointerdown', handlePointerOutside);
   }, [showNumpad]);
 
   const flushAndNotify = useCallback((num: number) => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
-    }
     onChangeRef.current(num);
   }, []);
 
-  const handleKey = (key: string) => {
-    if (disabled) return;
-    let next = localValue;
-    if (key === 'back') {
-      next = next.slice(0, -1);
-    } else if (key === '.') {
-      if (!allowDecimal) return;
-      if (next.includes('.')) return;
-      next = next || '0';
-      next += '.';
-    } else {
-      if (key === '0' && next === '0') return;
-      if (key !== '0' && next === '0') next = '';
-      next += key;
-    }
-    const num = parseFloat(next) || 0;
-    if (min != null && num < min) return;
-    if (max != null && num > max) return;
-    setLocalValue(next);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
+  const handleKey = useCallback(
+    (key: string) => {
+      if (disabled) return;
+      let next = localValueRef.current;
+      if (key === 'back') {
+        next = next.slice(0, -1);
+      } else if (key === '.') {
+        if (!allowDecimal) return;
+        if (next.includes('.')) return;
+        next = next || '0';
+        next += '.';
+      } else {
+        if (key === '0' && next === '0') return;
+        if (key !== '0' && next === '0') next = '';
+        next += key;
+      }
+      const num = parseFloat(next) || 0;
+      if (min != null && num < min) return;
+      if (max != null && num > max) return;
+      localValueRef.current = next;
+      setLocalValue(next);
       onChangeRef.current(num);
-    }, DEBOUNCE_MS);
+    },
+    [allowDecimal, disabled, max, min],
+  );
+
+  const handleEnter = useCallback(() => {
+    const num = parseFloat(localValueRef.current) || 0;
+    flushAndNotify(num);
+    if (onEnter) onEnter();
+    setShowNumpad(false);
+  }, [flushAndNotify, onEnter]);
+
+  const armClickSuppress = () => {
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 350);
   };
 
-  const handleEnter = () => {
-    const num = parseFloat(localValue) || 0;
-    flushAndNotify(num);
-    if (onEnter) {
-      onEnter();
-      setShowNumpad(false);
-    } else {
-      setShowNumpad(false);
+  const onKeyPointerDown = (e: { button: number; preventDefault: () => void }, key: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    armClickSuppress();
+    handleKey(key);
+  };
+
+  const onKeyClick = (e: { preventDefault: () => void }, key: string) => {
+    if (suppressClickRef.current) {
+      e.preventDefault();
+      return;
     }
+    handleKey(key);
+  };
+
+  const onEnterPointerDown = (e: { button: number; preventDefault: () => void }) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    armClickSuppress();
+    handleEnter();
+  };
+
+  const onEnterClick = (e: { preventDefault: () => void }) => {
+    if (suppressClickRef.current) {
+      e.preventDefault();
+      return;
+    }
+    handleEnter();
   };
 
   const displayVal = localValue === '' ? '' : localValue;
+  const keyBtnClass =
+    'h-14 rounded-xl font-semibold text-lg flex items-center justify-center select-none touch-manipulation transition-transform active:scale-[0.97]';
 
   return (
     <div className="relative">
@@ -150,44 +182,42 @@ function NumpadInputInner({
             data-numpad
             className="fixed inset-x-0 bottom-0 z-[9999] bg-[#1F2937] border-t border-[#374151] p-4 pb-[env(safe-area-inset-bottom,0)] safe-area-bottom"
           >
-          <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
-            {getKeys(allowDecimal).map((row) =>
-              row.map((key) =>
-                key ? (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() =>
-                      key === 'back' ? handleKey('back') : handleKey(key)
-                    }
-                    className={`h-14 rounded-xl font-semibold text-lg flex items-center justify-center transition-colors ${
-                      key === 'back'
-                        ? 'bg-[#374151] text-[#EF4444] hover:bg-[#4B5563]'
-                        : 'bg-[#111827] text-[#F9FAFB] hover:bg-[#374151] border border-[#374151]'
-                    }`}
-                  >
-                    {key === 'back' ? (
-                      <Delete className="w-5 h-5" />
-                    ) : (
-                      key
-                    )}
-                  </button>
-                ) : (
-                  <div key="empty" />
-                )
-              )
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={handleEnter}
-            className="w-full max-w-sm mx-auto mt-3 h-14 bg-[#3B82F6] hover:bg-[#2563EB] text-white font-semibold rounded-xl flex items-center justify-center gap-2"
-          >
-            <CornerDownLeft className="w-5 h-5" />
-            Enter
-          </button>
-        </div>,
-          document.body
+            <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
+              {getKeys(allowDecimal).map((row, ri) =>
+                row.map((key, ki) =>
+                  key ? (
+                    <button
+                      key={`${ri}-${key}`}
+                      type="button"
+                      onPointerDown={(e) =>
+                        onKeyPointerDown(e, key === 'back' ? 'back' : key)
+                      }
+                      onClick={(e) => onKeyClick(e, key === 'back' ? 'back' : key)}
+                      className={`${keyBtnClass} ${
+                        key === 'back'
+                          ? 'bg-[#374151] text-[#EF4444] active:bg-[#4B5563]'
+                          : 'bg-[#111827] text-[#F9FAFB] border border-[#374151] active:bg-[#374151]'
+                      }`}
+                    >
+                      {key === 'back' ? <Delete className="w-5 h-5 pointer-events-none" /> : key}
+                    </button>
+                  ) : (
+                    <div key={`${ri}-empty-${ki}`} />
+                  ),
+                ),
+              )}
+            </div>
+            <button
+              type="button"
+              onPointerDown={onEnterPointerDown}
+              onClick={onEnterClick}
+              className={`w-full max-w-sm mx-auto mt-3 h-14 bg-[#3B82F6] active:bg-[#2563EB] text-white font-semibold rounded-xl flex items-center justify-center gap-2 select-none touch-manipulation transition-transform active:scale-[0.97]`}
+            >
+              <CornerDownLeft className="w-5 h-5 pointer-events-none" />
+              Enter
+            </button>
+          </div>,
+          document.body,
         )}
     </div>
   );
