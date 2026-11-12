@@ -1,0 +1,42 @@
+{
+  "runAt": "2026-07-05T15:00:00+05:00",
+  "productionUrl": "https://erp.dincouture.pk",
+  "deployedFixCommit": "37e49f2f",
+  "hardRefreshDone": true,
+  "loginSuccessful": true,
+  "salesPageOpened": true,
+  "purchasePageOpened": true,
+  "consoleErrors": [],
+  "sales": {
+    "testPerformed": true,
+    "saleCreated": true,
+    "invoiceRef": "Quotation (DRAFT-stage doc; toast: Quotation created successfully!)",
+    "saveMs": 1434,
+    "spinnerSpeed": "faster",
+    "singleSuccessToast": true,
+    "duplicateToast": false,
+    "duplicatePaymentIssue": false,
+    "attachmentShippingBlocked": false,
+    "error": null
+  },
+  "purchase": {
+    "testPerformed": true,
+    "purchaseCreated": true,
+    "poRef": "Purchase order (toast: Purchase order created successfully!)",
+    "saveMs": 1741,
+    "spinnerSpeed": "faster",
+    "singleSuccessToast": true,
+    "attachmentBlocked": false,
+    "error": null
+  },
+  "overall": "LIVE_CONFIRMED",
+  "notes": "Automated Playwright spot-check on DIN CHINA admin after frontend deploy 37e49f2f. Pre-save item/variation toasts are expected; only one create-success toast per save. Two small real production documents created for timing verification.",
+  "safety": {
+    "r8_run": false,
+    "migrations_run": false,
+    "repairs_run": false,
+    "play_store_upload": false,
+    "manager_user_created": false,
+    "supplier_party_discount_qa": false
+  }
+}

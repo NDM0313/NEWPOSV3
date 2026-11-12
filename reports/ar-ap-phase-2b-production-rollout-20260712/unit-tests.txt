@@ -1,0 +1,7 @@
+AR/AP Phase 2b production rollout — unit tests
+Generated: 2026-07-12
+
+Command: npm run test:unit
+
+Result: 189/189 PASS
+Duration: ~1.7–3.5s (session)

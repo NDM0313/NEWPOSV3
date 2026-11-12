@@ -1,15 +1,23 @@
 import { getContactWhatsAppPhone } from './contacts';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../utils/localDate';
+import { formatLocalDateYYYYMMDD, localNowDateString, parseLocalDateInput, toLocalDateString } from '../utils/localDate';
 import {
   linkRentalPaymentJournalEntry,
   postRentalAdvanceJournalMobile,
   postRentalExpenseJournalMobile,
   postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
+import { ensurePartySubledgersForContact } from './partySubledger';
 import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
+import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
 
 const BLOCKING_RENTAL_STATUSES = ['booked', 'picked_up', 'active', 'overdue'] as const;
 
@@ -83,7 +91,8 @@ export async function checkRentalAvailability(params: {
     .eq('company_id', companyId)
     .in('status', [...BLOCKING_RENTAL_STATUSES])
     .lt('pickup_date', endDate)
-    .gte('return_date', startDate);
+    // Half-open [pickup, return): same-day handoff allowed (return on D, next pickup on D).
+    .gt('return_date', startDate);
 
   if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
   if (excludeRentalId) query = query.neq('id', excludeRentalId);
@@ -208,6 +217,8 @@ export interface RentalListItem {
   bookingDate: string;
   createdBy?: string | null;
   salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
   branchId?: string | null;
 }
 
@@ -220,6 +231,8 @@ export interface RentalItemRow {
   rate: number;
   total: number;
   unit?: string;
+  variationId?: string | null;
+  durationDays?: number;
 }
 
 export interface RentalPaymentRow {
@@ -227,7 +240,14 @@ export interface RentalPaymentRow {
   amount: number;
   method: string;
   reference: string | null;
+  /** RCV-* from linked payments row when available */
+  referenceNo?: string | null;
+  notes?: string | null;
   paymentDate: string;
+  /** Linked payments.id via journal_entries.payment_id (for TransactionDetailSheet). */
+  sourcePaymentId?: string | null;
+  /** rental_payments.journal_entry_id — fallback edit target when no payment row. */
+  journalEntryId?: string | null;
 }
 
 export interface RentalDetail {
@@ -241,6 +261,8 @@ export interface RentalDetail {
   branchId: string;
   branchName?: string;
   status: string;
+  /** Booking date YYYY-MM-DD */
+  bookingDate: string;
   pickupDate: string;
   returnDate: string;
   actualReturnDate: string | null;
@@ -248,6 +270,8 @@ export interface RentalDetail {
   paidAmount: number;
   dueAmount: number;
   notes: string | null;
+  /** Booking document attachments [{url, name}] — not pickup ID photos. */
+  attachments?: { url: string; name: string }[] | null;
   securityDocumentType: string | null;
   securityDocumentNumber: string | null;
   securityDocumentImageUrl: string | null;
@@ -255,8 +279,57 @@ export interface RentalDetail {
   /** Pickup-held ID (CNIC etc.) — `document_type` / `document_number` on rental */
   pickupDocumentType: string | null;
   pickupDocumentNumber: string | null;
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
   items: RentalItemRow[];
   payments: RentalPaymentRow[];
+}
+
+type RentalStaffEnrichable = {
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
+};
+
+/** Batch-resolve salesman (users.id) and creator display names for rental rows. */
+async function enrichRentalStaffNames<T extends RentalStaffEnrichable>(rows: T[]): Promise<void> {
+  if (rows.length === 0) return;
+
+  const salesmanIds = [
+    ...new Set(
+      rows
+        .map((r) => r.salesmanId)
+        .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
+    ),
+  ];
+  const salesmanNameById = new Map<string, string>();
+  if (salesmanIds.length > 0) {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', salesmanIds);
+    for (const u of users || []) {
+      const rec = u as { id?: string; full_name?: string | null; email?: string | null };
+      const id = rec.id != null ? String(rec.id) : '';
+      if (!id) continue;
+      const name = String(rec.full_name ?? rec.email ?? '').trim();
+      if (name) salesmanNameById.set(id, name);
+    }
+  }
+
+  const mutable: Array<Record<string, unknown>> = rows.map((r) => ({
+    created_by: r.createdBy ?? null,
+  }));
+  await enrichRowsWithCreatorNames(mutable, 'created_by');
+
+  rows.forEach((row, i) => {
+    const name = mutable[i].created_by_name;
+    row.createdByName = typeof name === 'string' ? name : null;
+    row.salesmanName = row.salesmanId ? salesmanNameById.get(row.salesmanId) ?? null : null;
+  });
 }
 
 export interface GetRentalsOptions {
@@ -290,11 +363,8 @@ export interface RentalCalendarRental {
 
 function rentalDateToYmd(val: unknown): string {
   if (val == null || val === '') return '';
-  const s = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return '';
-  return formatLocalDateYYYYMMDD(d);
+  if (val instanceof Date) return formatLocalDateYYYYMMDD(val);
+  return toLocalDateString(String(val));
 }
 
 function applyRentalOwnScope(
@@ -343,10 +413,6 @@ export interface CreateBookingInput {
   /** Optional salesman + commission (mirrors sales commission). Persisted on rentals.salesman_id / commission_*. */
   salesmanId?: string | null;
   commissionPercent?: number | null;
-  /** Optional security document (NSC) captured at booking. Mirrors web ERP. */
-  securityDocumentType?: string | null;
-  securityDocumentNumber?: string | null;
-  securityDocumentImageUrl?: string | null;
   /** Devaluation / shop costs — same as web `rental_expenses`; not added into `rental_charges`. */
   expenses?: Array<{ description: string; amount: number }>;
   items: Array<{
@@ -385,9 +451,6 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     documentNumber = null,
     salesmanId = null,
     commissionPercent = null,
-    securityDocumentType = null,
-    securityDocumentNumber = null,
-    securityDocumentImageUrl = null,
     expenses = [],
     items,
     skipAvailabilityCheck = false,
@@ -397,11 +460,19 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   if (!items?.length) return { data: null, error: 'At least one item required.' };
   if (!customerId) return { data: null, error: 'Customer required.' };
 
-  const pickup = new Date(pickupDate);
-  const ret = new Date(returnDate);
+  const subEnsure = await ensurePartySubledgersForContact(customerId);
+  if (!subEnsure.success) {
+    return { data: null, error: subEnsure.error ?? 'Could not set up customer AR sub-account.' };
+  }
+
+  const pickup = parseLocalDateInput(pickupDate);
+  const ret = parseLocalDateInput(returnDate);
   if (ret < pickup) return { data: null, error: 'Return date must be on or after pickup date.' };
 
-  const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+  const durationDays = Math.max(
+    1,
+    Math.round((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1,
+  );
   const totalAmount = rentalCharges + securityDeposit;
   const dueAmount = Math.max(0, totalAmount - paidAmount);
 
@@ -487,12 +558,6 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   }
   if (normalizedExpenses.length > 0 && normalizedExpenseTotal > 0) {
     rentalPayload.rental_expenses = normalizedExpenses;
-  }
-  if (securityDocumentType) rentalPayload.security_document_type = securityDocumentType;
-  if (securityDocumentNumber) rentalPayload.security_document_number = securityDocumentNumber.trim() || null;
-  if (securityDocumentImageUrl) rentalPayload.security_document_image_url = securityDocumentImageUrl;
-  if (securityDocumentType || securityDocumentNumber || securityDocumentImageUrl) {
-    rentalPayload.security_status = 'collected';
   }
 
   const itemsJson = items.map((i) => {
@@ -695,17 +760,12 @@ export async function getRentals(
   if (opts?.dateTo) q = q.lte('booking_date', opts.dateTo);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
-  return {
-    data: (data || []).map((r: Record<string, unknown>) => {
+  const list: RentalListItem[] = (data || []).map((r: Record<string, unknown>) => {
       const customer = r.customer as { phone?: string | null; mobile?: string | null } | null;
       const customerPhone = customer ? getContactWhatsAppPhone(customer) : '';
       const bookingNo = String(r.booking_no || `RNT-${String(r.id ?? '').slice(0, 8)}`);
       const documentNumber = r.document_number != null ? String(r.document_number).trim() : '';
-      const bookingDate = r.booking_date
-        ? new Date(r.booking_date as string).toISOString().slice(0, 10)
-        : r.pickup_date
-          ? new Date(r.pickup_date as string).toISOString().slice(0, 10)
-          : '';
+      const bookingDate = rentalDateToYmd(r.booking_date) || rentalDateToYmd(r.pickup_date);
       return {
         id: String(r.id ?? ''),
         bookingNo,
@@ -713,8 +773,8 @@ export async function getRentals(
         no: bookingNo,
         customer: String(r.customer_name ?? '—'),
         customerPhone: customerPhone || undefined,
-        pickup: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '—',
-        return: r.return_date ? new Date(r.return_date as string).toISOString().slice(0, 10) : '—',
+        pickup: rentalDateToYmd(r.pickup_date) || '—',
+        return: rentalDateToYmd(r.return_date) || '—',
         status: mapRentalStatus(String(r.status ?? '')),
         total: Number(r.total_amount) || 0,
         paid: Number(r.paid_amount) || 0,
@@ -724,9 +784,9 @@ export async function getRentals(
         salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
         branchId: r.branch_id != null ? String(r.branch_id) : null,
       };
-    }),
-    error: null,
-  };
+  });
+  await enrichRentalStaffNames(list);
+  return { data: list, error: null };
 }
 
 /** Calendar availability: rentals with line items; no booking_date range (overlap filtered in UI). */
@@ -810,6 +870,152 @@ export async function updateRentalMeta(
   return { error: error?.message ?? null };
 }
 
+export interface UpdateBookingInput {
+  customerId?: string;
+  customerName?: string;
+  bookingDate?: string;
+  pickupDate?: string;
+  returnDate?: string;
+  rentalCharges?: number;
+  securityDeposit?: number;
+  notes?: string | null;
+  documentNumber?: string | null;
+  salesmanId?: string | null;
+  /** Skip overlap check after user confirmed "Book anyway?" */
+  skipAvailabilityCheck?: boolean;
+  items?: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    ratePerDay: number;
+    durationDays: number;
+    total: number;
+    variationId?: string | null;
+  }>;
+}
+
+/**
+ * Full booking update (web parity) — draft/booked only.
+ * Does not write paid_amount; due is recalculated from existing paid.
+ */
+export async function updateBooking(
+  rentalId: string,
+  companyId: string,
+  updates: UpdateBookingInput
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  if (!companyId) return { error: 'Company required.' };
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('rentals')
+    .select('id, status, booking_no, pickup_date, return_date, branch_id, paid_amount, security_deposit, rental_charges')
+    .eq('id', rentalId)
+    .single();
+
+  if (fetchErr || !existing) return { error: fetchErr?.message ?? 'Rental not found.' };
+  const r = existing as Record<string, unknown>;
+  const st = String(r.status ?? '').toLowerCase();
+  if (st !== 'draft' && st !== 'booked') {
+    return { error: 'Only draft or booked rentals can be edited.' };
+  }
+
+  const pickupDate = updates.pickupDate ?? String(r.pickup_date ?? '');
+  const returnDate = updates.returnDate ?? String(r.return_date ?? '');
+  const branchId = r.branch_id != null ? String(r.branch_id) : null;
+  const existingPaid = Number(r.paid_amount) || 0;
+
+  let items = updates.items;
+  if (!items || items.length === 0) {
+    const { data: ri } = await supabase
+      .from('rental_items')
+      .select('product_id, product_name, quantity, rate_per_day, duration_days, total, variation_id')
+      .eq('rental_id', rentalId);
+    items = (ri || []).map((i: Record<string, unknown>) => ({
+      productId: String(i.product_id),
+      productName: String(i.product_name ?? ''),
+      quantity: Number(i.quantity) || 1,
+      ratePerDay: Number(i.rate_per_day) || 0,
+      durationDays: Number(i.duration_days) || 1,
+      total: Number(i.total) || 0,
+      variationId: i.variation_id != null ? String(i.variation_id) : null,
+    }));
+  }
+
+  if (!updates.skipAvailabilityCheck) {
+    const availability = await checkRentalAvailabilityForItems({
+      companyId,
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
+      startDate: pickupDate,
+      endDate: returnDate,
+      excludeRentalId: rentalId,
+      branchId,
+    });
+    if (!availability.available) {
+      return { error: availability.message || 'Selected dates conflict with an existing booking.' };
+    }
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (updates.customerId !== undefined) payload.customer_id = updates.customerId;
+  if (updates.customerName !== undefined) payload.customer_name = updates.customerName;
+  if (updates.bookingDate !== undefined) payload.booking_date = updates.bookingDate;
+  if (updates.pickupDate !== undefined) payload.pickup_date = updates.pickupDate;
+  if (updates.returnDate !== undefined) payload.return_date = updates.returnDate;
+  if (updates.rentalCharges !== undefined) payload.rental_charges = updates.rentalCharges;
+  if (updates.securityDeposit !== undefined) payload.security_deposit = updates.securityDeposit;
+  if (updates.notes !== undefined) payload.notes = updates.notes;
+  if (updates.documentNumber !== undefined) {
+    const v = updates.documentNumber != null ? String(updates.documentNumber).trim() : '';
+    payload.document_number = v || null;
+  }
+  if (updates.salesmanId !== undefined) payload.salesman_id = updates.salesmanId || null;
+
+  if (updates.items && updates.items.length > 0) {
+    const rentalCharges = updates.items.reduce((s, i) => s + i.total, 0);
+    const durationDays = updates.items[0]?.durationDays ?? 1;
+    const securityDeposit = updates.securityDeposit ?? (Number(r.security_deposit) || 0);
+    payload.rental_charges = rentalCharges;
+    payload.duration_days = durationDays;
+    payload.total_amount = rentalCharges + securityDeposit;
+    payload.due_amount = Math.max(0, rentalCharges + securityDeposit - existingPaid);
+
+    const { error: delErr } = await supabase.from('rental_items').delete().eq('rental_id', rentalId);
+    if (delErr) return { error: delErr.message };
+    const { error: insErr } = await supabase.from('rental_items').insert(
+      updates.items.map((i) => {
+        const row: Record<string, unknown> = {
+          rental_id: rentalId,
+          product_id: i.productId,
+          product_name: i.productName,
+          quantity: i.quantity,
+          rate_per_day: i.ratePerDay,
+          duration_days: i.durationDays,
+          total: i.total,
+        };
+        if (i.variationId) row.variation_id = i.variationId;
+        return row;
+      }),
+    );
+    if (insErr) return { error: insErr.message };
+  } else if (updates.rentalCharges !== undefined || updates.securityDeposit !== undefined) {
+    const rentalCharges = updates.rentalCharges ?? (Number(r.rental_charges) || 0);
+    const securityDeposit = updates.securityDeposit ?? (Number(r.security_deposit) || 0);
+    const total = rentalCharges + securityDeposit;
+    payload.total_amount = total;
+    payload.due_amount = Math.max(0, total - existingPaid);
+  }
+
+  if (Object.keys(payload).length > 0) {
+    const { error: updateErr } = await supabase.from('rentals').update(payload).eq('id', rentalId);
+    if (updateErr) return { error: updateErr.message };
+  }
+  return { error: null };
+}
+
 export async function getRentalById(rentalId: string): Promise<{ data: RentalDetail | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const { data: rental, error: rErr } = await supabase
@@ -821,17 +1027,72 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
 
   const { data: items, error: iErr } = await supabase
     .from('rental_items')
-    .select('id, product_id, product_name, quantity, rate_per_day, duration_days, total')
+    .select('id, product_id, product_name, quantity, rate_per_day, duration_days, total, variation_id')
     .eq('rental_id', rentalId)
     .order('id');
   if (iErr) return { data: null, error: iErr.message };
 
   const { data: payments, error: pErr } = await supabase
     .from('rental_payments')
-    .select('id, amount, method, reference, payment_date, created_at')
+    .select('id, amount, method, reference, payment_date, created_at, journal_entry_id')
     .eq('rental_id', rentalId)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (pErr) return { data: null, error: pErr.message };
+
+  const paymentRefByRentalPaymentId = new Map<
+    string,
+    { referenceNo: string | null; notes: string | null; sourcePaymentId: string | null }
+  >();
+  const paymentListRaw = (payments || []) as Array<Record<string, unknown>>;
+  const jeIds = paymentListRaw
+    .map((p) => p.journal_entry_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (jeIds.length > 0) {
+    const { data: jes } = await supabase.from('journal_entries').select('id, payment_id').in('id', jeIds);
+    const paymentIds = (jes || [])
+      .map((j) => (j as { payment_id?: string | null }).payment_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    if (paymentIds.length > 0) {
+      const { data: payRows } = await supabase
+        .from('payments')
+        .select('id, reference_number, notes')
+        .in('id', paymentIds);
+      const jeToPayment = new Map<string, string>();
+      for (const j of jes || []) {
+        const rec = j as { id?: string; payment_id?: string | null };
+        if (rec.id && rec.payment_id) jeToPayment.set(String(rec.id), String(rec.payment_id));
+      }
+      const payById = new Map<string, { reference_number?: string | null; notes?: string | null }>();
+      for (const pay of payRows || []) {
+        const rec = pay as { id?: string; reference_number?: string | null; notes?: string | null };
+        if (rec.id) payById.set(String(rec.id), rec);
+      }
+      for (const rp of paymentListRaw) {
+        const rpId = String(rp.id);
+        const jeId = rp.journal_entry_id != null ? String(rp.journal_entry_id) : '';
+        const payId = jeId ? jeToPayment.get(jeId) : undefined;
+        const linked = payId ? payById.get(payId) : undefined;
+        paymentRefByRentalPaymentId.set(rpId, {
+          referenceNo: linked?.reference_number != null ? String(linked.reference_number) : null,
+          notes: linked?.notes != null ? String(linked.notes) : null,
+          sourcePaymentId: payId ?? null,
+        });
+      }
+    } else {
+      // JE linked but no payments.id yet — still record empty source for journal fallback
+      for (const rp of paymentListRaw) {
+        const rpId = String(rp.id);
+        const jeId = rp.journal_entry_id != null ? String(rp.journal_entry_id) : '';
+        if (!jeId) continue;
+        paymentRefByRentalPaymentId.set(rpId, {
+          referenceNo: null,
+          notes: null,
+          sourcePaymentId: null,
+        });
+      }
+    }
+  }
 
   const r = rental as Record<string, unknown>;
   const branch = r.branch as { name?: string; code?: string } | null;
@@ -845,8 +1106,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       ? String(r.document_number).trim()
       : null;
 
-  return {
-    data: {
+  const detail: RentalDetail = {
       id: String(r.id),
       bookingNo,
       documentNumber,
@@ -856,19 +1116,33 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       branchId: String(r.branch_id ?? ''),
       branchName: branch ? [branch.code, branch.name].filter(Boolean).join(' | ') : undefined,
       status: mapRentalStatus(String(r.status ?? '')),
-      pickupDate: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '',
-      returnDate: r.return_date ? new Date(r.return_date as string).toISOString().slice(0, 10) : '',
-      actualReturnDate: r.actual_return_date ? new Date(r.actual_return_date as string).toISOString().slice(0, 10) : null,
+      bookingDate: rentalDateToYmd(r.booking_date) || rentalDateToYmd(r.pickup_date),
+      pickupDate: rentalDateToYmd(r.pickup_date),
+      returnDate: rentalDateToYmd(r.return_date),
+      actualReturnDate: r.actual_return_date ? rentalDateToYmd(r.actual_return_date) : null,
       totalAmount: Number(r.total_amount) ?? 0,
       paidAmount: Number(r.paid_amount) ?? 0,
       dueAmount: Number(r.due_amount) ?? 0,
       notes: (r.notes as string) ?? null,
+      attachments: Array.isArray(r.attachments)
+        ? (r.attachments as Array<Record<string, unknown>>)
+            .map((a) => ({
+              url: String(a?.url ?? ''),
+              name: String(a?.name ?? 'Attachment'),
+            }))
+            .filter((a) => a.url.length > 0)
+        : null,
       securityDocumentType: (r.security_document_type as string) ?? null,
       securityDocumentNumber: (r.security_document_number as string) ?? null,
       securityDocumentImageUrl: (r.security_document_image_url as string) ?? null,
       securityStatus: (r.security_status as string) ?? null,
-      pickupDocumentType: (r.document_type as string) ?? null,
-      pickupDocumentNumber: (r.document_number as string) ?? null,
+      pickupDocumentType: (r.security_document_type as string) ?? ((r.document_received ? r.document_type : null) as string | null) ?? null,
+      pickupDocumentNumber:
+        (r.security_document_number as string)
+        ?? (r.document_received && r.document_type && !r.security_document_number ? (r.document_number as string) : null)
+        ?? null,
+      createdBy: r.created_by != null ? String(r.created_by) : null,
+      salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
       items: itemList.map((i) => ({
         id: String(i.id),
         productId: String(i.product_id),
@@ -878,26 +1152,34 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
         rate: Number(i.rate_per_day ?? i.rate ?? 0),
         total: Number(i.total) ?? 0,
         unit: i.unit as string | undefined,
+        variationId: i.variation_id != null ? String(i.variation_id) : null,
+        durationDays: Number(i.duration_days) || undefined,
       })),
       payments: paymentList.map((p) => {
         const rawDate = p.payment_date ?? p.created_at;
-        const paymentDate =
-          typeof rawDate === 'string'
-            ? rawDate.slice(0, 10)
-            : rawDate instanceof Date
-              ? rawDate.toISOString().slice(0, 10)
-              : '';
+        const paymentDate = rentalDateToYmd(rawDate);
+        const rpId = String(p.id);
+        const linked = paymentRefByRentalPaymentId.get(rpId);
+        const fallbackRef = (p.reference as string) ?? null;
+        const journalEntryId =
+          p.journal_entry_id != null && String(p.journal_entry_id).length > 0
+            ? String(p.journal_entry_id)
+            : null;
         return {
-          id: String(p.id),
+          id: rpId,
           amount: Number(p.amount) ?? 0,
           method: String(p.method ?? ''),
-          reference: (p.reference as string) ?? null,
+          reference: fallbackRef,
+          referenceNo: linked?.referenceNo ?? fallbackRef,
+          notes: linked?.notes ?? null,
           paymentDate,
+          sourcePaymentId: linked?.sourcePaymentId ?? null,
+          journalEntryId,
         };
       }),
-    },
-    error: null,
   };
+  await enrichRentalStaffNames([detail]);
+  return { data: detail, error: null };
 }
 
 export async function receiveReturn(
@@ -917,7 +1199,11 @@ export async function receiveReturn(
   userId?: string | null
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
-  const { data: rental, error: fetchErr } = await supabase.from('rentals').select('id, status, branch_id, due_amount').eq('id', rentalId).single();
+  const { data: rental, error: fetchErr } = await supabase
+    .from('rentals')
+    .select('id, status, branch_id, due_amount, customer_id, booking_no')
+    .eq('id', rentalId)
+    .single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
   const r = rental as Record<string, unknown>;
   const status = String(r.status ?? '');
@@ -979,7 +1265,7 @@ export async function receiveReturn(
       const t = String((acc as Record<string, unknown>).type ?? '').toLowerCase();
       penaltyMethod = t === 'bank' || t === 'asset' ? t : t === 'mobile_wallet' ? 'other' : 'cash';
     }
-    await supabase.from('rental_payments').insert({
+    const payInsert: Record<string, unknown> = {
       rental_id: rentalId,
       amount: payload.penaltyAmount,
       method: penaltyMethod,
@@ -987,7 +1273,40 @@ export async function receiveReturn(
       payment_date: payload.actualReturnDate,
       payment_type: 'penalty',
       created_by: userId ?? null,
-    });
+    };
+    if (payload.penaltyPaymentAccountId) {
+      payInsert.payment_account_id = payload.penaltyPaymentAccountId;
+    }
+    const { data: penPay, error: penPayErr } = await supabase
+      .from('rental_payments')
+      .insert(payInsert)
+      .select('id')
+      .single();
+    if (penPayErr) return { error: penPayErr.message };
+
+    const customerId = String(r.customer_id ?? '').trim();
+    if (customerId && payload.penaltyPaymentAccountId && penPay?.id) {
+      const { postRentalPartyPenaltySettlementMobile } = await import('./rentalBookingAccounting');
+      let customerName = 'Customer';
+      const { data: contact } = await supabase.from('contacts').select('name').eq('id', customerId).maybeSingle();
+      if (contact && (contact as { name?: string }).name) {
+        customerName = String((contact as { name?: string }).name);
+      }
+      const gl = await postRentalPartyPenaltySettlementMobile({
+        companyId,
+        branchId: String(r.branch_id ?? ''),
+        rentalId,
+        rentalPaymentId: String(penPay.id),
+        customerId,
+        customerName,
+        amount: payload.penaltyAmount,
+        paymentAccountId: payload.penaltyPaymentAccountId,
+        entryDate: payload.actualReturnDate,
+        userId: userId ?? null,
+      });
+      if (gl.error) return { error: gl.error };
+    }
+
     const { data: row } = await supabase.from('rentals').select('paid_amount, due_amount').eq('id', rentalId).single();
     const rowr = row as Record<string, number>;
     const newPaid = (rowr?.paid_amount ?? 0) + payload.penaltyAmount;
@@ -1015,6 +1334,7 @@ export interface AddRentalPaymentParams {
   /** Cash/Bank/Wallet account UUID (accounts table) selected by user. */
   paymentAccountId?: string | null;
   paymentDate?: string;
+  paymentAt?: string | null;
   userId?: string | null;
 }
 
@@ -1108,10 +1428,17 @@ export async function addRentalPayment(
     });
 
     if (rpcErr) return { error: rpcErr.message };
-    const rpcRes = rpcData as { success?: boolean; payment_id?: string; reference_number?: string; error?: string };
+    const rpcRes = rpcData as {
+      success?: boolean;
+      payment_id?: string;
+      reference_number?: string;
+      journal_entry_id?: string;
+      error?: string;
+    };
     if (!rpcRes?.success) return { error: rpcRes?.error ?? 'Payment failed.' };
     paymentId = rpcRes.payment_id ?? null;
     referenceNumber = rpcRes.reference_number ?? null;
+    const journalEntryId = rpcRes.journal_entry_id ?? null;
 
     if (!referenceNumber && paymentId) {
       try {
@@ -1124,8 +1451,9 @@ export async function addRentalPayment(
       }
     }
 
-    try {
-      await supabase.from('rental_payments').insert({
+    const { data: rpRow, error: rpInsErr } = await supabase
+      .from('rental_payments')
+      .insert({
         rental_id: params.rentalId,
         amount: params.amount,
         method: normalizedMethod,
@@ -1134,12 +1462,31 @@ export async function addRentalPayment(
         payment_type: 'remaining',
         payment_account_id: params.paymentAccountId ?? null,
         created_by: params.userId ?? null,
-      });
-    } catch {
-      // rental_payments insert is informational; RPC already updated rentals totals.
+      })
+      .select('id')
+      .single();
+
+    if (rpInsErr || !rpRow) {
+      return { error: rpInsErr?.message ?? 'Failed to record rental payment row.' };
+    }
+
+    if (journalEntryId) {
+      await linkRentalPaymentJournalEntry((rpRow as { id: string }).id, journalEntryId);
+    }
+
+    if (paymentId && params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(paymentId, params.paymentAt);
     }
 
     return { error: null, paymentId, referenceNumber };
+  }
+
+  const rentalCustomerId = r.customer_id as string | null | undefined;
+  if (rentalCustomerId) {
+    return {
+      error: 'Payment account required for named customer rentals (ledger posting via record_payment_with_accounting).',
+    };
   }
 
   await supabase.from('rental_payments').insert({
@@ -1159,30 +1506,49 @@ export async function addRentalPayment(
   return { error: null };
 }
 
+export interface MarkRentalPickedUpPayload {
+  actualPickupDate: string;
+  notes?: string;
+  documentType: string;
+  documentNumber: string;
+  documentExpiry?: string;
+  documentReceived: boolean;
+  remainingPaymentConfirmed: boolean;
+  deliverOnCredit?: boolean;
+  documentFrontImage?: string;
+  documentBackImage?: string;
+  customerPhoto?: string;
+}
+
 export async function markRentalPickedUp(
   rentalId: string,
   companyId: string,
-  payload: {
-    actualPickupDate: string;
-    notes?: string;
-    documentType: string;
-    documentNumber: string;
-    /** Optional URL of uploaded security document image */
-    securityDocumentImageUrl?: string | null;
-    documentReceived: boolean;
-    remainingPaymentConfirmed: boolean;
-  },
+  payload: MarkRentalPickedUpPayload,
   userId?: string | null
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   const { data: rental, error: fetchErr } = await supabase
     .from('rentals')
-    .select('id, status, branch_id, pickup_date, total_amount, paid_amount, booking_no')
+    .select('id, status, branch_id, pickup_date, total_amount, paid_amount, due_amount, notes, booking_no')
     .eq('id', rentalId)
     .single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
   const r = rental as Record<string, unknown>;
   if (String(r.status) !== 'booked') return { error: 'Only booked rentals can be marked as picked up.' };
+
+  const totalAmount = Number(r.total_amount) || 0;
+  const paidAmount = Number(r.paid_amount) || 0;
+  const remaining = totalAmount - paidAmount;
+  if (!payload.deliverOnCredit && (!payload.remainingPaymentConfirmed || remaining > 0.009)) {
+    return { error: 'Full payment required before delivery, or confirm remaining payment collected.' };
+  }
+
+  if (payload.documentExpiry) {
+    const exp = payload.documentExpiry.slice(0, 10);
+    if (exp < payload.actualPickupDate.slice(0, 10)) {
+      return { error: 'Document has expired. Please provide a valid document.' };
+    }
+  }
 
   const { data: items } = await supabase.from('rental_items').select('id, product_id, quantity').eq('rental_id', rentalId);
   const itemList = (items || []) as Array<{ product_id: string; quantity: number }>;
@@ -1204,12 +1570,25 @@ export async function markRentalPickedUp(
 
   const updatePayload: Record<string, unknown> = {
     status: 'picked_up',
-    notes: payload.notes ?? r.notes ?? null,
-    security_document_type: payload.documentType ?? null,
+    actual_pickup_date: payload.actualPickupDate,
+    picked_up_by: userId ?? null,
+    document_type: payload.documentType,
+    document_expiry: payload.documentExpiry || null,
+    document_received: payload.documentReceived,
+    remaining_payment_confirmed: payload.remainingPaymentConfirmed,
+    credit_flag: payload.deliverOnCredit === true,
+    notes: payload.notes?.trim() || r.notes || null,
+    security_document_type: payload.documentType,
     security_document_number: payload.documentNumber?.trim() || null,
-    security_document_image_url: payload.securityDocumentImageUrl ?? null,
     security_status: 'collected',
   };
+  if (payload.documentFrontImage) {
+    updatePayload.document_front_image = payload.documentFrontImage;
+    updatePayload.security_document_image_url = payload.documentFrontImage;
+  }
+  if (payload.documentBackImage) updatePayload.document_back_image = payload.documentBackImage;
+  if (payload.customerPhoto) updatePayload.customer_photo = payload.customerPhoto;
+
   try {
     const { error: updateErr } = await supabase.from('rentals').update(updatePayload).eq('id', rentalId);
     if (updateErr) return { error: updateErr.message };
@@ -1240,4 +1619,148 @@ export async function cancelRental(rentalId: string, _companyId: string): Promis
   if (!['draft', 'booked'].includes(String(r.status))) return { error: 'Only draft or booked can be cancelled.' };
   const { error: updateErr } = await supabase.from('rentals').update({ status: 'cancelled' }).eq('id', rentalId);
   return { error: updateErr?.message ?? null };
+}
+
+const RENTAL_ATTACHMENTS_BUCKET = 'rental-attachments';
+export const MAX_RENTAL_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_RENTAL_ATTACHMENTS_COUNT = 5;
+
+export type RentalAttachmentMeta = { url: string; name: string };
+
+export function mergeRentalAttachments(
+  existing: RentalAttachmentMeta[],
+  uploaded: RentalAttachmentMeta[],
+): RentalAttachmentMeta[] {
+  const seen = new Set<string>();
+  const out: RentalAttachmentMeta[] = [];
+  const push = (a: RentalAttachmentMeta) => {
+    const u = String(a.url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push({ url: u, name: a.name || 'Attachment' });
+  };
+  for (const a of existing) push(a);
+  for (const a of uploaded) push(a);
+  return out.slice(0, MAX_RENTAL_ATTACHMENTS_COUNT);
+}
+
+async function fetchRentalAttachments(rentalId: string): Promise<RentalAttachmentMeta[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data } = await supabase.from('rentals').select('attachments').eq('id', rentalId).maybeSingle();
+  const raw = (data as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a: unknown) => {
+      const o = a as Record<string, unknown>;
+      return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+    })
+    .filter((a) => a.url.length > 0);
+}
+
+/** Persist attachment metadata on the rental row (after upload). */
+export async function updateRentalAttachments(
+  rentalId: string,
+  attachments: RentalAttachmentMeta[],
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('rentals')
+    .update({ attachments: attachments.length > 0 ? attachments : null })
+    .eq('id', rentalId);
+  if (error) {
+    if (error.code === 'PGRST204' && String(error.message || '').includes('attachments')) {
+      return { error: null };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+/** Upload files to rental-attachments bucket (path: companyId/rentalId/...). */
+export async function uploadRentalAttachments(
+  companyId: string,
+  rentalId: string,
+  files: File[],
+): Promise<{ data: RentalAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) return { data: [], error: null };
+
+  const uploaded: RentalAttachmentMeta[] = [];
+  const prefix = `${companyId}/${rentalId}/${Date.now()}`;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    if (file.size > MAX_RENTAL_ATTACHMENT_BYTES) {
+      return { data: uploaded, error: `File "${file.name}" is too large. Max 10MB per file.` };
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    try {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: RENTAL_ATTACHMENTS_BUCKET,
+          path,
+          file,
+          upsert: true,
+          logTag: 'rental-attachments',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+      uploaded.push({ url: ref, name: file.name });
+    } catch (err) {
+      console.warn('[uploadRentalAttachments]', (err as Error)?.message ?? err);
+      const classified = classifyStorageUploadError(err, file.name);
+      if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+        return { data: uploaded, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG };
+      }
+      const bucketMissing = classified.kind === 'bucket';
+      return {
+        data: uploaded,
+        error: bucketMissing
+          ? 'Storage bucket "rental-attachments" not found. Create it in Supabase Storage first.'
+          : classified.userMessage,
+      };
+    }
+  }
+
+  return { data: uploaded, error: null };
+}
+
+/** Upload new files and merge onto existing rentals.attachments (max 5 total). */
+export async function appendRentalAttachments(
+  companyId: string,
+  rentalId: string,
+  files: File[],
+  existing?: RentalAttachmentMeta[],
+): Promise<{ data: RentalAttachmentMeta[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) {
+    const current = existing ?? (await fetchRentalAttachments(rentalId));
+    return { data: current, error: null };
+  }
+
+  const prior = existing ?? (await fetchRentalAttachments(rentalId));
+  const slotsLeft = MAX_RENTAL_ATTACHMENTS_COUNT - prior.length;
+  if (slotsLeft <= 0) {
+    return {
+      data: prior,
+      error: `Maximum ${MAX_RENTAL_ATTACHMENTS_COUNT} attachments per rental.`,
+    };
+  }
+
+  const toUpload = files.slice(0, slotsLeft);
+  const upload = await uploadRentalAttachments(companyId, rentalId, toUpload);
+  if (upload.error) {
+    return { data: prior, error: upload.error };
+  }
+
+  const merged = mergeRentalAttachments(prior, upload.data);
+  const upd = await updateRentalAttachments(rentalId, merged);
+  if (upd.error) {
+    return { data: prior, error: upd.error };
+  }
+  return { data: merged, error: null };
 }

@@ -1,0 +1,220 @@
+{
+  "phase": "3B-I",
+  "capturedAt": "2026-06-29T14:39:12.832Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "financeRules": {
+    "Q4": "A",
+    "Q5": "C",
+    "Q7": "B"
+  },
+  "loaderSwapApproved": false,
+  "companies": {
+    "din-china": {
+      "company": "DIN CHINA",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "financeRules": {
+        "Q4": "A",
+        "Q5": "C",
+        "Q7": "B"
+      },
+      "period": {
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29"
+      },
+      "branchScope": "Selected branch",
+      "liquidityFilter": "all",
+      "sourceModuleFilter": "all",
+      "auditMode": false,
+      "previewBasis": "effective_party",
+      "legacy": {
+        "cashIn": 104176812,
+        "cashOut": 67042426,
+        "netMovement": 37134386,
+        "closing": 37134386,
+        "rowCount": 323
+      },
+      "alignedPreview": {
+        "cashIn": 35460880,
+        "cashOut": 67964117,
+        "netMovement": -32503237,
+        "closing": -32503237,
+        "rowCount": 236
+      },
+      "compareDeltas": {
+        "cashInDelta": 68715932,
+        "cashOutDelta": -921691,
+        "netMovementDelta": 69637623,
+        "closingDelta": 69637623,
+        "rowCountDelta": 87
+      },
+      "rowKeyedCounts": {
+        "exact": 89,
+        "strong": 0,
+        "weak": 11,
+        "legacyOnly": 223,
+        "previewOnly": 305,
+        "transferBucket": 0,
+        "openingBucket": 0,
+        "financeExcludedTransfer": 0,
+        "financeExcludedOpening": 0
+      },
+      "transferBucketEffect": {
+        "excludedFromNormalTotals": {
+          "internalTransferRows": 169,
+          "openingBalanceRows": 0,
+          "auditDetailRows": 169
+        },
+        "thematicTransferBucket": 0,
+        "financeExcludedTransfer": 0
+      },
+      "openingBucketEffect": {
+        "excludedFromNormalTotals": 0,
+        "thematicOpeningBucket": 0,
+        "financeExcludedOpening": 0
+      },
+      "comparePass": false,
+      "zeroDiff": false,
+      "screenshot": "screenshots/din-china-cash-flow-aligned-preview.png",
+      "export": "exports/din-china-cash-flow-aligned-preview.json",
+      "diffReport": "diff-reports/din-china-aligned-diff-summary.json"
+    },
+    "din-bridal": {
+      "company": "DIN BRIDAL",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "financeRules": {
+        "Q4": "A",
+        "Q5": "C",
+        "Q7": "B"
+      },
+      "period": {
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29"
+      },
+      "branchScope": "All branches",
+      "liquidityFilter": "all",
+      "sourceModuleFilter": "all",
+      "auditMode": false,
+      "previewBasis": "effective_party",
+      "legacy": {
+        "cashIn": 1836350,
+        "cashOut": 917780,
+        "netMovement": 918570,
+        "closing": 918570,
+        "rowCount": 51
+      },
+      "alignedPreview": {
+        "cashIn": 1003500,
+        "cashOut": 942780,
+        "netMovement": 60720,
+        "closing": 60720,
+        "rowCount": 51
+      },
+      "compareDeltas": {
+        "cashInDelta": 832850,
+        "cashOutDelta": -25000,
+        "netMovementDelta": 857850,
+        "closingDelta": 857850,
+        "rowCountDelta": 0
+      },
+      "rowKeyedCounts": {
+        "exact": 2,
+        "strong": 48,
+        "weak": 0,
+        "legacyOnly": 1,
+        "previewOnly": 3,
+        "transferBucket": 0,
+        "openingBucket": 0,
+        "financeExcludedTransfer": 0,
+        "financeExcludedOpening": 0
+      },
+      "transferBucketEffect": {
+        "excludedFromNormalTotals": {
+          "internalTransferRows": 0,
+          "openingBalanceRows": 2,
+          "auditDetailRows": 2
+        },
+        "thematicTransferBucket": 0,
+        "financeExcludedTransfer": 0
+      },
+      "openingBucketEffect": {
+        "excludedFromNormalTotals": 2,
+        "thematicOpeningBucket": 0,
+        "financeExcludedOpening": 0
+      },
+      "comparePass": false,
+      "zeroDiff": false,
+      "screenshot": "screenshots/din-bridal-cash-flow-aligned-preview.png",
+      "export": "exports/din-bridal-cash-flow-aligned-preview.json",
+      "diffReport": "diff-reports/din-bridal-aligned-diff-summary.json"
+    },
+    "din-couture": {
+      "company": "DIN COUTURE",
+      "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+      "financeRules": {
+        "Q4": "A",
+        "Q5": "C",
+        "Q7": "B"
+      },
+      "period": {
+        "startDate": "2000-01-01",
+        "endDate": "2026-06-29"
+      },
+      "branchScope": "Selected branch",
+      "liquidityFilter": "all",
+      "sourceModuleFilter": "all",
+      "auditMode": false,
+      "previewBasis": "effective_party",
+      "legacy": {
+        "cashIn": 85000,
+        "cashOut": 34500,
+        "netMovement": 50500,
+        "closing": 50500,
+        "rowCount": 6
+      },
+      "alignedPreview": {
+        "cashIn": 85000,
+        "cashOut": 34500,
+        "netMovement": 50500,
+        "closing": 50500,
+        "rowCount": 6
+      },
+      "compareDeltas": {
+        "cashInDelta": 0,
+        "cashOutDelta": 0,
+        "netMovementDelta": 0,
+        "closingDelta": 0,
+        "rowCountDelta": 0
+      },
+      "rowKeyedCounts": {
+        "exact": 2,
+        "strong": 4,
+        "weak": 0,
+        "legacyOnly": 0,
+        "previewOnly": 0,
+        "transferBucket": 0,
+        "openingBucket": 0,
+        "financeExcludedTransfer": 0,
+        "financeExcludedOpening": 0
+      },
+      "transferBucketEffect": {
+        "excludedFromNormalTotals": {
+          "internalTransferRows": 0,
+          "openingBalanceRows": 0,
+          "auditDetailRows": 0
+        },
+        "thematicTransferBucket": 0,
+        "financeExcludedTransfer": 0
+      },
+      "openingBucketEffect": {
+        "excludedFromNormalTotals": 0,
+        "thematicOpeningBucket": 0,
+        "financeExcludedOpening": 0
+      },
+      "comparePass": true,
+      "zeroDiff": true,
+      "screenshot": "screenshots/din-couture-cash-flow-aligned-preview.png",
+      "export": "exports/din-couture-cash-flow-aligned-preview.json",
+      "diffReport": "diff-reports/din-couture-aligned-diff-summary.json"
+    }
+  }
+}

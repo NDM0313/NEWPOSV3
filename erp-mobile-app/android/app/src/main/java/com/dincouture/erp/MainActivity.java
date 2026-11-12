@@ -2,6 +2,7 @@ package com.dincouture.erp;
 
 import android.os.Bundle;
 import android.webkit.WebView;
+import androidx.core.view.WindowCompat;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
@@ -12,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ErpPrinterPlugin.class);
         registerPlugin(ErpWhatsAppPlugin.class);
         super.onCreate(savedInstanceState);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
     }
 
     @Override

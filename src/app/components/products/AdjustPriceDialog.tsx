@@ -133,24 +133,24 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
     : '0';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-[#0B0F17] border border-gray-800 rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-50 bg-[var(--erp-overlay)] backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-background border border-border rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between rounded-t-xl">
+        <div className="px-6 py-5 border-b border-border bg-background flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
               <Tag size={20} className="text-yellow-500" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">Adjust Price</h2>
-              <p className="text-xs text-gray-400">{product.name}</p>
+              <h2 className="text-lg font-semibold text-foreground">Adjust Price</h2>
+              <p className="text-xs text-muted-foreground">{product.name}</p>
             </div>
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="text-gray-400 hover:text-white hover:bg-gray-800"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <X size={20} />
           </Button>
@@ -159,19 +159,19 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* Current Prices */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-2">Current Prices</p>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs text-muted-foreground mb-2">Current Prices</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-gray-400">Purchase</p>
-                <p className="text-sm text-white font-semibold">${product.purchasePrice.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Purchase</p>
+                <p className="text-sm text-foreground font-semibold">${product.purchasePrice.toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-400">Selling</p>
-                <p className="text-sm text-green-400 font-semibold">${product.sellingPrice.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Selling</p>
+                <p className="text-sm text-[var(--erp-money-positive)] font-semibold">${product.sellingPrice.toLocaleString()}</p>
               </div>
               <div className="col-span-2">
-                <p className="text-xs text-gray-400">Current Margin</p>
+                <p className="text-xs text-muted-foreground">Current Margin</p>
                 <p className="text-sm text-blue-400 font-semibold">+{currentMargin}%</p>
               </div>
             </div>
@@ -179,13 +179,13 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
 
           {/* Adjustment Type */}
           <div>
-            <Label className="text-sm text-gray-400 mb-3 block">Adjustment Type</Label>
+            <Label className="text-sm text-muted-foreground mb-3 block">Adjustment Type</Label>
             <div className="flex gap-2">
               <Button
                 variant={adjustmentType === 'purchase' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAdjustmentType('purchase')}
-                className={adjustmentType === 'purchase' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-800 border-gray-700'}
+                className={adjustmentType === 'purchase' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-muted border-border'}
               >
                 Purchase
               </Button>
@@ -193,7 +193,7 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
                 variant={adjustmentType === 'selling' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAdjustmentType('selling')}
-                className={adjustmentType === 'selling' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-800 border-gray-700'}
+                className={adjustmentType === 'selling' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-muted border-border'}
               >
                 Selling
               </Button>
@@ -201,7 +201,7 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
                 variant={adjustmentType === 'margin' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAdjustmentType('margin')}
-                className={adjustmentType === 'margin' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-800 border-gray-700'}
+                className={adjustmentType === 'margin' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-muted border-border'}
               >
                 Margin %
               </Button>
@@ -211,17 +211,17 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
           {/* Price Inputs */}
           <div className="space-y-4">
             <div>
-              <Label htmlFor="purchasePrice" className="text-sm text-gray-400 mb-2 block">
+              <Label htmlFor="purchasePrice" className="text-sm text-muted-foreground mb-2 block">
                 Purchase Price
               </Label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                 <Input
                   id="purchasePrice"
                   type="number"
                   value={purchasePrice}
                   onChange={(e) => handlePurchasePriceChange(e.target.value)}
-                  className="pl-10 bg-gray-800 border-gray-700 text-white"
+                  className="pl-10 bg-muted border-border text-foreground"
                   placeholder="0.00"
                   step="0.01"
                   min="0"
@@ -230,17 +230,17 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
             </div>
 
             <div>
-              <Label htmlFor="sellingPrice" className="text-sm text-gray-400 mb-2 block">
+              <Label htmlFor="sellingPrice" className="text-sm text-muted-foreground mb-2 block">
                 Selling Price
               </Label>
               <div className="relative">
-                <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                 <Input
                   id="sellingPrice"
                   type="number"
                   value={sellingPrice}
                   onChange={(e) => handleSellingPriceChange(e.target.value)}
-                  className="pl-10 bg-gray-800 border-gray-700 text-white"
+                  className="pl-10 bg-muted border-border text-foreground"
                   placeholder="0.00"
                   step="0.01"
                   min="0"
@@ -249,21 +249,21 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
             </div>
 
             <div>
-              <Label htmlFor="margin" className="text-sm text-gray-400 mb-2 block">
+              <Label htmlFor="margin" className="text-sm text-muted-foreground mb-2 block">
                 Margin Percentage
               </Label>
               <div className="relative">
-                <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                 <Input
                   id="margin"
                   type="number"
                   value={margin}
                   onChange={(e) => handleMarginChange(e.target.value)}
-                  className="pl-10 bg-gray-800 border-gray-700 text-white"
+                  className="pl-10 bg-muted border-border text-foreground"
                   placeholder="0.00"
                   step="0.01"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">%</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
             </div>
           </div>
@@ -280,12 +280,12 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-800 bg-[#111827] rounded-b-xl flex items-center justify-end gap-3">
+        <div className="px-6 py-4 border-t border-border bg-background rounded-b-xl flex items-center justify-end gap-3">
           <Button
             variant="outline"
             onClick={onClose}
             disabled={saving}
-            className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+            className="bg-muted border-border text-foreground hover:bg-muted"
           >
             Cancel
           </Button>

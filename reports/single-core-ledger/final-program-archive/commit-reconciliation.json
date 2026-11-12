@@ -1,0 +1,15 @@
+{
+  "run": "THREE-COMPANY_UNIFIED_LEDGER_FINAL_ARCHIVE",
+  "generated_at": "2026-06-14T00:00:00Z",
+  "latest_main_commit": "d227d2210866599762ab4a5ed02298a8651add70",
+  "latest_main_commit_short": "d227d221",
+  "din_couture_completion_commit": "d227d2210866599762ab4a5ed02298a8651add70",
+  "migration_closure_commit": "4fb5f25a",
+  "din_bridal_completion_commit": "91d00cf7",
+  "din_bridal_post_completion_archive_commit": "bd813ec2",
+  "din_couture_blocked_evidence_commit": "d0225fb4",
+  "evidence_only_differences": true,
+  "credentials_in_commits": false,
+  "fx_app_touched": false,
+  "reconciliation_verdict": "PASS"
+}

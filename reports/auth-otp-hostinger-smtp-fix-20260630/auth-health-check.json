@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-30T11:48:00.000Z",
+  "restart_command": "cd /root/supabase/docker && docker compose up -d auth",
+  "supabase_auth": {
+    "status": "running",
+    "health": "healthy",
+    "autoconfirm": "false",
+    "smtp_host": "smtp.hostinger.com",
+    "smtp_port": "587"
+  },
+  "endpoints": {
+    "auth_health_http": 401,
+    "erp_frontend_http": 200
+  },
+  "not_restarted": ["supabase-db", "erp-frontend"],
+  "migrations_run": false,
+  "business_data_mutated": false
+}

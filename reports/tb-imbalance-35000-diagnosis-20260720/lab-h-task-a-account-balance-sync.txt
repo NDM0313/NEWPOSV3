@@ -1,0 +1,37 @@
+﻿Lab H Task A ΓÇö sync accounts.balance from journal (DIN BRIDAL)
+Generated: 2026-07-20T06:47:50Z
+Company: 597a5292-14c8-4cd8-96bd-c61b5a0d8c92
+
+=== PRE mismatch count ===
+15
+
+=== PRE mismatch rows ===
+    code    |             name              |   stored    | journal_bal |    diff    
+------------+-------------------------------+-------------+-------------+------------
+ 4000       | Sales Revenue                 | -1129150.00 | -1285250.00 |  156100.00
+ AR-CUS0000 | Receivable ΓÇö Walk-in Customer |    30000.00 |   176000.00 | -146000.00
+ 1200       | Inventory                     |  4599291.00 |  4493941.00 |  105350.00
+ 6100       | General operating expenses    |   120927.00 |   221777.00 | -100850.00
+ AR-CUS0001 | Receivable ΓÇö Walk-in Customer |   171500.00 |    91500.00 |   80000.00
+ AR-CUS0063 | Receivable ΓÇö Zaneb A114       |        0.00 |    28000.00 |  -28000.00
+ AR-CUS0058 | Receivable ΓÇö Inayat           |        0.00 |   -20000.00 |   20000.00
+ 1061       | NDM FSY                       |   905000.00 |   885000.00 |   20000.00
+ 1000       | Cash                          |    -2000.00 |     8000.00 |  -10000.00
+ 1002       | CASH G140                     |  1066500.00 |  1075660.00 |   -9160.00
+ 5300       | Rental Expense                |   -45000.00 |   -50000.00 |    5000.00
+ 4200       | Rental Income                 |  -396500.00 |  -391500.00 |   -5000.00
+ 1021       | NDM EASY                      |   129423.00 |   133923.00 |   -4500.00
+ 3003       | HOME EXPENSES                 |   241996.00 |   237496.00 |    4500.00
+ AR-CUS0060 | Receivable ΓÇö Saqib            |        0.00 |      -10.00 |      10.00
+(15 rows)
+
+
+=== APPLY sync (UPDATE accounts.balance = journal only) ===
+UPDATE 15
+
+=== POST mismatch count (expect 0) ===
+0
+
+=== TB imbalance check (non-void JEs ╬údr-╬úcr; expect 0) ===
+0.00
+TASK_A_DONE 2026-07-20T06:47:51Z

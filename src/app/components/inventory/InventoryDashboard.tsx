@@ -19,6 +19,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
+import { formatQty } from '@/app/utils/quantity';
 import {
   Select,
   SelectContent,
@@ -134,7 +135,7 @@ export const InventoryDashboard = () => {
     const configs = {
       'in-stock': { 
         label: 'In Stock', 
-        color: 'bg-green-500/10 text-green-400 border-green-500/20', 
+        color: 'bg-green-500/10 text-[var(--erp-money-positive)] border-green-500/20', 
         icon: CheckCircle 
       },
       'low-stock': { 
@@ -213,24 +214,24 @@ export const InventoryDashboard = () => {
   };
 
   return (
-    <div className="min-h-full bg-[#0B0F19] text-white space-y-6 p-6">
+    <div className="min-h-full bg-secondary text-foreground space-y-6 p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-white">Inventory Management</h2>
-          <p className="text-gray-400">Track stock levels, adjust inventory, and manage transfers</p>
+          <h2 className="text-2xl font-bold text-foreground">Inventory Management</h2>
+          <p className="text-muted-foreground">Track stock levels, adjust inventory, and manage transfers</p>
         </div>
         <div className="flex gap-3">
           <Button 
             variant="outline" 
-            className="gap-2 bg-gray-900 border-gray-800 text-gray-200 hover:bg-gray-800"
+            className="gap-2 bg-card border-border text-gray-200 hover:bg-muted"
           >
             <Filter size={16} />
             Advanced Filter
           </Button>
           <Button 
             variant="outline" 
-            className="gap-2 bg-gray-900 border-gray-800 text-gray-200 hover:bg-gray-800"
+            className="gap-2 bg-card border-border text-gray-200 hover:bg-muted"
           >
             <Download size={16} />
             Export
@@ -240,78 +241,78 @@ export const InventoryDashboard = () => {
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-6 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <Package size={20} className="text-blue-400" />
-            <TrendingUp size={16} className="text-green-400" />
+            <TrendingUp size={16} className="text-[var(--erp-money-positive)]" />
           </div>
-          <div className="text-2xl font-bold text-white">{stats.totalItems}</div>
-          <div className="text-xs text-gray-400 mt-1">Total Products</div>
+          <div className="text-2xl font-bold text-foreground">{stats.totalItems}</div>
+          <div className="text-xs text-muted-foreground mt-1">Total Products</div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
-            <CheckCircle size={20} className="text-green-400" />
+            <CheckCircle size={20} className="text-[var(--erp-money-positive)]" />
           </div>
-          <div className="text-2xl font-bold text-white">{stats.inStockCount}</div>
-          <div className="text-xs text-gray-400 mt-1">In Stock</div>
+          <div className="text-2xl font-bold text-foreground">{stats.inStockCount}</div>
+          <div className="text-xs text-muted-foreground mt-1">In Stock</div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <AlertCircle size={20} className="text-orange-400" />
           </div>
-          <div className="text-2xl font-bold text-white">{stats.lowStockCount}</div>
-          <div className="text-xs text-gray-400 mt-1">Low Stock</div>
+          <div className="text-2xl font-bold text-foreground">{stats.lowStockCount}</div>
+          <div className="text-xs text-muted-foreground mt-1">Low Stock</div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <AlertCircle size={20} className="text-red-400" />
           </div>
-          <div className="text-2xl font-bold text-white">{stats.outOfStockCount}</div>
-          <div className="text-xs text-gray-400 mt-1">Out of Stock</div>
+          <div className="text-2xl font-bold text-foreground">{stats.outOfStockCount}</div>
+          <div className="text-xs text-muted-foreground mt-1">Out of Stock</div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <TrendingUp size={20} className="text-purple-400" />
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-2xl font-bold text-foreground">
             ${(stats.totalValue / 1000).toFixed(0)}K
           </div>
-          <div className="text-xs text-gray-400 mt-1">Stock Value (Cost)</div>
+          <div className="text-xs text-muted-foreground mt-1">Stock Value (Cost)</div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
-            <TrendingUp size={20} className="text-green-400" />
+            <TrendingUp size={20} className="text-[var(--erp-money-positive)]" />
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className="text-2xl font-bold text-foreground">
             ${(stats.totalSaleValue / 1000).toFixed(0)}K
           </div>
-          <div className="text-xs text-gray-400 mt-1">Stock Value (Sale)</div>
+          <div className="text-xs text-muted-foreground mt-1">Stock Value (Sale)</div>
         </div>
       </div>
 
       {/* Filters and Search */}
       <div className="flex gap-4 items-center">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Search by product name, SKU, or category..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-gray-900 border-gray-800 text-white placeholder:text-gray-500"
+            className="pl-10 bg-card border-border text-foreground placeholder:text-muted-foreground"
           />
         </div>
 
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-48 bg-gray-900 border-gray-800 text-white">
+          <SelectTrigger className="w-48 bg-card border-border text-foreground">
             <SelectValue placeholder="All Categories" />
           </SelectTrigger>
-          <SelectContent className="bg-gray-900 border-gray-700 text-white">
+          <SelectContent className="bg-popover border-border text-popover-foreground">
             <SelectItem value="all">All Categories</SelectItem>
             {categories.map(cat => (
               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
@@ -320,10 +321,10 @@ export const InventoryDashboard = () => {
         </Select>
 
         <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-          <SelectTrigger className="w-48 bg-gray-900 border-gray-800 text-white">
+          <SelectTrigger className="w-48 bg-card border-border text-foreground">
             <SelectValue placeholder="All Status" />
           </SelectTrigger>
-          <SelectContent className="bg-gray-900 border-gray-700 text-white">
+          <SelectContent className="bg-popover border-border text-popover-foreground">
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="in-stock">In Stock</SelectItem>
             <SelectItem value="low-stock">Low Stock</SelectItem>
@@ -333,10 +334,10 @@ export const InventoryDashboard = () => {
       </div>
 
       {/* Inventory Table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-800/50 border-b border-gray-800">
+            <thead className="bg-muted/50 border-b border-border">
               <tr>
                 <th className="px-6 py-4 font-semibold text-gray-200 text-center">Actions</th>
                 <th className="px-6 py-4 font-semibold text-gray-200">Product</th>
@@ -348,7 +349,7 @@ export const InventoryDashboard = () => {
                 <th className="px-6 py-4 font-semibold text-gray-200 text-right">Stock Value</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-border">
               {filteredInventory.map(item => {
                 const status = getStockStatus(item);
                 const statusConfig = getStatusConfig(status);
@@ -356,7 +357,7 @@ export const InventoryDashboard = () => {
                 const stockValue = item.currentStock * item.costPrice;
 
                 return (
-                  <tr key={item.id} className="hover:bg-gray-800/30 transition-colors">
+                  <tr key={item.id} className="hover:bg-accent/30 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
                         <Button
@@ -391,17 +392,17 @@ export const InventoryDashboard = () => {
                           <img 
                             src={item.image} 
                             alt={item.name}
-                            className="w-12 h-12 rounded-lg object-cover border border-gray-700"
+                            className="w-12 h-12 rounded-lg object-cover border border-border"
                           />
                         )}
                         <div>
-                          <div className="font-medium text-white">{item.name}</div>
-                          <div className="text-xs text-gray-500">Cost: ${item.costPrice.toLocaleString()}</div>
+                          <div className="font-medium text-foreground">{item.name}</div>
+                          <div className="text-xs text-muted-foreground">Cost: ${item.costPrice.toLocaleString()}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <code className="text-xs bg-gray-800 px-2 py-1 rounded text-blue-400 border border-gray-700">
+                      <code className="text-xs bg-muted px-2 py-1 rounded text-blue-400 border border-border">
                         {item.sku}
                       </code>
                     </td>
@@ -410,13 +411,13 @@ export const InventoryDashboard = () => {
                         {item.category}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 text-gray-400">{item.location}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{item.location}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <span className="text-2xl font-bold text-white">{item.currentStock}</span>
-                        <span className="text-xs text-gray-500 uppercase">{item.unit}</span>
+                        <span className="text-2xl font-bold text-foreground tabular-nums">{formatQty(item.currentStock)}</span>
+                        <span className="text-xs text-muted-foreground uppercase">{item.unit}</span>
                       </div>
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-xs text-muted-foreground mt-1">
                         Reorder at: {item.reorderLevel} {item.unit}
                       </div>
                     </td>
@@ -427,8 +428,8 @@ export const InventoryDashboard = () => {
                       </Badge>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="font-bold text-white">${stockValue.toLocaleString()}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="font-bold text-foreground">${stockValue.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">
                         Sale: ${(item.currentStock * item.salePrice).toLocaleString()}
                       </div>
                     </td>
@@ -440,7 +441,7 @@ export const InventoryDashboard = () => {
         </div>
 
         {filteredInventory.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             <Package size={48} className="mx-auto mb-4 text-gray-700" />
             <p className="text-lg">No inventory items found</p>
             <p className="text-sm mt-2">Try adjusting your filters or search term</p>

@@ -1,4 +1,13 @@
 import { supabase } from '@/lib/supabase';
+import {
+  ensureAuthenticatedSession,
+  signUpForNewBusiness,
+} from '@/app/services/authSignupService';
+import {
+  ALREADY_HAS_BUSINESS_MESSAGE,
+  isReservedSystemEmail,
+  RESERVED_SYSTEM_EMAIL_MESSAGE,
+} from '@/app/utils/authErrorMessages';
 
 export interface CreateBusinessRequest {
   businessName: string;
@@ -37,6 +46,93 @@ export interface CreateBusinessResponse {
   companyId?: string;
   branchId?: string;
   error?: string;
+  /** Signup succeeded but email OTP required before create_business_transaction. */
+  needsEmailVerification?: boolean;
+}
+
+async function assertUserHasNoLinkedBusiness(userId: string): Promise<string | null> {
+  const { data: profile, error } = await supabase
+    .from('users')
+    .select('company_id')
+    .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+    .maybeSingle();
+
+  if (error) {
+    return error.message || 'Could not verify account status.';
+  }
+  if (profile?.company_id) {
+    return ALREADY_HAS_BUSINESS_MESSAGE;
+  }
+  return null;
+}
+
+async function runCreateBusinessTransaction(
+  userId: string,
+  data: CreateBusinessRequest
+): Promise<CreateBusinessResponse> {
+  const linkedBusinessError = await assertUserHasNoLinkedBusiness(userId);
+  if (linkedBusinessError) {
+    return { success: false, error: linkedBusinessError };
+  }
+
+  const { data: transactionResult, error: transactionError } = await supabase.rpc(
+    'create_business_transaction',
+    {
+      p_business_name: data.businessName,
+      p_owner_name: data.ownerName,
+      p_email: data.email.trim(),
+      p_password: data.password,
+      p_user_id: userId,
+      p_currency: data.currency || 'PKR',
+      p_fiscal_year_start: data.fiscalYearStart || null,
+      p_branch_name: data.branchName || 'Main Branch',
+      p_branch_code: data.branchCode || 'HQ',
+      p_branch_city: data.branchCity || null,
+      p_branch_state: data.branchState || null,
+      p_fiscal_year_end: data.fiscalYearEnd || null,
+      p_phone: data.phone || null,
+      p_address: data.address || null,
+      p_country: data.country || null,
+      p_timezone: data.timezone || null,
+      p_business_type: data.businessType || null,
+      p_modules: data.modules && data.modules.length > 0 ? data.modules : null,
+      p_accounting_method: data.accountingMethod || 'Accrual',
+      p_tax_mode: data.taxMode || 'Inclusive',
+      p_default_tax_rate: Number.isFinite(Number(data.defaultTaxRate)) ? Number(data.defaultTaxRate) : 0,
+      p_costing_method: data.costingMethod || 'FIFO',
+      p_allow_negative_stock: Boolean(data.allowNegativeStock),
+      p_default_unit: data.defaultUnit || 'pcs',
+      p_base_units: data.baseUnits && data.baseUnits.length > 0 ? data.baseUnits : ['pcs'],
+    }
+  );
+
+  if (transactionError) {
+    return {
+      success: false,
+      error: transactionError.message || 'Failed to create business in database',
+    };
+  }
+
+  const result = transactionResult as {
+    success?: boolean;
+    userId?: string;
+    companyId?: string;
+    branchId?: string;
+    error?: string;
+  } | null;
+  if (!result || result.success !== true) {
+    return {
+      success: false,
+      error: result?.error || 'Failed to create business in database',
+    };
+  }
+
+  return {
+    success: true,
+    userId: result.userId,
+    companyId: result.companyId,
+    branchId: result.branchId,
+  };
 }
 
 /**
@@ -46,102 +142,71 @@ export interface CreateBusinessResponse {
 export const businessService = {
   async createBusiness(data: CreateBusinessRequest): Promise<CreateBusinessResponse> {
     try {
-      // Step 1: Create auth user (or use existing if email already registered)
-      const { data: signUpData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: { full_name: data.ownerName },
-          emailRedirectTo: undefined,
-        },
-      });
-
-      let user = signUpData?.user;
-
-      // If signUp fails with 422 / "already registered", try sign in and use existing user to add this business
-      const isAlreadyRegistered =
-        authError?.message?.toLowerCase().includes('already registered') ||
-        authError?.message?.toLowerCase().includes('already exists') ||
-        authError?.message?.toLowerCase().includes('user already exists') ||
-        (authError as any)?.status === 422;
-
-      if (authError && isAlreadyRegistered) {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
-        });
-        if (signInError) {
-          return {
-            success: false,
-            error: 'This email is already registered. Sign in with your password above, or use a different email to create a new business.',
-          };
-        }
-        user = signInData?.user ?? null;
-      } else if (authError) {
-        return { success: false, error: authError.message };
+      const email = data.email.trim();
+      if (isReservedSystemEmail(email)) {
+        return { success: false, error: RESERVED_SYSTEM_EMAIL_MESSAGE };
       }
 
-      if (!user?.id) {
+      const signup = await signUpForNewBusiness({
+        email,
+        password: data.password,
+        ownerName: data.ownerName.trim(),
+        phone: data.phone?.trim(),
+        businessName: data.businessName.trim(),
+        businessType: data.businessType,
+      });
+
+      if (signup.error) {
+        return { success: false, error: signup.error };
+      }
+
+      if (signup.needsEmailVerification) {
+        return { success: false, needsEmailVerification: true };
+      }
+
+      if (!signup.userId) {
         return { success: false, error: 'Failed to create user' };
       }
 
-      // Step 2: Create company, branch, and public.users row via RPC (allowed for authenticated after migration 22)
-      const { data: transactionResult, error: transactionError } = await supabase.rpc(
-        'create_business_transaction',
-        {
-          p_business_name: data.businessName,
-          p_owner_name: data.ownerName,
-          p_email: data.email,
-          p_password: data.password,
-          p_user_id: user.id,
-          p_currency: data.currency || 'PKR',
-          p_fiscal_year_start: data.fiscalYearStart || null,
-          p_branch_name: data.branchName || 'Main Branch',
-          p_branch_code: data.branchCode || 'HQ',
-          p_branch_city: data.branchCity || null,
-          p_branch_state: data.branchState || null,
-          p_fiscal_year_end: data.fiscalYearEnd || null,
-          p_phone: data.phone || null,
-          p_address: data.address || null,
-          p_country: data.country || null,
-          p_timezone: data.timezone || null,
-          p_business_type: data.businessType || null,
-          p_modules: data.modules && data.modules.length > 0 ? data.modules : null,
-          p_accounting_method: data.accountingMethod || 'Accrual',
-          p_tax_mode: data.taxMode || 'Inclusive',
-          p_default_tax_rate: Number.isFinite(Number(data.defaultTaxRate)) ? Number(data.defaultTaxRate) : 0,
-          p_costing_method: data.costingMethod || 'FIFO',
-          p_allow_negative_stock: Boolean(data.allowNegativeStock),
-          p_default_unit: data.defaultUnit || 'pcs',
-          p_base_units: data.baseUnits && data.baseUnits.length > 0 ? data.baseUnits : ['pcs'],
+      if (!signup.hasSession) {
+        const ensured = await ensureAuthenticatedSession();
+        if (!ensured.ok) {
+          return { success: false, error: ensured.message || 'Auth session missing after signup.' };
         }
-      );
-
-      if (transactionError) {
-        return {
-          success: false,
-          error: transactionError.message || 'Failed to create business in database',
-        };
       }
 
-      const result = transactionResult as { success?: boolean; userId?: string; companyId?: string; branchId?: string; error?: string } | null;
-      if (!result || result.success !== true) {
-        return {
-          success: false,
-          error: (result as any)?.error || 'Failed to create business in database',
-        };
-      }
-
-      return {
-        success: true,
-        userId: result.userId,
-        companyId: result.companyId,
-        branchId: result.branchId,
-      };
-    } catch (error: any) {
+      return runCreateBusinessTransaction(signup.userId, { ...data, email });
+    } catch (error: unknown) {
       return {
         success: false,
-        error: error?.message || 'Unknown error occurred',
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  /** Run create_business_transaction after email OTP (session already established). */
+  async completeBusinessCreationAfterAuth(data: CreateBusinessRequest): Promise<CreateBusinessResponse> {
+    try {
+      const email = data.email.trim();
+      if (isReservedSystemEmail(email)) {
+        return { success: false, error: RESERVED_SYSTEM_EMAIL_MESSAGE };
+      }
+
+      const ensured = await ensureAuthenticatedSession();
+      if (!ensured.ok) {
+        return { success: false, error: ensured.message || 'Not signed in. Verify your email first.' };
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user?.id) {
+        return { success: false, error: 'Not signed in. Verify your email and try again.' };
+      }
+
+      return runCreateBusinessTransaction(authData.user.id, { ...data, email });
+    } catch (error: unknown) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
       };
     }
   },

@@ -1,0 +1,16 @@
+{
+  "phase": "3B-K",
+  "run": "finance-basis-decision-record",
+  "recorded_at": "2026-06-29T16:00:00.000Z",
+  "selectedOption": "B",
+  "selectedOptionLabel": "Approve aligned preview as finance basis candidate — no loader swap yet",
+  "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+  "reviewer": "Nadeem Khan",
+  "reviewDate": "2026-06-29",
+  "loaderSwapApproved": false,
+  "officialLegacyCashFlowChanged": false,
+  "approvedPreviewRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+  "writtenApprovalText": "Option B approved: aligned Cash Flow preview is accepted as finance basis candidate under Q4=A, Q5=C, Q7=B. DIN CHINA and DIN BRIDAL deltas are accepted as expected rule differences vs legacy. Official legacy Cash Flow remains unchanged. Cash Flow loader swap is NOT APPROVED.",
+  "sourceDecisionPack": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/finance-basis-decision-pack.md",
+  "signoffPack": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/cash-flow-finance-signoff-pack.md"
+}

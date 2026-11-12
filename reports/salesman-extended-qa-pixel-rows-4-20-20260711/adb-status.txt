@@ -1,0 +1,7 @@
+Salesman extended QA sign-off — 2026-07-11
+
+Operator attestation: mobile ERP proper working for Salesman role.
+Classification: SALESMAN_EXTENDED_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED
+
+Rows 4-20: PASS (role-scoped) + N/A (full accounting reports)
+Validation: monitoring PASS, 336/336 unified, 182/182 unit, build PASS

@@ -7,6 +7,8 @@ import {
   type LabelPrintLine,
 } from '../../services/barcodeLabelPrint';
 import { countSelectedLabels, hasPrintableCode } from '../../lib/barcodeLabelLines';
+import { stickerSizeSummary } from '../../lib/barcodeLabelPresets';
+import { MobileBarcodeLabelSheetControls } from '../settings/BarcodeLabelSettingsControls';
 
 const CHECKBOX_CLASS =
   'w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6] focus:ring-offset-0';
@@ -66,6 +68,11 @@ export function BarcodeLabelPrintSheet({
   const [showCompany, setShowCompany] = useState(labelSettings.showCompanyName);
   const [showBranch, setShowBranch] = useState(labelSettings.showBranchName);
   const [labelLayout, setLabelLayout] = useState<'thermal' | 'a4'>(labelSettings.labelLayout);
+  const [a4Columns, setA4Columns] = useState(labelSettings.a4Columns);
+  const [maxLabelsPerSheet, setMaxLabelsPerSheet] = useState(labelSettings.maxLabelsPerSheet);
+  const [useFixedLabelSize, setUseFixedLabelSize] = useState(labelSettings.useFixedLabelSize === true);
+  const [labelWidthMm, setLabelWidthMm] = useState(labelSettings.labelWidthMm ?? 65);
+  const [labelHeightMm, setLabelHeightMm] = useState(labelSettings.labelHeightMm ?? 25);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,12 +102,21 @@ export function BarcodeLabelPrintSheet({
     setShowCompany(labelSettings.showCompanyName);
     setShowBranch(labelSettings.showBranchName);
     setLabelLayout(labelSettings.labelLayout);
+    setA4Columns(labelSettings.a4Columns);
+    setMaxLabelsPerSheet(labelSettings.maxLabelsPerSheet);
+    setUseFixedLabelSize(labelSettings.useFixedLabelSize === true);
+    setLabelWidthMm(labelSettings.labelWidthMm ?? 65);
+    setLabelHeightMm(labelSettings.labelHeightMm ?? 25);
     setError(null);
   }, [open, initialLines, labelSettings]);
 
   const totalLabels = useMemo(() => countSelectedLabels(rows), [rows]);
   const selectedRows = rows.filter((r) => r.selected);
   const missingCodeCount = selectedRows.filter((r) => !hasPrintableCode(r)).length;
+
+  const a4Summary = useFixedLabelSize
+    ? stickerSizeSummary(labelWidthMm, labelHeightMm, a4Columns, maxLabelsPerSheet)
+    : `${a4Columns} col · ${maxLabelsPerSheet}/page`;
 
   const updateRow = (lineKey: string, patch: Partial<LabelPrintLine>) => {
     setRows((prev) => prev.map((r) => (r.lineKey === lineKey ? { ...r, ...patch } : r)));
@@ -131,7 +147,17 @@ export function BarcodeLabelPrintSheet({
       showCompanyName: showCompany,
       showBranchName: showBranch,
       showBusinessName: showCompany,
+      a4Columns,
+      maxLabelsPerSheet,
+      useFixedLabelSize,
     };
+    if (useFixedLabelSize) {
+      settings.labelWidthMm = labelWidthMm;
+      settings.labelHeightMm = labelHeightMm;
+    } else {
+      delete settings.labelWidthMm;
+      delete settings.labelHeightMm;
+    }
     const res = await printProductLabelsBatch(rows, settings, printerSettings, {
       companyName: resolvedCompany,
       branchName,
@@ -197,9 +223,12 @@ export function BarcodeLabelPrintSheet({
               labelLayout === 'a4' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
             }`}
           >
-            A4 sheet ({labelSettings.a4Columns} col)
+            A4 ({a4Columns} col)
           </button>
         </div>
+        {labelLayout === 'a4' ? (
+          <p className="text-[10px] text-[#9CA3AF] leading-snug">{a4Summary}</p>
+        ) : null}
         <div className="flex gap-2 text-xs">
           <button type="button" onClick={() => toggleAll(true)} className="text-[#3B82F6] font-medium">
             Select all
@@ -312,6 +341,29 @@ export function BarcodeLabelPrintSheet({
             </LabelOptionRow>
           </div>
         </div>
+
+        {labelLayout === 'a4' ? (
+          <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-4 space-y-3 max-w-full">
+            <p className="text-xs text-[#6B7280] font-medium uppercase tracking-wide">
+              A4 sheet (this print only)
+            </p>
+            <MobileBarcodeLabelSheetControls
+              a4Columns={a4Columns}
+              maxLabelsPerSheet={maxLabelsPerSheet}
+              useFixedLabelSize={useFixedLabelSize}
+              labelWidthMm={labelWidthMm}
+              labelHeightMm={labelHeightMm}
+              onChange={(patch) => {
+                if (patch.a4Columns != null) setA4Columns(patch.a4Columns);
+                if (patch.maxLabelsPerSheet != null) setMaxLabelsPerSheet(patch.maxLabelsPerSheet);
+                if (patch.useFixedLabelSize != null) setUseFixedLabelSize(patch.useFixedLabelSize);
+                if (patch.labelWidthMm != null) setLabelWidthMm(patch.labelWidthMm);
+                if (patch.labelHeightMm != null) setLabelHeightMm(patch.labelHeightMm);
+              }}
+            />
+          </div>
+        ) : null}
+
         {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
 

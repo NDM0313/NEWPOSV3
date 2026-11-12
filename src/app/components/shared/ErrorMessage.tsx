@@ -13,7 +13,7 @@ export function ErrorMessage({ message, onRetry, className }: ErrorMessageProps)
     <div className={cn('flex flex-col items-center justify-center p-8 text-center', className)}>
       <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
       <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Data</h3>
-      <p className="text-sm text-gray-600 mb-4 max-w-md">{message}</p>
+      <p className="text-sm text-muted-foreground mb-4 max-w-md">{message}</p>
       {onRetry && (
         <Button
           onClick={onRetry}

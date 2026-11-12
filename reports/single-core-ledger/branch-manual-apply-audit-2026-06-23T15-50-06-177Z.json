@@ -1,0 +1,51 @@
+{
+  "run_at": "2026-06-23T15:50:06.177Z",
+  "clone_db": "ledger_stage_20260623",
+  "manifest_path": "reports/single-core-ledger/branch-manual-review-approved-2026-06-23T15-48-29-720Z.json",
+  "manifest_sha256": "4e75c8b7cdfa0bf121f68793d8517593f72944a0ea47e755b05ebce44c0f0c4c",
+  "updates": [
+    {
+      "journal_entry_id": "0a573122-9cd1-4192-a61c-b948fd14abe8",
+      "entry_no": "JE-0204",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "approved_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "operator_note": "Finance: walk-in manual_receipt assigned to Main Branch HQ (DIN BRIDAL operational default)"
+    },
+    {
+      "journal_entry_id": "21401d60-1e89-422d-bcdb-59310556d600",
+      "entry_no": "JE-0170",
+      "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+      "approved_branch_id": "cc920703-97a0-43a4-95d4-9262996c2af7",
+      "operator_note": "Finance: walk-in manual_receipt assigned to Main Branch HQ (DIN BRIDAL operational default)"
+    },
+    {
+      "journal_entry_id": "1dd932ff-8798-46b4-8e47-b55832611515",
+      "entry_no": "JE-0309",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "operator_note": "Finance: sole active branch BL0002 for DIN CHINA manual_receipt"
+    },
+    {
+      "journal_entry_id": "653e66d2-6c38-41fc-b396-306488ae52e7",
+      "entry_no": "JE-0287",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "operator_note": "Finance: sole active branch BL0002 for DIN CHINA manual_receipt"
+    },
+    {
+      "journal_entry_id": "a1e0faf5-30ca-499b-9ba2-cc1bd8e25a67",
+      "entry_no": "FT-000287",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "operator_note": "Finance: company-level bank transfer attributed to sole active branch BL0002 (metadata only; GL unchanged)"
+    },
+    {
+      "journal_entry_id": "a1cc92d7-443f-465d-9473-9d6b526fdb99",
+      "entry_no": "FT-000309",
+      "company_id": "30bd8592-3384-4f34-899a-f3907e336485",
+      "approved_branch_id": "92f4184e-ee9b-4b6c-8e76-10ee1d166f55",
+      "operator_note": "Finance: company-level bank transfer attributed to sole active branch BL0002 (metadata only; GL unchanged)"
+    }
+  ],
+  "skipped": []
+}

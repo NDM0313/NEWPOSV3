@@ -35,22 +35,22 @@ export function ErpPermissionArchitecturePage() {
   }, [subView, showRls]);
 
   return (
-    <div className="min-h-full bg-gray-950 text-white">
+    <div className="min-h-full bg-input-background text-white">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/50 px-6 py-4">
+      <div className="border-b border-border bg-muted/40 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">ERP Permission Architecture</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Standard System v1.0</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Standard System v1.0</p>
           </div>
-          <div className="flex items-center gap-2 text-gray-400">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <Shield className="text-blue-500" size={20} />
           </div>
         </div>
       </div>
 
       {/* Top nav: Dashboard | Roles | Matrix | Users | Branch | RLS */}
-      <nav className="border-b border-gray-800 bg-gray-900/30 px-6">
+      <nav className="border-b border-border bg-muted/30 px-6">
         <div className="flex gap-1">
           {TABS.map((tab) => (
             <button
@@ -60,7 +60,7 @@ export function ErpPermissionArchitecturePage() {
                 'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
                 subView === tab.id
                   ? 'border-blue-500 text-white'
-                  : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-600'
               )}
             >
               <tab.icon size={16} />

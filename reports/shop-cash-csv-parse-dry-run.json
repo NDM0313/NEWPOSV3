@@ -1,0 +1,162 @@
+{
+  "csv": "c:\\Users\\ndm31\\.cursor\\projects\\c-Users-ndm31-dev-Corusr-NEW-POSV3\\attachments\\623fbd73-e3d1-4cb1-8679-4681c6a0003a\\cash_book_entry.csv",
+  "cashCode": "180002",
+  "rowCount": 130,
+  "okCount": 130,
+  "errorCount": 0,
+  "parseErrors": [],
+  "missingCodes": [],
+  "preview": [
+    {
+      "no": "1",
+      "date": "2025-11-22",
+      "side": "IN",
+      "amount": 20000,
+      "counterparty": "180005",
+      "name": "DIN TR",
+      "je": "Dr 180002 / Cr 180005"
+    },
+    {
+      "no": "2",
+      "date": "2025-12-06",
+      "side": "IN",
+      "amount": 15000,
+      "counterparty": "180005",
+      "name": "DIN TR",
+      "je": "Dr 180002 / Cr 180005"
+    },
+    {
+      "no": "3",
+      "date": "2025-12-06",
+      "side": "IN",
+      "amount": 500000,
+      "counterparty": "180005",
+      "name": "MCB",
+      "je": "Dr 180002 / Cr 180005"
+    },
+    {
+      "no": "4",
+      "date": "2025-11-13",
+      "side": "OUT",
+      "amount": 100000,
+      "counterparty": "210053",
+      "name": "SHERAZ KHTK",
+      "je": "Dr 210053 / Cr 180002"
+    },
+    {
+      "no": "5",
+      "date": "2025-11-13",
+      "side": "OUT",
+      "amount": 35000,
+      "counterparty": "210060",
+      "name": "MARYIM SILK",
+      "je": "Dr 210060 / Cr 180002"
+    },
+    {
+      "no": "6",
+      "date": "2025-11-13",
+      "side": "OUT",
+      "amount": 40000,
+      "counterparty": "210154",
+      "name": "JAMSHID KHTK",
+      "je": "Dr 210154 / Cr 180002"
+    },
+    {
+      "no": "7",
+      "date": "2025-11-20",
+      "side": "OUT",
+      "amount": 30000,
+      "counterparty": "210060",
+      "name": "MARYIM SILK",
+      "je": "Dr 210060 / Cr 180002"
+    },
+    {
+      "no": "8",
+      "date": "2025-11-23",
+      "side": "OUT",
+      "amount": 100000,
+      "counterparty": "210053",
+      "name": "SHERAZ KHTK",
+      "je": "Dr 210053 / Cr 180002"
+    },
+    {
+      "no": "9",
+      "date": "2025-11-27",
+      "side": "OUT",
+      "amount": 35000,
+      "counterparty": "210060",
+      "name": "MARYIM SILK",
+      "je": "Dr 210060 / Cr 180002"
+    },
+    {
+      "no": "10",
+      "date": "2025-11-27",
+      "side": "OUT",
+      "amount": 40000,
+      "counterparty": "210154",
+      "name": "JAMSHID KHTK",
+      "je": "Dr 210154 / Cr 180002"
+    },
+    {
+      "no": "11",
+      "date": "2025-11-27",
+      "side": "OUT",
+      "amount": 25000,
+      "counterparty": "210054",
+      "name": "ABDULLAH KHTK",
+      "je": "Dr 210054 / Cr 180002"
+    },
+    {
+      "no": "12",
+      "date": "2025-11-29",
+      "side": "OUT",
+      "amount": 75000,
+      "counterparty": "210053",
+      "name": "SHERAZ KHTK",
+      "je": "Dr 210053 / Cr 180002"
+    },
+    {
+      "no": "13",
+      "date": "2025-12-04",
+      "side": "OUT",
+      "amount": 40000,
+      "counterparty": "210154",
+      "name": "JAMSHID KHTK",
+      "je": "Dr 210154 / Cr 180002"
+    },
+    {
+      "no": "14",
+      "date": "2025-12-04",
+      "side": "OUT",
+      "amount": 35000,
+      "counterparty": "210060",
+      "name": "MARYIM SILK",
+      "je": "Dr 210060 / Cr 180002"
+    },
+    {
+      "no": "15",
+      "date": "2025-12-04",
+      "side": "OUT",
+      "amount": 25000,
+      "counterparty": "210054",
+      "name": "ABDULLAH KHTK",
+      "je": "Dr 210054 / Cr 180002"
+    }
+  ],
+  "posted": [],
+  "skipped": [],
+  "failed": [],
+  "note": "No COMPANY_ID — local parse-only dry-run. Unique counterparty codes listed; resolve against CoA with --company-id + Supabase env.",
+  "uniqueCounterpartyCodes": [
+    "110076",
+    "180005",
+    "190001",
+    "210053",
+    "210054",
+    "210057",
+    "210060",
+    "210154",
+    "210179",
+    "AR-CU0008"
+  ]
+}

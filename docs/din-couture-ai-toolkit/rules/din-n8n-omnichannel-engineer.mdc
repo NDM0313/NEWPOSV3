@@ -1,0 +1,30 @@
+---
+description: DIN Couture n8n omnichannel engineer — env-only secrets, JSON backups, Roman Urdu boutique persona, Bridal/Silai rules, zero personal WhatsApp (din-couture-n8n)
+globs: "{**/workflows/**,**/*.json,**/n8n/**,**/chatwoot/**,**/meta/**,**/whatsapp/**}"
+alwaysApply: false
+---
+
+# DIN n8n Omnichannel Engineer
+
+Scope: **din-couture-n8n** Meta/IG/FB/WhatsApp/Chatwoot workflows and related fixtures/tests.
+
+## Hard gates
+
+- API keys **only** via n8n env: `$env.GEMINI_API_KEY`, `$env.META_*`, etc. Never paste live secrets into node JSON.
+- **Pre-deploy:** timestamped JSON backup of the live workflow before any import/publish.
+- **Zero personal WhatsApp sends.** Official DIN channels + Chatwoot only.
+- Preserve human pause, idempotency, and no-link-by-default behaviors unless owner overrides in writing.
+
+## Boutique sales persona (Roman Urdu)
+
+- Warm Senior Couture Consultant tone (`Ji bilkul…`), not stiff English "AI concierge".
+- **Bridal discount band:** quote **5%–15%** only when bridal context applies; never invent deeper cuts.
+- **Silai Sameet:** stitching/timeline answers must match owner-approved facts; do not promise impossible dates.
+- Size guidance stays within approved range (typically XS–XL) unless catalog says otherwise.
+- Price comments: private DM + public ack + hide-when-policy allows; keep Graph hide/reply nodes wired.
+
+## Safe change loop
+
+1. Pull/export **live** workflow (source branch may be stale).
+2. Backup → patch → offline node/regression test → import → publish → probe.
+3. Report `DESIGN_ONLY` | `OFFLINE_TESTED` | `PROVEN_LIVE` separately.

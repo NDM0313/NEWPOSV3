@@ -141,15 +141,15 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
         <Button
           variant="outline"
           className={cn(
-            "w-full justify-start text-left font-normal bg-gray-900 border-gray-800 text-white hover:bg-gray-800 hover:text-white",
-            !hasValue && "text-gray-500"
+            "w-full justify-start text-left font-normal bg-input-background border-border text-foreground hover:bg-accent hover:text-foreground",
+            !hasValue && "text-muted-foreground"
           )}
         >
           <Calendar className="mr-2 h-4 w-4" />
           <span className="flex-1 truncate">{displayText}</span>
           {hasValue && (
             <X
-              className="ml-2 h-4 w-4 text-gray-500 hover:text-white"
+              className="ml-2 h-4 w-4 text-muted-foreground hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
                 handleClear();
@@ -158,18 +158,18 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[351px] p-0 bg-gray-900 border-gray-800" align="start">
+      <PopoverContent className="w-[351px] p-0 bg-popover border-border" align="start">
         <div className="flex">
           {/* Quick Presets */}
-          <div className="border-r border-gray-800 p-3 space-y-1 min-w-[140px]">
-            <div className="px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+          <div className="border-r border-border p-3 space-y-1 min-w-[140px]">
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
               Quick Select
             </div>
             {presetRanges.map((preset) => (
               <button
                 key={preset.label}
                 onClick={() => handlePresetClick(preset)}
-                className="w-full text-left px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-800 rounded transition-colors"
+                className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent rounded transition-colors"
               >
                 {preset.label}
               </button>
@@ -179,7 +179,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
           {/* Custom Date Inputs – shared DatePicker (DD MMM YYYY display, YYYY-MM-DD value) */}
           <div className="p-4 space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 From Date
               </label>
               <DatePicker
@@ -195,7 +195,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 To Date
               </label>
               <DatePicker
@@ -217,14 +217,14 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handleClear}
-                className="flex-1 border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800"
+                className="flex-1 border-border text-muted-foreground hover:text-foreground hover:bg-accent"
               >
                 Clear
               </Button>
               <Button
                 size="sm"
                 onClick={() => setIsOpen(false)}
-                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+                className="flex-1 bg-blue-600 hover:bg-blue-500 text-foreground"
               >
                 Apply
               </Button>

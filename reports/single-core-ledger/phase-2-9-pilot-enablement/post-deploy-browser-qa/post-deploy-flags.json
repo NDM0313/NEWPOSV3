@@ -1,0 +1,12 @@
+{
+  "phase": "2.9A-6",
+  "check": "din-china-unified-ledger-flags-readonly",
+  "timestampUtc": "2026-06-25T16:45:00Z",
+  "environment": "production VPS supabase-db (read-only)",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "sql": "scripts/single-core-ledger/phase-29a6-gate-flags.sql",
+  "rows": [],
+  "productionDbMutation": "NONE",
+  "flagEnablement": "NONE",
+  "result": "PASS"
+}

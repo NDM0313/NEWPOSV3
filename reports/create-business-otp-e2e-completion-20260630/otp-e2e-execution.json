@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-06-30T18:35:00.000Z",
+  "status": "BLOCKED_OTP_CODE_MISSING",
+  "test_email_masked": "k***+1@gmail.com",
+  "business_name": "OTP QA Business 2026-06-30",
+  "signup_initiated": false,
+  "email_received": null,
+  "sender_display_confirmed": null,
+  "immediate_session_before_verification": null,
+  "business_created_after_verification": false,
+  "auth_user_id": null,
+  "company_id": null,
+  "branch_id": null,
+  "prior_otp_gate_evidence": "reports/create-business-otp-e2e-after-sender-name-20260630/"
+}

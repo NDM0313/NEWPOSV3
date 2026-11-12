@@ -1,0 +1,741 @@
+{
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "generatedAt": "2026-06-15T07:08:09.569Z",
+  "blockingErrors": [],
+  "pass": true,
+  "summary": {
+    "legacySales": 34,
+    "legacyPurchases": 1,
+    "expectedSaleLines": 63,
+    "expectedPurchaseLines": 17,
+    "saleLinesToInsert": 0,
+    "purchaseLinesToInsert": 0,
+    "saleLinesAlreadyCovered": 63,
+    "purchaseLinesAlreadyCovered": 17,
+    "trackStockProductsToUpdate": 0
+  },
+  "rowsToInsert": [],
+  "rowsAlreadyCovered": [
+    {
+      "kind": "sale",
+      "saleId": "b292483e-dcdf-45ef-8d2a-b6cdf0a660ef",
+      "invoiceNo": "DC-0007",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -559,
+      "existingMovementId": "9a4f734b-0097-474a-a2cf-031fa3ae37d3"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0ddaacc3-52a5-4ba2-82c8-af1d83e5110c",
+      "invoiceNo": "DC-0008",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1023,
+      "existingMovementId": "bec2c70d-cc51-4633-9123-65622c249ef2"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0ddaacc3-52a5-4ba2-82c8-af1d83e5110c",
+      "invoiceNo": "DC-0008",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "df6daa8a-4790-49c4-8820-de568ff9bfd7",
+      "quantity": -213,
+      "existingMovementId": "31fc8d09-6cae-4509-8427-493f4b9aef29"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0ddaacc3-52a5-4ba2-82c8-af1d83e5110c",
+      "invoiceNo": "DC-0008",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1053,
+      "existingMovementId": "fe32430c-1fbf-4049-821d-66df0fcf1cad"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0ddaacc3-52a5-4ba2-82c8-af1d83e5110c",
+      "invoiceNo": "DC-0008",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -196.9,
+      "existingMovementId": "c93e5d15-f94a-4790-9718-b921d7f2985c"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0ddaacc3-52a5-4ba2-82c8-af1d83e5110c",
+      "invoiceNo": "DC-0008",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -80,
+      "existingMovementId": "b111c4d8-598f-44ca-87ea-146ac7cba896"
+    },
+    {
+      "kind": "sale",
+      "saleId": "caa62e50-86c6-480a-8fc6-75dea960f9f0",
+      "invoiceNo": "DC-0001",
+      "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+      "variationId": "efeec767-d7b8-4c41-811b-56e2b4d40dbd",
+      "quantity": -4785,
+      "existingMovementId": "78095666-a69e-4eea-954d-03ad59068b44"
+    },
+    {
+      "kind": "sale",
+      "saleId": "66bfeeeb-a216-4906-8256-08067a3ac53a",
+      "invoiceNo": "DC-0002",
+      "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+      "variationId": "efeec767-d7b8-4c41-811b-56e2b4d40dbd",
+      "quantity": -3139.8,
+      "existingMovementId": "4354ad8f-d339-4fe1-b4c8-0d1984b6126e"
+    },
+    {
+      "kind": "sale",
+      "saleId": "1c0db133-6a8b-42b9-8084-ea01b0cc01de",
+      "invoiceNo": "DC-0003",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -2099,
+      "existingMovementId": "54dd8b8d-bf06-4ae9-b8da-f702f29f6381"
+    },
+    {
+      "kind": "sale",
+      "saleId": "1fd33e3e-9e10-4e78-8b03-6eff10bce58a",
+      "invoiceNo": "DC-0004",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -329.8,
+      "existingMovementId": "9dc0ec40-6d74-482d-bb5f-8cf50bedf430"
+    },
+    {
+      "kind": "sale",
+      "saleId": "97205e28-e142-49e3-88b1-21e1995d2a1c",
+      "invoiceNo": "DC-0005",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "43f351f4-5370-4f5f-8fcb-836b6e80537e",
+      "quantity": -1830.1,
+      "existingMovementId": "590d36d0-9d57-4389-8f3d-6af9a3057ccc"
+    },
+    {
+      "kind": "sale",
+      "saleId": "b5f002dd-2cb8-46b8-8f71-eed2a9d43146",
+      "invoiceNo": "DC-0006",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "368492f0-79c9-4526-8447-ee1d72737d94",
+      "quantity": -527.8,
+      "existingMovementId": "d918501d-b197-4833-8ee9-e5c83fe2db01"
+    },
+    {
+      "kind": "sale",
+      "saleId": "87048f8c-2155-4354-88eb-d2994f37e307",
+      "invoiceNo": "DC-0009",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -2173,
+      "existingMovementId": "26b5fae5-7025-4b85-ba0d-a1f185889d84"
+    },
+    {
+      "kind": "sale",
+      "saleId": "87048f8c-2155-4354-88eb-d2994f37e307",
+      "invoiceNo": "DC-0009",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -125.2,
+      "existingMovementId": "bcb83240-e3ed-4f80-ad2c-41a4af8fcc3b"
+    },
+    {
+      "kind": "sale",
+      "saleId": "87048f8c-2155-4354-88eb-d2994f37e307",
+      "invoiceNo": "DC-0009",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -1039,
+      "existingMovementId": "d286a3c0-0a44-4603-ae7c-2ee75ba4b8c9"
+    },
+    {
+      "kind": "sale",
+      "saleId": "87048f8c-2155-4354-88eb-d2994f37e307",
+      "invoiceNo": "DC-0009",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -156.38,
+      "existingMovementId": "55beec50-e2ec-46d0-80ad-164f18830bb5"
+    },
+    {
+      "kind": "sale",
+      "saleId": "87048f8c-2155-4354-88eb-d2994f37e307",
+      "invoiceNo": "DC-0009",
+      "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
+      "variationId": "8e21ac1e-7a48-41bf-849b-29bce279c235",
+      "quantity": -1000.3,
+      "existingMovementId": "84c9336f-0e60-44aa-bbe8-6b1b48e8692f"
+    },
+    {
+      "kind": "sale",
+      "saleId": "f10718c7-6547-40e0-8249-fe38b7ea0f3a",
+      "invoiceNo": "DC-0010",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -420.5,
+      "existingMovementId": "d7d487bf-19ff-4294-9b38-85dccc52319c"
+    },
+    {
+      "kind": "sale",
+      "saleId": "d3e6ebd0-34c5-43d2-826d-993c9e29c81e",
+      "invoiceNo": "DC-0011",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -592.6,
+      "existingMovementId": "b44287cc-b18f-4a3d-b27c-94980b0b921c"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a856e5d2-daba-4294-8790-ffb77e21fa44",
+      "invoiceNo": "DC-0012",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -577,
+      "existingMovementId": "1713b246-10b2-4395-b618-bf1cedbb4f9e"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a856e5d2-daba-4294-8790-ffb77e21fa44",
+      "invoiceNo": "DC-0012",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -80,
+      "existingMovementId": "6029f5ff-419b-4b26-8819-4ea24c5c9b4e"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a856e5d2-daba-4294-8790-ffb77e21fa44",
+      "invoiceNo": "DC-0012",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "df6daa8a-4790-49c4-8820-de568ff9bfd7",
+      "quantity": -104.3,
+      "existingMovementId": "769cbddd-8e72-4f9c-b2e0-5706c12eec9c"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a856e5d2-daba-4294-8790-ffb77e21fa44",
+      "invoiceNo": "DC-0012",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -960,
+      "existingMovementId": "1e8c3bad-a9f4-438e-9941-9079164377c6"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a856e5d2-daba-4294-8790-ffb77e21fa44",
+      "invoiceNo": "DC-0012",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -197.94,
+      "existingMovementId": "b56fda0c-3a92-4c29-b291-a7a52beb21fd"
+    },
+    {
+      "kind": "sale",
+      "saleId": "74dbe172-c424-4de6-845e-5ca1670fe6eb",
+      "invoiceNo": "DC-0013",
+      "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
+      "variationId": "8e21ac1e-7a48-41bf-849b-29bce279c235",
+      "quantity": -1140,
+      "existingMovementId": "c3a87ee9-f672-4b3f-917b-abbfc8d76065"
+    },
+    {
+      "kind": "sale",
+      "saleId": "74dbe172-c424-4de6-845e-5ca1670fe6eb",
+      "invoiceNo": "DC-0013",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -318.3,
+      "existingMovementId": "c4bb7725-688b-4c10-96e5-86e0e198657d"
+    },
+    {
+      "kind": "sale",
+      "saleId": "720e9153-23dd-4416-8d0e-b7f49102f20e",
+      "invoiceNo": "DC-0014",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "df6daa8a-4790-49c4-8820-de568ff9bfd7",
+      "quantity": -410,
+      "existingMovementId": "c925e328-27df-4646-a446-ae3b4e61bb37"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": -8133.8,
+      "existingMovementId": "f7aa71a1-79f9-4587-a985-77e753f60a96"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "659126ee-dfaa-4e72-857e-9979c58c2cbc",
+      "variationId": "1629567a-e033-47e6-8108-fb4564c31a22",
+      "quantity": -4764.1,
+      "existingMovementId": "21be2e25-dc23-441a-8b04-277c737f9b40"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -533.75,
+      "existingMovementId": "f873a191-f762-4f29-a2ca-8d65f0151461"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "97a2e574-53c1-4f41-8c23-0cdf48ceb746",
+      "variationId": "21f76e02-ba11-4f60-816d-df80a9bcdd2d",
+      "quantity": -739,
+      "existingMovementId": "a4f88499-7fee-4065-a5e9-9f0aec855ea4"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "57e6d4ff-503f-47b8-8bae-43158eabed15",
+      "variationId": "47f12c1c-8b75-495c-8b24-c9da7e64c604",
+      "quantity": -2209.2,
+      "existingMovementId": "99c3849a-00b0-4cd9-9448-5da690e4bab0"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -542,
+      "existingMovementId": "189cd1db-3230-4009-b9b9-a43a35a75f5b"
+    },
+    {
+      "kind": "sale",
+      "saleId": "de32d7db-83a0-49fe-8072-59006bced46f",
+      "invoiceNo": "DC-0015",
+      "productId": "74fa8f4e-67dd-4898-8db0-ec26ceb4ef19",
+      "variationId": "7bd18968-165d-4487-8fdc-5a33b0990df6",
+      "quantity": -685.7,
+      "existingMovementId": "be72ae76-5e44-47e7-9a9e-c1f4b5de4d2d"
+    },
+    {
+      "kind": "sale",
+      "saleId": "b9fb32a7-a2e3-4496-8986-8f84a64d38db",
+      "invoiceNo": "DC-0016",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": -940,
+      "existingMovementId": "9287a7bf-1df9-4fff-80fa-a5719277089e"
+    },
+    {
+      "kind": "sale",
+      "saleId": "b9fb32a7-a2e3-4496-8986-8f84a64d38db",
+      "invoiceNo": "DC-0016",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1567,
+      "existingMovementId": "52e98fcd-13fc-4881-9701-7e7e5687a018"
+    },
+    {
+      "kind": "sale",
+      "saleId": "b9fb32a7-a2e3-4496-8986-8f84a64d38db",
+      "invoiceNo": "DC-0016",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": -1069.8,
+      "existingMovementId": "1c5d18d2-6388-4902-a6c1-2a69f20f4844"
+    },
+    {
+      "kind": "sale",
+      "saleId": "3767cff5-8080-41f6-8b19-cbbcb18d7523",
+      "invoiceNo": "DC-0017",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -94,
+      "existingMovementId": "3d6a1844-1941-4c80-b94c-d7cda799fc25"
+    },
+    {
+      "kind": "sale",
+      "saleId": "3767cff5-8080-41f6-8b19-cbbcb18d7523",
+      "invoiceNo": "DC-0017",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": -1055.5,
+      "existingMovementId": "6e031275-a889-4f16-94a4-f6c1cd4172fa"
+    },
+    {
+      "kind": "sale",
+      "saleId": "3767cff5-8080-41f6-8b19-cbbcb18d7523",
+      "invoiceNo": "DC-0017",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "368492f0-79c9-4526-8447-ee1d72737d94",
+      "quantity": -287,
+      "existingMovementId": "8b613a06-ca3b-41e1-b55a-ea702252e30c"
+    },
+    {
+      "kind": "sale",
+      "saleId": "27439e2d-781f-47df-84b2-c913a3e8c881",
+      "invoiceNo": "DC-0018",
+      "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+      "variationId": "efeec767-d7b8-4c41-811b-56e2b4d40dbd",
+      "quantity": -428,
+      "existingMovementId": "21abe931-0cfa-4b2b-b0cf-42dd05556f12"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a3c2cef3-3b13-4ef9-81bf-eabb46e01de7",
+      "invoiceNo": "DC-0019",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -191.8,
+      "existingMovementId": "056eff05-1d3c-475a-856e-ea6fa56793db"
+    },
+    {
+      "kind": "sale",
+      "saleId": "a3c2cef3-3b13-4ef9-81bf-eabb46e01de7",
+      "invoiceNo": "DC-0019",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -2139,
+      "existingMovementId": "3b8019d2-af01-49c8-8e0b-a490c8db487c"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0fb023b2-7c53-45d9-893c-81641c868883",
+      "invoiceNo": "DC-0020",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -398,
+      "existingMovementId": "801ac026-7900-4bfb-a008-3941a2413dc4"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0fb023b2-7c53-45d9-893c-81641c868883",
+      "invoiceNo": "DC-0020",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -546,
+      "existingMovementId": "98649970-935e-4182-b0aa-4744d33da270"
+    },
+    {
+      "kind": "sale",
+      "saleId": "0fb023b2-7c53-45d9-893c-81641c868883",
+      "invoiceNo": "DC-0020",
+      "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
+      "variationId": "8e21ac1e-7a48-41bf-849b-29bce279c235",
+      "quantity": -1375,
+      "existingMovementId": "cb6938f7-d345-41be-92fc-74e8d742d615"
+    },
+    {
+      "kind": "sale",
+      "saleId": "ac34ba50-b328-4359-8701-c48b7a41e949",
+      "invoiceNo": "DC-0021",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1605,
+      "existingMovementId": "3cb2640e-868d-4ec9-9e48-68254cd23319"
+    },
+    {
+      "kind": "sale",
+      "saleId": "c08f9c1a-58ee-42d6-83c0-8a315ad744fa",
+      "invoiceNo": "DC-0022",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1023,
+      "existingMovementId": "42b40058-4645-40ca-a500-6d638330d2ad"
+    },
+    {
+      "kind": "sale",
+      "saleId": "6f98d6ce-8b46-441b-869b-b0bdfdd14239",
+      "invoiceNo": "DC-0023",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -394.8,
+      "existingMovementId": "026a1013-f8d2-46bf-b858-6d2d5b513e9d"
+    },
+    {
+      "kind": "sale",
+      "saleId": "6f98d6ce-8b46-441b-869b-b0bdfdd14239",
+      "invoiceNo": "DC-0023",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1944,
+      "existingMovementId": "76b909d7-4f4c-4a24-918f-adc9eb66801f"
+    },
+    {
+      "kind": "sale",
+      "saleId": "f89d61ab-9220-4dbe-8573-4fea537e3cc4",
+      "invoiceNo": "DC-0024",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -480,
+      "existingMovementId": "ffbde815-f97a-4ce5-ad2d-40fb1a1d5ec8"
+    },
+    {
+      "kind": "sale",
+      "saleId": "574f1fd3-c711-4775-8455-8ee658e1d8b3",
+      "invoiceNo": "DC-0025",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -120,
+      "existingMovementId": "330fcfa1-647d-4d48-a737-fe52cbefb3ea"
+    },
+    {
+      "kind": "sale",
+      "saleId": "7fd52ccb-eff3-42ba-8d69-cb6c862613c4",
+      "invoiceNo": "DC-0026",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1575,
+      "existingMovementId": "066d4d9b-a8a4-4b3c-9fa5-747ee1ac9116"
+    },
+    {
+      "kind": "sale",
+      "saleId": "11996154-1024-42e4-8c95-e83170e4734f",
+      "invoiceNo": "DC-0027",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -1072,
+      "existingMovementId": "ca3b22fd-597a-47ae-a030-d44fa49f5495"
+    },
+    {
+      "kind": "sale",
+      "saleId": "612b8644-0031-48ba-80ed-06713786b5d6",
+      "invoiceNo": "DC-0028",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -5814,
+      "existingMovementId": "0476fe1c-5efa-4f68-ab93-c2fcf78b9dfb"
+    },
+    {
+      "kind": "sale",
+      "saleId": "2e4969d4-1fa1-4f5f-850e-9a8af53ea026",
+      "invoiceNo": "DC-0029",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -507,
+      "existingMovementId": "1c2fac93-98cf-47a6-8549-964e46f47bac"
+    },
+    {
+      "kind": "sale",
+      "saleId": "2e4969d4-1fa1-4f5f-850e-9a8af53ea026",
+      "invoiceNo": "DC-0029",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": -783.4,
+      "existingMovementId": "df4b29d2-bebe-40be-b455-64c2e45938e8"
+    },
+    {
+      "kind": "sale",
+      "saleId": "2e4969d4-1fa1-4f5f-850e-9a8af53ea026",
+      "invoiceNo": "DC-0029",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": -90.75,
+      "existingMovementId": "cc332eb0-6f61-408d-ae71-f58add27de76"
+    },
+    {
+      "kind": "sale",
+      "saleId": "e20ad2f7-1d4e-4a19-84a1-0cd56d1d2bf5",
+      "invoiceNo": "DC-0030",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": -931.7,
+      "existingMovementId": "70408af1-cdbd-49fa-ac4a-9947979398e3"
+    },
+    {
+      "kind": "sale",
+      "saleId": "ac587364-1977-42b9-8ed9-d877f7aeb781",
+      "invoiceNo": "DC-0031",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -1000,
+      "existingMovementId": "1b273fee-b004-49dd-96a6-0c8670599246"
+    },
+    {
+      "kind": "sale",
+      "saleId": "b1c856db-7734-411a-8d32-50ea183c25f4",
+      "invoiceNo": "DC-0032",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": -2433,
+      "existingMovementId": "668f1b97-5621-4f8e-8ebe-4fcd1a6617b5"
+    },
+    {
+      "kind": "sale",
+      "saleId": "cd57b46b-06b2-4c2d-8c1a-ea8e4662857d",
+      "invoiceNo": "DC-0033",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": -520,
+      "existingMovementId": "a806ea26-4746-47d1-a99e-7cf353edd7d0"
+    },
+    {
+      "kind": "sale",
+      "saleId": "efe7e3da-0887-493b-86de-98884dd83824",
+      "invoiceNo": "DC-0034",
+      "productId": "97a2e574-53c1-4f41-8c23-0cdf48ceb746",
+      "variationId": "21f76e02-ba11-4f60-816d-df80a9bcdd2d",
+      "quantity": -760,
+      "existingMovementId": "09e2c86d-5b00-4c36-ae6c-593464fee97d"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "698988bf-da75-4bca-8672-e36d75f8e465",
+      "quantity": 27821,
+      "existingMovementId": "a1773978-5dda-438a-b17a-9dc46862fa49"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "97a2e574-53c1-4f41-8c23-0cdf48ceb746",
+      "variationId": "21f76e02-ba11-4f60-816d-df80a9bcdd2d",
+      "quantity": 26786.7,
+      "existingMovementId": "f3eac189-8041-43f5-86aa-7e9e65809f97"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+      "variationId": "efeec767-d7b8-4c41-811b-56e2b4d40dbd",
+      "quantity": 3463.83,
+      "existingMovementId": "e5bd2a50-7478-422b-abff-a05be95d03d8"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "71c8a39d-b31f-458b-801f-34c964fb9cb1",
+      "variationId": "efeec767-d7b8-4c41-811b-56e2b4d40dbd",
+      "quantity": 61016.22,
+      "existingMovementId": "898b60f4-5d13-4cf6-8c66-9dcb5a4a24d1"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "679e7e52-a8db-4773-8206-99cb680310cb",
+      "variationId": "8e21ac1e-7a48-41bf-849b-29bce279c235",
+      "quantity": 14410.2,
+      "existingMovementId": "48146815-58ab-4e25-b6fe-13fb68aa6cc5"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "df6daa8a-4790-49c4-8820-de568ff9bfd7",
+      "quantity": 4212.3,
+      "existingMovementId": "98e4c05e-f487-4729-a5d0-bbd1d442155c"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "43f351f4-5370-4f5f-8fcb-836b6e80537e",
+      "quantity": 1830.3,
+      "existingMovementId": "48c7c876-9f94-492c-8980-0ab6b30bcae5"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": 1568.1,
+      "existingMovementId": "8578cf0d-54f0-4dad-b13c-20208bbb985d"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "a52110d7-9adf-483c-8765-d85852862b51",
+      "variationId": "3f9fe37e-a3f6-4e5e-8c84-049ee819723f",
+      "quantity": 3487.4,
+      "existingMovementId": "29d146a1-4f36-4638-9eae-a110ac8feb81"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "c7dec26c-e1c2-4554-842e-72a10a224ae8",
+      "variationId": "d9083f0b-1b24-4356-8eeb-bb3fcdf7be9f",
+      "quantity": 15931.2,
+      "existingMovementId": "cd2cef91-acca-48c1-a988-7a9b9a6b673c"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "2009a404-e2fc-45dc-801a-5440b88c7354",
+      "variationId": "f770b180-21d5-4f31-8eed-936a16ba0e17",
+      "quantity": 1069.8,
+      "existingMovementId": "aa459ddd-f3a0-4714-bdfd-30263260e22d"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "57e6d4ff-503f-47b8-8bae-43158eabed15",
+      "variationId": "47f12c1c-8b75-495c-8b24-c9da7e64c604",
+      "quantity": 2244.6,
+      "existingMovementId": "9740ab4b-1f77-48b6-983e-49f7057322ea"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "659126ee-dfaa-4e72-857e-9979c58c2cbc",
+      "variationId": "1629567a-e033-47e6-8108-fb4564c31a22",
+      "quantity": 5852.7,
+      "existingMovementId": "47fb79be-ccd6-464f-a228-77cab0150191"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "74fa8f4e-67dd-4898-8db0-ec26ceb4ef19",
+      "variationId": "7bd18968-165d-4487-8fdc-5a33b0990df6",
+      "quantity": 2017.7,
+      "existingMovementId": "ff76047a-5fba-4dd9-8edb-1cbe6e275ba9"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "fc9d1281-7aa9-4927-85ec-671024454f03",
+      "variationId": "7a6d5f35-5027-4ecf-8f26-985545e2b990",
+      "quantity": 2667,
+      "existingMovementId": "4e2026fd-8ff8-41a3-9271-295b5681fae6"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "b881fbdd-b5c4-4fab-8e4b-5330263b2e42",
+      "variationId": "8126ca49-b329-4a5d-88ef-75aa7d3347db",
+      "quantity": 43500,
+      "existingMovementId": "5a56a24c-fcfd-4c3e-ba7f-0c2e36f8fab7"
+    },
+    {
+      "kind": "purchase",
+      "purchaseId": "a065035c-dca2-4079-837a-9c2aeca9332d",
+      "poNo": "PO2025/0003",
+      "productId": "45e72f65-67aa-48b9-8e3b-2533f543e86b",
+      "variationId": "368492f0-79c9-4526-8447-ee1d72737d94",
+      "quantity": 527.8,
+      "existingMovementId": "c0e01b84-dd11-42e8-ad08-ad01e6bf5ead"
+    }
+  ],
+  "trackStockUpdates": []
+}

@@ -1,0 +1,215 @@
+{
+  "run": "SEVEN_PHASE_REMAINING_PLAN",
+  "generated_at": "2026-06-29T14:00:00.000Z",
+  "program_mode": "PRODUCTION_OPS",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Production ops monitoring",
+      "status": "ONGOING_OPS",
+      "action": "daily/weekly monitoring only",
+      "command": "npm run monitor:three-company-unified-ledger",
+      "auto_approved": true
+    },
+    {
+      "phase": 2,
+      "name": "Office PC local cleanup",
+      "status": "SAFE_LOCAL_CLEANUP",
+      "action": "review unrelated files; do not delete unless approved",
+      "inventory": "office-pc-local-change-inventory.json",
+      "auto_approved": false
+    },
+    {
+      "phase": "3A",
+      "name": "BS/P&L unified preview",
+      "status": "COMPLETE_DEPLOYED",
+      "productionUrl": "https://erp.dincouture.pk",
+      "productionCommit": "4a5dc304",
+      "previewOnly": true,
+      "defaultRuntimeChanged": false,
+      "loaderSwapApproved": false,
+      "evidence": "reports/single-core-ledger/phase-3a-bs-pl-preview/"
+    },
+    {
+      "phase": "3B",
+      "name": "Cash Flow unified preview",
+      "status": "COMPLETE_DEPLOYED",
+      "productionUrl": "https://erp.dincouture.pk",
+      "productionCommit": "99f2e3b3",
+      "previewOnly": true,
+      "defaultRuntimeChanged": false,
+      "loaderSwapApproved": false,
+      "evidence": "reports/single-core-ledger/phase-3b-cash-flow-preview/"
+    },
+    {
+      "phase": "3B-E",
+      "name": "Cash Flow delta investigation",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "recommendedNext": "D+E finance rule review",
+      "runtimeChanged": false,
+      "evidence": "reports/single-core-ledger/phase-3b-e-cash-flow-delta-investigation/"
+    },
+    {
+      "phase": "3B-F",
+      "name": "Cash Flow row-keyed export / deeper diff tooling",
+      "status": "DEPLOYED",
+      "completedAt": "2026-06-29",
+      "productionCommit": "5433ac2c",
+      "diagnosticOnly": true,
+      "officialTotalsChanged": false,
+      "deployedToProduction": true,
+      "loaderSwapApproved": false,
+      "financeRuleConfirmationRequired": ["DIN CHINA", "DIN BRIDAL"],
+      "bsPlFinanceStatus": "PENDING",
+      "evidence": "reports/single-core-ledger/phase-3b-f-cash-flow-row-export/"
+    },
+    {
+      "phase": "3B-G",
+      "name": "Cash Flow finance rule decision pack",
+      "status": "PREPARED",
+      "preparedAt": "2026-06-29",
+      "financeStatus": "PENDING",
+      "loaderSwapApproved": false,
+      "requiredDecisions": ["Q4", "Q5", "Q7"],
+      "runtimeChanged": false,
+      "migrationsRun": false,
+      "flagsToggled": false,
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-g-cash-flow-finance-rule-decision/"
+    },
+    {
+      "phase": "3B-D",
+      "name": "Cash Flow candidate golden capture",
+      "status": "COMPLETE_CANDIDATE_ONLY",
+      "candidateOnly": true,
+      "financeApproved": false,
+      "completedAt": "2026-06-29",
+      "companies": ["DIN CHINA", "DIN BRIDAL", "DIN COUTURE"],
+      "zeroDiffCompanies": ["DIN COUTURE"],
+      "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+      "loaderSwapApproved": false,
+      "bsPlFinanceStatus": "PENDING",
+      "migrationsRun": false,
+      "flagsToggled": false,
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-d-cash-flow-golden-capture/"
+    },
+    {
+      "phase": "3B-H",
+      "name": "Cash Flow preview alignment",
+      "status": "DEPLOYED",
+      "completedAt": "2026-06-29",
+      "deployedCommit": "d2401b1f",
+      "financeDecisions": { "Q4": "A", "Q5": "C", "Q7": "B" },
+      "previewAlignmentOnly": true,
+      "officialLegacyUnchanged": true,
+      "deployedToProduction": true,
+      "loaderSwapApproved": false,
+      "evidence": "reports/single-core-ledger/phase-3b-h-cash-flow-preview-alignment/"
+    },
+    {
+      "phase": "3B-I",
+      "name": "Aligned Cash Flow candidate golden capture",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "approvalStatus": "CANDIDATE_ONLY",
+      "financeStatus": "PENDING",
+      "zeroDiffCompanies": ["DIN COUTURE"],
+      "nonZeroDiffCompanies": ["DIN CHINA", "DIN BRIDAL"],
+      "loaderSwapApproved": false,
+      "officialLegacyUnchanged": true,
+      "migrationsRun": false,
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-i-cash-flow-aligned-golden-capture/"
+    },
+    {
+      "phase": "3B-J",
+      "name": "Cash Flow residual delta bridge",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "selectedBasisOption": "B",
+      "financeStatus": "APPROVED_FOR_SIGNOFF_PACK",
+      "loaderSwapApproved": false,
+      "evidence": "reports/single-core-ledger/phase-3b-j-cash-flow-residual-delta-bridge/"
+    },
+    {
+      "phase": "3B-K",
+      "name": "Cash Flow finance basis sign-off",
+      "status": "COMPLETE",
+      "completedAt": "2026-06-29",
+      "selectedBasisOption": "B",
+      "reviewer": "Nadeem Khan",
+      "companyFinanceStatus": "APPROVED_AS_ALIGNED_BASIS_CANDIDATE",
+      "loaderSwapApproved": false,
+      "officialLegacyUnchanged": true,
+      "deployed": false,
+      "evidence": "reports/single-core-ledger/phase-3b-k-cash-flow-finance-signoff/"
+    },
+    {
+      "phase": "3B-L",
+      "name": "Cash Flow loader-swap readiness",
+      "status": "PREPARED",
+      "completedAt": "2026-06-29",
+      "planningOnly": true,
+      "loaderSwapApproved": false,
+      "operatorApprovalReceived": false,
+      "proposedNextPhase": "3B-M",
+      "officialLegacyUnchanged": true,
+      "evidence": "reports/single-core-ledger/phase-3b-l-cash-flow-loader-swap-readiness/"
+    },
+    {
+      "phase": "3B-M",
+      "name": "Cash Flow controlled loader swap",
+      "status": "EXECUTED",
+      "completedAt": "2026-06-29",
+      "loaderSwapApproved": true,
+      "operatorApprovalReceived": true,
+      "codeCommit": "36543345",
+      "financeRules": { "Q4": "A", "Q5": "C", "Q7": "B" },
+      "glMutations": false,
+      "evidence": "reports/single-core-ledger/phase-3b-m-cash-flow-loader-swap/"
+    },
+    {
+      "phase": 3,
+      "name": "Remaining optional screen audit",
+      "status": "COMPLETE",
+      "action": "BS, P&L, Cash Flow, mobile parity audit — docs only",
+      "evidence": "reports/single-core-ledger/remaining-optional-screens-audit/",
+      "runtime_changed": false,
+      "implementation_auto_approved": false,
+      "r7_r8_next_company_blocked": true,
+      "finance_golden_required": true,
+      "next_if_approved": "Phase 3A — next-implementation-plan.md",
+      "auto_approved": false
+    },
+    {
+      "phase": 4,
+      "name": "Safe report/UI fixes",
+      "status": "OPTIONAL_FUTURE",
+      "action": "only if no migration/no GL mutation/no loader behavior change",
+      "auto_approved": false
+    },
+    {
+      "phase": 5,
+      "name": "Next company rollout",
+      "status": "BLOCKED_NEEDS_FINANCE_SIGNOFF",
+      "action": "finance sign-off + golden capture required",
+      "auto_approved": false
+    },
+    {
+      "phase": 6,
+      "name": "R7 roznamcha_payment RPC",
+      "status": "BLOCKED_NEEDS_MIGRATION_APPROVAL",
+      "action": "design review + finance + migration + clone + backup",
+      "auto_approved": false
+    },
+    {
+      "phase": 7,
+      "name": "R8 legacy engine retirement",
+      "status": "BLOCKED_R8",
+      "action": "stability period + separate approval + rollback strategy",
+      "auto_approved": false
+    }
+  ]
+}

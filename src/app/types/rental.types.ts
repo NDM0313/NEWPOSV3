@@ -1,4 +1,12 @@
-export type RentalStatus = 'reserved' | 'picked_up' | 'overdue' | 'returned' | 'closed' | 'cancelled';
+export type RentalStatus =
+  | 'reserved'
+  | 'booked'
+  | 'picked_up'
+  | 'active'
+  | 'overdue'
+  | 'returned'
+  | 'closed'
+  | 'cancelled';
 
 export interface RentalSecurityDetails {
   type: 'cash' | 'document';
@@ -38,7 +46,9 @@ export interface ReturnAssessment {
 
 export const RENTAL_STATUS_LABELS: Record<RentalStatus, string> = {
   reserved: 'Reserved',
+  booked: 'Booked',
   picked_up: 'Picked Up',
+  active: 'Active',
   overdue: 'Overdue',
   returned: 'Returned',
   closed: 'Closed',
@@ -47,7 +57,9 @@ export const RENTAL_STATUS_LABELS: Record<RentalStatus, string> = {
 
 export const RENTAL_STATUS_COLORS: Record<RentalStatus, string> = {
   reserved: 'bg-blue-100 text-blue-800',
+  booked: 'bg-pink-100 text-pink-800',
   picked_up: 'bg-green-100 text-green-800',
+  active: 'bg-blue-100 text-blue-800',
   overdue: 'bg-red-100 text-red-800',
   returned: 'bg-purple-100 text-purple-800',
   closed: 'bg-gray-100 text-gray-800',

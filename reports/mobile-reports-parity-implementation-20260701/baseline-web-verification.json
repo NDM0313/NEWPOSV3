@@ -1,0 +1,13 @@
+{
+  "run": "MOBILE_REPORTS_PARITY_IMPLEMENTATION",
+  "task": "baseline-web-verification",
+  "generated_at": "2026-07-01T09:48:40.383Z",
+  "monitoring_report": "three-company-monitoring-2026-07-01T09-37-49-068Z",
+  "overall": "PASS",
+  "unified_ledger_tests": "328/328 PASS",
+  "unit_tests": "122/122 PASS",
+  "build": "PASS",
+  "migrations_run": false,
+  "gl_mutations": false,
+  "status": "PASS"
+}

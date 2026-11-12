@@ -1,0 +1,56 @@
+{
+  "run": "LOCAL_CLEANUP_MANUAL_INSPECTION",
+  "generated_at": "2026-06-29T18:00:00.000Z",
+  "status": "LOCAL_CLEANUP_MANUAL_INSPECTION_COMPLETE",
+  "branch": "main",
+  "latest_main_commit_at_start": "7a914d1b",
+  "files_inspected": 25,
+  "action": "READ_ONLY",
+  "bridal_golden_pkr_changed": false,
+  "bridal_loader_metadata_changed": true,
+  "bridal_golden_fixture_timestamp_only": true,
+  "high_risk_files": [
+    "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-raw.json",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/golden-capture-report.md",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/party-ledger.png",
+    "reports/single-core-ledger/din-bridal-monitoring/golden-capture/screenshots/roznamcha.png"
+  ],
+  "evidence_candidates": [
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.md",
+    "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.json",
+    "reports/single-core-ledger/operational-monitoring/latest-three-company-monitoring.md"
+  ],
+  "safe_archive_candidates": [
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-43-53-886Z.md",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-31-19-431Z.md",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T08-12-46-549Z.md"
+  ],
+  "safe_delete_candidates": [
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-16-22-259Z.md",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.json",
+    "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-27T15-27-34-167Z.md"
+  ],
+  "safe_restore_candidates": [
+    "graphify-out/GRAPH_REPORT.md"
+  ],
+  "monitoring_08_12": {
+    "newer_than_official": true,
+    "official_committed": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-29T07-42-30-177Z.json",
+    "per_company_credentials": true,
+    "generic_fallback_allowed": false,
+    "migrations_run": false,
+    "gl_mutations": false,
+    "overall": "PASS",
+    "recommend_commit_to_git": false,
+    "recommend_archive_locally": true
+  },
+  "recommended_next_option": "B",
+  "finance_gate_required_for": "din-bridal/golden-fixtures.* and golden-capture bundle"
+}

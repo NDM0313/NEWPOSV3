@@ -75,10 +75,10 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         <Label className={`text-xs font-medium uppercase tracking-wide flex items-center gap-1.5 ${ 
-          isBranchLocked ? (disabled ? 'text-gray-500' : 'text-orange-500') : 'text-indigo-400'
+          isBranchLocked ? (disabled ? 'text-muted-foreground' : 'text-orange-500') : 'text-indigo-400'
         }`}>
           <Building2 size={14} />
-          Branch {isBranchLocked && <Lock size={10} className={disabled ? 'text-gray-400' : 'text-orange-400'} />}
+          Branch {isBranchLocked && <Lock size={10} className={disabled ? 'text-muted-foreground' : 'text-orange-400'} />}
         </Label>
         <Select 
           value={value} 
@@ -87,16 +87,16 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
         >
           <SelectTrigger className={`h-9 w-[200px] ${
             isBranchLocked 
-              ? 'bg-gray-900 border-orange-500/30 text-orange-400 cursor-not-allowed opacity-70' 
-              : 'bg-gray-950 border-indigo-500/30 text-indigo-300 hover:bg-gray-900'
+              ? 'bg-popover border-orange-500/30 text-orange-400 cursor-not-allowed opacity-70' 
+              : 'bg-input-background border-indigo-500/30 text-indigo-300 hover:bg-popover'
           }`}>
             <div className="flex items-center gap-2">
               <span className="truncate text-sm">{getBranchName()}</span>
             </div>
           </SelectTrigger>
-          <SelectContent className="bg-gray-950 border-gray-800 text-white">
+          <SelectContent className="bg-input-background border-border text-foreground">
             {loading ? (
-              <div className="px-3 py-4 text-center text-gray-400">
+              <div className="px-3 py-4 text-center text-muted-foreground">
                 <Loader2 size={16} className="animate-spin mx-auto mb-2" />
                 <p className="text-xs">Loading branches...</p>
               </div>
@@ -122,9 +122,9 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   return (
     <div className={`space-y-1.5 ${className}`}>
       <Label className={`font-medium text-xs uppercase tracking-wide flex items-center gap-1 ${ 
-        isBranchLocked ? (disabled ? 'text-gray-500' : 'text-orange-500') : 'text-indigo-500'
+        isBranchLocked ? (disabled ? 'text-muted-foreground' : 'text-orange-500') : 'text-indigo-500'
       }`}>
-        Branch {isBranchLocked && <Lock size={10} className={disabled ? 'text-gray-400' : 'text-orange-400'} />}
+        Branch {isBranchLocked && <Lock size={10} className={disabled ? 'text-muted-foreground' : 'text-orange-400'} />}
       </Label>
       <Select 
         value={value} 
@@ -133,17 +133,17 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
       >
         <SelectTrigger className={`h-10 ${
           isBranchLocked 
-            ? 'bg-gray-900 border-orange-500/30 text-orange-400 cursor-not-allowed opacity-70' 
-            : 'bg-gray-950 border-gray-700 text-white'
+            ? 'bg-popover border-orange-500/30 text-orange-400 cursor-not-allowed opacity-70' 
+            : 'bg-input-background border-border text-foreground'
         }`}>
           <div className="flex items-center gap-2">
-            <Building2 size={14} className={`shrink-0 ${isBranchLocked ? 'text-orange-400' : 'text-gray-400'}`} />
+            <Building2 size={14} className={`shrink-0 ${isBranchLocked ? 'text-orange-400' : 'text-muted-foreground'}`} />
             <span className="truncate text-sm">{getBranchName()}</span>
           </div>
         </SelectTrigger>
-        <SelectContent className="bg-gray-950 border-gray-800 text-white">
+        <SelectContent className="bg-input-background border-border text-foreground">
           {loading ? (
-            <div className="px-3 py-4 text-center text-gray-400">
+            <div className="px-3 py-4 text-center text-muted-foreground">
               <Loader2 size={16} className="animate-spin mx-auto mb-2" />
               <p className="text-xs">Loading branches...</p>
             </div>

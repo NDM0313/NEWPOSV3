@@ -12,11 +12,17 @@ import {
 } from '@/app/components/ui/select';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
+import { detectTransactionTraceRepairCandidates } from '@/app/lib/transactionTraceRepairDiagnostics';
+import { TraceRepairCandidatesPanel } from '@/app/components/admin/developer-center/TraceRepairCandidateCard';
 import {
   runTransactionTrace,
   type TraceMode,
   type TransactionTraceResult,
 } from '@/app/services/accountingDeveloperCenterService';
+import type { ReportModeVisibility, ReportVisibility } from '@/app/lib/transactionTraceReportVisibility';
+import { suggestTraceActions } from '@/app/lib/transactionTraceSuggestedActions';
+import { isCorrectionReversalReferenceType } from '@/app/lib/reportVisibilityContract';
 
 interface Props {
   companyId: string;
@@ -34,16 +40,16 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border border-gray-800 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-900/80 text-left text-sm font-medium text-gray-200 hover:bg-gray-800/80"
+        className="w-full flex items-center gap-2 px-3 py-2 bg-card text-left text-sm font-medium text-gray-200 hover:bg-muted/80"
         onClick={() => setOpen(!open)}
       >
         {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         {title}
       </button>
-      {open && <div className="p-3 text-xs text-gray-400 space-y-2">{children}</div>}
+      {open && <div className="p-3 text-xs text-muted-foreground space-y-2">{children}</div>}
     </div>
   );
 }
@@ -56,7 +62,52 @@ function inclBadge(included: boolean) {
   );
 }
 
+function modeVisLine(label: string, vis: ReportModeVisibility) {
+  return (
+    <div key={label} className="space-y-0.5">
+      <p>
+        {label} — normal {inclBadge(vis.normal.included)} · audit {inclBadge(vis.audit.included)}
+      </p>
+      <p className="text-muted-foreground pl-2">{vis.normal.reason}</p>
+    </div>
+  );
+}
+
+function renderReportVisibility(vis: ReportVisibility, journalRt?: string | null) {
+  const suggested = suggestTraceActions({
+    issueType: 'none',
+    journalReferenceType: journalRt,
+    normalHiddenAuditVisible:
+      isCorrectionReversalReferenceType(journalRt) &&
+      !vis.roznamcha.normal.included &&
+      vis.roznamcha.audit.included,
+  });
+  return (
+    <div className="space-y-2">
+      {modeVisLine('Roznamcha', vis.roznamcha)}
+      {modeVisLine('Account statement', vis.accountStatement)}
+      {modeVisLine('Customer/supplier statement', vis.customerSupplierStatement)}
+      {modeVisLine('Day Book', vis.dayBook)}
+      <p>Dashboard: {vis.dashboard.note}</p>
+      {vis.dashboard.impacted.length > 0 && <p>KPIs: {vis.dashboard.impacted.join(', ')}</p>}
+      {suggested.length > 0 && (
+        <div className="border-t border-border pt-2 mt-2">
+          <p className="text-muted-foreground font-medium">Suggested safe actions</p>
+          <ul className="list-disc pl-4 mt-1">
+            {suggested.map((s) => (
+              <li key={s.id}>
+                <span className="text-gray-200">{s.label}</span> — {s.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
+  const { sendToRepairQueue } = useRepairQueue();
   const [mode, setMode] = useState<TraceMode>('auto');
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
@@ -94,19 +145,21 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
         visibility,
       }));
 
+  const repairCandidates = trace ? detectTransactionTraceRepairCandidates(trace, 'trace') : [];
+
   return (
     <div className="space-y-4">
-      <Card className="border-gray-800 bg-gray-900/40">
+      <Card className="border-border bg-card/40">
         <CardHeader>
           <CardTitle className="text-lg">Transaction trace</CardTitle>
           <CardDescription>
-            RCV/PAY/EXP/JE/SL/REN/UUID — operational doc → payment → JE → report visibility. Read-only.
+            RCV/PAY/EXP/JE/SL/REN/UUID — operational doc → payment → JE → report visibility. Phase F repair queue.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2 items-end">
             <Select value={mode} onValueChange={(v) => setMode(v as TraceMode)}>
-              <SelectTrigger className="w-[180px] bg-gray-950 border-gray-700">
+              <SelectTrigger className="w-[180px] bg-input-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -123,7 +176,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="HQ-RCV-0006, JE-0012, payment UUID…"
-              className="flex-1 min-w-[200px] bg-gray-950 border-gray-700"
+              className="flex-1 min-w-[200px] bg-input-background border-border"
               onKeyDown={(e) => e.key === 'Enter' && void run()}
             />
             <Button type="button" onClick={() => void run()} disabled={loading}>
@@ -140,10 +193,27 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
 
       {trace && (
         <div className="space-y-2">
+          <Card className="border-violet-900/30 bg-violet-950/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Repair candidates</CardTitle>
+              <CardDescription>Safe metadata repairs — always dry-run before apply</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <TraceRepairCandidatesPanel
+                candidates={repairCandidates}
+                sourceTab="trace"
+                onSendToQueue={(item) => {
+                  sendToRepairQueue(item);
+                  toast.success('Sent to Repair Queue');
+                }}
+              />
+            </CardContent>
+          </Card>
+
           <div className="flex flex-wrap gap-2 items-center text-sm">
-            <span className="text-gray-500">Overall:</span>
+            <span className="text-muted-foreground">Overall:</span>
             <Badge>{trace.overall}</Badge>
-            <span className="text-gray-600">Mode: {trace.mode}</span>
+            <span className="text-muted-foreground">Mode: {trace.mode}</span>
           </div>
 
           <Section title="1 · Operational entities" defaultOpen>
@@ -166,7 +236,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>No payment rows.</p>
             ) : (
               trace.payments.map((p) => (
-                <pre key={p.id} className="text-[10px] bg-gray-950 p-2 rounded overflow-x-auto">
+                <pre key={p.id} className="text-[10px] bg-input-background p-2 rounded overflow-x-auto">
                   {JSON.stringify(p, null, 2)}
                 </pre>
               ))
@@ -178,7 +248,7 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>No rental_payment rows.</p>
             ) : (
               trace.rentalPayments.map((p) => (
-                <pre key={p.id} className="text-[10px] bg-gray-950 p-2 rounded overflow-x-auto">
+                <pre key={p.id} className="text-[10px] bg-input-background p-2 rounded overflow-x-auto">
                   {JSON.stringify(p, null, 2)}
                 </pre>
               ))
@@ -190,14 +260,14 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
               <p>No journal entries.</p>
             ) : (
               trace.journals.map((j) => (
-                <div key={j.id} className="mb-3 border border-gray-800 rounded p-2">
+                <div key={j.id} className="mb-3 border border-border rounded p-2">
                   <p className="text-gray-200 font-medium">
                     {j.entry_no || j.id.slice(0, 8)} · {j.reference_type} · {j.entry_date}
                     {j.is_void ? ' (void)' : ''}
                   </p>
                   <table className="w-full mt-2">
                     <thead>
-                      <tr className="text-gray-500">
+                      <tr className="text-muted-foreground">
                         <th className="text-left">Code</th>
                         <th className="text-left">Account</th>
                         <th className="text-right">Dr</th>
@@ -245,51 +315,27 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
             {visibilityRows.length > 0 ? (
               <div className="space-y-4">
                 {visibilityRows.map((row) => (
-                  <div key={row.journalId} className="rounded border border-gray-800 p-2 space-y-2">
-                    <p className="text-gray-300 font-medium">
+                  <div key={row.journalId} className="rounded border border-border p-2 space-y-2">
+                    <p className="text-muted-foreground font-medium">
                       {row.entryNo || row.journalId.slice(0, 8)}
                       {row.referenceType ? ` · ${row.referenceType}` : ''}
                     </p>
-                    <p>
-                      Roznamcha {inclBadge(row.visibility.roznamcha.included)} — {row.visibility.roznamcha.reason}
-                    </p>
-                    <p>
-                      Account Statement {inclBadge(row.visibility.accountStatement.included)} —{' '}
-                      {row.visibility.accountStatement.reason}
-                    </p>
-                    <p>
-                      Day Book {inclBadge(row.visibility.dayBook.included)} — {row.visibility.dayBook.reason}
-                    </p>
-                    <p>Dashboard: {row.visibility.dashboard.note}</p>
-                    {row.visibility.dashboard.impacted.length > 0 && (
-                      <p>KPIs: {row.visibility.dashboard.impacted.join(', ')}</p>
-                    )}
+                    {renderReportVisibility(row.visibility, row.referenceType)}
                   </div>
                 ))}
               </div>
             ) : trace.reportVisibility.length > 0 ? (
               <div className="space-y-2">
                 {trace.reportVisibility.map((vis, i) => (
-                  <div key={i} className="space-y-2">
-                    <p>
-                      Roznamcha {inclBadge(vis.roznamcha.included)} — {vis.roznamcha.reason}
-                    </p>
-                    <p>
-                      Account Statement {inclBadge(vis.accountStatement.included)} — {vis.accountStatement.reason}
-                    </p>
-                    <p>
-                      Day Book {inclBadge(vis.dayBook.included)} — {vis.dayBook.reason}
-                    </p>
-                    <p>Dashboard: {vis.dashboard.note}</p>
-                  </div>
+                  <div key={i}>{renderReportVisibility(vis, trace.journals[i]?.reference_type)}</div>
                 ))}
               </div>
             ) : (
               <p>Run trace to evaluate report inclusion.</p>
             )}
             {trace.traceGuidance && (
-              <div className="mt-3 border-t border-gray-800 pt-2">
-                <p className="text-gray-300 font-medium">Diagnosis / next steps</p>
+              <div className="mt-3 border-t border-border pt-2">
+                <p className="text-muted-foreground font-medium">Diagnosis / next steps</p>
                 <ul className="list-disc pl-4 mt-1">
                   {trace.traceGuidance.nextSteps.map((s, i) => (
                     <li key={i}>{s}</li>

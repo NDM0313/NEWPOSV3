@@ -3,14 +3,18 @@ import { getNextContactReferenceCode } from './documentNumber';
 import { ensurePartySubledgersForContact } from './partySubledger';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { normalizeCompanyId } from './contactBalancesUtils';
-import type { ContactBalancesRow } from './contactBalancesRpc';
 import {
   balanceRowFromMap,
   fetchContactPartyGlBalancesMap,
   fetchOperationalContactBalancesSummary,
-  partyGlDueForListRole,
   partyGlSliceFromMap,
+  resolveContactListBalance,
 } from './contactBalancesRpc';
+import {
+  isSupplierBusinessContactType,
+  loadSupplierBusinessGlBalancesMap,
+  supplierBusinessListBalance,
+} from './supplierBusinessGl';
 
 export type ContactRole = 'customer' | 'supplier' | 'worker';
 export type BackendContactType = 'customer' | 'supplier' | 'both' | 'worker';
@@ -118,34 +122,9 @@ function rolesToType(roles: ContactRole[]): BackendContactType {
   return 'both';
 }
 
-/** Operational RPC row → single display balance on customer/supplier/worker list (branch context). */
-function balanceFromRpcRow(
-  contactType: string,
-  receivables: number,
-  payables: number,
-  listRole?: ContactRole
-): number {
-  const t = (contactType || '').toLowerCase();
-  if (listRole === 'customer') {
-    if (t === 'both') return Math.max(0, receivables);
-    return Math.max(0, receivables);
-  }
-  if (listRole === 'supplier') {
-    if (t === 'both') return Math.max(0, payables);
-    return Math.max(0, payables);
-  }
-  if (listRole === 'worker') {
-    return Math.max(0, payables);
-  }
-  if (t === 'supplier') return Math.max(0, payables);
-  if (t === 'worker') return Math.max(0, payables);
-  if (t === 'both') return Math.max(0, receivables) + Math.max(0, payables);
-  return Math.max(0, receivables);
-}
-
 /**
- * Operational balances from `get_contact_balances_summary` (same as web Contacts when RPC exists).
- * Falls back to opening_balance only if RPC fails.
+ * Party list balances: GL when non-zero; operational fill when GL empty/zero/missing;
+ * else opening_balance. Soft-fails empty GL maps (same as GL RPC error path).
  */
 export async function getContacts(
   companyId: string,
@@ -174,11 +153,25 @@ export async function getContacts(
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
-  const partyGl = await fetchContactPartyGlBalancesMap(company, branchId);
-  const opFallBack =
-    partyGl.error != null
-      ? await fetchOperationalContactBalancesSummary(company, branchId)
-      : { map: new Map<string, ContactBalancesRow>(), error: null as string | null };
+  const [partyGl, opSummary, bizResult] = await Promise.all([
+    fetchContactPartyGlBalancesMap(company, branchId),
+    fetchOperationalContactBalancesSummary(company, branchId),
+    type === 'supplier' || type === undefined
+      ? loadSupplierBusinessGlBalancesMap({ companyId: company, branchId, endDate: null })
+      : Promise.resolve(null),
+  ]);
+  const glOk = partyGl.error == null;
+  if (glOk && partyGl.map.size === 0 && (data || []).length > 0) {
+    console.warn(
+      '[ERP Mobile] get_contact_party_gl_balances returned zero rows; using operational fill where available.'
+    );
+  }
+
+  const bizComplete = bizResult?.complete === true;
+  const bizMap = bizComplete ? bizResult!.map : null;
+  if (bizResult && !bizResult.complete && (type === 'supplier' || type === undefined)) {
+    console.warn('[ERP Mobile] Supplier Business GL batch incomplete:', bizResult.error);
+  }
 
   const listRole: ContactRole | undefined =
     type === 'customer' || type === 'supplier' || type === 'worker' ? type : undefined;
@@ -194,27 +187,18 @@ export async function getContacts(
     created_from?: string | null;
   }) => {
     const opening = Number(row.opening_balance ?? 0);
-    let balance = opening;
-
-    if (!partyGl.error) {
-      const slice = partyGlSliceFromMap(partyGl.map, row.id);
-      if (slice) {
-        if (listRole) {
-          balance = partyGlDueForListRole(slice, listRole);
-        } else {
-          balance =
-            Math.max(0, slice.glArReceivable) +
-            Math.max(0, slice.glApPayable) +
-            Math.max(0, slice.glWorkerPayable);
-        }
-      } else {
-        balance = opening;
-      }
-    } else {
-      const rpc = balanceRowFromMap(opFallBack.map, row.id);
-      balance = rpc
-        ? balanceFromRpcRow(row.type || 'customer', rpc.receivables, rpc.payables, listRole)
-        : opening;
+    let balance = resolveContactListBalance({
+      opening,
+      contactType: row.type || 'customer',
+      listRole,
+      glOk,
+      glSlice: partyGlSliceFromMap(partyGl.map, row.id),
+      opRow: balanceRowFromMap(opSummary.map, row.id),
+    });
+    if (bizMap && isSupplierBusinessContactType(row.type)) {
+      const slice = bizMap.get(row.id) ?? bizMap.get(String(row.id).trim());
+      // complete map always has a slice (incl. true zero) — apply Business GL.
+      if (slice) balance = supplierBusinessListBalance(slice);
     }
     return {
       id: row.id,
@@ -238,6 +222,22 @@ export async function getContacts(
       createdFrom: row.created_from ?? null,
     };
   });
+
+  // Supplier Business GL incomplete: do not cache Official/zero overlays as Business truth.
+  if ((type === 'supplier' || type === undefined) && bizResult && !bizResult.complete) {
+    const cached = await listCacheGet<Contact[]>(cacheKey);
+    if (cached?.length) {
+      return {
+        data: cached,
+        error: `Supplier Business GL unavailable (${bizResult.error || 'incomplete'}); showing last cached list.`,
+      };
+    }
+    return {
+      data: [],
+      error: `Supplier Business GL unavailable: ${bizResult.error || 'incomplete read'}`,
+    };
+  }
+
   void listCacheSet(cacheKey, list);
   return { data: list, error: null };
 }

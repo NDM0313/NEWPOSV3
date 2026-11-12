@@ -1,0 +1,45 @@
+{
+  "status": "MIGRATION_CLOSURE_COMPLETE_NO_APPROVED_PENDING_MIGRATIONS",
+  "generated_at": "2026-06-27T17:45:00Z",
+  "latest_main_commit": "bd813ec2",
+  "run": "single-core-ledger-migration-closure-db-readiness-finalization",
+  "approved_pending_migrations": [],
+  "migrations_applied": [],
+  "migrations_applied_count": 0,
+  "backup_id": null,
+  "production_schema_migrations": {
+    "count": 559,
+    "repo_count": 470,
+    "missing_from_production": 0,
+    "phase_15_applied": "4/4",
+    "unified_rpcs": "5/5"
+  },
+  "post_apply_verification": {
+    "skipped_apply": true,
+    "read_only_flag_audit": "PASS",
+    "monitoring_baseline_reference": "reports/single-core-ledger/din-bridal-monitoring/production-monitoring-post-completion.json",
+    "monitoring_baseline_status": "PASS"
+  },
+  "r7_status": "DESIGN_ONLY",
+  "r8_status": "BLOCKED",
+  "din_china_flags_on": 12,
+  "din_china_loaders_on": 5,
+  "din_bridal_flags_on": 12,
+  "din_bridal_loaders_on": 5,
+  "other_company_loaders_on": 0,
+  "tests_build": "245/245 PASS, build PASS",
+  "deploy_status": "skipped_docs_only",
+  "fx_app_touched": false,
+  "gl_mutations": false,
+  "credentials_committed": false,
+  "constraints_honored": true,
+  "next_action": "Periodic MONITORING_PROFILE=din-bridal golden verify; next company requires separate finance sign-off; R7 design-only; R8 blocked",
+  "evidence_files": [
+    "reports/single-core-ledger/migration-closure/production-schema-migrations-audit.md",
+    "reports/single-core-ledger/migration-closure/production-schema-migrations-audit.json",
+    "reports/single-core-ledger/migration-closure/approved-pending-migration-allowlist.md",
+    "reports/single-core-ledger/migration-closure/approved-pending-migration-allowlist.json",
+    "reports/single-core-ledger/migration-closure/post-migration-production-verify.md",
+    "reports/single-core-ledger/migration-closure/post-migration-production-verify.json"
+  ]
+}

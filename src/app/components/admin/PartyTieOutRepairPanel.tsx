@@ -15,6 +15,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Label } from '@/app/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import {
@@ -45,9 +46,9 @@ const BUCKET_LABELS: Record<PartyTieOutRepairBucket, string> = {
 };
 
 function sevBadge(s: 'info' | 'warn' | 'error') {
-  if (s === 'error') return <Badge className="bg-red-800 text-white text-[10px]">error</Badge>;
-  if (s === 'warn') return <Badge className="bg-amber-800 text-white text-[10px]">warn</Badge>;
-  return <Badge className="bg-slate-600 text-white text-[10px]">info</Badge>;
+  if (s === 'error') return <Badge className="bg-red-800 text-foreground text-[10px]">error</Badge>;
+  if (s === 'warn') return <Badge className="bg-amber-800 text-foreground text-[10px]">warn</Badge>;
+  return <Badge className="bg-slate-600 text-foreground text-[10px]">info</Badge>;
 }
 
 export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }) {
@@ -200,39 +201,39 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
   }, [companyId, user?.id, runCleanup]);
 
   if (!companyId) {
-    return <p className="text-sm text-gray-500">No company context.</p>;
+    return <p className="text-sm text-muted-foreground">No company context.</p>;
   }
 
   return (
     <div className="space-y-4">
-      <Card className="border-gray-800 bg-gray-900/40 border-dashed border-amber-700/40">
+      <Card className="border-border bg-card/40 border-dashed border-amber-700/40">
         <CardHeader className="pb-2">
           <CardTitle className="text-base text-amber-100">Live tie-out cleanup (top mismatches)</CardTitle>
           <CardDescription>
             Ranks parties by |operational − GL slice|, deep-scans with repair buckets, proposes NULL{' '}
-            <code className="text-gray-400">payments.contact_id</code> backfills from sale/purchase documents only (no GL
+            <code className="text-muted-foreground">payments.contact_id</code> backfills from sale/purchase documents only (no GL
             edits).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3 items-end">
           <div className="space-y-1">
-            <Label className="text-gray-400 text-xs">Top N per kind</Label>
+            <Label className="text-muted-foreground text-xs">Top N per kind</Label>
             <Input
               type="number"
               min={1}
               max={50}
-              className="w-24 bg-gray-950 border-gray-700"
+              className="w-24 bg-input-background border-border"
               value={cleanupTop}
               onChange={(e) => setCleanupTop(Number(e.target.value) || 12)}
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-gray-400 text-xs">Min |variance|</Label>
+            <Label className="text-muted-foreground text-xs">Min |variance|</Label>
             <Input
               type="number"
               min={0}
               step={0.01}
-              className="w-28 bg-gray-950 border-gray-700"
+              className="w-28 bg-input-background border-border"
               value={cleanupMinVar}
               onChange={(e) => setCleanupMinVar(Number(e.target.value) || 0)}
             />
@@ -255,41 +256,41 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
           </Button>
         </CardContent>
         {cleanupReport && (
-          <CardContent className="pt-0 text-sm text-gray-300 space-y-3 border-t border-gray-800 mt-2">
+          <CardContent className="pt-0 text-sm text-muted-foreground space-y-3 border-t border-border mt-2">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
               <div>
-                <span className="text-gray-500">Coarse mismatch parties</span>
-                <div className="text-white">{cleanupReport.beforeCoarseMismatchParties}</div>
+                <span className="text-muted-foreground">Coarse mismatch parties</span>
+                <div className="text-foreground">{cleanupReport.beforeCoarseMismatchParties}</div>
               </div>
               <div>
-                <span className="text-gray-500">Deep-scanned</span>
-                <div className="text-white">{cleanupReport.summary.partiesDeepScanned}</div>
+                <span className="text-muted-foreground">Deep-scanned</span>
+                <div className="text-foreground">{cleanupReport.summary.partiesDeepScanned}</div>
               </div>
               <div>
-                <span className="text-gray-500">Repair candidates</span>
-                <div className="text-white">{cleanupReport.summary.totalRepairCandidates}</div>
+                <span className="text-muted-foreground">Repair candidates</span>
+                <div className="text-foreground">{cleanupReport.summary.totalRepairCandidates}</div>
               </div>
               <div>
-                <span className="text-gray-500">Manual review parties</span>
-                <div className="text-white">{cleanupReport.summary.manualReviewPartyCount}</div>
+                <span className="text-muted-foreground">Manual review parties</span>
+                <div className="text-foreground">{cleanupReport.summary.manualReviewPartyCount}</div>
               </div>
               <div>
-                <span className="text-gray-500">Auto-fixable backfills (NULL contact)</span>
+                <span className="text-muted-foreground">Auto-fixable backfills (NULL contact)</span>
                 <div className="text-emerald-300">{cleanupReport.summary.autoFixableBackfillCandidates}</div>
               </div>
               <div>
-                <span className="text-gray-500">Parties w/ repair rows</span>
-                <div className="text-white">{cleanupReport.afterPartiesWithIssues}</div>
+                <span className="text-muted-foreground">Parties w/ repair rows</span>
+                <div className="text-foreground">{cleanupReport.afterPartiesWithIssues}</div>
               </div>
             </div>
             {backfillPreview && (
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[11px] text-muted-foreground">
                 Current NULL-contact candidates: {backfillPreview.sale} sale-linked, {backfillPreview.purchase}{' '}
-                purchase-linked (requires <code className="text-gray-400">party_repair_audit</code> migration).
+                purchase-linked (requires <code className="text-muted-foreground">party_repair_audit</code> migration).
               </p>
             )}
             <div>
-              <div className="text-xs text-gray-500 uppercase mb-1">Top residual (collected JE scope)</div>
+              <div className="text-xs text-muted-foreground uppercase mb-1">Top residual (collected JE scope)</div>
               <ul className="text-xs font-mono max-h-32 overflow-y-auto space-y-0.5">
                 {cleanupReport.summary.topResidualParties.map((r) => (
                   <li key={`${r.partyType}-${r.partyId}`}>
@@ -297,14 +298,14 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                   </li>
                 ))}
                 {!cleanupReport.summary.topResidualParties.length && (
-                  <li className="text-gray-600">None above threshold in this scan.</li>
+                  <li className="text-muted-foreground">None above threshold in this scan.</li>
                 )}
               </ul>
             </div>
-            <ScrollArea className="h-48 border border-gray-800 rounded-md p-2">
+            <ScrollArea className="h-48 border border-border rounded-md p-2">
               <table className="w-full text-[10px] text-left">
                 <thead>
-                  <tr className="text-gray-500">
+                  <tr className="text-muted-foreground">
                     <th className="p-1">Type</th>
                     <th className="p-1">Party</th>
                     <th className="p-1">|Op−GL|</th>
@@ -313,7 +314,7 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                 </thead>
                 <tbody>
                   {cleanupReport.details.map((d) => (
-                    <tr key={`${d.partyType}-${d.partyId}`} className="border-t border-gray-800/80">
+                    <tr key={`${d.partyType}-${d.partyId}`} className="border-t border-border/80">
                       <td className="p-1">{d.partyType}</td>
                       <td className="p-1 truncate max-w-[120px]">{d.name || d.partyId.slice(0, 8)}</td>
                       <td className="p-1">{d.absVariance.toFixed(2)}</td>
@@ -327,7 +328,7 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
         )}
       </Card>
 
-      <Card className="border-gray-800 bg-gray-900/40">
+      <Card className="border-border bg-card/40">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -335,15 +336,15 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
           </CardTitle>
           <CardDescription>
             One party: operational vs RPC GL vs extended collection; mismatch causes; repair-ready rows. Uses{' '}
-            <code className="text-gray-400">runPartyBalanceTieOut</code> +{' '}
-            <code className="text-gray-400">buildPartyTieOutRepairPlan</code>.
+            <code className="text-muted-foreground">runPartyBalanceTieOut</code> +{' '}
+            <code className="text-muted-foreground">buildPartyTieOutRepairPlan</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3 items-end">
           <div className="space-y-1">
-            <Label className="text-gray-400 text-xs">Party role</Label>
+            <Label className="text-muted-foreground text-xs">Party role</Label>
             <Select value={partyType} onValueChange={(v) => setPartyType(v as PartyKind)}>
-              <SelectTrigger className="w-[140px] bg-gray-950 border-gray-700">
+              <SelectTrigger className="w-[140px] bg-input-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -354,15 +355,15 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
             </Select>
           </div>
           <div className="space-y-1 flex-1 min-w-[200px]">
-            <Label className="text-gray-400 text-xs">Contact</Label>
+            <Label className="text-muted-foreground text-xs">Contact</Label>
             <Input
-              className="bg-gray-950 border-gray-700 mb-1"
+              className="bg-input-background border-border mb-1"
               placeholder="Filter name…"
               value={contactSearch}
               onChange={(e) => setContactSearch(e.target.value)}
             />
             <Select value={partyId || undefined} onValueChange={setPartyId}>
-              <SelectTrigger className="bg-gray-950 border-gray-700">
+              <SelectTrigger className="bg-input-background border-border">
                 <SelectValue placeholder="Choose contact" />
               </SelectTrigger>
               <SelectContent className="max-h-[280px]">
@@ -375,13 +376,8 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-gray-400 text-xs">As-of date</Label>
-            <Input
-              type="date"
-              className="w-[160px] bg-gray-950 border-gray-700"
-              value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
-            />
+            <Label className="text-muted-foreground text-xs">As-of date</Label>
+            <DatePicker value={asOf} onChange={(v) => setAsOf(v)} className="w-[160px]" />
           </div>
           <Button onClick={() => void run()} disabled={loading || !partyId} className="gap-1">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -392,57 +388,57 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
 
       {tieOut && repair && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Balances</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm space-y-2 font-mono text-gray-300">
+            <CardContent className="text-sm space-y-2 font-mono text-muted-foreground">
               <div>
-                <span className="text-gray-500">Operational </span>
+                <span className="text-muted-foreground">Operational </span>
                 {tieOut.operational.primaryReceivableOrPayable.value ?? '—'}
               </div>
               <div>
-                <span className="text-gray-500">RPC GL slice </span>
+                <span className="text-muted-foreground">RPC GL slice </span>
                 {tieOut.gl.rpcPartySlice.value ?? '—'}
               </div>
               <div>
-                <span className="text-gray-500">Extended GL </span>
+                <span className="text-muted-foreground">Extended GL </span>
                 {tieOut.gl.extendedOnControlAccount.value ?? '—'}
               </div>
               <div>
-                <span className="text-gray-500">Extended − RPC </span>
+                <span className="text-muted-foreground">Extended − RPC </span>
                 {tieOut.gl.extendedMinusRpcPartySlice.value ?? '—'}
               </div>
               <div>
-                <span className="text-gray-500">Residual (unmapped) </span>
+                <span className="text-muted-foreground">Residual (unmapped) </span>
                 {tieOut.residual.unmappedPartyOnControl.value ?? '—'}
               </div>
               {tieOut.workerGl && (
-                <div className="pt-2 border-t border-gray-800 space-y-1 text-[11px]">
+                <div className="pt-2 border-t border-border space-y-1 text-[11px]">
                   <div>
-                    <span className="text-gray-500">2010 net </span>
+                    <span className="text-muted-foreground">2010 net </span>
                     {tieOut.workerGl.gl2010NetLiability.value}
                   </div>
                   <div>
-                    <span className="text-gray-500">1180 net </span>
+                    <span className="text-muted-foreground">1180 net </span>
                     {tieOut.workerGl.gl1180NetAsset.value}
                   </div>
                   <div>
-                    <span className="text-gray-500">Worker net (ext) </span>
+                    <span className="text-muted-foreground">Worker net (ext) </span>
                     {tieOut.workerGl.workerNetFromWpWa.value}
                   </div>
                 </div>
               )}
               {tieOut.variances.operationalMinusRpcPartySlice != null && (
                 <div>
-                  <span className="text-gray-500">Op − RPC </span>
+                  <span className="text-muted-foreground">Op − RPC </span>
                   {tieOut.variances.operationalMinusRpcPartySlice}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Repair buckets ({repair.candidates.length})</CardTitle>
             </CardHeader>
@@ -453,9 +449,9 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                     const rows = repair.byBucket[b];
                     if (!rows.length) return null;
                     return (
-                      <li key={b} className="border-b border-gray-800 pb-2">
+                      <li key={b} className="border-b border-border pb-2">
                         <div className="font-medium text-gray-200">{BUCKET_LABELS[b]}</div>
-                        <ul className="mt-1 space-y-1 text-gray-400">
+                        <ul className="mt-1 space-y-1 text-muted-foreground">
                           {rows.map((r, i) => (
                             <li key={i} className="flex flex-wrap gap-1 items-start">
                               {sevBadge(r.severity)}
@@ -474,38 +470,38 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40 lg:col-span-2">
+          <Card className="border-border bg-card/40 lg:col-span-2">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Mismatch causes</CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[160px]">
-                <ul className="text-sm space-y-1 text-gray-300">
+                <ul className="text-sm space-y-1 text-muted-foreground">
                   {tieOut.diagnostics.mismatchCauses.map((c, i) => (
                     <li key={i} className="flex gap-2">
                       {sevBadge(c.severity)}
                       <span>
-                        <code className="text-gray-500">{c.code}</code> {c.message}
+                        <code className="text-muted-foreground">{c.code}</code> {c.message}
                       </span>
                     </li>
                   ))}
                   {!tieOut.diagnostics.mismatchCauses.length && (
-                    <li className="text-gray-500">None in this scope.</li>
+                    <li className="text-muted-foreground">None in this scope.</li>
                   )}
                 </ul>
               </ScrollArea>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Linked docs</CardTitle>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[200px] text-xs font-mono text-gray-400">
+              <ScrollArea className="h-[200px] text-xs font-mono text-muted-foreground">
                 {tieOut.linked.sales?.length ? (
                   <div className="mb-2">
-                    <div className="text-gray-500 mb-1">Sales</div>
+                    <div className="text-muted-foreground mb-1">Sales</div>
                     {tieOut.linked.sales.map((s) => (
                       <div key={s.id}>
                         {s.invoice_no || s.id.slice(0, 8)} due {s.due_amount}
@@ -515,7 +511,7 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                 ) : null}
                 {tieOut.linked.purchases?.length ? (
                   <div className="mb-2">
-                    <div className="text-gray-500 mb-1">Purchases</div>
+                    <div className="text-muted-foreground mb-1">Purchases</div>
                     {tieOut.linked.purchases.map((p) => (
                       <div key={p.id}>
                         {p.po_no || p.id.slice(0, 8)} due {p.due_amount}
@@ -525,7 +521,7 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                 ) : null}
                 {tieOut.linked.rentals?.length ? (
                   <div>
-                    <div className="text-gray-500 mb-1">Rentals</div>
+                    <div className="text-muted-foreground mb-1">Rentals</div>
                     {tieOut.linked.rentals.map((r) => (
                       <div key={r.id}>
                         {r.booking_no || r.id.slice(0, 8)} due {r.due_amount}
@@ -535,17 +531,17 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                 ) : null}
                 {!tieOut.linked.sales?.length &&
                   !tieOut.linked.purchases?.length &&
-                  !tieOut.linked.rentals?.length && <span className="text-gray-600">None loaded for this party type.</span>}
+                  !tieOut.linked.rentals?.length && <span className="text-muted-foreground">None loaded for this party type.</span>}
               </ScrollArea>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40">
+          <Card className="border-border bg-card/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Linked payments</CardTitle>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[200px] text-xs font-mono text-gray-400">
+              <ScrollArea className="h-[200px] text-xs font-mono text-muted-foreground">
                 {tieOut.linked.payments.map((p) => (
                   <div key={p.id} className="mb-1">
                     {p.reference_number || p.id.slice(0, 8)} {p.amount} {p.reference_type}{' '}
@@ -554,12 +550,12 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                     </Badge>
                   </div>
                 ))}
-                {!tieOut.linked.payments.length && <span className="text-gray-600">No payments for this contact.</span>}
+                {!tieOut.linked.payments.length && <span className="text-muted-foreground">No payments for this contact.</span>}
               </ScrollArea>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40 lg:col-span-2">
+          <Card className="border-border bg-card/40 lg:col-span-2">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Journal entries · worker lifecycle</CardTitle>
             </CardHeader>
@@ -567,7 +563,7 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
               <ScrollArea className="h-[280px]">
                 <table className="w-full text-xs text-left">
                   <thead>
-                    <tr className="text-gray-500 border-b border-gray-800">
+                    <tr className="text-muted-foreground border-b border-border">
                       <th className="py-1 pr-2">JE</th>
                       <th className="py-1 pr-2">Date</th>
                       <th className="py-1 pr-2">Ref</th>
@@ -579,9 +575,9 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
                       )}
                     </tr>
                   </thead>
-                  <tbody className="font-mono text-gray-300">
+                  <tbody className="font-mono text-muted-foreground">
                     {tieOut.linked.journalEntries.map((j) => (
-                      <tr key={j.journal_entry_id} className="border-b border-gray-800/80">
+                      <tr key={j.journal_entry_id} className="border-b border-border/80">
                         <td className="py-1 pr-2">{j.entry_no || j.journal_entry_id.slice(0, 8)}</td>
                         <td className="py-1 pr-2">{j.entry_date?.slice(0, 10)}</td>
                         <td className="py-1 pr-2 truncate max-w-[180px]">
@@ -601,32 +597,32 @@ export function PartyTieOutRepairPanel({ branchId }: { branchId: string | null }
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-gray-900/40 lg:col-span-2">
+          <Card className="border-border bg-card/40 lg:col-span-2">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Ready-to-fix (flat)</CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[200px] text-sm">
                 {repair.candidates.map((c: PartyTieOutRepairCandidate, i: number) => (
-                  <div key={i} className="mb-3 border-b border-gray-800 pb-2">
+                  <div key={i} className="mb-3 border-b border-border pb-2">
                     <div className="flex flex-wrap gap-2 items-center">
                       {sevBadge(c.severity)}
                       <Badge variant="outline" className="text-[10px]">
                         {BUCKET_LABELS[c.bucket]}
                       </Badge>
                       {c.sourceCode && (
-                        <code className="text-[10px] text-gray-500">{c.sourceCode}</code>
+                        <code className="text-[10px] text-muted-foreground">{c.sourceCode}</code>
                       )}
                     </div>
-                    <p className="text-gray-300 mt-1">{c.message}</p>
+                    <p className="text-muted-foreground mt-1">{c.message}</p>
                     {c.readyToFixHint && <p className="text-emerald-600/90 text-xs mt-1">{c.readyToFixHint}</p>}
                     {c.relatedIds?.length ? (
-                      <p className="text-[10px] text-gray-500 mt-1">IDs: {c.relatedIds.join(', ')}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">IDs: {c.relatedIds.join(', ')}</p>
                     ) : null}
                   </div>
                 ))}
                 {!repair.candidates.length && (
-                  <p className="text-gray-500">No repair candidates in this run (within collected JEs).</p>
+                  <p className="text-muted-foreground">No repair candidates in this run (within collected JEs).</p>
                 )}
               </ScrollArea>
             </CardContent>

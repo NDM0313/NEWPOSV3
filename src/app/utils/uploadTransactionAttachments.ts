@@ -260,6 +260,81 @@ export async function uploadSaleAttachments(
 }
 
 /**
+ * Upload rental booking attachments to rental-attachments bucket.
+ * Path: {companyId}/{rentalId}/{timestamp}_{index}_{filename}
+ */
+export async function uploadRentalAttachments(
+  companyId: string,
+  rentalId: string,
+  files: File[]
+): Promise<AttachmentResult[]> {
+  if (!files.length) return [];
+  const bucket = 'rental-attachments';
+  const prefix = `${companyId}/${rentalId}/${Date.now()}`;
+  const results: AttachmentResult[] = [];
+  let anyUploadFailed = false;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      anyUploadFailed = true;
+      showFileTooLargeToast(file.name);
+      continue;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    try {
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+
+      if (error) {
+        anyUploadFailed = true;
+        console.error(`[UPLOAD RENTAL ATTACHMENTS] Failed to upload ${file.name}:`, error);
+        if (isStorageRlsError(error)) {
+          showStorageRlsToast();
+          break;
+        }
+        if (isFileTooLargeError(error)) {
+          showFileTooLargeToast(file.name);
+          continue;
+        }
+        if (isBucketNotFoundError(error)) {
+          showBucketNotFoundToast('rental-attachments');
+          break;
+        }
+      } else {
+        results.push({ url: storageRefForPersistence(bucket, path), name: file.name });
+        console.log(`[UPLOAD RENTAL ATTACHMENTS] ✅ Uploaded: ${file.name}`);
+      }
+    } catch (err: any) {
+      anyUploadFailed = true;
+      console.error(`[UPLOAD RENTAL ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (String(err?.message ?? '').includes('timed out after')) {
+        console.warn(`[UPLOAD RENTAL ATTACHMENTS] Timed out: ${file.name}`);
+        continue;
+      }
+      if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
+      else if (isStorageRlsError(err)) showStorageRlsToast();
+    }
+  }
+
+  if (anyUploadFailed && results.length === 0) {
+    console.warn('[UPLOAD RENTAL ATTACHMENTS] All uploads failed');
+  } else if (anyUploadFailed) {
+    console.warn(`[UPLOAD RENTAL ATTACHMENTS] Some uploads failed (${results.length}/${files.length} succeeded)`);
+  }
+
+  return results;
+}
+
+/**
  * Upload journal entry attachments (pictures/documents) to payment-attachments bucket.
  * Path: journal-entries/{companyId}/{timestamp}_{index}_{filename}
  * Use for Manual Journal Entry and any journal entry attachment.
@@ -400,4 +475,56 @@ export async function uploadUnifiedStylePaymentAttachments(
     toast.warning(`Only ${results.length} of ${files.length} file(s) uploaded.`);
   }
   return results;
+}
+
+const EXPENSE_RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
+
+export type ExpenseReceiptUploadResult = { url: string | null; error: string | null };
+
+/** Upload one expense receipt/bill to expense-receipts bucket. Returns storage ref for receipt_url column. */
+export async function uploadExpenseReceipt(
+  companyId: string,
+  file: File | null | undefined,
+): Promise<ExpenseReceiptUploadResult> {
+  if (!file) return { url: null, error: null };
+  if (file.size === 0) {
+    return { url: null, error: 'Receipt file is empty. Try again or save without attachment.' };
+  }
+  if (file.size > EXPENSE_RECEIPT_MAX_BYTES) {
+    return { url: null, error: 'File too large. Max 5MB.' };
+  }
+  const bucket = 'expense-receipts';
+  const safeName = (file.name || 'receipt').replace(/[^a-zA-Z0-9.-]/g, '_');
+  const path = `${companyId}/receipts/${Date.now()}_${safeName}`;
+  try {
+    const { error } = await withUploadTimeout(
+      supabase.storage.from(bucket).upload(path, file, {
+        upsert: true,
+        contentType: file.type || 'application/octet-stream',
+      }),
+      UPLOAD_TIMEOUT_MS,
+      `Upload ${file.name || 'receipt'}`,
+    );
+    if (error) {
+      if (isStorageRlsError(error)) {
+        showStorageRlsToast();
+        return { url: null, error: 'Storage upload blocked by RLS.' };
+      }
+      if (isBucketNotFoundError(error)) {
+        showBucketNotFoundToast('expense-receipts');
+        return { url: null, error: 'Storage bucket "expense-receipts" not found on server.' };
+      }
+      if (isFileTooLargeError(error)) {
+        showFileTooLargeToast(file.name, 5);
+        return { url: null, error: 'File too large. Max 5MB.' };
+      }
+      return { url: null, error: error.message || 'Receipt upload failed.' };
+    }
+    return { url: storageRefForPersistence(bucket, path), error: null };
+  } catch (err: unknown) {
+    const msg = String((err as { message?: string })?.message ?? 'Receipt upload failed.');
+    if (isFileTooLargeException(err)) showFileTooLargeToast(file.name, 5);
+    else if (isStorageRlsError(err as { message?: string })) showStorageRlsToast();
+    return { url: null, error: msg };
+  }
 }

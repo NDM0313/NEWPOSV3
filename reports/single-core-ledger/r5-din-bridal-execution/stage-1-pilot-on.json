@@ -1,0 +1,11 @@
+{
+  "stage": 1,
+  "flag": "unified_ledger_pilot",
+  "status": "PASS",
+  "sql_file": "scripts/single-core-ledger/din-bridal/r5-enable-pilot.sql",
+  "rollback_file": "scripts/single-core-ledger/din-bridal/r5-rollback-pilot.sql",
+  "company_id": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "executed_at": "2026-06-27T11:15:32Z",
+  "din_bridal_flags_on": ["unified_ledger_pilot"],
+  "din_china_regression": true
+}

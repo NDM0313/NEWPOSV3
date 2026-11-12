@@ -1,0 +1,22 @@
+Date,Reference,Type,Description,Branch,Debit,Credit,Balance,Payment Method,Created By
+Opening balance,0
+Closing balance,216300
+Total debit,2616300
+Total credit,2400000
+
+01-01-2000,-,Opening Balance,Opening Balance,—,,,0,—,—
+20-11-2025,DC-0028,Sale Invoice,Sale finalized – Sale DC-0028 - MR JALIL - Ref 9142,BL0002 | DIN CHINA,2616300,,2616300,Receivable — MR JALIL,—
+24-11-2025,RCV-0035,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=59] MUHAMMAD JALIL ACC RVD,BL0002 | DIN CHINA,,200000,2416300,bank,—
+28-11-2025,RCV-0042,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=73] SP2025/0067,BL0002 | DIN CHINA,,300000,2116300,bank,—
+05-12-2025,RCV-0056,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=87] SP2025/0081,BL0002 | DIN CHINA,,500000,1616300,bank,—
+12-12-2025,RCV-0064,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=97] SP2025/0091,BL0002 | DIN CHINA,,200000,1416300,bank,—
+19-12-2025,RCV-0073,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=107] SP2025/0101,BL0002 | DIN CHINA,,200000,1216300,bank,—
+02-01-2026,RCV-0092,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=127] SP2026/0121,BL0002 | DIN CHINA,,200000,1016300,bank,—
+14-01-2026,RCV-0116,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=153] SP2026/0147,BL0002 | DIN CHINA,,100000,916300,bank,—
+26-01-2026,RCV-0133,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=170] SP2026/0164,BL0002 | DIN CHINA,,100000,816300,bank,—
+03-02-2026,RCV-0148,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=186] SP2026/0180,BL0002 | DIN CHINA,,100000,716300,bank,—
+16-02-2026,RCV-0165,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=205] SP2026/0199,BL0002 | DIN CHINA,,100000,616300,bank,—
+02-03-2026,RCV-0182,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=223] SP2026/0217,BL0002 | DIN CHINA,,100000,516300,bank,—
+06-04-2026,RCV-0193,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=241] SP2026/0235,BL0002 | DIN CHINA,,100000,416300,bank,—
+15-04-2026,RCV-0203,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=253] SP2026/0247,BL0002 | DIN CHINA,,100000,316300,bank,—
+27-04-2026,RCV-0213,Payment,Receipt DC-0028 (MR JALIL) - [legacy_din_china legacy_payment_id=267] SP2026/0261,BL0002 | DIN CHINA,,100000,216300,bank,—

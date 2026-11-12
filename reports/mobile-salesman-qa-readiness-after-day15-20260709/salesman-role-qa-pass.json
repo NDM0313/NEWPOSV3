@@ -1,0 +1,17 @@
+{
+  "classification": "SALESMAN_QA_PASS_PLAY_STORE_STILL_NOT_RELEASED",
+  "date": "2026-07-09",
+  "device": {
+    "model": "Pixel 6 Pro",
+    "serial": "24281FDEE0023P",
+    "android": "16"
+  },
+  "package": "com.dincouture.erp",
+  "versionName": "1.0.5",
+  "versionCode": 39,
+  "loginResult": "PASS",
+  "operatorAttestation": true,
+  "passwordRecorded": false,
+  "playStoreReleased": false,
+  "managerQa": "N/A_waived"
+}

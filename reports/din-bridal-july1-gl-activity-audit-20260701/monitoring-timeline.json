@@ -1,0 +1,62 @@
+{
+  "run": "DIN_BRIDAL_JULY1_GL_ACTIVITY_AUDIT",
+  "task": "monitoring-timeline",
+  "generated_at": "2026-07-01T13:15:00.000Z",
+  "golden_tb_pkr": 22056075,
+  "golden_roznamcha_cash_in_pkr": 1836350,
+  "golden_roznamcha_closing_pkr": 918570,
+  "snapshots": [
+    {
+      "artifact": "three-company-monitoring-2026-07-01T11-32-17-138Z.json",
+      "generated_at": "2026-07-01T11:32:17.138Z",
+      "din_bridal": "PASS",
+      "tb_actual_pkr": 22056075,
+      "tb_delta_pkr": 0,
+      "roznamcha_cash_in_actual_pkr": 1836350,
+      "roznamcha_cash_in_delta_pkr": 0,
+      "roznamcha_closing_actual_pkr": 918570,
+      "roznamcha_closing_delta_pkr": 0,
+      "other_checks_changed": false,
+      "mr_rehan_closing_pkr": 530000
+    },
+    {
+      "artifact": "three-company-monitoring-2026-07-01T11-58-38-675Z.json",
+      "generated_at": "2026-07-01T11:58:38.675Z",
+      "din_bridal": "FAIL",
+      "tb_actual_pkr": 22136075,
+      "tb_delta_pkr": 80000,
+      "roznamcha_cash_in_actual_pkr": 1916350,
+      "roznamcha_cash_in_delta_pkr": 80000,
+      "roznamcha_closing_actual_pkr": 998570,
+      "roznamcha_closing_delta_pkr": 80000,
+      "trigger_je": "RCV-0075 posted 2026-07-01T11:56:02Z"
+    },
+    {
+      "artifact": "three-company-monitoring-2026-07-01T12-31-25-103Z.json",
+      "generated_at": "2026-07-01T12:31:25.103Z",
+      "din_bridal": "FAIL",
+      "tb_actual_pkr": 22215400,
+      "tb_delta_pkr": 159325,
+      "roznamcha_cash_in_actual_pkr": 1916350,
+      "roznamcha_cash_in_delta_pkr": 80000,
+      "roznamcha_closing_actual_pkr": 998570,
+      "roznamcha_closing_delta_pkr": 80000,
+      "trigger_jes": ["RCV-0075", "JE-0205"]
+    },
+    {
+      "artifact": "three-company-monitoring-2026-07-01T12-43-13-370Z.json",
+      "generated_at": "2026-07-01T12:43:13.370Z",
+      "din_bridal": "FAIL",
+      "tb_actual_pkr": 22257400,
+      "tb_delta_pkr": 201325,
+      "roznamcha_cash_in_actual_pkr": 1958350,
+      "roznamcha_cash_in_delta_pkr": 122000,
+      "roznamcha_closing_actual_pkr": 1040570,
+      "roznamcha_closing_delta_pkr": 122000,
+      "trigger_jes": ["RCV-0075", "JE-0205", "RCV-0076"]
+    }
+  ],
+  "din_china_couture": "PASS throughout all snapshots",
+  "migrations_run": false,
+  "gl_mutations": false
+}

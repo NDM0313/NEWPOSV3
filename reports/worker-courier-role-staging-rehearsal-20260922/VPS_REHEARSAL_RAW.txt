@@ -1,0 +1,112 @@
+CLONE_DB=ledger_stage_20260922_prodcheck size=249 MB not_prod=true
+ROLE_MODEL_STAGING_ISOLATION_PROVEN
+STAGING_EXTERNAL_SIDE_EFFECTS_DISABLED reason=loopback_auth_rest_only_no_prod_webhooks
+PASS: clone grants
+PASS: HEALTH auth=200 rest=200
+PASS: identities company_a=e08a04af-22a8-4869-9b4d-da31fce13158 company_b=2ab65903-62a3-4bcf-bced-076b681e9b74
+Output format is unaligned.
+section
+BASELINE
+(1 row)
+code|type|id|ap_leaves|role_leaves
+SUP-ZHD-0007|supplier|6ce5bed0-bd0a-495d-8841-19f90be6188c|1|0
+SUP-ZHD-0036|supplier|797ca8bb-5491-4827-8d6e-c7971d20a022|1|0
+SUP-ZHD-0046|supplier|f902a1f8-cc8a-4508-8c47-beb1850da1ed|1|0
+SUP-ZHD-0162|supplier|4505905b-b3e0-4ec2-8fc7-bd79464b0506|1|1
+(4 rows)
+DROP TABLE
+CREATE TABLE
+INSERT 0 202
+contact_code|ap_line_count|ap_net
+SUP-ZHD-0007|48|4700000.00
+SUP-ZHD-0036|68|2250000.00
+SUP-ZHD-0046|86|5000000.00
+(3 rows)
+hist_fp_before
+e2d8dbaf79042b661d354a95d1980d3e
+(1 row)
+STAGING_T0=2026-09-22 01:09:22.962218+00
+PASS: JWT same-company WA ensure http=200
+PASS: JWT same-company WP ensure
+PASS: JWT same-company courier ensure
+PASS: JWT same-company party GL
+PASS: JWT cross-company _ensure_worker_advance_subaccount blocked http=403
+PASS: JWT cross-company _ensure_worker_payable_subaccount blocked http=403
+PASS: JWT cross-company get_or_create_courier_payable_account blocked http=403
+PASS: JWT cross-company _resolve_worker_payment_debit_account blocked http=403
+PASS: JWT cross-company get_contact_party_gl_balances blocked http=403
+PASS: cross-company no mutation co_b=121
+PASS: anon WA denied http=401
+STAGING_JWT_COMPANY_ISOLATION_PASS
+BEGIN
+UPDATE 1
+UPDATE 1
+UPDATE 1
+     code     |   type   
+--------------+----------
+ SUP-ZHD-0007 | courier
+ SUP-ZHD-0036 | worker
+ SUP-ZHD-0046 | worker
+ SUP-ZHD-0162 | supplier
+(4 rows)
+
+COMMIT
+PASS: DHL 203x leaf=58617ac4-2fff-4f2e-b3fa-4960ce2cf13a
+KIRAN WA=cadb56c4-74cd-4d00-b1fe-91e50a537609 WP=bf8a8c4e-cac6-42cb-9848-c35e6c3133a3
+SHAHMIM WA=2f8637f5-7e5b-49ab-876c-b586311d96ae WP=340928a1-bb7f-46d1-8160-1d4fc2ccbf5c
+     code      |          linked_contact_id           |   contact    
+---------------+--------------------------------------+--------------
+ 203164        | 6ce5bed0-bd0a-495d-8841-19f90be6188c | SUP-ZHD-0007
+ WA-SUPZHD0036 | 797ca8bb-5491-4827-8d6e-c7971d20a022 | SUP-ZHD-0036
+ WP-SUPZHD0036 | 797ca8bb-5491-4827-8d6e-c7971d20a022 | SUP-ZHD-0036
+ WA-SUPZHD0046 | f902a1f8-cc8a-4508-8c47-beb1850da1ed | SUP-ZHD-0046
+ WP-SUPZHD0046 | f902a1f8-cc8a-4508-8c47-beb1850da1ed | SUP-ZHD-0046
+(5 rows)
+
+ dhl_local_code | dhl_pk_code 
+----------------+-------------
+ 203164         | 2030162
+(1 row)
+
+STAGING_ROLE_LEAF_CREATION_PASS
+PASS: KIRAN worker lifecycle + resolver leaf
+KIRAN_STAGING_WORKER_LIFECYCLE_PASS
+PASS: SHAHMIM worker lifecycle + resolver leaf
+SHAHMIM_STAGING_WORKER_LIFECYCLE_PASS
+PASS: DHL courier lifecycle
+DHL_STAGING_COURIER_LIFECYCLE_PASS
+PASS: ordinary supplier AP; WA blocked
+ORDINARY_SUPPLIER_REGRESSION_PASS
+ frozen_count | current_hist_count | drifted_lines |          hist_fp_frozen          
+--------------+--------------------+---------------+----------------------------------
+          202 |                202 |             0 | e2d8dbaf79042b661d354a95d1980d3e
+(1 row)
+
+PASS: historical AP freeze
+STRATEGY_A_HISTORICAL_FREEZE_PASS
+PASS: rehearsal TB balanced
+ section | current_database 
+---------+------------------
+ PROD_RO | postgres
+(1 row)
+
+     code     |   type   
+--------------+----------
+ SUP-ZHD-0007 | supplier
+ SUP-ZHD-0036 | supplier
+ SUP-ZHD-0046 | supplier
+(3 rows)
+
+ prod_role_leaves 
+------------------
+                0
+(1 row)
+
+ prod_has_role_model_assert 
+----------------------------
+ f
+(1 row)
+
+PASS: production RO precheck (types still supplier; no target role leaves; migration not on prod)
+ROLE_MODEL_STAGING_POSTGRES_PASS
+PROSPECTIVE_ROLE_MODEL_STAGING_PASS

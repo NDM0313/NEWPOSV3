@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-06-30T10:11:41.223Z",
+  "command": "npm run monitor:three-company-unified-ledger",
+  "overall": "PASS",
+  "exit_code": 0,
+  "din_china_admin_compare": "compared=9 pass=9 fail=0",
+  "profiles": { "din-china": "PASS", "din-bridal": "PASS", "din-couture": "PASS" },
+  "other_company_loaders_on": 0,
+  "migrations_run": false,
+  "gl_mutations": false,
+  "evidence_file": "reports/single-core-ledger/operational-monitoring/three-company-monitoring-2026-06-30T10-01-06-471Z.json"
+}

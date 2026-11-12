@@ -1,0 +1,47 @@
+{
+  "timestampUtc": "2026-06-30T14:58:00.000Z",
+  "companyId": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92",
+  "companyName": "DIN BRIDAL",
+  "control1100": {
+    "accountId": "5ba1a722-875c-490a-a30a-868b46c8dff9",
+    "code": "1100",
+    "balance": -136500,
+    "jeNet": -136500
+  },
+  "partyAccounts": {
+    "AR-CUS0056": {
+      "accountId": "663cf711-8b3a-48d1-9a34-0b29bf8873d4",
+      "balance": 113750,
+      "contactId": "305478e7-1f5c-4a41-8f23-b2d0903da444",
+      "customerName": "Miss NAGHMANA RAJA",
+      "partyLedgerAr": 35000
+    },
+    "AR-CUS0012": {
+      "accountId": "eae67e54-d99e-4807-8da9-a4768e2c6588",
+      "balance": 72750,
+      "contactId": "8fd04bdb-85e5-4191-b2ad-0769bc740a0a",
+      "customerName": "ASIM",
+      "partyLedgerAr": 15000
+    }
+  },
+  "sourceJournalEntries": [
+    {
+      "entryNo": "JE-0155",
+      "jeId": "aaf56fb6-44ea-42c9-9be4-05e4f3cbe8f2",
+      "lineId": "4dfdc6ba-f895-4efd-89c5-253a4429322f",
+      "debit": 0,
+      "credit": 78750,
+      "invoiceNo": "HQ-SL-0001",
+      "saleId": "74f728e7-eb47-4419-b352-05f010df127f"
+    },
+    {
+      "entryNo": "JE-0157",
+      "jeId": "75f4d1e6-9f29-4922-9436-76f35542e17c",
+      "lineId": "428ae1a5-2aea-4953-afc8-d93e372fc479",
+      "debit": 0,
+      "credit": 57750,
+      "invoiceNo": "HQ-SL-0002",
+      "saleId": "796989e1-edec-4b58-85df-e8d848251cf7"
+    }
+  ]
+}

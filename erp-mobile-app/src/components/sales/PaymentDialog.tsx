@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2, Receipt } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
+import { getDefaultAccounts, type DefaultAccountsSettings } from '../../api/settings';
+import { getBranchPaymentDefaults } from '../../api/branches';
+import {
+  resolveDefaultPaymentAccountId,
+  type BranchPaymentDefaults,
+  type PaymentAccountPick,
+} from '../../utils/resolveDefaultPaymentAccount';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { canViewFinancialBalances } from '../../config/functionalRoles';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateTimeString } from '../../utils/localDate';
+import { DateTimeInputField } from '../shared/DateTimePicker';
+import { accountInOutBadgeLabel, POSTING_FIELD_TITLES } from '../../lib/accountPostingInOutLabel';
 
 export interface PaymentResult {
   paymentMethod: string;
@@ -22,6 +31,8 @@ interface PaymentDialogProps {
   onBack: () => void;
   totalAmount: number;
   companyId: string | null;
+  /** Branch for default cash/bank account preselect. */
+  branchId?: string | null;
   onComplete: (result: PaymentResult) => void | Promise<void>;
   saving?: boolean;
   saveError?: string | null;
@@ -43,6 +54,9 @@ interface Account {
   name: string;
   balance: number;
   type: string;
+  code?: string;
+  isDefaultCash?: boolean;
+  isDefaultBank?: boolean;
 }
 
 /** Map payment method to account type filter */
@@ -57,6 +71,7 @@ export function PaymentDialog({
   onBack,
   totalAmount,
   companyId,
+  branchId = null,
   onComplete,
   saving,
   saveError,
@@ -70,7 +85,7 @@ export function PaymentDialog({
     viewerRoleProp != null ? canViewFinancialBalances(viewerRoleProp) : canViewBalancesCtx;
   const showCredit = showCreditOption ?? hasCustomer;
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [paymentDate, setPaymentDate] = useState(() => localNowDateString());
+  const [paymentDate, setPaymentDate] = useState(() => localNowDateTimeString());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
@@ -79,6 +94,8 @@ export function PaymentDialog({
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccountsSettings | null>(null);
+  const [branchPaymentDefaults, setBranchPaymentDefaults] = useState<BranchPaymentDefaults | null>(null);
   const { runSingleFlight, isRunning } = useSingleFlightAction();
   const isBusy = Boolean(saving) || isRunning;
 
@@ -93,9 +110,29 @@ export function PaymentDialog({
     getPaymentAccounts(companyId).then(({ data, error }) => {
       setAccountsLoading(false);
       if (error) setAccountsError(error);
-      else setAllAccounts((data || []).map((a) => ({ id: a.id, name: a.name, balance: a.balance, type: a.type })));
+      else
+        setAllAccounts(
+          (data || []).map((a) => ({
+            id: a.id,
+            name: a.name,
+            balance: a.balance,
+            type: a.type,
+            code: a.code,
+            isDefaultCash: a.isDefaultCash,
+            isDefaultBank: a.isDefaultBank,
+          })),
+        );
     });
+    getDefaultAccounts(companyId).then(({ data }) => setDefaultAccounts(data));
   }, [companyId]);
+
+  useEffect(() => {
+    if (!branchId?.trim()) {
+      setBranchPaymentDefaults(null);
+      return;
+    }
+    getBranchPaymentDefaults(branchId).then(setBranchPaymentDefaults);
+  }, [branchId]);
 
   const getAccounts = (): Account[] => {
     if (!paymentMethod || paymentMethod === 'credit') return [];
@@ -123,6 +160,27 @@ export function PaymentDialog({
         }
       });
       return;
+    }
+    const types = METHOD_TO_TYPE[method].map((t) => t.toLowerCase());
+    const filtered = allAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+    const picks: PaymentAccountPick[] = filtered.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance,
+      code: a.code ?? '',
+      isDefaultCash: a.isDefaultCash,
+      isDefaultBank: a.isDefaultBank,
+    }));
+    const resolvedId = resolveDefaultPaymentAccountId(
+      method,
+      picks,
+      defaultAccounts,
+      branchPaymentDefaults,
+    );
+    if (resolvedId) {
+      const match = filtered.find((a) => a.id === resolvedId) ?? null;
+      setSelectedAccount(match);
     }
     setStep(2);
   };
@@ -382,7 +440,7 @@ export function PaymentDialog({
       {/* Step 2: Account Selection */}
       {step === 2 && paymentMethod && (
         <div className="p-6">
-          <h2 className="text-sm font-medium text-[#9CA3AF] mb-2">SELECT ACCOUNT *</h2>
+          <h2 className="text-sm font-medium text-[#9CA3AF] mb-2">{POSTING_FIELD_TITLES.selectAccountIn} *</h2>
           <p className="text-xs text-[#6B7280] mb-4">(Required for accounting)</p>
 
           {showAccountError && (
@@ -429,7 +487,12 @@ export function PaymentDialog({
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-[#F9FAFB]">{account.name}</h3>
+                  <h3 className="font-medium text-[#F9FAFB]">
+                    {account.name}{' '}
+                    <span className="text-emerald-400 text-xs font-semibold">
+                      {accountInOutBadgeLabel(account, 'debit')}
+                    </span>
+                  </h3>
                   {selectedAccount?.id === account.id && (
                     <div className="w-5 h-5 bg-[#3B82F6] rounded-full flex items-center justify-center">
                       <div className="w-2 h-2 bg-white rounded-full"></div>
@@ -467,14 +530,13 @@ export function PaymentDialog({
           </div>
 
           <div className="mb-6">
-            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Payment date</label>
-            <input
-              type="date"
-              max={localNowDateString()}
+            <DateTimeInputField
+              label="Payment date & time"
+              required
               value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
+              onChange={setPaymentDate}
+              max={localNowDateTimeString().slice(0, 10)}
               disabled={isBusy}
-              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white disabled:opacity-50"
             />
           </div>
 

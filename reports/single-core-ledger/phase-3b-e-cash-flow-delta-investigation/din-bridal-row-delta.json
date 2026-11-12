@@ -1,0 +1,335 @@
+{
+  "run": "PHASE_3B_E_ROW_DELTA",
+  "generatedAt": "2026-06-29T13:03:17.718Z",
+  "approvalStatus": "CANDIDATE_ONLY — NOT FINANCE APPROVED",
+  "company": "DIN BRIDAL",
+  "profileId": "din-bridal",
+  "userEmail": "ndm313@yahoo.com",
+  "period": {
+    "startDate": "2000-01-01",
+    "endDate": "2026-06-29"
+  },
+  "branchScopeObserved": "Selected branch",
+  "rpcRowsCaptured": 53,
+  "legacyFooterCount": 8,
+  "analysis": {
+    "profileId": "din-bridal",
+    "legacyRowCount": 51,
+    "previewRowCount": 53,
+    "legacyOnlyCount": 51,
+    "previewOnlyCount": 53,
+    "legacyOnlyTotals": {
+      "cashIn": 1836350,
+      "cashOut": 917780,
+      "count": 51
+    },
+    "previewOnlyTotals": {
+      "cashIn": 1916350,
+      "cashOut": 942780,
+      "count": 53
+    },
+    "bySourceModuleLegacyOnly": {
+      "Manual JE": {
+        "count": 8,
+        "cashIn": 1275850,
+        "cashOut": 707300
+      },
+      "Sales receipts": {
+        "count": 18,
+        "cashIn": 419000,
+        "cashOut": 25000
+      },
+      "Rentals": {
+        "count": 7,
+        "cashIn": 141500,
+        "cashOut": 0
+      },
+      "Expenses": {
+        "count": 18,
+        "cashIn": 0,
+        "cashOut": 185480
+      }
+    },
+    "byReferenceTypePreviewOnly": {
+      "opening_balance_account": {
+        "count": 2,
+        "cashIn": 912850,
+        "cashOut": 0
+      },
+      "journal": {
+        "count": 3,
+        "cashIn": 363000,
+        "cashOut": 2800
+      },
+      "payment": {
+        "count": 17,
+        "cashIn": 379000,
+        "cashOut": 25000
+      },
+      "general": {
+        "count": 3,
+        "cashIn": 0,
+        "cashOut": 704500
+      },
+      "rental": {
+        "count": 7,
+        "cashIn": 141500,
+        "cashOut": 0
+      },
+      "manual_receipt": {
+        "count": 2,
+        "cashIn": 120000,
+        "cashOut": 0
+      },
+      "expense": {
+        "count": 18,
+        "cashIn": 0,
+        "cashOut": 185480
+      },
+      "purchase": {
+        "count": 1,
+        "cashIn": 0,
+        "cashOut": 25000
+      }
+    },
+    "byStatusLegacy": {
+      "Live": 51
+    },
+    "byBranchPreviewOnly": {
+      "unknown": 5,
+      "Stitch and Style": 8,
+      "Main Branch": 40
+    },
+    "sampleLegacyOnly": [
+      {
+        "date": "25/05/2026",
+        "reference": "JE-0193Opening balance — account 1003 — Cash in NDM",
+        "cashIn": 830000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Manual JE"
+      },
+      {
+        "date": "26/05/2026",
+        "reference": "JV-000001Customer Receipt",
+        "cashIn": 58000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Manual JE"
+      },
+      {
+        "date": "27/05/2026",
+        "reference": "JV-000002Customer Receipt",
+        "cashIn": 305000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Manual JE"
+      },
+      {
+        "date": "27/05/2026",
+        "reference": "JE-0171Opening balance — account 1021 — NDM EASY",
+        "cashIn": 82850,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Manual JE"
+      },
+      {
+        "date": "31/05/2026",
+        "reference": "RCV-0002Patras",
+        "cashIn": 25000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Sales receipts"
+      },
+      {
+        "date": "31/05/2026",
+        "reference": "HQ-RCV-0001JE-0010Saqib",
+        "cashIn": 3000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Rentals"
+      },
+      {
+        "date": "31/05/2026",
+        "reference": "JE-0005Noor Khan Committee (1171)",
+        "cashIn": 0,
+        "cashOut": 200000,
+        "status": "Live",
+        "sourceModule": "Manual JE"
+      },
+      {
+        "date": "01/06/2026",
+        "reference": "RCV-0003MAHVISH IQBAL",
+        "cashIn": 15000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Sales receipts"
+      },
+      {
+        "date": "01/06/2026",
+        "reference": "RCV-0004JE-0170Walk-in Customer old",
+        "cashIn": 40000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Sales receipts"
+      },
+      {
+        "date": "01/06/2026",
+        "reference": "EXP-0003SHOP EXP › Utilities",
+        "cashIn": 0,
+        "cashOut": 17415,
+        "status": "Live",
+        "sourceModule": "Expenses"
+      },
+      {
+        "date": "01/06/2026",
+        "reference": "EXP-0004SHOP EXP › Utilities",
+        "cashIn": 0,
+        "cashOut": 8965,
+        "status": "Live",
+        "sourceModule": "Expenses"
+      },
+      {
+        "date": "01/06/2026",
+        "reference": "JE-0006M. Ullah Committee (1172)",
+        "cashIn": 0,
+        "cashOut": 500000,
+        "status": "Live",
+        "sourceModule": "Manual JE"
+      },
+      {
+        "date": "01/06/2026, 09:34 pm",
+        "reference": "HQ-RCV-0002JE-0002Haseeb N38",
+        "cashIn": 50000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Rentals"
+      },
+      {
+        "date": "02/06/2026, 02:28 pm",
+        "reference": "HQ-RCV-0003JE-0004Inayat",
+        "cashIn": 50000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Rentals"
+      },
+      {
+        "date": "02/06/2026, 08:10 pm",
+        "reference": "RCV-0005Walk-in Customer old",
+        "cashIn": 5000,
+        "cashOut": 0,
+        "status": "Live",
+        "sourceModule": "Sales receipts"
+      }
+    ],
+    "samplePreviewOnly": [
+      {
+        "date": "2026-05-25",
+        "referenceType": "opening_balance_account",
+        "description": "Opening balance — account 1003 — Cash in NDM",
+        "debit": 830000,
+        "credit": 0
+      },
+      {
+        "date": "2026-05-26",
+        "referenceType": "journal",
+        "description": "OPENING BALANCE",
+        "debit": 58000,
+        "credit": 0
+      },
+      {
+        "date": "2026-05-27",
+        "referenceType": "journal",
+        "description": "OPENING BALANACE",
+        "debit": 305000,
+        "credit": 0
+      },
+      {
+        "date": "2026-05-27",
+        "referenceType": "opening_balance_account",
+        "description": "Opening balance — account 1021 — NDM EASY",
+        "debit": 82850,
+        "credit": 0
+      },
+      {
+        "date": "2026-05-31",
+        "referenceType": "payment",
+        "description": "Receipt SL-0005 (Patras) - Cash",
+        "debit": 25000,
+        "credit": 0
+      },
+      {
+        "date": "2026-05-31",
+        "referenceType": "general",
+        "description": "Journal entry · From-Dr NDM MZ (1011) · To-Cr Noor Khan Committee (1171) · By Na",
+        "debit": 0,
+        "credit": 200000
+      },
+      {
+        "date": "2026-05-31",
+        "referenceType": "rental",
+        "description": "Rental booking advance — REN-0004 (Saqib)",
+        "debit": 3000,
+        "credit": 0
+      },
+      {
+        "date": "2026-06-01",
+        "referenceType": "rental",
+        "description": "Rental booking advance — REN-0001 (Haseeb N38)",
+        "debit": 50000,
+        "credit": 0
+      },
+      {
+        "date": "2026-06-01",
+        "referenceType": "payment",
+        "description": "Receipt SL-0012 (MAHVISH IQBAL) - Receipt SL-0012 (MAHVISH IQBAL)",
+        "debit": 15000,
+        "credit": 0
+      },
+      {
+        "date": "2026-06-01",
+        "referenceType": "manual_receipt",
+        "description": "Customer receipt from Walk-in Customer. N32",
+        "debit": 40000,
+        "credit": 0
+      },
+      {
+        "date": "2026-06-01",
+        "referenceType": "expense",
+        "description": "Expense #EXP-0003 - ELECTRIC G140 9432+7983 [Edited 03/06/2026, 11:53 am: Accoun",
+        "debit": 0,
+        "credit": 17415
+      },
+      {
+        "date": "2026-06-01",
+        "referenceType": "expense",
+        "description": "Expense #EXP-0004 - Electric N105",
+        "debit": 0,
+        "credit": 8965
+      },
+      {
+        "date": "2026-06-01",
+        "referenceType": "general",
+        "description": "Journal entry · From-Dr NDM MZ (1011) · To-Cr M. Ullah Committee (1172) · By Nad",
+        "debit": 0,
+        "credit": 500000
+      },
+      {
+        "date": "2026-06-02",
+        "referenceType": "payment",
+        "description": "Receipt RCV-0005 (Walk-in Customer old) - N32 | Bank Trace ID: 051708",
+        "debit": 5000,
+        "credit": 0
+      },
+      {
+        "date": "2026-06-03",
+        "referenceType": "payment",
+        "description": "Receipt SL-0013 (Walk-in Customer) - Receipt SL-0013 (Walk-in Customer)",
+        "debit": 40000,
+        "credit": 0
+      }
+    ],
+    "matchNote": "Row keys use date+reference+amount heuristic — journal line IDs not in legacy DOM; treat as diagnostic not finance golden."
+  },
+  "extractionMethod": "legacy_dom_scrape + unified_rpc_intercept"
+}

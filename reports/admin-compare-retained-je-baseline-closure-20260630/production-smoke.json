@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-06-30T09:31:09.942Z",
+  "url": "https://erp.dincouture.pk",
+  "deployed_commit": "49ac971158a3a55f0faffc4b35787cdd889547f2",
+  "overall": "PARTIAL",
+  "smoke_script_note": "Golden label check runs before Pilot Batch tab; monitoring script confirms 9/9 PASS",
+  "checks": [
+    { "check": "App login", "result": "PASS" },
+    { "check": "Ledger V2 MR JALIL 216299", "result": "PASS" },
+    { "check": "Discount filter JE-0003", "result": "PASS" },
+    { "check": "Admin Compare Pilot Batch 9/9", "result": "PASS", "notes": "monitoring: compared=9 pass=9 fail=0" },
+    { "check": "No new JE posted", "result": "PASS" },
+    { "check": "No material console/RPC errors", "result": "PASS" }
+  ]
+}

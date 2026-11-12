@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { fetchInBatches } from './chunkInQuery';
 import { formatPaymentAccountLabel, type PaymentAccountRef } from './paymentAccountDisplay';
 
 export interface ResolvedExpensePaymentAccount {
@@ -60,17 +61,20 @@ export async function enrichExpenseRowsWithPostedPaymentAccount(
 
   const resolvedByExpenseId = new Map<string, ResolvedExpensePaymentAccount>();
 
-  const { data: payments } = await supabase
-    .from('payments')
-    .select('id, reference_id, payment_account_id, payment_method, created_at')
-    .eq('reference_type', 'expense')
-    .in('reference_id', expenseIds)
-    .is('voided_at', null)
-    .order('created_at', { ascending: false });
+  const payments = await fetchInBatches(expenseIds, async (chunk) => {
+    const { data } = await supabase
+      .from('payments')
+      .select('id, reference_id, payment_account_id, payment_method, created_at')
+      .eq('reference_type', 'expense')
+      .in('reference_id', chunk)
+      .is('voided_at', null)
+      .order('created_at', { ascending: false });
+    return data || [];
+  });
 
   const paymentAccountIds = new Set<string>();
   const paymentByExpense = new Map<string, { payment_account_id: string | null; payment_method: string | null }>();
-  for (const p of payments || []) {
+  for (const p of payments) {
     const eid = String((p as { reference_id?: string }).reference_id || '');
     if (!eid || paymentByExpense.has(eid)) continue;
     const payAcctId = (p as { payment_account_id?: string | null }).payment_account_id ?? null;
@@ -84,18 +88,21 @@ export async function enrichExpenseRowsWithPostedPaymentAccount(
   const missingForJe = expenseIds.filter((id) => !paymentByExpense.has(id));
   const jeCreditByExpense = new Map<string, string>();
   if (missingForJe.length > 0) {
-    let jeQuery = supabase
-      .from('journal_entries')
-      .select('id, reference_id, created_at')
-      .eq('reference_type', 'expense')
-      .in('reference_id', missingForJe)
-      .or('is_void.is.null,is_void.eq.false')
-      .order('created_at', { ascending: false });
-    if (companyId) jeQuery = jeQuery.eq('company_id', companyId);
-    const { data: jes } = await jeQuery;
+    const jes = await fetchInBatches(missingForJe, async (chunk) => {
+      let jeQuery = supabase
+        .from('journal_entries')
+        .select('id, reference_id, created_at')
+        .eq('reference_type', 'expense')
+        .in('reference_id', chunk)
+        .or('is_void.is.null,is_void.eq.false')
+        .order('created_at', { ascending: false });
+      if (companyId) jeQuery = jeQuery.eq('company_id', companyId);
+      const { data } = await jeQuery;
+      return data || [];
+    });
 
     const latestJeByExpense = new Map<string, string>();
-    for (const je of jes || []) {
+    for (const je of jes) {
       const refId = String((je as { reference_id?: string }).reference_id || '');
       const jeId = String((je as { id?: string }).id || '');
       if (refId && jeId && !latestJeByExpense.has(refId)) latestJeByExpense.set(refId, jeId);
@@ -103,14 +110,17 @@ export async function enrichExpenseRowsWithPostedPaymentAccount(
 
     const jeIds = [...latestJeByExpense.values()];
     if (jeIds.length > 0) {
-      const { data: lines } = await supabase
-        .from('journal_entry_lines')
-        .select('journal_entry_id, account_id, credit, accounts(id, code, name, type)')
-        .in('journal_entry_id', jeIds)
-        .gt('credit', 0);
+      const lines = await fetchInBatches(jeIds, async (chunk) => {
+        const { data } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, account_id, credit, accounts(id, code, name, type)')
+          .in('journal_entry_id', chunk)
+          .gt('credit', 0);
+        return data || [];
+      });
 
       const creditLinesByJe = new Map<string, Array<{ account_id: string; accounts?: PaymentAccountRef | PaymentAccountRef[] | null }>>();
-      for (const line of lines || []) {
+      for (const line of lines) {
         const jeId = String((line as { journal_entry_id?: string }).journal_entry_id || '');
         if (!jeId) continue;
         const bucket = creditLinesByJe.get(jeId) || [];

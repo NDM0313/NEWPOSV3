@@ -20,8 +20,8 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 
 ## Client runtime (locked behavior)
 
-- **Web:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) forces **same-origin** `https://erp.dincouture.pk` in production so `/auth` and `/rest` go through ERP nginx → Kong (avoids cross-origin CORS in the browser).
-- **Capacitor native (Android/iOS):** [`erp-mobile-app/src/lib/supabase.ts`](../../erp-mobile-app/src/lib/supabase.ts) **must** use baked `VITE_SUPABASE_URL` only — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md). Do not reuse the web `window.location.origin` shortcut on native.
+- **Web on ndmcore:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) uses **`https://api.ndmcore.com`** directly (Cloudflare Tunnel → Kong). Do **not** same-origin-proxy `/auth` via `erp.ndmcore.com` (that path 502s). Legacy **`https://erp.dincouture.pk`** still uses same-origin nginx → Kong.
+- **Capacitor native (Android/iOS):** resolves to **`https://api.ndmcore.com`** — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md).
 
 ## After changing keys
 
@@ -37,7 +37,7 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 
 - Run on the VPS from the repo: `bash scripts/vps-audit-auth-bridge.sh` — prints `VITE_SUPABASE_URL`, anon length, which JS chunks reference `erp.dincouture.pk`, and HTTP status for `GET /auth/v1/health` via **public** `https://erp.dincouture.pk` and **local** `http://127.0.0.1:3001` (implemented with **Python** `urllib` so JWTs are not mangled by shell `cut`/`curl` quoting).
 
-**Localhost dev vs production:** dev uses the Vite `/supabase` proxy ([`vite.config.ts`](../../vite.config.ts)); production uses same-origin `erp.dincouture.pk` and this Nginx path. Same database does not imply the same HTTP hop.
+**Localhost dev vs production:** dev uses the Vite `/supabase` proxy ([`vite.config.ts`](../../vite.config.ts)); production uses same-origin `erp.ndmcore.com` (and this Nginx path). Same database does not imply the same HTTP hop.
 
 ## Console noise (not Supabase)
 

@@ -3,10 +3,14 @@ import type { User } from '../../types';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { useResponsive } from '../../hooks/useResponsive';
 import * as salesApi from '../../api/sales';
+import * as usersApi from '../../api/users';
+import type { SalesmanRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
+import { SaleDocumentTypeGateModal } from './SaleDocumentTypeGateModal';
+import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SalesHome } from './SalesHome';
 import { SelectCustomer } from './SelectCustomer';
 import { SelectCustomerTablet } from './SelectCustomerTablet';
@@ -21,12 +25,13 @@ import { getEffectivePrinterSettings } from '../../api/settings';
 import { maybeAutoPrintAfterTransaction, manualPrintReceipt } from '../../services/printAfterTransaction';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { useSubmitLock } from '../../contexts/LoadingContext';
-import { localNowDateString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { localNowDateString, localNowDateTimeString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { useSettings } from '../../context/SettingsContext';
 import { orderSaleLinesForPersist } from '../../lib/bespokeCartInjection';
 import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
+import { canAssignSaleCommission } from '../../lib/saleCommission';
 import type { ExtraExpense } from '../../types/saleExtras';
 import {
   computeBillableSubtotal,
@@ -35,6 +40,11 @@ import {
   isStockOnlyBespokeLine,
   validateInclusiveExtraChargeCap,
 } from '../../lib/saleTotals';
+import {
+  mergeCustomerBillRefIntoNotes,
+  buildCustomerSalePaymentAutoNotes,
+  composeSalePaymentNotes,
+} from '../../utils/saleNotesComposition';
 
 /** Fabric children bill at 0 — stock/WO only (web parity). */
 function normalizeStockOnlyLinePrices(products: Product[]): Product[] {
@@ -108,6 +118,10 @@ export interface Product {
   bespokeParentCartId?: string | number;
   bespokeRole?: 'fabric';
   isBespokeInjected?: boolean;
+  /** Piece-type preset (Shirt/Dupatta/Trouser) — display on fabric cart lines. */
+  bespokeUsage?: 'shirt' | 'dupatta' | 'trouser';
+  /** Catalog retail unit price for UI only — billed price stays 0. */
+  bespokeRefUnitPrice?: number;
 }
 
 export interface SaleData {
@@ -139,6 +153,9 @@ export interface SaleData {
   shippingCharge?: number;
   /** When true, extra amounts add to customer invoice total (4120 ON). */
   chargeExtrasToCustomer?: boolean;
+  /** Owner/admin/manager: assign commission to another salesman (public.users.id). */
+  salesmanId?: string | null;
+  commissionPercent?: number | null;
 }
 
 interface SalesModuleProps {
@@ -174,10 +191,30 @@ export function SalesModule({
   const effectiveUserId = useEffectiveWorkerId(user.id);
   const effectiveRole = useEffectiveWorkerRole(user.role);
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
+  const canPickSalesman = canAssignSaleCommission(effectiveRole);
+  const [salesmen, setSalesmen] = useState<SalesmanRow[]>([]);
+  const [salesmenLoading, setSalesmenLoading] = useState(false);
 
   useEffect(() => {
     if (companyId) void reloadSettings(companyId);
   }, [companyId, reloadSettings]);
+
+  useEffect(() => {
+    if (!companyId || !canPickSalesman) {
+      setSalesmen([]);
+      return;
+    }
+    let cancelled = false;
+    setSalesmenLoading(true);
+    void usersApi.getSalesmen(companyId).then(({ data, error }) => {
+      if (cancelled) return;
+      setSalesmen(error ? [] : data);
+      setSalesmenLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, canPickSalesman]);
 
   const [step, setStep] = useState<SalesStep>(
     initialSaleType === 'studio' && initialDocumentBranchId ? 'customer' : initialSaleType === 'studio' ? 'home' : 'home',
@@ -188,6 +225,7 @@ export function SalesModule({
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const [printHint, setPrintHint] = useState<string | null>(null);
   const { runSingleFlight, isRunning: isPaymentSubmitRunning } = useSingleFlightAction();
   const [saleData, setSaleData] = useState<SaleData>({
     customer: null,
@@ -200,7 +238,7 @@ export function SalesModule({
     notes: '',
     billRef: '',
     attachmentFiles: [],
-    saleDate: localNowDateString(),
+    saleDate: localNowDateTimeString(),
     saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
     orderDate: localNowDateString(),
     deadlineDate: localDatePlusDays(7),
@@ -210,6 +248,8 @@ export function SalesModule({
     extraExpenses: [],
     shippingCharge: 0,
     chargeExtrasToCustomer: true,
+    salesmanId: null,
+    commissionPercent: null,
   });
 
   const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
@@ -220,6 +260,8 @@ export function SalesModule({
     profileId: effectiveProfileId,
     invalidateDomains: ['contacts', 'sales', 'inventory'],
   });
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
+  const [typeGateOpen, setTypeGateOpen] = useState(false);
 
   const {
     effectiveBranchId,
@@ -285,7 +327,7 @@ export function SalesModule({
       total: 0,
       notes: '',
       attachmentFiles: [],
-      saleDate: localNowDateString(),
+      saleDate: localNowDateTimeString(),
       saleType,
       orderDate: localNowDateString(),
       deadlineDate: localDatePlusDays(7),
@@ -295,6 +337,8 @@ export function SalesModule({
       extraExpenses: [],
       shippingCharge: 0,
       chargeExtrasToCustomer: true,
+      salesmanId: null,
+      commissionPercent: null,
     });
   }, []);
 
@@ -308,14 +352,38 @@ export function SalesModule({
           setDocumentBranchId(pickedId);
           setPickedBranchId(pickedId);
           resetSaleData(saleType);
-          setStep('customer');
+          if (saleType === 'studio') {
+            setStep('customer');
+            return;
+          }
+          if (bespokeEnabled) {
+            // Branch chosen → ask what kind of document (Custom Order / Quotation / Draft / Final).
+            setTypeGateOpen(true);
+          } else {
+            // Customization disabled for this company: go straight to an ordinary direct sale.
+            setSaleData((prev) => ({ ...prev, documentStatus: 'final' }));
+            setStep('customer');
+          }
         },
         {
           title: saleType === 'studio' ? 'Select branch for studio sale' : 'Select branch for sale',
         },
       );
     },
-    [runWithBranch, resetSaleData, setPickedBranchId],
+    [runWithBranch, resetSaleData, setPickedBranchId, bespokeEnabled],
+  );
+
+  const handleDocumentTypePick = useCallback(
+    (status: NonNullable<SaleData['documentStatus']>, deadlineDate?: string) => {
+      setTypeGateOpen(false);
+      setSaleData((prev) => ({
+        ...prev,
+        documentStatus: status,
+        ...(status === 'order' && deadlineDate ? { deadlineDate } : {}),
+      }));
+      setStep('customer');
+    },
+    [],
   );
 
   const handleStepBack = () => {
@@ -329,8 +397,25 @@ export function SalesModule({
   };
 
   const handleNewSale = () => startNewSaleFlow();
-  const handleCustomerSelect = (customer: Customer, saleType: 'regular' | 'studio') => {
-    setSaleData((prev) => ({ ...prev, customer, saleType }));
+  const handleCustomerSelect = (
+    customer: Customer,
+    saleType: 'regular' | 'studio',
+    extras?: { documentStatus?: SaleData['documentStatus']; deadlineDate?: string },
+  ) => {
+    setSaleData((prev) => ({
+      ...prev,
+      customer,
+      saleType,
+      ...(saleType === 'regular'
+        ? {
+            documentStatus: extras?.documentStatus ?? prev.documentStatus ?? 'order',
+            deadlineDate:
+              (extras?.documentStatus ?? prev.documentStatus ?? 'order') === 'order'
+                ? (extras?.deadlineDate ?? prev.deadlineDate)
+                : prev.deadlineDate,
+          }
+        : { documentStatus: 'order' as const }),
+    }));
     setStep('products');
   };
   const handleProductsUpdate = (products: Product[]) => {
@@ -429,6 +514,7 @@ export function SalesModule({
       parentLineIndex: line.parentLineIndex,
       packingDetails: line.packingDetails,
     }));
+    const mergedNotes = mergeCustomerBillRefIntoNotes(saleData.billRef, saleData.notes);
     const salePayload = {
       companyId,
       branchId: effectiveBranchId,
@@ -448,14 +534,29 @@ export function SalesModule({
       paidAmount: result.paidAmount,
       dueAmount: result.dueAmount,
       paymentAccountId: result.accountId ?? undefined,
-      notes: saleData.saleType === 'studio' ? (saleData.productionNotes || saleData.notes || undefined) : (saleData.notes || undefined),
+      notes: saleData.saleType === 'studio' ? (saleData.productionNotes || mergedNotes || undefined) : (mergedNotes || undefined),
       billRef: saleData.billRef?.trim() || null,
       isStudio: saleData.saleType === 'studio',
       userId: effectiveUserId,
       profileUserId: effectiveProfileId,
-      actorRole: user.role,
+      actorRole: effectiveRole,
+      salesmanId: saleData.salesmanId ?? undefined,
+      commissionPercent: saleData.commissionPercent ?? undefined,
       invoiceDate: saleData.saleDate || localNowDateString(),
       paymentDate: result.paymentDate || localNowDateString(),
+      ...(result.paidAmount != null && result.paidAmount > 0
+        ? {
+            paymentNotes: composeSalePaymentNotes({
+              autoNotes: buildCustomerSalePaymentAutoNotes({
+                partyName: saleData.customer?.name ?? 'Walk-in',
+                customerBillRef: saleData.billRef,
+                paymentAccountName: result.accountName ?? '',
+                paymentMethod: result.paymentMethod,
+              }),
+              userNotes: mergedNotes,
+            }),
+          }
+        : {}),
       ...(saleData.saleType === 'studio' && {
         orderDate: saleData.orderDate || undefined,
         deadline: saleData.deadlineDate || undefined,
@@ -463,7 +564,10 @@ export function SalesModule({
       }),
       ...(saleData.saleType === 'regular' && {
         targetStatus: saleData.documentStatus ?? 'order',
-        documentType: saleData.documentStatus === 'quotation' ? 'quotation' as const : 'invoice' as const,
+        documentType: saleData.documentStatus === 'final' ? 'invoice' as const : 'quotation' as const,
+        ...((saleData.documentStatus ?? 'order') === 'order' && saleData.deadlineDate
+          ? { deadline: saleData.deadlineDate }
+          : {}),
       }),
     };
 
@@ -510,6 +614,7 @@ export function SalesModule({
       branchName = accessibleBranches.find((b) => b.id === effectiveBranchId)?.name ?? null;
     }
     clearSaleDraft();
+    setStep('home');
     setConfirmationData({
       type: 'sale',
       title: 'Sale Saved Successfully',
@@ -520,7 +625,8 @@ export function SalesModule({
       branch: branchName ?? undefined,
       entityId: data?.id ?? null,
     });
-    void maybeAutoPrintAfterTransaction(
+    setPrintHint(null);
+    const printRes = await maybeAutoPrintAfterTransaction(
       companyId,
       {
         title: 'SALE RECEIPT',
@@ -532,6 +638,9 @@ export function SalesModule({
       },
       { mirrorFromCompany: user.role === 'admin' || user.role === 'owner' }
     );
+    if (printRes && !printRes.ok && printRes.hint) {
+      setPrintHint(printRes.hint);
+    }
     });
   });
   };
@@ -553,7 +662,7 @@ export function SalesModule({
       total: 0,
       notes: '',
       attachmentFiles: [],
-      saleDate: localNowDateString(),
+      saleDate: localNowDateTimeString(),
       saleType: 'regular',
       orderDate: localNowDateString(),
       deadlineDate: localDatePlusDays(7),
@@ -592,6 +701,7 @@ export function SalesModule({
     const studioSaleId = createdSaleId;
     clearSaleDraft();
     setConfirmationData(null);
+    setPrintHint(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
     setSaleData({
@@ -604,7 +714,7 @@ export function SalesModule({
       total: 0,
       notes: '',
       attachmentFiles: [],
-      saleDate: localNowDateString(),
+      saleDate: localNowDateTimeString(),
       saleType: 'regular',
       orderDate: localNowDateString(),
       deadlineDate: localDatePlusDays(7),
@@ -622,6 +732,7 @@ export function SalesModule({
 
   const handleSuccessNewSale = () => {
     setConfirmationData(null);
+    setPrintHint(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
     startNewSaleFlow();
@@ -700,6 +811,9 @@ export function SalesModule({
           onPickedBranchChange={setPickedBranchId}
           branchSelectionError={branchSelectionError}
           branchReady={branchReady}
+          canPickSalesman={canPickSalesman}
+          salesmen={salesmen}
+          salesmenLoading={salesmenLoading}
         />
       )}
       {step === 'payment' && (
@@ -717,6 +831,7 @@ export function SalesModule({
               onBack={handleStepBack}
               totalAmount={saleData.total}
               companyId={companyId}
+              branchId={effectiveBranchId}
               onComplete={handlePaymentComplete}
               saving={saving || isPaymentSubmitRunning}
               saveError={saveError}
@@ -744,11 +859,18 @@ export function SalesModule({
         printReceiptLabel={printButtonLabel}
         onNewSale={handleSuccessNewSale}
         onHome={handleBackToHome}
+        printHint={printHint}
       />
 
       <DocumentBranchGateModal
         {...branchGateModalProps}
         accentClass="text-[#2563EB] hover:border-[#2563EB]"
+      />
+
+      <SaleDocumentTypeGateModal
+        open={typeGateOpen}
+        onPick={handleDocumentTypePick}
+        onCancel={() => setTypeGateOpen(false)}
       />
     </>
   );

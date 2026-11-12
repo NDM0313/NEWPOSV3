@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-06-30T13:17:00.000Z",
+  "status": "PLAN_ONLY_NO_RELEASE",
+  "backlog": [
+    "Rental AR sub-ledger on mobile booking flow",
+    "Unified ledger RPC parity vs web for party/account statements",
+    "Create Business OTP mobile wizard parity",
+    "APK rebuild after contract changes"
+  ],
+  "unified_rpc_targets": [
+    "get_unified_party_ledger / party statement loaders",
+    "get_unified_account_statement",
+    "get_unified_trial_balance",
+    "Cash Flow / BS / P&L when loaders enabled on web"
+  ],
+  "golden_contacts": ["MR JALIL (DIN CHINA)", "DIN BRIDAL roznamcha goldens", "DIN COUTURE parity sample"],
+  "apk_qa_steps": [
+    "npm run sync:mobile-env from production .env.production",
+    "Capacitor sync + android build per android-capacitor-build rules",
+    "Login three-company smoke read-only",
+    "Party ledger closing vs web golden"
+  ],
+  "release_approval": "BLOCKED — no APK release without operator approval"
+}

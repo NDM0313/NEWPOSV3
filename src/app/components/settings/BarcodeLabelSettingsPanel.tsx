@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Barcode, Loader2, Save } from 'lucide-react';
+import { Barcode, Eye, Loader2, Save } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { toast } from 'sonner';
 import {
@@ -18,6 +18,11 @@ import {
   A4SheetMiniPreview,
   SAMPLE_LABEL_PREVIEW_JOB,
 } from '@/app/components/products/barcodeLabelPreview';
+import {
+  buildA4SheetHtml,
+  previewLabelsInBrowser,
+  type LabelPrintJob,
+} from '@/app/services/barcodeLabelPrint';
 
 export interface BarcodeLabelSettingsPanelProps {
   companyId: string | null | undefined;
@@ -40,8 +45,17 @@ export function BarcodeLabelSettingsPanel({
   const [showBranch, setShowBranch] = useState(DEFAULT_BARCODE_LABEL.showBranchName);
   const [a4Columns, setA4Columns] = useState(DEFAULT_BARCODE_LABEL.a4Columns);
   const [maxLabelsPerSheet, setMaxLabelsPerSheet] = useState(DEFAULT_BARCODE_LABEL.maxLabelsPerSheet);
+  const [useFixedLabelSize, setUseFixedLabelSize] = useState(
+    DEFAULT_BARCODE_LABEL.useFixedLabelSize === true,
+  );
+  const [labelWidthMm, setLabelWidthMm] = useState(DEFAULT_BARCODE_LABEL.labelWidthMm ?? 65);
+  const [labelHeightMm, setLabelHeightMm] = useState(DEFAULT_BARCODE_LABEL.labelHeightMm ?? 25);
   const [presetId, setPresetId] = useState<BarcodeLabelPresetId>(() =>
-    presetIdFromLayout(DEFAULT_BARCODE_LABEL.a4Columns, DEFAULT_BARCODE_LABEL.maxLabelsPerSheet)
+    presetIdFromLayout(DEFAULT_BARCODE_LABEL.a4Columns, DEFAULT_BARCODE_LABEL.maxLabelsPerSheet, {
+      useFixedLabelSize: DEFAULT_BARCODE_LABEL.useFixedLabelSize,
+      labelWidthMm: DEFAULT_BARCODE_LABEL.labelWidthMm,
+      labelHeightMm: DEFAULT_BARCODE_LABEL.labelHeightMm,
+    }),
   );
 
   useEffect(() => {
@@ -62,7 +76,19 @@ export function BarcodeLabelSettingsPanel({
         setShowBranch(s.showBranchName);
         setA4Columns(s.a4Columns);
         setMaxLabelsPerSheet(s.maxLabelsPerSheet);
-        setPresetId(presetIdFromLayout(s.a4Columns, s.maxLabelsPerSheet));
+        const fixed = s.useFixedLabelSize === true;
+        const w = s.labelWidthMm ?? 65;
+        const h = s.labelHeightMm ?? 25;
+        setUseFixedLabelSize(fixed);
+        setLabelWidthMm(w);
+        setLabelHeightMm(h);
+        setPresetId(
+          presetIdFromLayout(s.a4Columns, s.maxLabelsPerSheet, {
+            useFixedLabelSize: fixed,
+            labelWidthMm: w,
+            labelHeightMm: h,
+          }),
+        );
       })
       .catch(() => toast.error('Could not load barcode label defaults'))
       .finally(() => {
@@ -87,19 +113,30 @@ export function BarcodeLabelSettingsPanel({
 
   const displayOptions = fieldOptions;
 
-  const buildPayload = (): BarcodeLabelSettings => ({
-    ...DEFAULT_BARCODE_LABEL,
-    labelLayout: 'a4',
-    a4Columns,
-    maxLabelsPerSheet,
-    showName,
-    showPrice,
-    showVariation,
-    showPacking,
-    showCompanyName: showCompany,
-    showBranchName: showBranch,
-    showBusinessName: showCompany,
-  });
+  const buildPayload = (): BarcodeLabelSettings => {
+    const base: BarcodeLabelSettings = {
+      ...DEFAULT_BARCODE_LABEL,
+      labelLayout: 'a4',
+      a4Columns,
+      maxLabelsPerSheet,
+      showName,
+      showPrice,
+      showVariation,
+      showPacking,
+      showCompanyName: showCompany,
+      showBranchName: showBranch,
+      showBusinessName: showCompany,
+      useFixedLabelSize,
+    };
+    if (useFixedLabelSize) {
+      base.labelWidthMm = labelWidthMm;
+      base.labelHeightMm = labelHeightMm;
+    } else {
+      delete base.labelWidthMm;
+      delete base.labelHeightMm;
+    }
+    return base;
+  };
 
   const handleSave = async () => {
     if (!companyId) {
@@ -117,9 +154,27 @@ export function BarcodeLabelSettingsPanel({
     }
   };
 
+  const handlePrintPreview = () => {
+    const settings = buildPayload();
+    const count = Math.min(60, Math.max(6, settings.maxLabelsPerSheet));
+    const base: LabelPrintJob = {
+      ...SAMPLE_LABEL_PREVIEW_JOB,
+      companyName,
+      branchName,
+      businessName: companyName,
+      quantity: 1,
+    };
+    const jobs = Array.from({ length: count }, () => ({ ...base }));
+    try {
+      previewLabelsInBrowser(buildA4SheetHtml(jobs, settings));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not open print preview');
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-gray-400 py-8">
+      <div className="flex items-center gap-2 text-muted-foreground py-8">
         <Loader2 className="animate-spin" size={18} />
         Loading label defaults…
       </div>
@@ -133,8 +188,8 @@ export function BarcodeLabelSettingsPanel({
           <Barcode className="text-purple-400" size={22} />
         </div>
         <div>
-          <h4 className="text-lg font-semibold text-white">Barcode label printing</h4>
-          <p className="text-sm text-gray-400">
+          <h4 className="text-lg font-semibold text-foreground">Barcode label printing</h4>
+          <p className="text-sm text-muted-foreground">
             Default content and A4 sheet layout when printing labels from Products
           </p>
         </div>
@@ -142,8 +197,8 @@ export function BarcodeLabelSettingsPanel({
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-800 bg-gray-950 p-5 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Label content</p>
+          <div className="rounded-xl border border-border bg-input-background p-5 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label content</p>
             <BarcodeLabelContentFields
               idPrefix="settings"
               options={fieldOptions}
@@ -159,21 +214,22 @@ export function BarcodeLabelSettingsPanel({
               branchName={branchName}
             />
           </div>
-          <div className="rounded-xl border border-gray-800 bg-gray-950 p-5 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Default sheet layout</p>
+          <div className="rounded-xl border border-border bg-input-background p-5 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Default sheet layout</p>
             <BarcodeLabelSheetLayoutFields
+              idPrefix="settings-sheet"
               presetId={presetId}
               onPresetChange={setPresetId}
               a4Columns={a4Columns}
-              onA4ColumnsChange={(n) => {
-                setA4Columns(n);
-                setPresetId(presetIdFromLayout(n, maxLabelsPerSheet));
-              }}
+              onA4ColumnsChange={setA4Columns}
               maxLabelsPerSheet={maxLabelsPerSheet}
-              onMaxLabelsPerSheetChange={(n) => {
-                setMaxLabelsPerSheet(n);
-                setPresetId(presetIdFromLayout(a4Columns, n));
-              }}
+              onMaxLabelsPerSheetChange={setMaxLabelsPerSheet}
+              useFixedLabelSize={useFixedLabelSize}
+              onUseFixedLabelSizeChange={setUseFixedLabelSize}
+              labelWidthMm={labelWidthMm}
+              onLabelWidthMmChange={setLabelWidthMm}
+              labelHeightMm={labelHeightMm}
+              onLabelHeightMmChange={setLabelHeightMm}
             />
           </div>
           <Button
@@ -186,8 +242,8 @@ export function BarcodeLabelSettingsPanel({
           </Button>
         </div>
 
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 space-y-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Preview</p>
+        <div className="rounded-xl border border-border bg-muted/40 p-5 space-y-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Preview</p>
           <BarcodeLabelPreviewCard
             job={SAMPLE_LABEL_PREVIEW_JOB}
             companyName={companyName}
@@ -195,9 +251,11 @@ export function BarcodeLabelSettingsPanel({
             {...displayOptions}
             large
             className="w-full max-w-sm mx-auto"
+            labelWidthMm={useFixedLabelSize ? labelWidthMm : undefined}
+            labelHeightMm={useFixedLabelSize ? labelHeightMm : undefined}
           />
           <A4SheetMiniPreview
-            totalLabels={12}
+            totalLabels={maxLabelsPerSheet}
             maxLabelsPerSheet={maxLabelsPerSheet}
             a4Columns={a4Columns}
             firstLabel={SAMPLE_LABEL_PREVIEW_JOB}
@@ -205,7 +263,19 @@ export function BarcodeLabelSettingsPanel({
             companyName={companyName}
             branchName={branchName}
             largeSheet
+            useFixedLabelSize={useFixedLabelSize}
+            labelWidthMm={labelWidthMm}
+            labelHeightMm={labelHeightMm}
           />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handlePrintPreview}
+            className="w-full border-gray-600 text-gray-200 gap-2"
+          >
+            <Eye size={16} />
+            Print preview
+          </Button>
         </div>
       </div>
     </div>

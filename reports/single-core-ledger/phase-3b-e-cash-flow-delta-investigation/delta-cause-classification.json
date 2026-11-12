@@ -1,0 +1,65 @@
+{
+  "run": "PHASE_3B_E_DELTA_CAUSE_CLASSIFICATION",
+  "generated_at": "2026-06-29T13:10:00.000Z",
+  "rowMatchLimitation": "Pairwise row keys differ (roznamcha DOM identity vs journal line IDs); bucket analysis used instead.",
+  "causes": [
+    {
+      "classification": "SOURCE_MODULE_MAPPING_DIFFERENCE",
+      "companies": ["DIN CHINA"],
+      "amountImpact": "Cash Out preview +PKR 58,889,891 vs legacy transfer module showing out=0 on transfers bucket",
+      "rowCountImpact": "Preview transfer rows 169 vs legacy Transfers 89",
+      "sampleRefs": ["JE-0270 Transfer", "transfer reference type in RPC"],
+      "likelyCorrectRule": "Finance must decide: gross transfer legs vs net operational cash movement",
+      "approvalNeeded": true
+    },
+    {
+      "classification": "PARTY_EFFECTIVE_MAPPING_DIFFERENCE",
+      "companies": ["DIN CHINA"],
+      "amountImpact": "Sales/payment bucket mismatch legacy 23.3M in vs preview payment 22.4M in; manual_receipt +13M in preview",
+      "rowCountImpact": "214 legacy sales vs 217 preview payment + 2 manual_receipt",
+      "sampleRefs": ["manual_receipt rows in preview only"],
+      "likelyCorrectRule": "Align payment vs sale receipt classification with finance",
+      "approvalNeeded": true
+    },
+    {
+      "classification": "OPENING_BALANCE_RULE_DIFFERENCE",
+      "companies": ["DIN BRIDAL"],
+      "amountImpact": "PKR 912,850 cash in (2 opening_balance_account rows in preview)",
+      "rowCountImpact": 2,
+      "sampleRefs": ["opening_balance_account"],
+      "likelyCorrectRule": "Opening account seed lines may belong in Cash Flow or only in opening summary",
+      "approvalNeeded": true
+    },
+    {
+      "classification": "LEGACY_INCLUDES_PREVIEW_EXCLUDES",
+      "companies": ["DIN BRIDAL"],
+      "amountImpact": "Legacy Manual JE bucket vs preview general/journal split",
+      "rowCountImpact": "small",
+      "sampleRefs": ["general reference type out PKR 704,500 preview"],
+      "likelyCorrectRule": "Manual JE visibility in roznamcha vs GL general entries",
+      "approvalNeeded": true
+    },
+    {
+      "classification": "CASH_BANK_ACCOUNT_SCOPE_DIFFERENCE",
+      "companies": ["DIN CHINA"],
+      "amountImpact": "RPC 14 liquidity accounts vs roznamcha stitch scope",
+      "rowCountImpact": 82,
+      "sampleRefs": ["roznamchaMeta: accounts=14"],
+      "likelyCorrectRule": "Confirm same liquidity account set both sides",
+      "approvalNeeded": true
+    },
+    {
+      "classification": "UNKNOWN_NEEDS_EXPORT_DETAIL",
+      "companies": ["DIN CHINA", "DIN BRIDAL"],
+      "amountImpact": "Residual after bucket analysis",
+      "rowCountImpact": "Pairwise join blocked",
+      "sampleRefs": [],
+      "likelyCorrectRule": "Add journal-line-id keyed export to preview panel (Phase 3B-E follow-up D)",
+      "approvalNeeded": false
+    }
+  ],
+  "din_couture": {
+    "zeroDiff": true,
+    "note": "No delta causes classified — remains zero-diff at summary level"
+  }
+}

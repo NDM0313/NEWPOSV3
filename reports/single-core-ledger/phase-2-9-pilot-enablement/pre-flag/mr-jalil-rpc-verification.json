@@ -1,0 +1,17 @@
+{
+  "phase": "2.9A",
+  "check": "mr-jalil-unified-closing-rpc-readonly",
+  "timestampUtc": "2026-06-25T12:47:00.819Z",
+  "environment": "production VPS supabase-db (read-only RPC)",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "contactId": "fe7ec33d-fd6d-4aa6-8d21-416e383b4c93",
+  "contactName": "MR JALIL",
+  "basis": "effective_party",
+  "expectedClosingPkr": 216300,
+  "tolerancePkr": 0.01,
+  "actualLastRowRunningBalancePkr": 216300.0,
+  "rpc": "get_unified_party_ledger",
+  "note": "Closing derived from last row running_balance in RPC payload; top-level closingBalance key not present in RPC JSON shape",
+  "productionDbMutation": "NONE",
+  "result": "PASS"
+}

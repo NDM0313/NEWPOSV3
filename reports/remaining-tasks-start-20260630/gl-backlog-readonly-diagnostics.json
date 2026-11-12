@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-06-30T13:06:00.000Z",
+  "read_only": true,
+  "company_ids": {
+    "DIN_CHINA": "30bd8592-3384-4f34-899a-f3907e336485",
+    "DIN_BRIDAL": "597a5292-14c8-4cd8-96bd-c61b5a0d8c92"
+  },
+  "items": [
+    {
+      "id": "C1",
+      "label": "MURAD DC-0007 Rs 257,140",
+      "company": "DIN CHINA",
+      "party": "MURAD RAMDAS",
+      "account": "AR-166142",
+      "gl_net": 0,
+      "operational_due": 0,
+      "invoice": "DC-0007",
+      "invoice_status": "final paid in full",
+      "decision": "DIAGNOSTIC_COMPLETE_NO_REPAIR_NEEDED",
+      "root_cause": "Previously open sale; now paid_amount=257140 due=0 — backlog item closed by business payment",
+      "repair_needed": false
+    },
+    {
+      "id": "C2",
+      "label": "AZIZ JAMURAD 1100 mismatch",
+      "company": "DIN CHINA",
+      "party": "AZIZ JAMURAD",
+      "account": "AR-A987EE",
+      "gl_net": 0,
+      "operational_receivables": 0,
+      "decision": "DIAGNOSTIC_COMPLETE_NO_REPAIR_NEEDED",
+      "root_cause": "Legacy 1100 misallocation pattern; current production balances aligned (GL=operational=0)",
+      "repair_needed": false,
+      "note": "Historical diag showed 755500 GL vs 0 operational — resolved or corrected since 2026-06-16 backlog"
+    },
+    {
+      "id": "C3",
+      "label": "ABDUL WAJID partial mismatch",
+      "company": "DIN CHINA",
+      "party": "ABDUL WAJID JAMURAD",
+      "account": "AR-476D3E",
+      "gl_net": 329314,
+      "operational_receivables": 329314,
+      "decision": "DIAGNOSTIC_COMPLETE_NO_REPAIR_NEEDED",
+      "root_cause": "GL and operational receivables now match",
+      "repair_needed": false
+    },
+    {
+      "id": "C4",
+      "label": "DIN BRIDAL control 1100 -136,500",
+      "company": "DIN BRIDAL",
+      "account": "1100 Accounts Receivable",
+      "gl_net": -136500,
+      "decision": "DIAGNOSTIC_COMPLETE_REPAIR_APPROVAL_NEEDED",
+      "root_cause": "Control AR account carries credit balance — likely legacy import / misallocation or business advance",
+      "repair_needed": "business_decision_first",
+      "proposed_dry_run": "Extend diag_rental_1100_leakage / party tie-out for DIN BRIDAL; minimal line moves only after operator approval"
+    }
+  ]
+}

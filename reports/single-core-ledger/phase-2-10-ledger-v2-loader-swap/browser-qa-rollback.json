@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-06-26T12:55:45.377Z",
+  "mode": "rollback",
+  "pass": true,
+  "checks": [
+    {
+      "check": "admin login",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "admin preview toggle visible",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "preview toggle default OFF",
+      "result": "PASS",
+      "notes": ""
+    },
+    {
+      "check": "no unified RPC with toggle OFF",
+      "result": "PASS",
+      "notes": "0 calls"
+    },
+    {
+      "check": "no unified main-loader RPC (legacy main)",
+      "result": "PASS",
+      "notes": "0 calls"
+    },
+    {
+      "check": "main loader attr (rollback)",
+      "result": "PASS",
+      "notes": "expected=legacy actual=legacy"
+    },
+    {
+      "check": "MR JALIL closing 216300",
+      "result": "PASS",
+      "notes": "closing=216300"
+    },
+    {
+      "check": "preview unified compare (toggle ON)",
+      "result": "PASS",
+      "notes": "source=unified_compare"
+    },
+    {
+      "check": "staff preview toggles hidden",
+      "result": "WAIVED",
+      "notes": "No staff credentials"
+    }
+  ],
+  "regressions": [],
+  "ledger": {
+    "mainLoader": "legacy",
+    "closingOk": true,
+    "toggleVisible": true,
+    "offCalls": 0,
+    "mainLoadCalls": 0,
+    "previewGoldenPass": true,
+    "previewCompareSource": "unified_compare",
+    "previewShadowOk": true,
+    "onScreenClosing": 216300
+  },
+  "admin": null,
+  "exports": null,
+  "staff": {
+    "waived": true,
+    "togglesVisible": null
+  }
+}

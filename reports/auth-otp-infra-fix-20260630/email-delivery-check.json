@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-06-30T11:24:30.000Z",
+  "status": "SKIPPED",
+  "reason": "BLOCKED_MISSING_SMTP_CONFIG — autoconfirm still true, fake SMTP unchanged",
+  "email_received": false,
+  "test_auth_user_created": false,
+  "company_created": false
+}

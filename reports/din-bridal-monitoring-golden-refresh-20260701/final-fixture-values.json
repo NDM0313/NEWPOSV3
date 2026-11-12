@@ -1,0 +1,27 @@
+{
+  "run": "DIN_BRIDAL_MONITORING_GOLDEN_REFRESH",
+  "task": "final-fixture-values",
+  "generated_at": "2026-07-01T14:05:00.000Z",
+  "operator": "Nadeem Khan",
+  "source_artifact": "three-company-monitoring-2026-07-01T13-53-24-973Z.json",
+  "previous": {
+    "trial_balance_total_pkr": 22056075,
+    "roznamcha_cash_in_pkr": 1836350,
+    "roznamcha_cash_out_pkr": 917780,
+    "roznamcha_closing_pkr": 918570,
+    "mr_rehan_closing_pkr": 530000
+  },
+  "new": {
+    "trial_balance_total_pkr": 22390400,
+    "roznamcha_cash_in_pkr": 2116850,
+    "roznamcha_cash_out_pkr": 917780,
+    "roznamcha_closing_pkr": 1199070,
+    "mr_rehan_closing_pkr": 530000
+  },
+  "delta": {
+    "trial_balance_total_pkr": 334325,
+    "roznamcha_cash_in_pkr": 280500,
+    "roznamcha_closing_pkr": 280500
+  },
+  "fixture_only": true
+}

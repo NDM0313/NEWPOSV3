@@ -45,8 +45,8 @@ BEGIN
     SELECT gen_random_uuid(), 'product-images', false, now(), now()
     WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'product-images');
     INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
-    SELECT gen_random_uuid(), 'company-logos', false, now(), now()
-    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'company-logos');
+    SELECT 'company-logos', 'company-logos', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'company-logos');
   END IF;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
@@ -94,6 +94,15 @@ BEGIN
   CREATE POLICY "product_images_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'product-images');
   CREATE POLICY "product_images_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'product-images') WITH CHECK (bucket_id = 'product-images');
   CREATE POLICY "product_images_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'product-images');
+
+  DROP POLICY IF EXISTS "company_logos_insert" ON storage.objects;
+  DROP POLICY IF EXISTS "company_logos_select" ON storage.objects;
+  DROP POLICY IF EXISTS "company_logos_update" ON storage.objects;
+  DROP POLICY IF EXISTS "company_logos_delete" ON storage.objects;
+  CREATE POLICY "company_logos_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'company-logos');
+  CREATE POLICY "company_logos_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'company-logos');
+  CREATE POLICY "company_logos_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'company-logos') WITH CHECK (bucket_id = 'company-logos');
+  CREATE POLICY "company_logos_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'company-logos');
 END $$;
 EOSQL
   echo "[deploy] Storage buckets + RLS applied."
@@ -205,9 +214,13 @@ if ! grep -q "counterWorkerRegistry\|CounterWorkerContext" erp-mobile-app/src/co
 fi
 # Fresh CACHEBUST so Docker never uses cached mobile build (always get latest login UI on /m/)
 CACHEBUST=$(date +%s)
-grep -v '^CACHEBUST=' .env.production > .env.production.tmp 2>/dev/null || true
+VITE_BUILD_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+grep -v '^CACHEBUST=' .env.production 2>/dev/null | grep -v '^VITE_BUILD_COMMIT=' > .env.production.tmp || true
 echo "CACHEBUST=$CACHEBUST" >> .env.production.tmp
+echo "VITE_BUILD_COMMIT=$VITE_BUILD_COMMIT" >> .env.production.tmp
 mv .env.production.tmp .env.production
+export VITE_BUILD_COMMIT
+echo "[deploy] VITE_BUILD_COMMIT=$VITE_BUILD_COMMIT"
 set -a
 . ./.env.production
 set +a
@@ -221,15 +234,20 @@ run_project_node() {
     node "$@"
   else
     echo "[deploy] node not in PATH; using Docker node:20-alpine for: $*"
-    docker run --rm -v "$(pwd):/w" -w /w node:20-alpine node "$@"
+    docker run --rm --init -v "$(pwd):/w" -w /w node:20-alpine node "$@"
   fi
 }
 run_project_node scripts/verify-mobile-build-env.mjs .env.production || exit 1
 run_project_node scripts/sync-mobile-env.js || true
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
-# Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
-echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
-$COMPOSE_CMD build --no-cache erp
+BUILD_FLAGS=""
+if [ "${DEPLOY_NO_CACHE:-0}" = "1" ]; then
+  BUILD_FLAGS="--no-cache"
+  echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) --no-cache full rebuild..."
+else
+  echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) with Docker layer cache..."
+fi
+$COMPOSE_CMD build $BUILD_FLAGS erp
 # Fixed container_name= — kill/remove containers, tear down project, drop default network if orphaned, then up erp.
 docker kill erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true
 docker rm -f erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true

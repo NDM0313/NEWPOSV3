@@ -1,0 +1,6 @@
+-- R5 generic rollback template — operator-run on incident only
+-- Substitute: COMPANY_ID, FEATURE_KEY
+UPDATE feature_flags
+SET enabled = false, updated_at = now()
+WHERE company_id = 'COMPANY_ID'
+  AND feature_key = 'FEATURE_KEY';

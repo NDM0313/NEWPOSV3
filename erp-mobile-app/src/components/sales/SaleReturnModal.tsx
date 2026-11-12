@@ -46,6 +46,7 @@ export function SaleReturnModal({
   const [error, setError] = useState<string | null>(null);
   const [originalSaleTotal, setOriginalSaleTotal] = useState<number>(0);
   const [priorReturnedTotal, setPriorReturnedTotal] = useState<number>(0);
+  const [saleDue, setSaleDue] = useState<number>(0);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,8 +55,15 @@ export function SaleReturnModal({
     setError(null);
     setDiscount('0');
     const loadSaleCap = async () => {
-      const { data: sale } = await supabase.from('sales').select('total').eq('id', saleId).maybeSingle();
-      if (!cancelled) setOriginalSaleTotal(Number((sale as { total?: number } | null)?.total ?? 0) || 0);
+      const { data: sale } = await supabase
+        .from('sales')
+        .select('total, due_amount, paid_amount')
+        .eq('id', saleId)
+        .maybeSingle();
+      if (!cancelled) {
+        setOriginalSaleTotal(Number((sale as { total?: number } | null)?.total ?? 0) || 0);
+        setSaleDue(Math.max(0, Number((sale as { due_amount?: number } | null)?.due_amount ?? 0) || 0));
+      }
       const { data: prior } = await supabase
         .from('sale_returns')
         .select('total, status')
@@ -103,6 +111,8 @@ export function SaleReturnModal({
   const returnTotal = Math.max(0, subtotal - discountNum);
   const remainingReturnable = Math.max(0, originalSaleTotal - priorReturnedTotal);
   const exceedsCap = originalSaleTotal > 0 && returnTotal > remainingReturnable + 0.005;
+  const arPortion = Math.min(returnTotal, saleDue);
+  const refundPortion = Math.round((returnTotal - arPortion) * 100) / 100;
 
   const handleQtyChange = (key: string, maxQty: number, value: string) => {
     const parsed = Number(value);
@@ -248,6 +258,14 @@ export function SaleReturnModal({
                     <span className={exceedsCap ? 'text-[#EF4444]' : 'text-[#10B981]'}>
                       Rs. {returnTotal.toLocaleString()}
                     </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-[#9CA3AF]">
+                    <span>Due adjust (AR)</span>
+                    <span>Rs. {arPortion.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-[#9CA3AF]">
+                    <span>Cash/bank refund</span>
+                    <span>Rs. {refundPortion.toLocaleString()}</span>
                   </div>
                   {originalSaleTotal > 0 && (
                     <div className="flex justify-between text-[11px] text-[#6B7280]">

@@ -1,0 +1,17 @@
+{
+  "generated": "2026-06-29",
+  "branch": "main",
+  "head": "22b7089e",
+  "environmentClassification": "PRODUCTION_LIVE",
+  "tests": {
+    "unifiedLedger": { "pass": 298, "fail": 0 },
+    "unit": { "pass": 122, "fail": 0 },
+    "build": "PASS"
+  },
+  "partyLedgerDiscountUi": "PASS",
+  "partyLedgerDiscountPosting": "BLOCKED_PRODUCTION_MUTATION_NOT_APPROVED",
+  "createBusinessOtp": "PARTIAL_BLOCKED_EMAIL_ACCESS",
+  "regressions": "PASS",
+  "decision": "QA_PARTIAL_BLOCKED_BY_PRODUCTION_MUTATION_SAFETY",
+  "deployed": false
+}

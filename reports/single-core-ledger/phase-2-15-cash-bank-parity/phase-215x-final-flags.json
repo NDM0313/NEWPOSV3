@@ -1,0 +1,21 @@
+{
+  "capturedAt": "2026-06-26T20:15:00Z",
+  "companyId": "30bd8592-3384-4f34-899a-f3907e336485",
+  "dinChinaFlags": {
+    "unified_ledger_pilot": true,
+    "unified_ledger_engine": true,
+    "unified_ledger_screen_ledger_v2": true,
+    "unified_ledger_loader_ledger_v2": true,
+    "unified_ledger_screen_account_statement": true,
+    "unified_ledger_loader_account_statement": true,
+    "unified_ledger_screen_trial_balance": true,
+    "unified_ledger_loader_trial_balance": true,
+    "unified_ledger_screen_party_ledger": true,
+    "unified_ledger_loader_party_ledger": true,
+    "unified_ledger_screen_roznamcha": true,
+    "unified_ledger_loader_roznamcha": true
+  },
+  "otherCompanyLoadersEnabled": 0,
+  "unsupportedCashBankLoaderFlags": [],
+  "verificationPass": true
+}

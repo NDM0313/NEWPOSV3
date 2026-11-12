@@ -1,0 +1,16 @@
+﻿BASELINE OK
+ROW4 moreTap=True allModules=True
+ROW4 hub=False party=False fin=False accountsHdr=False
+TEXTS: Din Collection ΓÇô Mobile ERP | Din Collection | Online | Din Collection | Welcome, Nabeel | SALESMAN | All Branches | My sales today | Rs. 0 | My pending | Rs. 0 | Add Sale | MODULES | Sales | Purchase | Expense | Products | Inventory | Point of Sale | Contacts
+ROW4 FAIL: Reports not reachable
+ROW5 N/A
+ROW6 N/A: tile hidden (salesman restriction)
+ROW7 N/A: tile hidden (salesman restriction)
+ROW8 N/A: tile hidden (salesman restriction)
+ROW9 N/A: tile hidden (salesman restriction)
+ROW10 N/A: tile hidden (salesman restriction)
+ROW11 BLOCKED drift
+ROW12-14 hiddenExpected=True (no branch Rs on salesman home)
+ROW15 homeShowsRs0=True salesmanOwnMetricsOnly=True => PASS privacy on dashboard
+ROW16-18 crash=False chunk=False
+ROW19 PASS read-only

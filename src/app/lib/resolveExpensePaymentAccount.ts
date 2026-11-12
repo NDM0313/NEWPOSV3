@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { formatPaymentAccountLabel, type PaymentAccountRef } from '@/app/lib/paymentAccountDisplay';
 import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 
 export { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
 
@@ -44,23 +45,37 @@ export async function enrichExpenseRowsWithPostedPaymentAccount(
 
   const resolvedByExpenseId = new Map<string, ResolvedExpensePaymentAccount>();
 
-  const { data: payments } = await supabase
-    .from('payments')
-    .select('id, reference_id, payment_account_id, payment_method, created_at')
-    .eq('reference_type', 'expense')
-    .in('reference_id', expenseIds)
-    .is('voided_at', null)
-    .order('created_at', { ascending: false });
+  // Chunk IN lists — giant URLs (~130+ UUIDs) 502 Kong/PostgREST under load.
+  const payments = await fetchInBatches(
+    expenseIds,
+    async (chunk) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id, reference_id, payment_account_id, payment_method, created_at')
+        .eq('reference_type', 'expense')
+        .in('reference_id', chunk)
+        .is('voided_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Array<{
+        id: string;
+        reference_id?: string;
+        payment_account_id?: string | null;
+        payment_method?: string | null;
+      }>;
+    },
+    { chunkSize: 40 },
+  );
 
   const paymentAccountIds = new Set<string>();
   const paymentByExpense = new Map<string, { payment_account_id: string | null; payment_method: string | null }>();
-  for (const p of payments || []) {
-    const eid = String((p as { reference_id?: string }).reference_id || '');
+  for (const p of payments) {
+    const eid = String(p.reference_id || '');
     if (!eid || paymentByExpense.has(eid)) continue;
-    const payAcctId = (p as { payment_account_id?: string | null }).payment_account_id ?? null;
+    const payAcctId = p.payment_account_id ?? null;
     paymentByExpense.set(eid, {
       payment_account_id: payAcctId,
-      payment_method: (p as { payment_method?: string | null }).payment_method ?? null,
+      payment_method: p.payment_method ?? null,
     });
     if (payAcctId) paymentAccountIds.add(payAcctId);
   }
@@ -68,37 +83,60 @@ export async function enrichExpenseRowsWithPostedPaymentAccount(
   const missingForJe = expenseIds.filter((id) => !paymentByExpense.has(id));
   const jeCreditByExpense = new Map<string, string>();
   if (missingForJe.length > 0) {
-    let jeQuery = supabase
-      .from('journal_entries')
-      .select('id, reference_id, created_at')
-      .eq('reference_type', 'expense')
-      .in('reference_id', missingForJe)
-      .or('is_void.is.null,is_void.eq.false')
-      .order('created_at', { ascending: false });
-    if (companyId) jeQuery = jeQuery.eq('company_id', companyId);
-    const { data: jes } = await jeQuery;
+    const jes = await fetchInBatches(
+      missingForJe,
+      async (chunk) => {
+        let jeQuery = supabase
+          .from('journal_entries')
+          .select('id, reference_id, created_at')
+          .eq('reference_type', 'expense')
+          .in('reference_id', chunk)
+          .or('is_void.is.null,is_void.eq.false')
+          .order('created_at', { ascending: false });
+        if (companyId) jeQuery = jeQuery.eq('company_id', companyId);
+        const { data, error } = await jeQuery;
+        if (error) throw error;
+        return (data || []) as Array<{ id: string; reference_id?: string }>;
+      },
+      { chunkSize: 40 },
+    );
 
     const latestJeByExpense = new Map<string, string>();
-    for (const je of jes || []) {
-      const refId = String((je as { reference_id?: string }).reference_id || '');
-      const jeId = String((je as { id?: string }).id || '');
+    for (const je of jes) {
+      const refId = String(je.reference_id || '');
+      const jeId = String(je.id || '');
       if (refId && jeId && !latestJeByExpense.has(refId)) latestJeByExpense.set(refId, jeId);
     }
 
     const jeIds = [...latestJeByExpense.values()];
     if (jeIds.length > 0) {
-      const { data: lines } = await supabase
-        .from('journal_entry_lines')
-        .select('journal_entry_id, account_id, credit, accounts(id, code, name, type)')
-        .in('journal_entry_id', jeIds)
-        .gt('credit', 0);
+      const lines = await fetchInBatches(
+        jeIds,
+        async (chunk) => {
+          const { data, error } = await supabase
+            .from('journal_entry_lines')
+            .select('journal_entry_id, account_id, credit, accounts(id, code, name, type)')
+            .in('journal_entry_id', chunk)
+            .gt('credit', 0);
+          if (error) throw error;
+          return (data || []) as Array<{
+            journal_entry_id?: string;
+            account_id: string;
+            accounts?: PaymentAccountRef | PaymentAccountRef[] | null;
+          }>;
+        },
+        { chunkSize: 40 },
+      );
 
-      const creditLinesByJe = new Map<string, Array<{ account_id: string; accounts?: PaymentAccountRef | PaymentAccountRef[] | null }>>();
-      for (const line of lines || []) {
-        const jeId = String((line as { journal_entry_id?: string }).journal_entry_id || '');
+      const creditLinesByJe = new Map<
+        string,
+        Array<{ account_id: string; accounts?: PaymentAccountRef | PaymentAccountRef[] | null }>
+      >();
+      for (const line of lines) {
+        const jeId = String(line.journal_entry_id || '');
         if (!jeId) continue;
         const bucket = creditLinesByJe.get(jeId) || [];
-        bucket.push(line as { account_id: string; accounts?: PaymentAccountRef | PaymentAccountRef[] | null });
+        bucket.push(line);
         creditLinesByJe.set(jeId, bucket);
       }
 
@@ -151,11 +189,16 @@ export async function enrichExpenseRowsWithPostedPaymentAccount(
   );
   const accountById = new Map<string, PaymentAccountRef>();
   if (orphanIds.length > 0) {
-    const { data: accounts } = await supabase
-      .from('accounts')
-      .select('id, code, name, type')
-      .in('id', orphanIds);
-    (accounts || []).forEach((a: PaymentAccountRef & { id: string }) => {
+    const accounts = await fetchInBatches(
+      orphanIds,
+      async (chunk) => {
+        const { data, error } = await supabase.from('accounts').select('id, code, name, type').in('id', chunk);
+        if (error) throw error;
+        return (data || []) as Array<PaymentAccountRef & { id: string }>;
+      },
+      { chunkSize: 40 },
+    );
+    accounts.forEach((a) => {
       if (a?.id) accountById.set(a.id, { code: a.code, name: a.name, type: a.type });
     });
   }

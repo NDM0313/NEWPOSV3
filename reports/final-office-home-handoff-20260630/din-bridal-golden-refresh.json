@@ -1,0 +1,22 @@
+{
+  "refreshed": true,
+  "reason": "Post DIN BRIDAL 1100 Option C apply additive correction JEs (+136,500 TB column totals)",
+  "filesUpdated": [
+    "reports/single-core-ledger/din-bridal/golden-fixtures.json",
+    "reports/single-core-ledger/din-bridal/golden-fixtures.md",
+    "scripts/single-core-ledger/monitoring-company-profiles.json"
+  ],
+  "before": {
+    "trial_balance_debit_pkr": 21919575,
+    "trial_balance_credit_pkr": 21919575,
+    "monitoring_trial_balance_debit_credit_pkr": 21919575
+  },
+  "after": {
+    "trial_balance_debit_pkr": 22056075,
+    "trial_balance_credit_pkr": 22056075,
+    "monitoring_trial_balance_debit_credit_pkr": 22056075
+  },
+  "deltaPkr": 136500,
+  "otherCompaniesChanged": false,
+  "productionDataMutated": false
+}
