@@ -1228,7 +1228,6 @@ export default function App() {
             user={user}
             branch={selectedBranch}
             companyId={companyId}
-            companyName={companyName}
             currentScreen={currentScreen}
             onNavigate={navigateToModule}
             onLogout={handleLogout}
